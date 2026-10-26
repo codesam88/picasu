@@ -1456,6 +1456,28 @@
         ],
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "album_id": {
+        "in": "header",
+        "name": "x-album-id",
+        "type": "apiKey"
+      },
+      "bearer_token": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "cookie_jwt": {
+        "in": "cookie",
+        "name": "jwt",
+        "type": "apiKey"
+      },
+      "share_id": {
+        "in": "header",
+        "name": "x-share-id",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
@@ -1587,6 +1609,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Delete the listed assets: files, sidecars and metadata rows are removed.",
         "tags": [
           "assets"
@@ -1625,6 +1652,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Revoke an invite token.",
         "tags": [
           "auth"
@@ -1674,6 +1706,11 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Full annotated view of every configuration field.",
         "tags": [
           "config"
@@ -1699,6 +1736,11 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Export the runtime-tier configuration as a versioned envelope.",
         "tags": [
           "config"
@@ -1730,6 +1772,15 @@
             "description": "Not found"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Serve the client-visible server configuration.",
         "tags": [
           "config"
@@ -1758,6 +1809,11 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Export the full server configuration as JSON.",
         "tags": [
           "config"
@@ -1792,6 +1848,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "List every album the metadata tree knows.",
         "tags": [
           "albums"
@@ -1858,6 +1919,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Serve one page of timeline/list rows for a snapshot timestamp.",
         "tags": [
           "timeline"
@@ -1882,6 +1948,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Export the whole tree as JSON.",
         "tags": [
           "timeline"
@@ -1935,6 +2006,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Serve the display layout of one batched row of a snapshot.",
         "tags": [
           "timeline"
@@ -1978,6 +2054,11 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Serve the scroll bar positions of a snapshot.",
         "tags": [
           "timeline"
@@ -2015,6 +2096,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "List every tag in the tree with the number of assets carrying it.",
         "tags": [
           "timeline"
@@ -2040,6 +2126,11 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Report the state of the most recently started album-indexing job.",
         "tags": [
           "index"
@@ -2071,6 +2162,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "List invite tokens' metadata.",
         "tags": [
           "auth"
@@ -2119,6 +2215,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Serve the full metadata of a single asset.",
         "tags": [
           "assets"
@@ -2164,6 +2265,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Complete a filesystem directory path for the path-completion field.",
         "tags": [
           "config"
@@ -2220,6 +2326,15 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Evaluate a list query, snapshot its result, and return the snapshot id.",
         "tags": [
           "timeline"
@@ -2254,6 +2369,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Read the caller's own identity from the user store.",
         "tags": [
           "auth"
@@ -2310,6 +2430,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "List all users as `{ userId, admin }` pairs ordered by id.",
         "tags": [
           "auth"
@@ -2381,6 +2506,18 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          },
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Serve the compressed thumbnail or preview of a hashed asset.",
         "tags": [
           "serving"
@@ -2422,6 +2559,18 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          },
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Serve the original file from its current location under `imagePath`.",
         "tags": [
           "serving"
@@ -2443,6 +2592,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Lift the read-only kill-switch.",
         "tags": [
           "config"
@@ -2471,6 +2625,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Rotate the JWT signing key.",
         "tags": [
           "config"
@@ -2524,6 +2683,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Create a subdirectory under a dir-album and register it as an album.",
         "tags": [
           "albums"
@@ -2574,6 +2738,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Create a share for an album and return its generated id.",
         "tags": [
           "albums"
@@ -2614,6 +2783,11 @@
             "description": "Unprocessable entity"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Index every media file under a directory tree in the background.",
         "tags": [
           "index"
@@ -2638,6 +2812,11 @@
             "description": "No active index job"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Request cancellation of the running album index job.",
         "tags": [
           "index"
@@ -2685,6 +2864,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Create a single-use invite token.",
         "tags": [
           "auth"
@@ -2747,6 +2931,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
         "summary": "Exchange an expired image-serving token for a freshly issued one.",
         "tags": [
           "auth"
@@ -2794,6 +2983,15 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Exchange an expired prefetch timestamp token for a freshly issued one.",
         "tags": [
           "auth"
@@ -2891,6 +3089,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Enroll the first administrator.",
         "tags": [
           "auth"
@@ -2947,6 +3150,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Register a new user account.",
         "tags": [
           "auth"
@@ -2994,6 +3202,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Patch the runtime-tier configuration.",
         "tags": [
           "config"
@@ -3047,6 +3260,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Move one asset, or one album directory, into another album.",
         "tags": [
           "albums"
@@ -3090,6 +3308,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Remove one share from an album.",
         "tags": [
           "albums"
@@ -3136,6 +3359,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Set or clear the trash flag on the listed assets.",
         "tags": [
           "assets"
@@ -3182,6 +3410,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Rate the listed assets 0–5, or clear the rating.",
         "tags": [
           "assets"
@@ -3225,6 +3458,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Create or replace one of an album's share entries.",
         "tags": [
           "albums"
@@ -3281,6 +3519,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Add and remove tags on the listed assets and return the resulting tag list.",
         "tags": [
           "assets"
@@ -3324,6 +3567,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Replace an asset's compressed thumbnail with an uploaded frame.",
         "tags": [
           "assets"
@@ -3370,6 +3618,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Rotate an image 90° counter-clockwise and rebuild its derivatives.",
         "tags": [
           "assets"
@@ -3416,6 +3669,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Set the cover image of an album.",
         "tags": [
           "albums"
@@ -3462,6 +3720,15 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Set the display title of an album.",
         "tags": [
           "albums"
@@ -3508,6 +3775,15 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Set or clear the user-defined description of an asset.",
         "tags": [
           "albums"
@@ -3554,6 +3830,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Grant or revoke a user's admin role.",
         "tags": [
           "auth"
@@ -3600,6 +3881,11 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Change a user's password.",
         "tags": [
           "auth"
@@ -3900,6 +4186,15 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {
+            "album_id": [],
+            "share_id": []
+          },
+          {
+            "cookie_jwt": []
+          }
+        ],
         "summary": "Upload media files into an album or the upload folder and index each one.",
         "tags": [
           "upload"

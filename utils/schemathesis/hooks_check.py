@@ -1,6 +1,7 @@
 """Tier-1 Schemathesis hooks: share-header injection plus run-poisoning guards.
 
-Auth wiring (the spec declares no securitySchemes, so nothing is inferable):
+Auth wiring (securitySchemes are declared now, but Schemathesis cannot perform
+the login exchange, so the harness still injects the cookie itself):
 - admin session: static Cookie header supplied via schemathesis config from
   ${PICASU_JWT}.
 - share identity: x-album-id / x-share-id headers on the GuardShare-guarded

@@ -177,6 +177,7 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
 /// Errors: 401 missing or invalid admin credentials.
 #[utoipa::path(
     tag = "config",
+    security(("cookie_jwt" = [])),
     responses(
         (status = 200, description = "Annotated configuration", body = Vec<ConfigFieldEntry>),
         (status = 401, response = Unauthorized),
@@ -223,6 +224,7 @@ pub fn get_admin_config_handler(
 /// Errors: 401 missing or invalid admin credentials.
 #[utoipa::path(
     tag = "config",
+    security(("cookie_jwt" = [])),
     responses(
         (status = 200, description = "Exported runtime configuration", body = AdminConfigExportResponse),
         (status = 401, response = Unauthorized),

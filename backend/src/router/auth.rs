@@ -1180,6 +1180,7 @@ pub struct RenewHashTokenReturn {
 #[utoipa::path(
         tag = "auth",
         request_body = RenewHashToken,
+        security(("bearer_token" = [])),
         responses(
             (status = 200, description = "Hash token renewed", body = RenewHashTokenReturn),
             (status = 400, description = "Invalid input"),
@@ -1423,6 +1424,7 @@ pub struct RenewTimestampTokenReturn {
 #[utoipa::path(
         tag = "auth",
         request_body = RenewTimestampToken,
+        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Timestamp token renewed", body = RenewTimestampTokenReturn),
             (status = 400, description = "Invalid input"),

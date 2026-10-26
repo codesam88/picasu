@@ -42,6 +42,7 @@ pub struct RotateImageRequest {
 #[utoipa::path(
         tag = "assets",
         request_body = RotateImageRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Image rotated"),
             (status = 400, description = "Invalid input"),

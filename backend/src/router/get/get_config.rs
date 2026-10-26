@@ -41,6 +41,7 @@ pub struct ConfigResponse {
 /// 401 no valid admin or share credentials.
 #[utoipa::path(
         tag = "config",
+        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Public configuration", body = ConfigResponse),
             (status = 400, description = "Invalid input"),
@@ -74,6 +75,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 /// Errors: 400 invalid input — 401 no valid admin credentials.
 #[utoipa::path(
         tag = "config",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Exported configuration", body = String, content_type = "application/json"),
             (status = 400, description = "Invalid input"),

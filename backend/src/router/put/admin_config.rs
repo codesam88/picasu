@@ -35,6 +35,7 @@ pub struct AdminConfigUpdateResponse {
 #[utoipa::path(
     tag = "config",
     request_body = PartialUpdateConfigRequest,
+    security(("cookie_jwt" = [])),
     responses(
         (status = 200, description = "Config updated", body = AdminConfigUpdateResponse),
         (status = 400, description = "Invalid input"),

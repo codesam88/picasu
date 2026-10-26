@@ -301,6 +301,7 @@ fn execute_prefetch_logic(
             ("locate" = Option<String>, Query, description = "Asset whose row index comes back as locateTo"),
         ),
         request_body = serde_json::Value,
+        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
             (status = 400, description = "Invalid input"),

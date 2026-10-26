@@ -93,6 +93,7 @@ pub enum AssignOutcome {
 #[utoipa::path(
         tag = "albums",
         request_body = AssignAlbumData,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Item assigned to album", body = AssignResult),
             (status = 400, description = "Invalid input or item not found"),

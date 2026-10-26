@@ -25,6 +25,7 @@ use std::path::Path;
 /// 403 no enrolled users — 500 storage failure.
 #[utoipa::path(
         tag = "timeline",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "List of tags", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
@@ -106,6 +107,7 @@ impl From<&Share> for ShareInfo {
 /// users — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
             (status = 401, response = Unauthorized),

@@ -48,6 +48,7 @@ pub struct EditFlagsData {
 #[utoipa::path(
         tag = "assets",
         request_body = EditFlagsData,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Flags updated"),
             (status = 400, description = "Invalid input"),

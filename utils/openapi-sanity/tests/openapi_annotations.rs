@@ -73,6 +73,7 @@ const HAND_SET_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_hand_
 const DERIVED_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_conforming.rs");
 const UNMODELED_FORMS: &str =
     include_str!("fixtures/openapi_annotations/a9_unsupported_annotation_form.rs");
+const MODELED_SECURITY: &str = include_str!("fixtures/openapi_annotations/a9_security_modeled.rs");
 
 const UNBOUND_PARAMETER: &str =
     include_str!("fixtures/openapi_annotations/b1_parameter_the_route_does_not_bind.rs");
@@ -483,6 +484,21 @@ fn an_unsupported_annotation_form_fails() {
          declaration would go unreported",
         "each unmodeled form is a finding at the line it is written on: three top-level \
          arguments and one body spelling, one identity"
+    );
+}
+
+/// The A9 counterpart: `security(...)` is a modeled form — it declares the
+/// operation's requirements, and the checker deliberately does not interpret
+/// the scheme names, so both a single-scheme and a two-scheme-plus-fallback
+/// requirement stay silent.
+#[test]
+fn a_declared_security_requirement_is_accepted() {
+    let findings = check_source("a9_security_modeled.rs", MODELED_SECURITY);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "declared security requirements are accepted, not recorded as unmodeled"
     );
 }
 

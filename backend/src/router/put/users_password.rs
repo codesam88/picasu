@@ -236,6 +236,7 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserPasswordRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Password updated"),
             (status = 400, description = "Invalid input or wrong current password"),

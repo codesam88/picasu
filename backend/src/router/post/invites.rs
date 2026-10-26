@@ -54,6 +54,7 @@ pub struct CreateInviteResponse {
 #[utoipa::path(
         tag = "auth",
         request_body = CreateInviteRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Invite created; token returned once", body = CreateInviteResponse),
             (status = 400, description = "Invalid input"),

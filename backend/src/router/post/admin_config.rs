@@ -19,6 +19,7 @@ use crate::router::{AppResult, GuardResult};
 /// Errors: 401 missing or invalid admin credentials — 500 config write failure.
 #[utoipa::path(
     tag = "config",
+    security(("cookie_jwt" = [])),
     responses(
         (status = 200, description = "Read-only mode disabled"),
         (status = 401, response = Unauthorized),

@@ -18,7 +18,7 @@ existing tickets (nothing live lost).
 | ------ | --------------------------------- | ----------- | -------- | -------- |
 | FEAT1a | `spec-reconciliation-4xx`         | done        | high     | testing  |
 | FEAT1b | `api-assurance` (gate step)       | done        | medium   | testing  |
-| FEAT2  | `security-schemes-declaration`    | open        | medium   | backend  |
+| FEAT2  | `security-schemes-declaration`    | done        | medium   | backend  |
 | FEAT3  | `bug-rebuild-dir-album-cache`     | open        | high     | backend  |
 | FEAT4  | `auth-hardening`                  | in-progress | high     | backend  |
 | FEAT5  | `auth-flows-user-delete`          | open        | medium   | backend  |

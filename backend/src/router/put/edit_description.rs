@@ -46,6 +46,7 @@ pub struct SetUserDefinedDescription {
 #[utoipa::path(
         tag = "albums",
         request_body = SetUserDefinedDescription,
+        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Description updated"),
             (status = 400, description = "Invalid input"),

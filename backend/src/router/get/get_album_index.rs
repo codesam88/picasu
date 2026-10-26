@@ -21,6 +21,7 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
 /// Errors: 401 no valid admin credentials.
 #[utoipa::path(
         tag = "index",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Album index status", body = AlbumIndexStatus),
             (status = 401, response = Unauthorized),

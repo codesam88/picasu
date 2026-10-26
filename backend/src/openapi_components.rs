@@ -67,3 +67,41 @@ impl<'__r> utoipa::ToResponse<'__r> for Unauthorized {
         )
     }
 }
+
+use utoipa::Modify;
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::openapi::{Components, OpenApi};
+
+/// Registers the API's security schemes in the generated `OpenAPI` document.
+///
+/// utoipa's `components(...)` clause has no `securitySchemes` entry, so the
+/// schemes are added through a `Modify` addon instead. The names match the
+/// `security(...)` clauses used in `backend/src/router`.
+pub struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut OpenApi) {
+        let components = openapi.components.get_or_insert_with(Components::new);
+        components.add_security_scheme(
+            "cookie_jwt",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("jwt"))),
+        );
+        components.add_security_scheme(
+            "bearer_token",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "album_id",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("x-album-id"))),
+        );
+        components.add_security_scheme(
+            "share_id",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("x-share-id"))),
+        );
+    }
+}

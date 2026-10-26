@@ -119,6 +119,7 @@ pub struct SetAlbumCover {
 #[utoipa::path(
         tag = "albums",
         request_body = SetAlbumCover,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Album cover updated"),
             (status = 400, description = "Invalid input"),
@@ -241,6 +242,7 @@ pub struct SetAlbumTitle {
 #[utoipa::path(
         tag = "albums",
         request_body = SetAlbumTitle,
+        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),

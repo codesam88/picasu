@@ -29,6 +29,7 @@ pub struct AuthKeyResetResponse {
 /// could not be stored.
 #[utoipa::path(
         tag = "config",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Signing key rotated", body = AuthKeyResetResponse),
             (status = 401, response = Unauthorized),
