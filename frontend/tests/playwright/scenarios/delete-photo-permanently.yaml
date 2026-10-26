@@ -4,8 +4,7 @@ covers:
     - PUT /put/edit_flags
     - DELETE /delete/delete-data
   ui:
-    - Delete menu item moves photo to trash
-    - Permanently Delete removes photo from trash view
+    - .desktop-small-image
 
 given:
   - dir_album: deletetest/pool

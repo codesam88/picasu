@@ -1,9 +1,9 @@
 name: Escape from the photo viewer returns to the album grid it came from
 covers:
   ui:
-    - Escape while viewing a photo navigates to the parent page, not router.back()
-    - the parent grid is populated after returning (not an empty/unrelated page)
-    - the browser Back button after Escape does not re-enter the view page
+    - route:/album/.+/view/.+
+    - .parent
+    - route:/album/[a-z0-9]+$
 
 given:
   - dir_album: escapetest/sunset

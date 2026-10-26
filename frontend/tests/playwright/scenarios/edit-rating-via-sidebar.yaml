@@ -3,8 +3,7 @@ covers:
   api:
     - PUT /put/edit_rating
   ui:
-    - star rating widget accepts click
-    - rating written to XMP sidecar
+    - toast:success:Rating saved
 
 given:
   - dir_album: ratingtest/pool

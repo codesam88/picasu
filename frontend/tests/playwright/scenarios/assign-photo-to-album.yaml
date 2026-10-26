@@ -3,8 +3,8 @@ covers:
   api:
     - PUT /put/assign_album
   ui:
-    - AssignAlbumModal selects album and confirms move
-    - sidebar album chip reflects new album after move
+    - toast:success:Moved to album
+    - Destination
 
 given:
   - dir_album: assigntest/imports

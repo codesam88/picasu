@@ -3,9 +3,8 @@ covers:
   api:
     - POST /upload
   ui:
-    - upload.files
-    - independent duplicate grid items
-    - independent selection of duplicates
+    - .desktop-small-image
+    - route:/view/
 
 given:
   - photo: duplicate-select/seed.jpg

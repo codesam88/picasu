@@ -32,6 +32,7 @@ steps:
       - navigate: /config
       - click: tab/Administration
     assert:
+      - ui.route: /config
       - ui.text_visible: User Management
       - ui.text_visible: admin
       - ui.text_visible: Promote someone else first to demote your own account

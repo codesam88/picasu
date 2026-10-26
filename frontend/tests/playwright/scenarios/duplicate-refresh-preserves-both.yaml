@@ -4,9 +4,7 @@ covers:
     - POST /upload
     - GET /get/get-data
   ui:
-    - upload.files
-    - independent duplicate grid items
-    - refresh preserves duplicate items
+    - .desktop-small-image
 
 given:
   - photo: duplicate-refresh/seed.jpg

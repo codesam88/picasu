@@ -1,8 +1,8 @@
 name: Clicking album tile navigates to album contents with child media
 covers:
   ui:
-    - album click navigates to /album/<assetId>
-    - album contents page shows child media
+    - route:/album/[a-z0-9]+$
+    - .parent
 given:
   - dir_album: navtestalbum
   - photo: navtestalbum/child.jpg

@@ -4,8 +4,7 @@ covers:
     - POST /post/index/album
     - GET /get/index/status
   ui:
-    - StorageAndSync Scan Now button starts album index
-    - Scan Status transitions from idle to completed
+    - Completed
 given:
   - photo_raw: scan-status/img01.jpg
 

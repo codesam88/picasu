@@ -4,8 +4,8 @@ covers:
     - PUT /put/edit_tag
     - PUT /put/set_user_defined_description
   ui:
-    - tag with HTML markup renders as plain text
-    - description with SQL and script injection renders as plain text
+    - '<b>bold</b>'
+    - textbox/Description
 
 given:
   - dir_album: injectiontest/pool

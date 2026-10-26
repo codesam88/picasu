@@ -3,9 +3,7 @@ covers:
   api:
     - PUT /put/set_user_defined_description
   ui:
-    - description textarea accepts input
-    - description persists after leaving and re-entering the item view
-    - description written to XMP sidecar
+    - textbox/Description
 
 given:
   - dir_album: descedit/pool
