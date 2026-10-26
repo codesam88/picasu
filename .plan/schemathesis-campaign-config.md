@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: done
 type: chore
 priority: medium
 area: testing
@@ -28,3 +28,16 @@ baseline, bigger stateful budget, CI wiring as an advisory gate first.
    the pilot's 150 s (55/64 ops skipped).
 4. Wire into CI advisory-only; promote to failing only on a clean,
    stable record.
+
+## Outcome
+
+All four steps done. `utils/schemathesis/` holds both tiers
+(`check.toml`/`campaign.toml`, hooks, seed, `check_report.py`,
+`json2sarif.py`); `just fuzz-check` is the bounded tier-1 check,
+`just fuzz` the stateful campaign. Links: built-in inference + the
+OpenAPI resource pool, no spec changes (7/8 links covered in
+verification; token chains stay in hooks). Baseline carries only the
+filed bug classes. `.github/workflows/fuzz-advisory.yml` runs nightly
+with job-level `continue-on-error` (the one-line flip to gating) and
+uploads baseline-filtered SARIF to the Security tab; first upload on
+GitHub is the remaining unproven step.

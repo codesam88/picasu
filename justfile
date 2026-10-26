@@ -219,6 +219,10 @@ schemathesis-check: frontend-build-maybe
     # INT/TERM route through exit so the EXIT trap always tears down.
     cleanup() {
         rc=$?
+        if [ -n "${FUZZ_REPORT_OUT:-}" ] && [ -n "${STATE_DIR:-}" ] && [ -f "${STATE_DIR}/report.json" ]; then
+            mkdir -p "$(dirname "$FUZZ_REPORT_OUT")"
+            cp "${STATE_DIR}/report.json" "$FUZZ_REPORT_OUT"
+        fi
         if [ -f "$STATE_DIR/server.pid" ]; then
             kill "$(cat "$STATE_DIR/server.pid")" 2>/dev/null || true
         fi
@@ -252,6 +256,45 @@ schemathesis-check: frontend-build-maybe
 # Top-level gate (peer of check/test)
 fuzz-check: install-schemathesis
     just schemathesis-check
+
+# Tier-2 Schemathesis campaign against a running seeded backend (advisory)
+[group('utils')]
+schemathesis-campaign *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="$HOME/.local/bin:$PATH"
+    if [ -n "${FUZZ_STATE_DIR:-}" ] && [ -f "${FUZZ_STATE_DIR}/seed.env" ]; then
+        # shellcheck disable=SC1091
+        source "${FUZZ_STATE_DIR}/seed.env"
+    fi
+    export FUZZ_SHARE_HEADERS="${FUZZ_SHARE_HEADERS:-1}"
+    export FUZZ_MARKERS="${FUZZ_MARKERS:-1}"
+    BASE_URL="${PICASU_BASE_URL:-http://localhost:5673}"
+    export PICASU_BASE_URL="$BASE_URL"
+    mkdir -p utils/schemathesis/out
+    REPORT="utils/schemathesis/out/report.json"
+    if [[ " {{args}} " == *" --max-time "* ]]; then
+        set +e
+        uvx schemathesis@"{{ schemathesis_version }}" --config-file utils/schemathesis/campaign.toml --no-color run backend/openapi.json --url "$BASE_URL"             {{args}}             --phases examples,coverage,fuzzing,stateful -n 8 --max-redirects 0             --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance,response_headers_conformance             --report-json-path "$REPORT"
+        st_rc=$?
+        set -e
+    else
+        set +e
+        uvx schemathesis@"{{ schemathesis_version }}" --config-file utils/schemathesis/campaign.toml --no-color run backend/openapi.json --url "$BASE_URL"             --max-time 900 {{args}}             --phases examples,coverage,fuzzing,stateful -n 8 --max-redirects 0             --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance,response_headers_conformance             --report-json-path "$REPORT"
+        st_rc=$?
+        set -e
+    fi
+    echo "=== baseline compare ==="
+    python3 utils/schemathesis/check_report.py "$REPORT" utils/schemathesis/baseline.yaml || true
+    if [ $st_rc -ne 0 ] && [ $st_rc -ne 1 ]; then
+        echo "schemathesis exited with unexpected code $st_rc" >&2
+        exit $st_rc
+    fi
+    exit $st_rc
+
+# Top-level peer of check/test (advisory)
+fuzz *args: install-schemathesis
+    just schemathesis-campaign {{args}}
 
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at

@@ -168,8 +168,12 @@ echo "admin snapshot rows: $arows"
 
 cat >"$STATE_DIR/seed.env" <<EOF
 export PICASU_JWT='$TOKEN'
+export PICASU_BASE_URL='$BASE'
 export FUZZ_ALBUM_A='$alpha'
 export FUZZ_SHARE_A='$share_a'
+export FUZZ_ALBUM_B='$beta'
+export FUZZ_SHARE_B='$share_b'
+export FUZZ_PASSWORD='$PW'
 EOF
 
 echo "seed ok"

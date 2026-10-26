@@ -1,0 +1,52 @@
+# Schemathesis tier-2 campaign: stateful run against a running seeded backend.
+base-url = "http://127.0.0.1:8899"
+seed = 1
+hooks = "utils/schemathesis/hooks_campaign.py"
+headers = { Cookie = "jwt=${PICASU_JWT}" }
+
+[generation]
+max-examples = 8
+mode = "all"
+database = ":memory:"
+
+[cache]
+enabled = false
+
+[phases.stateful]
+max-steps = 8
+
+# The campaign runs against a live (possibly developer-owned) instance:
+# operations whose fuzzing could wreck it are disabled — config writes,
+# index rebuilds, session/auth mutations. Probes exercise these paths
+# directly instead of through generated cases.
+[[operations]]
+include-operation-id = "update_admin_config_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "reset_auth_key_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "disable_read_only_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "index_album_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "cancel_album_index_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "logout"
+enabled = false
+
+[[operations]]
+include-operation-id = "set_user_password_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "set_user_admin_handler"
+enabled = false
