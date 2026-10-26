@@ -5,154 +5,99 @@ priority: high
 area: meta
 ---
 
-# pre01: v0.1 Release Plan
+# pre01: auth + test readiness board
 
-## What this release promises
+Surveyed 2026-10-26. Identifiers: `CLEAN1`–`CLEAN5` are quick cleanups
+(one sitting each), `FEAT1`–`FEAT7` are major features in dependency
+order. Ticket slugs unchanged; prior release-checklist content mapped to
+existing tickets (nothing live lost).
 
-1. **File operations stay in sync** — delete, move, upload, and external changes keep the
-   filesystem and database consistent (originals, thumbnails, sidecars, caches).
-2. **Metadata is read from files** — EXIF/XMP extracted at index time and shown in the UI.
-3. **User edits are written back** — editing metadata never touches the original asset;
-   changes go to an XMP sidecar next to the file (`{name}.{ext}.xmp`, or `.albuminfo.xmp`
-   for albums).
+## Tickets
 
-**Release rule:** anything editable in the UI must be a working, confirmed function.
+| ID     | Slug                              | Status      | Priority | Area     |
+| ------ | --------------------------------- | ----------- | -------- | -------- |
+| FEAT1  | `spec-reconciliation-4xx`         | open        | high     | testing  |
+| FEAT1  | `api-assurance`                   | in-progress | medium   | testing  |
+| FEAT2  | `security-schemes-declaration`    | open        | medium   | backend  |
+| FEAT3  | `bug-rebuild-dir-album-cache`     | open        | high     | backend  |
+| FEAT4  | `auth-hardening`                  | in-progress | high     | backend  |
+| FEAT5  | `auth-flows-user-delete`          | open        | medium   | backend  |
+| FEAT5  | `bug-readonly-lockout`            | backlog     | high     | backend  |
+| FEAT6  | `auth-admin-panel`                | open        | high     | frontend |
+| FEAT7  | `authz-check`                     | backlog     | high     | backend  |
+| FEAT7  | `authz-props`                     | open        | high     | backend  |
+| FEAT7  | `flow-model-conformance`          | open        | high     | testing  |
+| FEAT7  | `error-handling-and-activity-log` | open        | high     | frontend |
+| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog     | medium   | testing  |
+| CLEAN5 | (session backlog, no ticket)      | —           | medium   | testing  |
 
-## Workstreams
+## Quick cleanups
 
-The remaining release work falls into four categories:
+- **CLEAN1 — Spectral exceptions.** The two persistent `openapi-check`
+  warnings (`/unauthorized` 401-only operation, `/{dynamic_album_id}` vs
+  `/{path}` rank pair) are deliberate shapes: document them as rule
+  exceptions in `.spectral.yaml` so the gate runs visually green instead
+  of "0 errors, 2 warnings" forever.
+- **CLEAN2 — stale oasdiff ignore line.** The `disableImg`
+  request-property entry in `.oasdiff-ignore.txt` still surfaces as a
+  warning each run; verify its text against current oasdiff output and
+  either correct or delete it.
+- **CLEAN3 — tracer `ui.route` interpolation.** `assertionTarget`
+  returns `route:` + the raw pattern without `${var}` substitution, so
+  parameterized routes cannot be declared in `covers.ui`. Pass the vars
+  (assertionTarget already has its call sites in `executeAssert` with
+  `ctx.vars`) and pin with one scenario using a parameterized route
+  cover.
+- **CLEAN4 — duplicate-upload flake** (`e2e-duplicate-upload-flake`).
+  Four sightings, parallel-only (`--workers=4`), serial-green; failure
+  `ui.count .desktop-small-image` expects 3, holds 2. One bounded
+  repro session with failing-run logs; if it does not isolate, leave
+  the ticket filed rather than rabbit-holing.
+- **CLEAN5 — negative-DSL leftovers.** Remaining items from the
+  login/register/invite negative list: `E1` `api.response` body reads
+  (`json` path asserts — biggest unlock: invite-listing must-not-leak,
+  `server-info`/profile shapes, error messages), `E4` cookieless
+  request context (anonymous-401 vs viewer-401), `E8` `allow_registration`
+  in the given-config vocabulary, then ideas `#10` (duplicate-user 409
+  under knob) and `#12` (knob-vs-invite interplay, made declarative by
+  E8). One worker batch, zero-warning bar.
 
-| Category                | What it covers                                      | Items      |
-| ----------------------- | --------------------------------------------------- | ---------- |
-| **A. Correctness**      | Behavior that is wrong or violates the release rule | —          |
-| **B. Metadata & UI**    | Completing the metadata promise; visible polish     | B1, B2, B3 |
-| **C. Release hygiene**  | Legal/licensing gate before tagging                 | C1         |
-| **D. Confidence tests** | Tests that pin down shipped behavior                | D1         |
+## Major features (dependency order)
 
-## Status overview
+- **FEAT1 — reconciliation → assurance gate (critical path).** Land
+  `spec-reconciliation-4xx` (triage ~36 undocumented pilot statuses to
+  document-vs-normalize, clean sweep), which unblocks `api-assurance`
+  step 4: the Schemathesis campaign gate (`schemathesis-campaign-config`)
+  plus the env-var config-consistency lint. Two tickets wait on this.
+- **FEAT2 — security schemes in the contract.** Declare cookie/bearer/
+  share-header schemes in the generator and reference them per operation;
+  `just openapi-check` stays green. Unblocks Schemathesis auth
+  auto-inference; pairs with FEAT1's gate run.
+- **FEAT3 — rebuild/dir-album cache bug.** Real correctness bug
+  (Schemathesis F0): after `POST /post/rebuild`, share snapshots match
+  nothing until restart. Reproduce over HTTP, fix cache refresh or
+  invalidation in the rebuild path, pin the regression.
+- **FEAT4 — auth-hardening closeout.** Fast pair first: `Cache-Control:
+private` on `/object` and dropping `?token=` from the four bearer-guard
+  call sites (finishes F10). Then the F8 decision: share-password hashing
+  at rest (storage format + validation + migration of existing plaintext
+  shares) — own sub-decision before any code.
+- **FEAT5 — two bounded backend slices with decided designs:**
+  `DELETE /delete/users/{id}` with the zero-admin 409 invariant plus its
+  admin UI (`auth-flows-user-delete`), and the re-authentication guard
+  on the read-only lift (`bug-readonly-lockout` decided fix).
+- **FEAT6 — auth-admin-panel closeout.** Registration-toggle decision
+  from the ticket's options, wire or delete the caller-less `createUser`,
+  remaining elevation/set-password controls; then mark done.
+- **FEAT7 — structural assurance.** Largest items, start when the
+  critical path is clear: `authz-check` (encode `authz-model.md` as data
+  - bidirectional gate), `authz-props` (proptest world + P-1…P-12),
+    `flow-model-conformance` (golden model + two drivers),
+    `error-handling-and-activity-log` (worker surfacing, error pages,
+    activity log).
 
-| #   | Item                                    | Ticket                                   | Status                                                            |
-| --- | --------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------- |
-| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main                                 |
-| A2  | Flag edits don't write sidecars         | `bug-trash-sidecar-durability.md`        | done — trash marker durable in sidecar                            |
-| B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main                               |
-| B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done                              |
-| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback                                  |
-| C1  | License / SPDX review                   | `license-and-ossf-review.md`             | done — scorecard dropped 2026-10-23, signing decision at tag time |
-| D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | done — homoglyphs stripped, all 5 gaps closed                     |
+## Out of scope here
 
-## Item details (what / why)
-
-### A. Correctness
-
-**A1 — Deleting an album resurrects its sub-albums.**
-_Fixed 2026-09-25_ (`43365fc4`, closed 2026-10-09). `delete_data` now runs
-`cleanup_album_descendants` before dropping rows: descendant files/sidecars
-removed, descendant rows removed (album records carry their directory path, so
-sub-albums match `get_assets_under_path`), then `remove_dir_all` on the album
-directory — nothing is left for the sweep to re-discover. Guarded by
-`delete-parent-album-does-not-restore-child.yaml`,
-`album_delete_recursive.yaml`, `album_delete_parent_and_child_together.yaml`
-and three more, running in CI via `just test`. Residual gap recorded in the
-ticket: `remove_dir_all` failures are swallowed, so an fs-level failure would
-still produce this symptom silently.
-
-**A2 — Trashed doesn't write an XMP sidecar.**
-_Fixed 2026-10-09_ (`bug-trash-sidecar-durability.md`). `PUT /put/edit_flags`
-now routes through `commit_metadata_edits`: the trash flag is applied to the
-composed view, written to the sidecar as the managed `picasu:Trashed`
-property, and only then stored on the record — the same write-then-store
-contract `edit_tag`/`edit_rating` follow. Restore deletes the property. The
-flag is durable in the sidecar, so a `POST /post/rebuild` (or losing
-`DATA_HOME`) keeps trashed items trashed instead of silently undeleting them;
-`process/index.rs`, `dir_album.rs` and `rebuild.rs` compose it back at index
-time. Pinned by `trash_state_survives_rebuild.yaml` and the xmp read/write
-module tests; backend suite 458 green. _Why it was critical:_ flag editing is
-exposed in the UI (delete / restore menu items), and DB-only trash state
-violated the design doc's "generated state is rebuildable from the
-filesystem" rule — the release rule's correctness half.
-
-### B. Metadata & UI
-
-**B1 — Non-JPEG XMP read coverage.**
-_Done._ Main now carries real-fixture metadata scenarios for PNG, TIFF, WebP, MP4 and MOV
-(`png_metadata_exif_dimensions_thumbnail`, `tiff_…`, `webp_…`, `mp4_ffprobe_…`,
-`mov_ffprobe_…`), each paired with a `*_without_xmp_source_has_no_tags` negative, plus
-corrupt EXIF/XMP cases and seeded randomized format runs driven by
-`utils/snapfab/capabilities.json`. Extraction is `extract_xmp_data_from_packet` /
-`extract_xmp_data_from_file` (`backend/src/process/xmp.rs`), no longer a substring scan;
-`ffmpeg`/`ffprobe` absence is pinned by
-`video_metadata_requires_a_working_ffmpeg_and_ffprobe`. _Residual:_ video extensions
-outside the matrix (gif, webm, mkv, avi, flv, wmv, mpeg) have unit-level detection coverage
-only; IPTC-IIM and MP4 UUID-box XMP are unclaimed; PNG embedded XMP is pinned as not
-extracted. Ticket file removed 2026-10-08.
-
-**B2 — UI bug pass.**
-_What:_ the bug checklist in `ui-refinement.md` — Escape/back navigation, lightbox
-controls, theme placement. _Why:_ daily-visible glitches that undermine the first
-impression. The polish/feature items in the same ticket (breadcrumbs, nav rework) are
-**not** release-scoped.
-
-**B3 — Parent-only albums show no thumbnail.**
-_Done 2026-09-25._ `AlbumCombined::self_update()` computed the cover from assets whose
-parent matches `dir_path`, an empty set for parent-only albums; the fix picks the newest
-eligible descendant image instead, ignoring generated `.__picasu_ph__.jpg` placeholders.
-Unit coverage plus an API scenario verifying the parent album exposes the descendant
-asset as its cover.
-
-### C. Release hygiene
-
-**C1 — License / SPDX review.**
-_What:_ review dependencies and repo metadata for license issues; add SPDX labels.
-_Why:_ explicit pre-first-release gate.
-
-_Done 2026-10-23._ License/SPDX side verified green (`cargo deny check`
-reports licenses ok; `npm audit --omit=dev` 0 vulnerabilities). `SECURITY.md`
-on main. The OpenSSF Scorecard was evaluated and dropped: its Vulnerabilities
-check queries the same OSV data `cargo deny` / `npm audit` / Dependabot
-already gate on, runs weekly without PR gating, and required a duplicate
-waiver syntax — the workflow and both `osv-scanner.toml` files are deleted.
-Remaining: decide release signing before the first tag. Full
-record in `license-and-ossf-review.md`.
-
-### D. Confidence tests
-
-**D1 — Filename sanitization corner-case tests.**
-_Fixed 2026-10-09_ (`c537652f` plus the NFC-off follow-up, closed 2026-10-09). Control characters (C0/DEL/C1) are now
-stripped by an always-on tier; separator homoglyphs (`／＼｜` and mathematical look-alikes) are stripped by tier 2.
-`resolve_filename` has direct unit tests, tier-2 boundaries are pinned, and NFC-on/off upload scenarios use YAML
-`\u` escapes to carry genuine NFD filenames. See `filename-sanitization-test-gaps.md` for the full record.
-
-## Explicitly out of scope for v0.1
-
-- **Image title editing** — not exposed in the UI; nothing to make work.
-- **Tag origin tracking** ("provenance") — user tag edits already persist to sidecars;
-  origin tracking only matters for a future scrub/repair feature.
-- **`error-handling-and-activity-log`** — largest open ticket, cross-cutting scope;
-  deferring does not violate the release rule. Post-v01 (or a backend-logging-only slice).
-- **`openapi-contract-hardening`** — only the two high items (renew-hash-token
-  registration, 401 sweep) are candidates if schedule allows; the remaining ~11 tasks
-  backlog.
-- **Test infrastructure** — coverage reports, Pinia store tests, e2e expansion (closed
-  obsolete 2026-09-24), unified harness, quality gates.
-- **Backlog architecture/perf work** — fs-db review, clippy unwrap cleanup, view-cache
-  eviction, scrub endpoint (stale design), docker verification (unless Docker is a
-  release deliverable).
-
-## Already done (for context)
-
-File lifecycle (delete removes files, watcher Remove handling, `assign_album` conflicts,
-upload conflict handling + hardening), EXIF display in the metadata panel, rating field,
-sidecar lifecycle (moves/deletes with file), dir-album cache pruning, backend unit tests
-for the five pure-function targets, snapfab migration.
-
-## Related plan items
-
-| File                                     | Status      | Item |
-| ---------------------------------------- | ----------- | ---- |
-| `bug-delete-album-restores-subalbums.md` | done        | A1   |
-| `bug-trash-sidecar-durability.md`        | done        | A2   |
-| `ui-refinement.md`                       | open        | B2   |
-| `bug-parent-album-no-thumbnail.md`       | done        | B3   |
-| `license-and-ossf-review.md`             | in-progress | C1   |
-| `filename-sanitization-test-gaps.md`     | done        | D1   |
+UI-polish tracking lives in `ui-refinement.md` (the old release board's
+B2); release promises (file sync, metadata, sidecar writes) are complete
+per that board's history.
