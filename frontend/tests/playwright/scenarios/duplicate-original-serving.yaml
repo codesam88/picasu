@@ -2,11 +2,9 @@ name: duplicate files serve original content independently
 covers:
   api:
     - POST /upload
-    - GET /object/imported
   ui:
-    - upload.files
-    - independent original serving for duplicates
-    - view page loads for each duplicate
+    - route:/view/
+    - testid/photo-menu
 
 given:
   - photo: duplicate-original/seed.jpg

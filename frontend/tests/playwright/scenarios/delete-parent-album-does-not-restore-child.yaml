@@ -4,9 +4,9 @@ covers:
     - PUT /put/edit_flags
     - DELETE /delete/delete-data
   ui:
-    - album soft delete moves the parent to trash
-    - permanent delete removes the parent and child tree
-    - child album does not reappear in the albums page
+    - toast:success:Successfully updated
+    - toast:success:Successfully deleted data
+    - .parent
 given:
   - dir_album: e2e_ui_album_delete/parent
   - dir_album: e2e_ui_album_delete/parent/child

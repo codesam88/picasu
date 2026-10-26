@@ -3,8 +3,8 @@ covers:
   api:
     - PUT /put/assign_album
   ui:
-    - AssignAlbumModal batch selects album and confirms move
-    - destination album reflects both moved photos
+    - toast:success:Moved to album
+    - .desktop-small-image
 
 given:
   - dir_album: assignbatch/imports

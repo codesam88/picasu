@@ -3,9 +3,8 @@ covers:
   api:
     - PUT /put/set_album_title
   ui:
-    - Album Info batch-menu item is grayed out unless a single album is selected
-    - Album Info modal edits persist after reopen
-    - dialog does not auto-reopen when the same album is reselected after closing
+    - textbox/Title
+    - modal:closed
 
 given:
   - dir_album: albuminfotest/parent

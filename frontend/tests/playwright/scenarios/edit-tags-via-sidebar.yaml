@@ -3,8 +3,8 @@ covers:
   api:
     - PUT /put/edit_tag
   ui:
-    - EditTagsModal saves new tag
-    - sidebar reflects updated tags
+    - toast:success:Successfully edited tags
+    - addedtag
 
 given:
   - dir_album: tagedit/pool

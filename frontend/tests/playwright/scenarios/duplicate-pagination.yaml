@@ -4,9 +4,7 @@ covers:
     - POST /upload
     - GET /get/get-data
   ui:
-    - upload.files
-    - pagination with duplicate items
-    - scroll loads more items
+    - .desktop-small-image
 
 given:
   - photo: duplicate-pagination/seed.jpg

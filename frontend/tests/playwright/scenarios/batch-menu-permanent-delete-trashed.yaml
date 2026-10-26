@@ -2,7 +2,7 @@ name: Batch menu on trashed page includes Permanently Delete option
 covers:
   api: []
   ui:
-    - Permanently Delete text is visible in batch menu on trashed page
+    - Permanently Delete
 
 given:
   - photo: batch-permdelete/img01.jpg

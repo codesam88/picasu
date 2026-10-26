@@ -4,9 +4,8 @@ covers:
     - POST /upload
     - PUT /put/assign_album
   ui:
-    - upload.files
-    - independent duplicate grid items
-    - independent move of duplicates
+    - .desktop-small-image
+    - toast:success:Moved to album
 
 given:
   - photo: duplicate-move/seed.jpg

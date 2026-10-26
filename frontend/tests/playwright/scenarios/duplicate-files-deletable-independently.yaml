@@ -2,11 +2,10 @@ name: duplicate files can be deleted independently
 covers:
   api:
     - POST /upload
-    - DELETE /delete/delete-data
+    - PUT /put/edit_flags
   ui:
-    - upload.files
-    - independent duplicate grid items
-    - independent deletion of duplicates
+    - .desktop-small-image
+    - route:/view/
 
 given:
   - photo: duplicate-delete/seed.jpg

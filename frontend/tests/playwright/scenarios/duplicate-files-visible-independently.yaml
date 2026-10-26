@@ -3,9 +3,7 @@ covers:
   api:
     - POST /upload
   ui:
-    - upload.files
-    - independent duplicate grid items
-    - refresh preserves duplicate items
+    - .desktop-small-image
 
 given:
   - photo: duplicate-ui/seed.jpg
