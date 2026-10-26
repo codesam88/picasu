@@ -159,7 +159,7 @@
           },
           "shareList": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/Share"
+              "$ref": "#/components/schemas/ShareInfo"
             },
             "propertyNames": {
               "type": "string"
@@ -1358,6 +1358,44 @@
         ],
         "type": "object"
       },
+      "ShareInfo": {
+        "description": "One album's share entry as served to clients: the policy plus presence of\na password, never the secret itself.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "exp": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "hasPassword": {
+            "description": "Whether a share password is configured; the stored secret never\nleaves the backend through an album read.",
+            "type": "boolean"
+          },
+          "showDownload": {
+            "type": "boolean"
+          },
+          "showMetadata": {
+            "type": "boolean"
+          },
+          "showUpload": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "description",
+          "hasPassword",
+          "showMetadata",
+          "showDownload",
+          "showUpload",
+          "exp"
+        ],
+        "type": "object"
+      },
       "TagInfo": {
         "properties": {
           "number": {
@@ -1719,7 +1757,7 @@
     },
     "/get/get-albums": {
       "get": {
-        "description": "Returns one entry per album with `albumId`, `albumName`, the album's\n`shareList` share definitions, `dirPath` and `parentAlbumId`.\n\nCorner cases: `dirPath` is reported relative to the configured `imagePath`\nso clients never handle the absolute library location, falling back to the\nabsolute path for albums outside that root; `parentAlbumId` names the direct\nparent directory album and is `null` for top-level dir albums and all\nmanually created albums.\n\nErrors: 401 missing, invalid or share-role session — 403 no enrolled\nusers — 500 storage failure.",
+        "description": "Returns one entry per album with `albumId`, `albumName`, the album's\n`shareList` share definitions, `dirPath` and `parentAlbumId`.\n\nCorner cases: `dirPath` is reported relative to the configured `imagePath`\nso clients never handle the absolute library location, falling back to the\nabsolute path for albums outside that root; `parentAlbumId` names the direct\nparent directory album and is `null` for top-level dir albums and all\nmanually created albums. Share entries carry `hasPassword` presence only —\nthe stored password is never returned by an album read.\n\nErrors: 401 missing, invalid or share-role session — 403 no enrolled\nusers — 500 storage failure.",
         "operationId": "get_albums",
         "responses": {
           "200": {
@@ -3065,7 +3103,7 @@
     },
     "/put/edit_share": {
       "put": {
-        "description": "The submitted `share` object is stored under the key `share.url`, replacing\nany entry already held under that key, so a share is edited by posting a\ncomplete object and every capability and field takes its submitted value\nrather than the existing one. The payload is never checked against the\nalbum, no `.albuminfo.xmp` sidecar is written, and the in-memory tree is\nrebuilt before the call returns.\n\nCorner cases: an `albumId` that holds no album row is a silent no-op that\nstill answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid admin credentials; share\ntokens are not accepted — 405 read-only mode — 500 storage failure.",
+        "description": "The submitted `share` object is stored under the key `share.url`, replacing\nany entry already held under that key, so a share is edited by posting a\ncomplete object. The password is the exception to the full replace: an\nabsent or `null` `password` keeps the stored secret, the empty string\nclears it, and any other string sets it. The payload is never checked\nagainst the album, no `.albuminfo.xmp` sidecar is written, and the\nin-memory tree is rebuilt before the call returns.\n\nCorner cases: an `albumId` that holds no album row is a silent no-op that\nstill answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid admin credentials; share\ntokens are not accepted — 405 read-only mode — 500 storage failure.",
         "operationId": "edit_share",
         "requestBody": {
           "content": {

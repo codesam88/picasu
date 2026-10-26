@@ -144,6 +144,19 @@ export const prefetchSchema = z.object({
   locateTo: z.number().nullable()
 })
 
+// Share entries as album reads serve them: policy plus password presence.
+// The stored secret never crosses an album read; the capability shape below
+// (prefetch resolved share, create/edit request bodies) still carries it.
+export const ShareInfoSchema = z.object({
+  url: z.string().max(64),
+  description: z.string(),
+  hasPassword: z.boolean(),
+  showMetadata: z.boolean(),
+  showDownload: z.boolean(),
+  showUpload: z.boolean(),
+  exp: z.number()
+})
+
 export const ShareSchema = z.object({
   url: z.string().max(64),
   description: z.string(),
@@ -187,7 +200,7 @@ export const albumInfoSchema = z
   .object({
     albumId: z.string(),
     albumName: z.string().nullable(),
-    shareList: z.record(z.string(), ShareSchema),
+    shareList: z.record(z.string(), ShareInfoSchema),
     dirPath: z.string().nullable().optional(),
     parentAlbumId: z.string().nullable().optional()
   })

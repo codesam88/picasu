@@ -12,6 +12,7 @@ import {
   albumInfoSchema,
   prefetchReturnSchema,
   ShareSchema,
+  ShareInfoSchema,
   ResolvedShareSchema,
   TokenResponseSchema,
   BackendDataParser
@@ -29,6 +30,7 @@ export type Prefetch = z.infer<typeof prefetchSchema>
 export type PrefetchReturn = z.infer<typeof prefetchReturnSchema>
 export type SubRow = z.infer<typeof SubRowSchema>
 export type Share = z.infer<typeof ShareSchema>
+export type ShareInfo = z.infer<typeof ShareInfoSchema>
 export type ResolvedShare = z.infer<typeof ResolvedShareSchema>
 export type TokenResponse = z.infer<typeof TokenResponseSchema>
 
@@ -64,7 +66,7 @@ export interface Message {
 
 export interface EditShareData {
   albumId: string
-  share: Share
+  share: ShareInfo
   displayName: string
 }
 
@@ -72,6 +74,11 @@ export interface ShareFormData {
   description: string
   passwordRequired: boolean
   password: string
+  /** A password exists server-side (edit mode). */
+  passwordSet: boolean
+  /** The password field was edited this session: blanking a previously
+   * non-empty value means "remove", while an untouched blank means "keep". */
+  passwordDirty: boolean
   expireEnabled: boolean
   expDuration: number | null
   showUpload: boolean

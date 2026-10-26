@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { databaseTimestampSchema } from '@type/schemas'
+import { albumInfoSchema, databaseTimestampSchema } from '@type/schemas'
 
 describe('databaseTimestampSchema', () => {
   test('parses assetId when present', () => {
@@ -255,5 +255,49 @@ describe('databaseTimestampSchema', () => {
     expect('isFavorite' in result.abstractData).toBe(false)
     expect('isArchived' in result.abstractData).toBe(false)
     expect(result.abstractData.id).toBe('abc123')
+  })
+})
+
+describe('albumInfoSchema share entries', () => {
+  const shareEntry = {
+    url: 'share-url',
+    description: '',
+    hasPassword: true,
+    showMetadata: true,
+    showDownload: true,
+    showUpload: false,
+    exp: 0
+  }
+
+  test('parses presence-only shares into the album map', () => {
+    const parsed = albumInfoSchema.parse({
+      albumId: 'album-1',
+      albumName: null,
+      shareList: { 'share-url': shareEntry },
+      dirPath: 'photos',
+      parentAlbumId: null
+    })
+    expect(parsed.shareList.get('share-url')?.hasPassword).toBe(true)
+  })
+
+  test('rejects a share that only carries the legacy password field', () => {
+    const legacy = {
+      url: 'share-url',
+      description: '',
+      password: 'secret',
+      showMetadata: true,
+      showDownload: true,
+      showUpload: false,
+      exp: 0
+    }
+    expect(() =>
+      albumInfoSchema.parse({
+        albumId: 'album-1',
+        albumName: null,
+        shareList: { 'share-url': legacy },
+        dirPath: 'photos',
+        parentAlbumId: null
+      })
+    ).toThrow()
   })
 })

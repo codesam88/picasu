@@ -50,12 +50,44 @@ pub async fn get_tags(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<TagInf
 pub struct AlbumInfo {
     pub album_id: String,
     pub album_name: Option<String>,
-    #[schema(value_type = HashMap<String, crate::model::album::Share>)]
-    pub share_list: HashMap<ArrayString<64>, Share>,
+    #[schema(value_type = HashMap<String, ShareInfo>)]
+    pub share_list: HashMap<ArrayString<64>, ShareInfo>,
     pub dir_path: Option<String>,
     /// Album ID of the direct parent directory album, or `None` for top-level
     /// dir albums and all user-created albums.
     pub parent_album_id: Option<String>,
+}
+
+/// One album's share entry as served to clients: the policy plus presence of
+/// a password, never the secret itself.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
+pub struct ShareInfo {
+    #[schema(value_type = String)]
+    pub url: ArrayString<64>,
+    pub description: String,
+    /// Whether a share password is configured; the stored secret never
+    /// leaves the backend through an album read.
+    pub has_password: bool,
+    pub show_metadata: bool,
+    pub show_download: bool,
+    pub show_upload: bool,
+    pub exp: i64,
+}
+
+impl From<&Share> for ShareInfo {
+    fn from(share: &Share) -> Self {
+        Self {
+            url: share.url,
+            description: share.description.clone(),
+            has_password: share.password.is_some(),
+            show_metadata: share.show_metadata,
+            show_download: share.show_download,
+            show_upload: share.show_upload,
+            exp: share.exp,
+        }
+    }
 }
 
 /// List every album the metadata tree knows.
@@ -67,7 +99,8 @@ pub struct AlbumInfo {
 /// so clients never handle the absolute library location, falling back to the
 /// absolute path for albums outside that root; `parentAlbumId` names the direct
 /// parent directory album and is `null` for top-level dir albums and all
-/// manually created albums.
+/// manually created albums. Share entries carry `hasPassword` presence only —
+/// the stored password is never returned by an album read.
 ///
 /// Errors: 401 missing, invalid or share-role session — 403 no enrolled
 /// users — 500 storage failure.
@@ -108,7 +141,12 @@ pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<Albu
                 AlbumInfo {
                     album_id: album.object.id.to_string(),
                     album_name: album.metadata.title,
-                    share_list: album.metadata.share_list,
+                    share_list: album
+                        .metadata
+                        .share_list
+                        .iter()
+                        .map(|(id, share)| (*id, ShareInfo::from(share)))
+                        .collect(),
                     dir_path,
                     parent_album_id,
                 }
