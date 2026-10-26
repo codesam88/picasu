@@ -62,11 +62,14 @@ export const ServerDeclaration = z
 
 export const GivenConfig = z
   .object({
-    config: z.object({
-      read_only_mode: z.boolean().optional(),
-      auth_key: z.string().optional(),
-      fs_notify_watcher: z.boolean().optional()
-    })
+    config: z
+      .object({
+        read_only_mode: z.boolean().optional(),
+        auth_key: z.string().optional(),
+        fs_notify_watcher: z.boolean().optional(),
+        allow_registration: z.boolean().optional()
+      })
+      .strict()
   })
   .strict()
 

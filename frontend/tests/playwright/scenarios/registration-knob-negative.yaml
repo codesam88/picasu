@@ -1,0 +1,101 @@
+name: The open-registration knob supersedes invites without burning them
+covers:
+  api:
+    - POST /post/invites
+    - POST /post/users/authenticate
+    - POST /post/logout
+    - POST /post/index/album
+    - GET /get/index/status
+    - GET /get/server-info
+    - PUT /put/admin/config
+  ui:
+    - route:/login
+    - route:/timeline
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - invite:
+      expires_in_hours: 168
+    id_as: $token
+  - photo: /library/photo.jpg
+  - config:
+      allow_registration: true
+  - index: '/'
+
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: knob-one
+            password: Knob-one-secret-9
+          status: 200 # open knob: registration without an invite succeeds
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: knob-one
+            password: Knob-one-secret-9
+          status: 409 # duplicate id conflicts even under the open knob
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: knob-two
+            password: Knob-two-secret-9
+            invite: ${token}
+          status: 200 # invite accepted but ignored — the open knob supersedes it
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /timeline
+    assert:
+      - api.response:
+          url: /put/admin/config
+          method: PUT
+          body:
+            allowRegistration: false
+          status: 200 # close the knob before testing invite semantics
+  - when:
+      - click.icon: mdi-account-circle
+      - click.menu: Log out
+    assert:
+      - ui.route: /login
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: knob-three
+            password: Knob-three-secret-9
+            invite: ${token}
+          status: 200 # the open-knob registration never burned the invite
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: knob-three
+            password: Knob-three-secret-9
+            invite: ${token}
+          status: 409 # now the single-use token is genuinely consumed
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login

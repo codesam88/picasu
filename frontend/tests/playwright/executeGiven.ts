@@ -264,6 +264,7 @@ export async function executeGiven(
           read_only_mode?: boolean
           auth_key?: string
           fs_notify_watcher?: boolean
+          allow_registration?: boolean
         }
       }
       const token = await ensureAuthenticated(request, backendUrl, adminId, adminPassword)
@@ -285,6 +286,17 @@ export async function executeGiven(
           method: 'PUT',
           headers,
           data: { fsNotifyWatcher: cfg.config.fs_notify_watcher }
+        })
+        if (!res.ok()) {
+          throw new Error(`Config update failed: ${res.status()} ${await res.text()}`)
+        }
+      }
+
+      if (cfg.config.allow_registration !== undefined) {
+        const res = await request.fetch(`${backendUrl}/put/admin/config`, {
+          method: 'PUT',
+          headers,
+          data: { allowRegistration: cfg.config.allow_registration }
         })
         if (!res.ok()) {
           throw new Error(`Config update failed: ${res.status()} ${await res.text()}`)
