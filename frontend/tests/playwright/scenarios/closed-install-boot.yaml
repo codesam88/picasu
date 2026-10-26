@@ -14,6 +14,11 @@ steps:
       - navigate: /
     assert:
       - ui.route: /login
+      # boot signal pins the closed, unenrolled store
+      - api.response:
+          url: /get/server-info
+          status: 200
+          json: { enrolled: false, enrollmentOpen: false, captcha: null }
   - when:
       - navigate: /register
     assert:

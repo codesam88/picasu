@@ -235,24 +235,26 @@ never CSS selectors.
 
 Maps `assert:` verbs to Playwright `expect` assertions:
 
-| YAML verb                                                    | Assertion                                                            |
-| ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `ui.visible`                                                 | `toBeVisible()`                                                      |
-| `ui.hidden`                                                  | `not.toBeVisible()`                                                  |
-| `ui.text + contains`                                         | `toContainText(value)`                                               |
-| `ui.text_visible`                                            | `getByText(text).first().toBeVisible()`                              |
-| `ui.text_hidden`                                             | `getByText(text).first().not.toBeVisible()`                          |
-| `ui.disabled`                                                | `resolveLocator(...).toBeDisabled()`                                 |
-| `ui.enabled`                                                 | `resolveLocator(...).toBeEnabled()`                                  |
-| `ui.chip_visible`                                            | `[id="album-chip"]` or `[id="filename-chip"]` chip visible with text |
-| `ui.sidebar_visible`                                         | `#abstractData-col` contains text                                    |
-| `ui.count + equals`                                          | `locator(selector).toHaveCount(n)`                                   |
-| `ui.route`                                                   | `toHaveURL(regex)`                                                   |
-| `ui.modal`                                                   | `dialog.toBeVisible() / not.toBeVisible()`                           |
-| `ui.toast`                                                   | Snackbar visible with matching text                                  |
-| `ui.aria_snapshot`                                           | `toMatchAriaSnapshot({ name })`                                      |
-| `api.response: url, status[, method, body, header: {name, gt | equals}]`                                                            | Fetch URL and assert status code(s) |
-| `api.statuses`                                               | Ordered browser-driven response statuses matching url                |
+| YAML verb                                                              | Assertion                                                            |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `ui.visible`                                                           | `toBeVisible()`                                                      |
+| `ui.hidden`                                                            | `not.toBeVisible()`                                                  |
+| `ui.text + contains`                                                   | `toContainText(value)`                                               |
+| `ui.text_visible`                                                      | `getByText(text).first().toBeVisible()`                              |
+| `ui.text_hidden`                                                       | `getByText(text).first().not.toBeVisible()`                          |
+| `ui.disabled`                                                          | `resolveLocator(...).toBeDisabled()`                                 |
+| `ui.enabled`                                                           | `resolveLocator(...).toBeEnabled()`                                  |
+| `ui.chip_visible`                                                      | `[id="album-chip"]` or `[id="filename-chip"]` chip visible with text |
+| `ui.sidebar_visible`                                                   | `#abstractData-col` contains text                                    |
+| `ui.count + equals`                                                    | `locator(selector).toHaveCount(n)`                                   |
+| `ui.route`                                                             | `toHaveURL(regex)`                                                   |
+| `ui.modal`                                                             | `dialog.toBeVisible() / not.toBeVisible()`                           |
+| `ui.toast`                                                             | Snackbar visible with matching text                                  |
+| `ui.aria_snapshot`                                                     | `toMatchAriaSnapshot({ name })`                                      |
+| `api.response: url, status[, method, body, header, json, json_absent]` | Fetch URL and assert status code(s)                                  |
+| `api.statuses`                                                         | Ordered browser-driven response statuses matching url                |
+
+`json: { "<dot.path>": <value> }` pins response-body fields (dot paths with `[n]` array indices; `${var}` interpolated); `json_absent: "<dot.path>"` pins a path is absent.
 
 The function accepts an optional `CoverageTracer` — when provided, it
 records the verb and target of every assertion.
