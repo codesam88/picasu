@@ -1,0 +1,105 @@
+name: assign_album move updates combined (And/Or) grid presence in source and target
+given:
+  - dir_album: /e2e_zzd/source/child
+    id_as: $child_album
+  - photo: /e2e_zzd/source/child/photo.jpg
+    id_as: $photo
+  - dir_album: /e2e_zzd/target
+    id_as: $target_album
+  - dir_album: /e2e_zzd/source
+    id_as: $source_album
+
+when:
+  - call: GET /get/get-albums
+    then:
+      - response.status: 200
+      - array_where:
+          where:
+            albumId: "${child_album}"
+          assert:
+            parentAlbumId: "${source_album}"
+  - call: POST /get/prefetch
+    body:
+      And:
+        - Trashed: false
+        - Or:
+            - Album: "${source_album}"
+            - ParentAlbum: "${source_album}"
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+    then:
+      - response.status: 200
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    then:
+      - response.status: 200
+      - array_where:
+          where:
+            abstractData.id: "${child_album}"
+          expect: present
+  - call: PUT /put/assign_album
+    body:
+      assetId: "${child_album}"
+      albumId: "${target_album}"
+      onConflict: "rename"
+    then:
+      - response.status: 200
+  - call: GET /get/get-albums
+    then:
+      - response.status: 200
+      - array_where:
+          where:
+            albumId: "${child_album}"
+          assert:
+            parentAlbumId: "${target_album}"
+  - call: POST /get/prefetch
+    body:
+      And:
+        - Trashed: false
+        - Or:
+            - Album: "${source_album}"
+            - ParentAlbum: "${source_album}"
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+    then:
+      - response.status: 200
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    then:
+      - response.status: 200
+      - array_where:
+          where:
+            abstractData.id: "${child_album}"
+          expect: absent
+  - call: POST /get/prefetch
+    body:
+      And:
+        - Trashed: false
+        - Or:
+            - Album: "${target_album}"
+            - ParentAlbum: "${target_album}"
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+    then:
+      - response.status: 200
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+
+then:
+  - response.status: 200
+  - array_where:
+      where:
+        abstractData.id: "${child_album}"
+      expect: present
