@@ -1,0 +1,49 @@
+accepted:
+- method: PUT
+  path: /put/edit_flags
+  operation: PUT /put/edit_flags
+  check: not_a_server_error
+  failure: ServerError
+  bug: bug-snapshot-unknown-500
+- method: PUT
+  path: /put/edit_rating
+  operation: PUT /put/edit_rating
+  check: not_a_server_error
+  failure: ServerError
+  bug: bug-snapshot-unknown-500
+- method: PUT
+  path: /put/edit_tag
+  operation: PUT /put/edit_tag
+  check: not_a_server_error
+  failure: ServerError
+  bug: bug-snapshot-unknown-500
+- method: POST
+  path: /post/create_dir_album
+  operation: POST /post/create_dir_album
+  check: not_a_server_error
+  failure: ServerError
+  bug: bug-create-dir-album-eexist
+- method: GET
+  path: /get/get-data
+  operation: GET /get/get-data
+  check: content_type_conformance
+  failure: UndefinedContentType
+  bug: bug-spa-fallback-missing-param
+- method: GET
+  path: /get/get-rows
+  operation: GET /get/get-rows
+  check: content_type_conformance
+  failure: UndefinedContentType
+  bug: bug-spa-fallback-missing-param
+- method: GET
+  path: /get/get-scroll-bar
+  operation: GET /get/get-scroll-bar
+  check: content_type_conformance
+  failure: UndefinedContentType
+  bug: bug-spa-fallback-missing-param
+- method: POST
+  path: /post/invites
+  operation: POST /post/invites
+  check: not_a_server_error
+  failure: ServerError
+  bug: bug-invite-expiry-overflow
