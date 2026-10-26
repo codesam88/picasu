@@ -151,7 +151,7 @@ Sets backend runtime configuration before the calls or the browser run.
 The API harness accepts `read_only_mode`, `fs_notify_watcher`,
 `validate_upload_content`, `use_client_timestamp_info`, and
 `normalize_upload_filenames`; the UI harness additionally accepts
-`auth_key`:
+`auth_key` and `allow_registration`:
 
 ```yaml
 - config:

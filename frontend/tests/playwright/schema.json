@@ -68,7 +68,8 @@
           "properties": {
             "read_only_mode": { "type": "boolean" },
             "auth_key": { "type": "string" },
-            "fs_notify_watcher": { "type": "boolean" }
+            "fs_notify_watcher": { "type": "boolean" },
+            "allow_registration": { "type": "boolean" }
           },
           "additionalProperties": false
         }
