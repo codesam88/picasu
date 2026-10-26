@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: frontend
@@ -25,7 +25,10 @@ playwright suite has zero invite and zero viewer coverage.
 
 ## Scope
 
-1. [done] Spec-style invite flow test (`invite-registration.spec.ts`,
+1. [superseded 2026-10-26] The hand-written spec was replaced by
+   `scenarios/invite-registration.yaml` (broader: adds logout/login/view
+   legs) and the file deleted. Original description follows for history:
+   Spec-style invite flow test (`invite-registration.spec.ts`,
    passing): admin mints a username-bound invite via API, viewer
    registers through `/register?invite=&username=`, prefill shows the
    bound name (not the admin's last-login id), register lands on
@@ -35,7 +38,9 @@ playwright suite has zero invite and zero viewer coverage.
    open (unbound) invite registers any id. Note for future specs:
    Playwright's `request` fixture keeps a cookie jar, so anonymous
    redeem attempts need `playwright.request.newContext()`.
-2. Spec-style viewer denial matrix (`viewer-access.spec.ts`): for every
+2. [superseded by 2b below — never built in spec form; the route list
+   went stale when content writes demoted to user-level] Spec-style
+   viewer denial matrix (`viewer-access.spec.ts`): for every
    admin-level route/guard (`GET /get/users`, `GET /get/invites`,
    `POST /post/invites`, `DELETE /delete/invites/*`, `PUT /put/users/admin`,
    `PUT /put/users/password` cross-user, `PUT /put/admin/config`,
@@ -44,9 +49,15 @@ playwright suite has zero invite and zero viewer coverage.
    `/timeline` (no logout bounce). Assert admin-only UI (Administration
    tab, user management, invite panel, scan buttons) is hidden/disabled
    for the viewer.
-3. YAML harness support (only if 1–2 prove the pattern needs it): `invite:`
-   given verb (mint via admin API, expose `$invite` var) so scenarios can
-   drive invite flows declaratively.
+3. [done] YAML harness support: `invite:` given verb ships (bound/open,
+   token as `${id_as}`); the whole flow now lives in
+   `scenarios/invite-registration.yaml`.
+   2b. [done, rescope 2026-10-26] Built as `scenarios/viewer-admin-denial.yaml`
+   after the viewer-tier change: the original admin-route list went stale
+   (content writes demoted to user-level), so it now probes only the
+   surfaces that stayed admin and pins the Administration/scan UI as
+   hidden — which also exposed and fixed the StorageAndSync config-page
+   session bounce for viewers.
 
 ## Out of scope
 

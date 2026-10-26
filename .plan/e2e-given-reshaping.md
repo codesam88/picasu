@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: full-stack
@@ -151,3 +151,20 @@ fail-fast covered by a harness-level test or documented manual check.
 - The launcher's unconditional bootstrap flag is also load-bearing for
   the band-aid today (auto-enroll via API bootstrap) — H1b must
   sequence the flag flip after CLI provisioning lands.
+
+## Completion (2026-10-26)
+
+- H1a delivered earlier (`.plan/user-store-redb.md`).
+- H1b `6f3cdecd`: fixture provides paths only; one backend per scenario
+  started in the test body (launcher defaults without `server:`).
+- H1c `b8170199` **with deviation**: implemented as a _given_ item
+  `index: <album>` (36 scenarios), not the planned first-step verb — a
+  given keeps indexing pre-login, because an unindexed library at login
+  trips the empty-library dialog that overlays every later click step.
+  The when-step `index:` verb exists and is used by one scenario.
+  `seedEntries.length > 0` heuristic deleted.
+- H1d `c62733cb`: `session:` directive and harness auto-enroll/login
+  removed; `sessionBoot.ts` deleted; all scenarios declare `user:` +
+  an explicit first `login:` step (or stay self-managed).
+- H1e: full gates green — loader 46, `just check` battery, full e2e 46
+  with zero coverage warnings.
