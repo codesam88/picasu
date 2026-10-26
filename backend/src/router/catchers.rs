@@ -44,6 +44,21 @@ fn unprocessable_entity() -> (Status, Json<AppError>) {
     )
 }
 
+// Normalize Rocket's 415 Unsupported Media Type (a format-guard rejection on a
+// route whose contract treats a wrong content type as invalid input) to the
+// documented 400, so the spec never needs to carry 415. See the
+// spec-reconciliation triage; the catcher is the normalization point.
+#[catch(415)]
+fn unsupported_media_type() -> (Status, Json<AppError>) {
+    (
+        Status::BadRequest,
+        Json(AppError::new(
+            ErrorKind::InvalidInput,
+            "Unsupported media type",
+        )),
+    )
+}
+
 #[catch(500)]
 fn internal_error() -> (Status, Json<AppError>) {
     (
@@ -55,7 +70,12 @@ fn internal_error() -> (Status, Json<AppError>) {
 /// The JSON error catchers mounted at `/` by the builder.
 #[must_use]
 pub fn generate_catchers() -> Vec<rocket::Catcher> {
-    catchers![unauthorized, unprocessable_entity, internal_error]
+    catchers![
+        unauthorized,
+        unprocessable_entity,
+        unsupported_media_type,
+        internal_error
+    ]
 }
 
 #[cfg(test)]

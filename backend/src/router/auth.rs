@@ -1183,6 +1183,8 @@ pub struct RenewHashTokenReturn {
         responses(
             (status = 200, description = "Hash token renewed", body = RenewHashTokenReturn),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 500, description = "Internal error"),
         )
@@ -1424,6 +1426,8 @@ pub struct RenewTimestampTokenReturn {
         responses(
             (status = 200, description = "Timestamp token renewed", body = RenewTimestampTokenReturn),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 500, description = "Internal error"),
         )

@@ -60,6 +60,7 @@ pub struct RegisterRequest {
         responses(
             (status = 200, description = "Account registered (non-admin)", body = UserSummary),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Registration disabled or invite expired"),
             (status = 404, description = "Unknown or revoked invite token"),

@@ -56,6 +56,8 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
         responses(
             (status = 200, description = "Compressed file"),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 500, description = "Internal error"),
         )
@@ -139,6 +141,7 @@ pub async fn compressed_file(
         responses(
             (status = 200, description = "Imported original file"),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 500, description = "Internal error"),
             (status = 404, description = "Not found"),

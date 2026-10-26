@@ -304,6 +304,8 @@ fn execute_prefetch_logic(
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 500, description = "Internal error"),
         )

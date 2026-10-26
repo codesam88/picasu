@@ -51,6 +51,7 @@ pub struct CreateShare {
         responses(
             (status = 200, description = "Share link created", body = String),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 404, description = "Album not found"),
             (status = 405, description = "Read-only mode"),

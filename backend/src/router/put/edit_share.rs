@@ -43,6 +43,8 @@ pub struct EditShare {
         responses(
             (status = 200, description = "Share updated"),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
@@ -140,6 +142,8 @@ pub struct DeleteShare {
         responses(
             (status = 200, description = "Share deleted"),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),

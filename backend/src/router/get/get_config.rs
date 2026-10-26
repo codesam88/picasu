@@ -44,6 +44,7 @@ pub struct ConfigResponse {
         responses(
             (status = 200, description = "Public configuration", body = ConfigResponse),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
             (status = 401, response = Unauthorized),
         )
     )
@@ -74,7 +75,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 #[utoipa::path(
         tag = "config",
         responses(
-            (status = 200, description = "Exported configuration", body = String),
+            (status = 200, description = "Exported configuration", body = String, content_type = "application/json"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
         )
