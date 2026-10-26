@@ -59,7 +59,13 @@ zero hand-written browser files.
   finding F1); S3 throttle knob + response observation + disabled assert +
   login-throttle YAML; S4 docs + hand-written cleanup + full gates.
 
-## Finding F1 (2026-10-25, blocks the story): viewers cannot load any grid
+## Finding F1 (2026-10-25, RESOLVED 2026-10-26 by viewer-tier-access S1):
+
+viewers could not load any grid — `POST /get/prefetch` 401'd via the
+admin-only cookie fallback and the interceptor bounced them to /login.
+Verified fixed end to end: `non-admin-cmd-user.yaml` and the full
+`invite-registration.yaml` (logout → login-as-maria → view) pass, full
+suite 47 green. Details below are historical.
 
 - DSL proof: `invite-registration.yaml` registers via invite, lands on
   `/timeline`, reload keeps the session — then a fresh viewer left idle on
@@ -127,6 +133,11 @@ zero hand-written browser files.
 - The file is committed failing (no DSL skip mechanism exists) as the F1
   regression pin: full suite reads 43 pass + 1 fail until the tier
   decision lands. Temp idle-probe scenarios were removed after confirming.
+- 2026-10-26: S1 landed (cookie fallback accepts any live user).
+  `non-admin-cmd-user.yaml` renamed to "... uses the gallery" and goes
+  green end to end (admin grid → viewer login → viewer grid tiles →
+  image view); invite story legs re-attached (logout → login-as-maria →
+  view). Full suite 47 passed, 0 failed.
 
 ## Progress (2026-10-25, S1 done)
 

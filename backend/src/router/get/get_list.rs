@@ -2,7 +2,7 @@ use crate::error::AppError;
 use crate::model::album::Share;
 use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_parent_album_id;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TREE;
 use crate::storage::db::TagInfo;
@@ -21,18 +21,21 @@ use std::path::Path;
 /// Corner cases: the counts are accumulated in parallel, so the order of the
 /// returned list is unspecified and not stable between calls.
 ///
-/// Errors: 400 invalid input — 401 no valid admin credentials.
+/// Errors: 400 invalid input — 401 missing, invalid or share-role session —
+/// 403 no enrolled users — 500 storage failure.
 #[utoipa::path(
         tag = "timeline",
         responses(
             (status = 200, description = "List of tags", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
 #[get("/get/get-tags")]
-pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInfo>>> {
+pub async fn get_tags(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let vec_tags_info = TREE.read_tags();
@@ -66,17 +69,20 @@ pub struct AlbumInfo {
 /// parent directory album and is `null` for top-level dir albums and all
 /// manually created albums.
 ///
-/// Errors: 401 no valid admin credentials.
+/// Errors: 401 missing, invalid or share-role session — 403 no enrolled
+/// users — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
 #[get("/get/get-albums")]
-pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
+pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<AlbumInfo>>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let image_home = crate::model::config::with_config(|c| c.image_home.clone());

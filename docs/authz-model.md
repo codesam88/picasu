@@ -72,16 +72,16 @@ bound(⊥)           = ∅
 A guard denotes a partial map from a request to the capability it establishes,
 `⟦g⟧ : Req ⇀ Cap`. Undefined means the guard rejects.
 
-| Guard               | `⟦g⟧(req)`                                                                                                   |
-| ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie)                                      |
-| `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                     |
-| `GuardShare`        | `⊤` if admin-role user cookie; else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩`                 |
-| `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                  |
-| `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                |
-| `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                     |
-| `GuardUpload`       | `Share(a,{U})` if it resolves a live share with `U ∈ F` and a matching `presignedAlbumId`; else `⊤` if admin |
-| `GuardReadOnlyMode` | `⊤` if read-only mode is off                                                                                 |
+| Guard               | `⟦g⟧(req)`                                                                                                                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie)                                                                                                                      |
+| `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                                                                                                     |
+| `GuardShare`        | the request's `User` identity if its cookie identity record is live (`⊤` under the admin role, the viewer identity otherwise); else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩` |
+| `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                                                                                                  |
+| `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                                                                                                |
+| `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                                                                                                     |
+| `GuardUpload`       | `Share(a,{U})` if it resolves a live share with `U ∈ F` and a matching `presignedAlbumId`; else the request's live `User` identity                                                           |
+| `GuardReadOnlyMode` | `⊤` if read-only mode is off                                                                                                                                                                 |
 
 A route `r` has a guard set `G(r)`. Every guard must accept:
 
@@ -142,7 +142,8 @@ Each is a named formula over the model. `AUTH-n` are the identifiers the rules
 and tests cite.
 
 **AUTH-1 — Type soundness.** `decode_g(tok) ≠ ⊥ ⟹ typ(tok) = expected(g)`, where
-`expected` maps `GuardAuth`/`GuardShare`/`GuardUpload`/`GuardUser` → `admin`,
+`expected` maps `GuardAuth` → `admin` (identity token, admin role required),
+`GuardShare`/`GuardUpload`/`GuardUser` → identity token of any role,
 `GuardTimestamp` → `snapshot`, `GuardHash`/`GuardHashOriginal` → `asset`.
 Decoding a token as a type it does not declare fails.
 

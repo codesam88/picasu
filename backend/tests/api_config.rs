@@ -390,9 +390,10 @@ fn index_and_share(client: &Client, admin: &Cookie<'static>) -> (String, String)
 /// presence are never client config: `imagePath`, `hasAuthKey` and
 /// `disableImg` are absent at every tier (host-only setting / never
 /// exposed / frontend-only), while `uploadFolder` is relative to the
-/// image path and visible to every admitted caller. A non-admin
-/// session never reaches the handler at all: `GuardShare` only admits
-/// admins and shares, so it is refused with 401.
+/// image path and visible to every admitted caller. A non-admin session
+/// passes the cookie fallback like any live user and reads the same
+/// field set; an anonymous session without share headers never reaches
+/// the handler and is refused with 401.
 #[test]
 fn share_tier_config_hides_host_fields() {
     let _lock = API_LOCK
@@ -484,14 +485,29 @@ fn share_tier_config_hides_host_fields() {
         "admin tier uploadFolder must be the real value, got: {admin_json}"
     );
 
-    // ── (c) non-admin session: GuardShare admits admins and shares ──
-    // only, so a non-admin cookie is refused before the handler's tier
-    // rule runs (the handler's `User { admin: false }` arm stays as
-    // unreachable defense-in-depth).
-    let viewer_res = client.get("/get/config").cookie(viewer.clone()).dispatch();
+    // ── (c) non-admin session: GuardShare's cookie fallback admits any
+    // live user, so a non-admin reads the same field set; an anonymous
+    // session without share headers is refused before the handler runs.
+    let viewer_json: Value = client
+        .get("/get/config")
+        .cookie(viewer)
+        .dispatch()
+        .into_json()
+        .expect("viewer config json");
+    assert!(
+        viewer_json.get("imagePath").is_none(),
+        "viewer tier must not see imagePath, got: {viewer_json}"
+    );
+    assert!(
+        viewer_json
+            .get("uploadFolder")
+            .is_some_and(Value::is_string),
+        "viewer tier uploadFolder is visible, got: {viewer_json}"
+    );
+    let anon_res = client.get("/get/config").dispatch();
     assert_eq!(
-        viewer_res.status(),
+        anon_res.status(),
         Status::Unauthorized,
-        "non-admin session must not pass GuardShare"
+        "anonymous without share headers must not pass GuardShare"
     );
 }

@@ -49,7 +49,19 @@ Verify: `just backend-test`, `just openapi-check`, `just frontend-check`,
 `just frontend-vitest`, DSL config scenarios still pass.
 Status: implemented, uncommitted — commit as slice 1 after e2e re-run.
 
-### S1 — Viewer reads: guards
+### S1 — Viewer reads: guards (DONE 2026-10-26, reviewed + committed)
+
+Implemented as specified (`try_jwt_cookie_user`, both fallback switches;
+`get-tags`/`get-albums` take `GuardUser` directly). Review notes, kept
+with the change: `GuardUser`-style denotation precedent (model already
+names live-`User` identity outside the Cap grammar, so the viewer term
+follows suit — no grammar expansion); `try_jwt_cookie_user` refreshes the
+admin flag from the record (strictly fresher than the token flag it
+replaces); empty-store refusal preserved (401 via `GuardShare`, same as
+before). Gates run: fmt, clippy `-D warnings`, 801 nextest + doc tests,
+`openapi-check` clean (regen + no new ignores needed — only response
+additions), e2e `non-admin-cmd-user.yaml` + `invite-registration.yaml`
+green, full suite 47 passed.
 
 Extend the `GuardShare`/`GuardUpload` cookie fallback from admin-only to
 any live `User` (share-header/query paths byte-identical). Scope: prefetch
