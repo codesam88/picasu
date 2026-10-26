@@ -29,7 +29,7 @@ existing tickets (nothing live lost).
 | FEAT7  | `flow-model-conformance`          | open        | high     | testing  |
 | FEAT7  | `error-handling-and-activity-log` | open        | high     | frontend |
 | CLEAN4 | `e2e-duplicate-upload-flake`      | backlog     | medium   | testing  |
-| CLEAN5 | (session backlog, no ticket)      | —           | medium   | testing  |
+| CLEAN5 | (no single ticket)                | done        | medium   | testing  |
 
 ## Quick cleanups
 
@@ -56,14 +56,15 @@ existing tickets (nothing live lost).
   load the flush lost and nothing re-reads. The upload handler now
   awaits both hops (delete-path discipline), so 200 means visible.
   Evidence: family 6/6 × 6 runs, full suite 50/50 × 2, backend 808/808.
-- **CLEAN5 — negative-DSL leftovers.** Remaining items from the
-  login/register/invite negative list: `E1` `api.response` body reads
-  (`json` path asserts — biggest unlock: invite-listing must-not-leak,
-  `server-info`/profile shapes, error messages), `E4` cookieless
-  request context (anonymous-401 vs viewer-401), `E8` `allow_registration`
-  in the given-config vocabulary, then ideas `#10` (duplicate-user 409
-  under knob) and `#12` (knob-vs-invite interplay, made declarative by
-  E8). One worker batch, zero-warning bar.
+- **CLEAN5 — negative-DSL leftovers — done.** `E1` shipped `json` +
+  `json_absent` on `api.response` with three consumers (boot signal,
+  invite-listing no-token, viewer profile shape). `E8` added
+  `allow_registration` to the given-config vocabulary, feeding the new
+  `registration-knob-negative` scenario that pins `#10` (duplicate 409
+  under the open knob) and `#12` (open knob never burns the invite).
+  `E4` deferred with reason: logout already yields a cookieless jar for
+  every planned consumer — build it only when a scenario needs
+  anonymous and sessioned requests simultaneously.
 
 ## Major features (dependency order)
 
