@@ -135,7 +135,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUploadStore } from '@/store/uploadStore'
 import { useConfigStore } from '@/store/configStore'
-import { useCurrentUser, shouldLoadAppConfig } from '@/script/utils/currentUser'
+import { useCurrentUser } from '@/script/utils/currentUser'
 import { startAlbumIndex } from '@/api/fs'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { IsolationId } from '@type/types'
@@ -291,7 +291,7 @@ async function onStartScan() {
 }
 
 onMounted(() => {
-  if (shouldLoadAppConfig(useCurrentUser().value)) void configStore.fetchConfig()
+  void configStore.fetchConfig()
 })
 </script>
 

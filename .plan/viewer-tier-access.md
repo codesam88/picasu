@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -76,19 +76,20 @@ companion reworked to viewer-vs-share terms (share-less anon denied,
 viewer allowed); `authz-model.md` §4 denotation delta in the same commit.
 Verify: targeted `cargo test`, `backend-check`, `openapi-check`.
 
-### S2 — Content writes to `GuardUser`
+### S2 — Content writes to `GuardUser` (DONE 2026-10-26, committed 8e193d3f)
 
 `assign_album`, `delete-data`, `edit_flags`, `create_dir_album`,
 `set_album_cover`, `rotate-image`, `regenerate-thumbnail`,
 `edit_tag`/`edit_rating`, upload cookie leg. Each with a non-admin matrix
 row proving the act and the admin path still working; read-only gating
 unchanged (AUTH-12). `edit_share`/`create_share`/`delete_share` stay admin.
-Docs in slice: `docs/auth.md` proposal banner updated per landed row;
-`docs/authz-model.md` AUTH-11 boundary redrawn to admin-only acts.
+Docs in slice: `docs/auth.md` guard manifest and boundary section updated.
+`authz-model.md` needed no AUTH-11 edit: the model never enumerated
+content routes, so the guard denotations carry the split.
 Verify: targeted `cargo test`, `backend-check`, `openapi-check`
 (401-matrix updates + dated oasdiff ignores where removal-shaped).
 
-### S3 — Share passwords stop leaving the backend
+### S3 — Share passwords stop leaving the backend (DONE 2026-10-26, committed e243f736)
 
 Drop `password` from `AlbumInfo.share_list` reads (serve `hasPassword`
 for the LinksPage icon); `edit_share` absent/null keeps, string sets
@@ -98,19 +99,20 @@ as needed; share contract notes keep-semantics.
 Tests in slice: read-never-contains-password matrix (admin included);
 edit keep/set/clear matrix; frontend edit flow covered by existing share
 e2e or extended YAML.
-Verify: `cargo test`, `openapi-check`, frontend gates.
+Verify: `share_secrets` matrix 2/2 (read redaction admin+viewer, keep/
+set/clear against live share auth), 807 nextest, `openapi-check` clean,
+vitest 267 (2 new contract tests), e2e 47 green.
 
-### S4 — Frontend enablement + e2e green
+### S4 — Frontend enablement + e2e green (DONE 2026-10-26)
 
-Remove viewer skips (prefetch config/tags/albums gates); enable edit UI
-for non-admin (read-only mode still hides everything when on).
-Docs in slice: `docs/frontend.md` if the data flow changed; proposal
-banner removed from `docs/auth.md` once enforcement matches the text
-(it must describe the shipped behavior on merge, not the intent).
-Tests in slice: `non-admin-cmd-user.yaml` green end to end (provision →
-login → grid → image view → move/delete); invite story legs re-attached
-and green; full `just frontend-playwright` green (no failing pins).
-Verify: `just frontend-check`, `just frontend-vitest`, full e2e.
+Removed `shouldLoadAppConfig`/`shouldLoadAdminLists` (and their unit
+tests) from `currentUser.ts`, `usePrefetch.ts` and `GalleryEmptyCard`;
+all three endpoints are open to viewers, so the gates with-held data
+instead of protecting anything. Edit UI was already ungated in the
+frontend (`canScan` stays admin — repo jobs remain admin-only).
+`non-admin-cmd-user.yaml` and the invite story legs green; full
+`just frontend-playwright` 47 passed with the rebuilt bundle. `docs/auth.md`
+Status row records the final state.
 
 ## Out of scope
 

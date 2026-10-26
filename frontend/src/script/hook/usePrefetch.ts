@@ -3,11 +3,6 @@ import { Ref } from 'vue'
 import { IsolationId, PrefetchReturn } from '@type/types'
 import { prefetch } from '@/api/fetchPrefetch'
 import { useConfigStore } from '@/store/configStore'
-import {
-  shouldLoadAdminLists,
-  shouldLoadAppConfig,
-  useCurrentUser
-} from '@/script/utils/currentUser'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
@@ -63,9 +58,6 @@ export function usePrefetch(
  * Independent of prefetch data.
  */
 async function processConfigChain(isolationId: IsolationId) {
-  // Viewers skip the admin-or-share-gated endpoint; a 401 there would
-  // clear the session. Share visitors (no profile) still load it.
-  if (isolationId === 'mainId' && !shouldLoadAppConfig(useCurrentUser().value)) return
   const configStore = useConfigStore(isolationId)
   await configStore.fetchConfig()
 }
@@ -97,19 +89,14 @@ export async function processPrefetchChain(
   dependentPromises.push(fetchScrollbar(isolationId))
 
   if (route.meta.baseName !== 'share') {
-    // Tags and albums lists are admin-gated; a viewer 401 there would clear
-    // the session (same class as the config fetch above), so viewers skip
-    // them and go straight to the row fetch.
-    if (shouldLoadAdminLists(useCurrentUser().value)) {
-      const tagStore = useTagStore('mainId')
-      if (!tagStore.fetched) {
-        dependentPromises.push(tagStore.fetchTags())
-      }
+    const tagStore = useTagStore('mainId')
+    if (!tagStore.fetched) {
+      dependentPromises.push(tagStore.fetchTags())
+    }
 
-      const albumStore = useAlbumStore('mainId')
-      if (!albumStore.fetched) {
-        dependentPromises.push(albumStore.fetchAlbums())
-      }
+    const albumStore = useAlbumStore('mainId')
+    if (!albumStore.fetched) {
+      dependentPromises.push(albumStore.fetchAlbums())
     }
   }
 
