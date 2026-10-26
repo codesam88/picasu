@@ -66,6 +66,30 @@ steps:
       - ui.input_value: textbox/Password
         contains: wrong-password-1
   - when:
+      - fill: textbox/User ID
+        value: someone-else
+      - fill: textbox/Password
+        value: wrong-anything-1
+    assert:
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429]
+      - ui.route: /login
+      - api.response:
+          url: /post/users/authenticate
+          method: POST
+          body:
+            userId: admin
+            password: e2e_test_pwd
+          status: 429
+      - api.response:
+          url: /post/users/authenticate
+          method: POST
+          body:
+            userId: someone-else
+            password: whatever-1
+          status: 429
+  - when:
       - wait.ms: 3000
     assert:
       - ui.text_hidden: Too many attempts
@@ -74,6 +98,8 @@ steps:
           url: /post/users/authenticate
           equals: [401, 401, 401, 429]
   - when:
+      - fill: textbox/User ID
+        value: admin
       - fill: textbox/Password
         value: e2e_test_pwd
       - click: button/Login
