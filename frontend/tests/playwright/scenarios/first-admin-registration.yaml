@@ -53,3 +53,11 @@ steps:
       - api.response:
           url: /get/index/status
           status: 200
+      # the bootstrap window closes once the store has users
+      - api.response:
+          url: /post/users/bootstrap
+          method: POST
+          body:
+            userId: second-admin
+            password: Second-admin-9
+          status: 401 # the bootstrap window closes once the store has users

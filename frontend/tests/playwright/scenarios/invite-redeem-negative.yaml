@@ -1,0 +1,51 @@
+name: A failed redeem leaves the invite usable, then burns it once
+covers:
+  api:
+    - POST /post/invites
+    - POST /post/index/album
+    - GET /get/index/status
+    - GET /get/server-info
+  ui:
+    - route:/login
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - photo: /library/photo.jpg
+  - invite:
+      expires_in_hours: 168
+    id_as: $token
+  - index: /
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+  - when:
+      - navigate: /login
+    assert:
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: redeemer
+            password: '123'
+            invite: '${token}'
+          status: 400 # weak passwords fail validation before the invite is consulted
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: redeemer
+            password: Redeemer-secret-9
+            invite: '${token}'
+          status: 200 # the failed attempt did not burn the invite — it still redeems
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: redeemer
+            password: Redeemer-secret-9
+            invite: '${token}'
+          status: 409 # single-use: consumed after one successful redeem

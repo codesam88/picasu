@@ -22,6 +22,14 @@ steps:
       - navigate: /login
     assert:
       - ui.route: /login
+      # an empty store refuses registration before any gate is consulted
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: closed-user
+            password: Closed-secret-9
+          status: 401 # an empty store refuses registration — there is nothing to enroll against
       # closed install refuses bootstrap even with a valid payload
       - api.response:
           url: /post/users/bootstrap
@@ -29,4 +37,4 @@ steps:
           body:
             userId: sneaky
             password: Sneaky-secret-9
-          status: 401
+          status: 401 # no bootstrap window while the flag is off
