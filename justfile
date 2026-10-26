@@ -446,6 +446,10 @@ precommit:
         just backend-check
         just openapi-check
     fi
+    if echo "$changed" | grep -qE '^\.(spectral\.yaml|oasdiff-ignore\.txt)$'; then
+        # Root files that configure the openapi gate run the gate they configure.
+        just openapi-check
+    fi
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check
     fi
