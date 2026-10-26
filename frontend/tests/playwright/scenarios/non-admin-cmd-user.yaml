@@ -39,6 +39,7 @@ steps:
           password: e2e_test_pwd
     assert:
       - ui.route: /timeline
+      # admin sees the seeded photo (control leg)
       - ui.count: .desktop-small-image
         equals: 1
   # Non-admin story: identity is fine, and the grid loads through the
@@ -53,6 +54,7 @@ steps:
       - navigate: /timeline
     assert:
       - ui.route: /timeline
+      # viewer sees the seeded photo through its own session
       - ui.count: .desktop-small-image
         equals: 1
   - when:

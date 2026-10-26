@@ -30,6 +30,7 @@ steps:
     assert:
       - ui.route: /register
       - ui.text_visible: Create Admin Account
+      # server-info remains reachable during a failed registration
       - api.response:
           url: /get/server-info
           status: 200
@@ -48,6 +49,7 @@ steps:
   - when:
       - index: /
     assert:
+      # index status endpoint responds after registration
       - api.response:
           url: /get/index/status
           status: 200

@@ -22,6 +22,7 @@ steps:
       - navigate: /login
     assert:
       - ui.route: /login
+      # closed install refuses bootstrap even with a valid payload
       - api.response:
           url: /post/users/bootstrap
           method: POST

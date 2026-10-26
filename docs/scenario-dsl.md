@@ -450,7 +450,9 @@ escape hatch.
 Use `steps` when a scenario needs to checkpoint state mid-flow (e.g.
 verify a toast appeared before the page navigates). Each step is a
 `when`/`assert` pair executed sequentially. The `given` block runs once
-before all steps.
+before all steps. Non-obvious assertions carry a single-line `#` comment
+stating what they pin and why; hints stay one line, obvious assertions
+need none.
 
 ```yaml
 steps:
