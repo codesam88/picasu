@@ -72,16 +72,17 @@ bound(⊥)           = ∅
 A guard denotes a partial map from a request to the capability it establishes,
 `⟦g⟧ : Req ⇀ Cap`. Undefined means the guard rejects.
 
-| Guard               | `⟦g⟧(req)`                                                                                                                                                                                   |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie)                                                                                                                      |
-| `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                                                                                                     |
-| `GuardShare`        | the request's `User` identity if its cookie identity record is live (`⊤` under the admin role, the viewer identity otherwise); else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩` |
-| `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                                                                                                  |
-| `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                                                                                                |
-| `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                                                                                                     |
-| `GuardUpload`       | `Share(a,{U})` if it resolves a live share with `U ∈ F` and a matching `presignedAlbumId`; else the request's live `User` identity                                                           |
-| `GuardReadOnlyMode` | `⊤` if read-only mode is off                                                                                                                                                                 |
+| Guard               | `⟦g⟧(req)`                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie)                                                                                                                                                                                                                                                                                                                                                             |
+| `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                                                                                                                                                                                                                                                                                                                                            |
+| `GuardShare`        | the request's `User` identity if its cookie identity record is live (`⊤` under the admin role, the viewer identity otherwise); else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩`                                                                                                                                                                                                                                        |
+| `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                                                                                                                                                                                                                                                                                                                                         |
+| `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                                                                                                                                                                                                                                                                                                                                       |
+| `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                                                                                                                                                                                                                                                                                                                                            |
+| `GuardUpload`       | `Share(a,{U})` if it resolves a live share with `U ∈ F` and a matching `presignedAlbumId`; else the request's live `User` identity                                                                                                                                                                                                                                                                                                  |
+| `GuardReadOnlyMode` | `⊤` if read-only mode is off                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GuardReauth`       | `⊤`-with-proof if the request carries a live session identity of any role and the `X-Picasu-Password` header verifies (constant-time) against that caller's stored argon2id hash; `⊥` otherwise (401 for no/invalid session, 403 for missing/wrong password). Authority is not granted here — it comes from the route's other guards (lift = `GuardAuth` ∩ re-auth, password change = `GuardUser` ∩ `GuardReadOnlyMode` ∩ re-auth). |
 
 A route `r` has a guard set `G(r)`. Every guard must accept:
 
@@ -95,6 +96,12 @@ B(r,req)        =  ∩ { bound(⟦g⟧(req)) | g ∈ G(r) }      -- resource sco
 the intersection because the target must lie in every guard's scope. For
 `GET /object/imported/<x>`, `B = bound(GuardShare) ∩ bound(GuardHashOriginal)`,
 which requires `x` to be in the share's album _and_ equal the token's asset.
+
+A guard denoted `⊤`-with-proof (such as `GuardReauth`) is a proof-carrying
+gate, not an authority source: it contributes `⊤` to `A` and `Res` to `B`,
+so it neither widens the permission set beyond what the route's other guards
+establish nor narrows the resource scope; its only effect is on `accepts`,
+which requires the proof to pass. No route carries it alone.
 
 ## 5. Route conformance
 
@@ -195,7 +202,7 @@ role (`GuardAuth`), not merely a share holder.
 **AUTH-12 — Read-only blocks mutation.** If `r` has an effect (any `write_*`,
 `upload`, `manage`), then `GuardReadOnlyMode ∈ G(r)`, except
 `POST /post/admin/config/disable-read-only`, which lifts the kill-switch and
-is gated by `GuardAuth` only.
+is gated by `GuardAuth` ∩ `GuardReauth` (the admin's password proof).
 
 **AUTH-13 — Credential isolation.** `(manage, config-secrets) ∉ holds(Share(a,F))`
 for every share; bearer tokens are extracted from the `Authorization` header
@@ -204,27 +211,45 @@ only.
 **AUTH-14 — Statelessness.** The authority of a request is a function of its
 token and the DB alone; no component's decision depends on a server-side session.
 
+**AUTH-15 — Privileged re-authentication.** For any route with
+`GuardReauth ∈ G(r)`, `accepts(r, req)` requires the password proof in
+`X-Picasu-Password` verified against the caller's stored hash; a valid
+session token alone is insufficient. Applies to
+`POST /post/admin/config/disable-read-only` (lift) and
+`PUT /put/users/password` (self-change and admin reset). Pinned by the
+re-auth cases in `backend/src/router/put/users_password.rs` and
+`backend/src/router/post/admin_config.rs`.
+
+**AUTH-16 — Zero-admin invariant.** Deletion and demotion cannot leave zero
+admins: `user_store::delete` and `set_admin_role` share the `Conflict`
+path, and the check and the write are one atomic transaction (single redb
+writer), so concurrent operations cannot strand zero admins. Pinned by
+the delete matrix in `backend/src/router/delete.rs` and the demotion cases
+in `backend/src/router/put/users_admin.rs`.
+
 ## 8. From the model to executable checks
 
 The model is not executable as written; each invariant is discharged by one of
 three means. The static rules are decision procedures for a syntactic fragment;
 the tests are witnesses.
 
-| Invariant | Means       | Derived artifact                                                                                                      |
-| --------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| AUTH-1    | static      | decode-agreement: each guard's decode target equals `expected(g)`                                                     |
-| AUTH-2    | static      | rejection-propagation: every `GuardResult` binding consumed (`?`)                                                     |
-| AUTH-3    | static      | no `Outcome::Forward` in a guard impl (route-variant exceptions recorded)                                             |
-| AUTH-4    | static+test | witness-consumption rule; principal × scope tests asserting absence of effect                                         |
-| AUTH-5    | test        | flag-preservation tests                                                                                               |
-| AUTH-6    | static+test | C1 scope clause; principal × scope tests                                                                              |
-| AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                                                                    |
-| AUTH-9    | test        | disabled/expired-share tests, including renewal                                                                       |
-| AUTH-10   | static+test | renewal binding rule; transition tests                                                                                |
-| AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAuth` and no share guard                                             |
-| AUTH-12   | static      | guard-completeness: every mutating route carries `GuardReadOnlyMode`, except the read-only lift (`disable-read-only`) |
-| AUTH-13   | static      | secret-handling rules                                                                                                 |
-| AUTH-14   | review      | recorded constraint; no executable check                                                                              |
+| Invariant | Means       | Derived artifact                                                                                                                                                 |
+| --------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AUTH-1    | static      | decode-agreement: each guard's decode target equals `expected(g)`                                                                                                |
+| AUTH-2    | static      | rejection-propagation: every `GuardResult` binding consumed (`?`)                                                                                                |
+| AUTH-3    | static      | no `Outcome::Forward` in a guard impl (route-variant exceptions recorded)                                                                                        |
+| AUTH-4    | static+test | witness-consumption rule; principal × scope tests asserting absence of effect                                                                                    |
+| AUTH-5    | test        | flag-preservation tests                                                                                                                                          |
+| AUTH-6    | static+test | C1 scope clause; principal × scope tests                                                                                                                         |
+| AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                                                                                                               |
+| AUTH-9    | test        | disabled/expired-share tests, including renewal                                                                                                                  |
+| AUTH-10   | static+test | renewal binding rule; transition tests                                                                                                                           |
+| AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAuth` and no share guard                                                                                        |
+| AUTH-12   | static      | guard-completeness: every mutating route carries `GuardReadOnlyMode`, except the read-only lift (`disable-read-only`), which carries `GuardAuth` ∩ `GuardReauth` |
+| AUTH-13   | static      | secret-handling rules                                                                                                                                            |
+| AUTH-14   | review      | recorded constraint; no executable check                                                                                                                         |
+| AUTH-15   | static+test | privileged-route guard sets include `GuardReauth`; re-auth pins in `users_password.rs` and `admin_config.rs`                                                     |
+| AUTH-16   | test        | zero-admin refusal on delete and demote (Conflict), including concurrency                                                                                        |
 
 A new route, guard, or token type is classified against every invariant before
 it can merge. A property is not "done" until its derived artifact exists and
