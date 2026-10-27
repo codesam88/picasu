@@ -123,11 +123,14 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    change (`PUT /put/users/admin`): the role travels in the token, so the
    new role appears at the next sign-in.
 5. Users are managed through `GET /get/users`,
-   `POST /post/users/register`, `PUT /put/users/password`, and
-   `PUT /put/users/admin` (admin-only). The first administrator is
-   enrolled only by `POST /post/users/bootstrap` (`--bootstrap-admin` ∧
-   empty store, forced admin); `register` always creates non-admin
-   accounts — elevation is `PUT /put/users/admin` alone.
+   `POST /post/users/register`, `PUT /put/users/password`,
+   `PUT /put/users/admin`, and `DELETE /delete/users/{user_id}`
+   (admin-only). The first administrator is enrolled only by
+   `POST /post/users/bootstrap` (`--bootstrap-admin` ∧ empty store, forced
+   admin); `register` always creates non-admin accounts — elevation is
+   `PUT /put/users/admin` alone. Deletion refuses to leave zero admins
+   (the same invariant as demotion); with other admins present,
+   self-delete is allowed.
 
 **Credential-guess throttling (brute-force resistance):** two endpoints
 verify passwords, each with its own throttle instance so guesses on one

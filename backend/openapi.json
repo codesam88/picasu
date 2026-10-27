@@ -1812,6 +1812,55 @@
         ]
       }
     },
+    "/delete/users/{user_id}": {
+      "delete": {
+        "description": "Admin-only: a non-admin, share, or missing credential is denied at\ndispatch with 401. The deletion refuses to leave zero admins; deleting\nthe sole admin is therefore impossible, while self-delete with another\nadmin present succeeds. The identity record (including its password\nhash) is removed in one store write.\n\nCorner cases: Unknown `user_id` names no user. An invalid id (empty or\nover 64 chars) is a 400. Read-only mode refuses with 405.\n\nErrors: 400 invalid `user_id` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 404 unknown `user_id` — 405\nread-only mode — 409 deletion would leave zero admins — 500 storage\nfailure.",
+        "operationId": "delete_user_handler",
+        "parameters": [
+          {
+            "description": "User id to delete",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User deleted"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Unknown user id"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "409": {
+            "description": "Deletion would leave zero admins"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
+        "summary": "Delete a user account (admin remediation).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/favicon.ico": {
       "get": {
         "description": "Returns `favicon.ico` from the frontend build — the embedded asset in a\nbuild with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the\ncontent type guessed from the file extension.\n\nErrors: 404 frontend build without the embedded asset — 500 open of\n`<web_root>/favicon.ico` failed.",

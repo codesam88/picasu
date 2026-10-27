@@ -51,6 +51,10 @@ export const setUserAdmin = async (userId: string, admin: boolean): Promise<void
   })
 }
 
+export const deleteUser = async (userId: string): Promise<void> => {
+  await axios.delete(`/delete/users/${encodeURIComponent(userId)}`)
+}
+
 /// Change a user's password via `PUT /put/users/password`. A self-change
 /// always presents the current password; only an admin recovering another
 /// user omits it (no UI for that path yet).
