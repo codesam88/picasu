@@ -11,7 +11,10 @@ One module serves several runs; modes are env-gated:
 
 Auth: cookie via ``PICASU_JWT`` (securitySchemes are declared now, but
 Schemathesis cannot perform the login exchange, so the harness injects the
-cookie itself).
+cookie itself). Credentials and fixtures arrive from ``seed.env``; without
+them (a bare run against a dev instance) the hooks inject nothing and the
+probes stay off, so the campaign still runs unauthenticated instead of
+crashing.
 Poison guards prevent config writes, admin demotion, share/data deletion,
 logout and password rotation from wrecking a running instance.
 """
@@ -31,6 +34,16 @@ PASSWORD = os.environ.get("FUZZ_PASSWORD", "FuzzPass!234")
 
 ALBUM_A = {"album": os.environ.get("FUZZ_ALBUM_A", ""), "share": os.environ.get("FUZZ_SHARE_A", "")}
 ALBUM_B = {"album": os.environ.get("FUZZ_ALBUM_B", ""), "share": os.environ.get("FUZZ_SHARE_B", "")}
+
+# Probes call the seeded fixtures and can raise when they are absent, so they
+# only arm when the whole seed.env set is present (see seed.sh).
+FIXTURES_READY = bool(
+    ADMIN_JWT
+    and ALBUM_A["album"]
+    and ALBUM_A["share"]
+    and ALBUM_B["album"]
+    and ALBUM_B["share"]
+)
 
 SHARE_GUARDED = {
     ("POST", "/get/prefetch"),
@@ -188,16 +201,17 @@ def _install_markers(case, headers):
 
 @schemathesis.hook
 def before_call(ctx, case, kwargs):
-    _refresh_admin_token()
     headers = dict(case.headers or {})
-    headers["Cookie"] = ADMIN_COOKIE
-    if os.environ.get("FUZZ_SHARE_HEADERS") == "1" and (
+    if ADMIN_JWT:
+        _refresh_admin_token()
+        headers["Cookie"] = ADMIN_COOKIE
+    if FIXTURES_READY and os.environ.get("FUZZ_SHARE_HEADERS") == "1" and (
         case.method,
         case.path,
     ) in SHARE_GUARDED:
         headers["x-album-id"] = ALBUM_A["album"]
         headers["x-share-id"] = ALBUM_A["share"]
-    if os.environ.get("FUZZ_MARKERS") == "1":
+    if FIXTURES_READY and os.environ.get("FUZZ_MARKERS") == "1":
         _install_markers(case, headers)
     case.headers = headers
 

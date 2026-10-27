@@ -1,8 +1,11 @@
 # Schemathesis tier-2 campaign: stateful run against a running seeded backend.
-base-url = "http://127.0.0.1:8899"
+# The session cookie is injected by hooks_campaign.py when PICASU_JWT is
+# available — a config-level ${PICASU_JWT} would refuse to load without it,
+# and a bare `just fuzz` must still run (unauthenticated) against a dev
+# instance.
+base-url = "http://localhost:5673"
 seed = 1
 hooks = "utils/schemathesis/hooks_campaign.py"
-headers = { Cookie = "jwt=${PICASU_JWT}" }
 
 [generation]
 max-examples = 8

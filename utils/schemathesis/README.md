@@ -38,6 +38,13 @@ Or against a developer instance (default `http://localhost:5673`):
 
     just fuzz
 
+A run without `seed.env` still works: it goes unauthenticated with the
+probes off, so `just fuzz` against a dev instance needs no setup. Point
+`FUZZ_STATE_DIR` at a seed directory (previous snippet) for the
+authenticated run. The exit status is the baseline comparison — known
+findings pass, new ones fail, and a crashed run exits with
+Schemathesis's own code before comparing.
+
 Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`,
 `FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, `FUZZ_PASSWORD`, `PICASU_BASE_URL` (all
 provided by `seed.env`, which also points the recipe at the seeded port).

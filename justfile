@@ -202,56 +202,7 @@ schemathesis-run *args:
 # Tier-1 Schemathesis check: seeded backend + single-op sweep + baseline compare
 [group('utils')]
 schemathesis-check: frontend-build-maybe
-    #!/usr/bin/env bash
-    set -euo pipefail
-    export PATH="$HOME/.local/bin:$PATH"
-    cargo build --bin picasu
-    cargo build -p snapfab
-    STATE_DIR="$(mktemp -d)"
-    export FUZZ_STATE_DIR="$STATE_DIR"
-    export PICASU_BINARY="${PICASU_BINARY:-$(pwd)/target/debug/picasu}"
-    export SNAPFAB_BINARY="${SNAPFAB_BINARY:-$(pwd)/target/debug/snapfab}"
-    export PICASU_WEB_ROOT="${PICASU_WEB_ROOT:-$(pwd)/frontend/dist}"
-    PORT="${PICASU_PORT:-8899}"
-    export PICASU_PORT="$PORT"
-    BASE_URL="http://127.0.0.1:$PORT"
-    # Kill only the instance this run started (never a dev server elsewhere);
-    # INT/TERM route through exit so the EXIT trap always tears down.
-    cleanup() {
-        rc=$?
-        if [ -n "${FUZZ_REPORT_OUT:-}" ] && [ -n "${STATE_DIR:-}" ] && [ -f "${STATE_DIR}/report.json" ]; then
-            mkdir -p "$(dirname "$FUZZ_REPORT_OUT")"
-            cp "${STATE_DIR}/report.json" "$FUZZ_REPORT_OUT"
-        fi
-        if [ -f "$STATE_DIR/server.pid" ]; then
-            kill "$(cat "$STATE_DIR/server.pid")" 2>/dev/null || true
-        fi
-        rm -rf "$STATE_DIR"
-        exit $rc
-    }
-    trap cleanup EXIT
-    trap 'exit 130' INT TERM
-    utils/schemathesis/seed.sh
-    # shellcheck disable=SC1091
-    source "$STATE_DIR/seed.env"
-    export PICASU_BASE_URL="$BASE_URL"
-    REPORT="$STATE_DIR/report.json"
-    # --max-redirects 0: judge declared redirect statuses directly instead of
-    # following them to the SPA shell and grading that instead.
-    set +e
-    uvx schemathesis@"{{ schemathesis_version }}" --config-file utils/schemathesis/check.toml --no-color run backend/openapi.json --url "$BASE_URL" \
-        --phases examples,coverage,fuzzing -n 25 --max-redirects 0 \
-        --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance,response_headers_conformance \
-        --report-json-path "$REPORT"
-    st_rc=$?
-    python3 utils/schemathesis/check_report.py "$REPORT" utils/schemathesis/baseline.yaml
-    cmp_rc=$?
-    set -e
-    if [ $st_rc -ne 0 ] && [ $st_rc -ne 1 ]; then
-        echo "schemathesis exited with unexpected code $st_rc" >&2
-        exit $st_rc
-    fi
-    exit $cmp_rc
+    utils/schemathesis/check.sh "{{ schemathesis_version }}"
 
 # Top-level gate (peer of check/test)
 fuzz-check: install-schemathesis
@@ -260,37 +211,7 @@ fuzz-check: install-schemathesis
 # Tier-2 Schemathesis campaign against a running seeded backend (advisory)
 [group('utils')]
 schemathesis-campaign *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    export PATH="$HOME/.local/bin:$PATH"
-    if [ -n "${FUZZ_STATE_DIR:-}" ] && [ -f "${FUZZ_STATE_DIR}/seed.env" ]; then
-        # shellcheck disable=SC1091
-        source "${FUZZ_STATE_DIR}/seed.env"
-    fi
-    export FUZZ_SHARE_HEADERS="${FUZZ_SHARE_HEADERS:-1}"
-    export FUZZ_MARKERS="${FUZZ_MARKERS:-1}"
-    BASE_URL="${PICASU_BASE_URL:-http://localhost:5673}"
-    export PICASU_BASE_URL="$BASE_URL"
-    mkdir -p utils/schemathesis/out
-    REPORT="utils/schemathesis/out/report.json"
-    if [[ " {{args}} " == *" --max-time "* ]]; then
-        set +e
-        uvx schemathesis@"{{ schemathesis_version }}" --config-file utils/schemathesis/campaign.toml --no-color run backend/openapi.json --url "$BASE_URL"             {{args}}             --phases examples,coverage,fuzzing,stateful -n 8 --max-redirects 0             --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance,response_headers_conformance             --report-json-path "$REPORT"
-        st_rc=$?
-        set -e
-    else
-        set +e
-        uvx schemathesis@"{{ schemathesis_version }}" --config-file utils/schemathesis/campaign.toml --no-color run backend/openapi.json --url "$BASE_URL"             --max-time 900 {{args}}             --phases examples,coverage,fuzzing,stateful -n 8 --max-redirects 0             --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance,response_headers_conformance             --report-json-path "$REPORT"
-        st_rc=$?
-        set -e
-    fi
-    echo "=== baseline compare ==="
-    python3 utils/schemathesis/check_report.py "$REPORT" utils/schemathesis/baseline.yaml || true
-    if [ $st_rc -ne 0 ] && [ $st_rc -ne 1 ]; then
-        echo "schemathesis exited with unexpected code $st_rc" >&2
-        exit $st_rc
-    fi
-    exit $st_rc
+    utils/schemathesis/campaign.sh "{{ schemathesis_version }}" {{ args }}
 
 # Top-level peer of check/test (advisory)
 fuzz *args: install-schemathesis

@@ -14,7 +14,8 @@ use crate::router::{AppResult, GuardResult};
 #[allow(clippy::struct_excessive_bools)]
 pub struct ConfigFieldEntry {
     pub name: String,
-    #[schema(value_type = Object)]
+    /// The live value: scalars for every tier — the schema must not pin a type.
+    #[schema(value_type = serde_json::Value)]
     pub value: serde_json::Value,
     pub tier: String,
     pub source: String,

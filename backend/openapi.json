@@ -173,6 +173,154 @@
         ],
         "type": "object"
       },
+      "AppConfig": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "allowRegistration": {
+            "description": "Allow self-registration via `POST /post/users/register` without an\ninvite token. Default off: registration then requires a valid invite.",
+            "type": "boolean"
+          },
+          "authKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bootstrapAdmin": {
+            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/bootstrap`\nenrolls the first admin; until then `POST /post/users/authenticate` takes\nthe unknown-user path and every guarded route refuses with\n`No administrator enrolled` (the refusal names the bootstrap\nendpoint while the window is open). Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-cmd` CLI). Enabling\nthe flag against an existing user store makes the server refuse\nto start. WARN-logged at boot whenever set.",
+            "type": "boolean"
+          },
+          "dataHome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fsNotifyWatcher": {
+            "type": "boolean"
+          },
+          "imagePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "loginIpBaseBanSecs": {
+            "description": "See [`Self::login_ip_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongBaseBanSecs": {
+            "description": "See [`Self::login_ip_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongMaxBanSecs": {
+            "description": "See [`Self::login_ip_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongMaxFailures": {
+            "description": "See [`Self::login_ip_long_window_secs`].",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongWindowSecs": {
+            "description": "Login throttle IP-long daily bucket: paced spraying ceiling across\nmany usernames from one source. Host-only (restart required).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpMaxBanSecs": {
+            "description": "See [`Self::login_ip_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpMaxFailures": {
+            "description": "See [`Self::login_ip_window_secs`].",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpWindowSecs": {
+            "description": "Login throttle IP-short burst bucket: `login_ip_max_failures`\nfailures within `login_ip_window_secs` open a ban of\n`login_ip_base_ban_secs`, doubling per further pair of failures up\nto `login_ip_max_ban_secs`. Host-only (restart required).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongBaseBanSecs": {
+            "description": "See [`Self::login_user_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongMaxBanSecs": {
+            "description": "See [`Self::login_user_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongMaxFailures": {
+            "description": "See [`Self::login_user_long_window_secs`].",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongWindowSecs": {
+            "description": "Login throttle user-long daily bucket: per-account ceiling catching\nlow-and-slow attacks, keyed on the claimed name even when unknown.\nHost-only (restart required).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxUploadSize": {
+            "type": "string"
+          },
+          "normalizeUploadFilenames": {
+            "description": "NFC-normalize uploaded filenames so macOS NFD names collapse onto\ntheir composed form. Optional (unlike the always-on sanitization tiers).",
+            "type": "boolean"
+          },
+          "port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "readOnlyMode": {
+            "type": "boolean"
+          },
+          "trivialPasswords": {
+            "description": "Disable the default password-strength checks (length floor/ceiling,\nblocklist, user-id and pattern rules) for new passwords. Default\noff. Only for development, throwaway installs, or tests that must\nuse weak fixtures — the bypass is warn-logged at first use.",
+            "type": "boolean"
+          },
+          "trustProxyForwardedFor": {
+            "description": "Trust the `X-Forwarded-For` header when keying the login throttle\n(leftmost entry, only when it parses as an IP address). Default off:\nthe header is client-spoofable, so only a reverse-proxy deployment\nthat strips or overwrites it may enable this. Host-only (restart\nrequired).",
+            "type": "boolean"
+          },
+          "uploadFolder": {
+            "type": "string"
+          },
+          "useClientTimestampInfo": {
+            "description": "Trust the `lastModified` the upload client sends with each file. When\nenabled, the value is used as the stored file modification time but\nclamped to `[1970-01-01, now + 24h]` so a broken client clock cannot\npush an undated file (e.g. a screenshot) into year 1970 or the distant\nfuture. Disabled by default: the server uses `now()` instead of the\nprovided value, since a client's clock or timezone cannot be relied on.\nOnly affects files without embedded metadata: photos with a\n`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.\nSee `backend/src/router/post/post_upload.rs`\n(`resolve_upload_timestamp`).",
+            "type": "boolean"
+          },
+          "validateUploadContent": {
+            "description": "Cross-check uploaded content against the type its declared\n`Content-Type` implies. The declared extension yields the expected\nformat from the supported-format table; the content is then identified\nand the two are compared. See `backend/src/process/format.rs`.\n\nContent that cannot be identified at all is always rejected, with or\nwithout this setting: there is no way to tell whether such bytes are\nwhat the extension claims. This setting governs only the mismatch case,\nwhere the content *is* identified but is not the type the extension\nclaims — for example a video uploaded with an image content type, or an\nimage named with the wrong extension. Enabled (the default) rejects\nthose with `400 InvalidInput`; disabling it stores the file anyway, which\nmisdescribes it and leaves the indexer trusting a wrong extension. Only\ndisable this to tolerate mislabeled files.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "address",
+          "port",
+          "readOnlyMode"
+        ],
+        "type": "object"
+      },
       "AssignAlbumData": {
         "additionalProperties": false,
         "description": "Request body for `PUT /put/assign_album`. Strict: unknown fields (including\nthe legacy multi-alias `alias` path) are rejected rather than ignored.",
@@ -266,7 +414,7 @@
             "type": "string"
           },
           "value": {
-            "type": "object"
+            "description": "The live value: scalars for every tier — the schema must not pin a type."
           },
           "writable": {
             "type": "boolean"
@@ -1796,7 +1944,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/AppConfig"
                 }
               }
             },
