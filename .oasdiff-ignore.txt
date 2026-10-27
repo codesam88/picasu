@@ -22,3 +22,10 @@ GET /get/config removed the required property `disableImg` from the response wit
 GET /get/admin/config/export removed the required property `config/disableImg` from the response with the `200` status
 PUT /put/admin/config removed the required property `config/disableImg` from the response with the `200` status
 GET /get/config/export removed the media type `text/plain` for the response with the status `200`
+
+# 2026-10-27 (contract correction, decided): `GET /get/admin/config` loosens
+# the entry `value` from `object` to `any`. The handler has always returned
+# scalars there (string/number/bool per tier); the object declaration was
+# wrong and failed response-schema validation, so the loosening is the fix
+# rather than a capability removal.
+GET /get/admin/config the `items/value` response's property `type` changed from `object` to `any` for status `200`

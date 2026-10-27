@@ -77,7 +77,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         tag = "config",
         security(("cookie_jwt" = [])),
         responses(
-            (status = 200, description = "Exported configuration", body = String, content_type = "application/json"),
+            (status = 200, description = "Exported configuration", body = crate::model::config::AppConfig, content_type = "application/json"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
         )
