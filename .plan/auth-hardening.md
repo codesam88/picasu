@@ -115,7 +115,15 @@ re-authentication decision recorded in the plan. **Fix:** attach
 
 #### F10 — Bounded issues (Low)
 
-Status: partial — config disclosure split by role + original-denial 401 fixed; Cache-Control public on /object still set (cache.rs fairing); ?token= still accepted by all bearer guards (extract_bearer_token + 4 call sites).
+Status: fixed — config disclosure split by role + original-denial 401 fixed
+earlier; `extract_bearer_token` is header-only since 2026-10-27 (the query
+form leaked credentials into proxy logs, history and `Referer`); `/object`
+serves `Cache-Control: private` (kept `public` only for the genuinely public
+`/assets` and `/favicon.ico`), with a code comment noting a future public
+gallery mode would revisit that. URL-passable credentials keep their own
+shapes and were not affected: share links are a path slug plus the
+`x-album-id`/`x-share-id` pair, invite links carry `?invite=` in the
+frontend route and redeem via POST body.
 
 - **Authenticated media responses are marked `Cache-Control: public,
 max-age=31536000`** (`router/cache.rs` applies it to `/object` on any 2xx).
@@ -149,7 +157,8 @@ Resolved:
 1. F5 done (buckets + 429 + IP logging); F6 done (closed by default, bind
    accepted as configurable); F7 done (server HttpOnly cookie).
 2. F8 partial: user passwords hashed; share passwords plaintext; `auth_key`
-   permissions load-bearing. `Cache-Control: private` on `/object` and
-   dropping `?token=` (F10) remain open.
+   permissions load-bearing. F10 done (2026-10-27): header-only bearer,
+   `Cache-Control: private` on `/object`, invite/share URL shapes
+   untouched.
 3. F9 done by deleting the import endpoint; the read-only lift is the
    dedicated `POST /post/admin/config/disable-read-only` route.
