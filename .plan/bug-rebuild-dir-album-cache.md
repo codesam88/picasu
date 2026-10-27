@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: high
 area: backend
@@ -29,3 +29,19 @@ the database.
 2. Fix in `rebuild_from_filesystem` (or its caller): refresh or clear
    `DIR_ALBUM_CACHE` once the tables are rebuilt.
 3. Re-run reproduction + full backend suite; confirm no restart needed.
+
+## Outcome
+
+Superseded by `unify-index-rebuild` (done, 2026-10-24): the defective
+endpoint was retired rather than patched — `POST /post/rebuild` no
+longer exists, replaced by `POST /post/index/album` with `clear`. That
+path maintains the cache three ways: `clear_asset_tables_and_caches`
+resets it, `get_or_create_dir_album` re-registers every directory
+parent-first, and `sweep_stale_asset_paths` evicts deleted ones.
+
+Regression pinned by
+`tasks::actor::album_index::tests::bug_rebuild_dir_album_cache_reset_scan_returns_rows`
+— an album-filtered prefetch returns N rows after reset+scan with no
+restart (verified passing 2026-10-27, alongside the index/evict pins).
+The Schemathesis harness seed dropped its restart workaround for the
+same reason.

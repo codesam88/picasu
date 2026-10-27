@@ -12,7 +12,7 @@ Run:
 What it does:
 
 - builds the backend and snapfab fixtures
-- seeds a disposable instance (fresh dirs, index, restart, shares)
+- seeds a disposable instance (fresh dirs, index, shares)
 - runs schemathesis with the fixed 5-check oracle
 - compares the JSON report to the accepted-findings baseline
 
