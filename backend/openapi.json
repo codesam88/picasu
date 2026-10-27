@@ -1478,6 +1478,7 @@
             "type": "integer"
           },
           "password": {
+            "description": "Share password: an argon2id PHC string for passwords set through the\nAPI, or a legacy plaintext value for rows written before hashing.",
             "type": [
               "string",
               "null"

@@ -10,9 +10,12 @@
 use rocket::http::{ContentType, Header, Status};
 use serde_json::{Value, json};
 
+use crate::model::metadata_record::MetadataRecord;
+use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::tests::bootstrap::{cookie, lock, seed, setup_image_home};
 use crate::tests::fixtures::authz::create_album;
 use crate::tests::fixtures::test_password;
+use redb::{ReadableDatabase, ReadableTable};
 
 /// `POST /get/prefetch` as the album's share, with an optional password.
 fn share_prefetch(
@@ -30,6 +33,49 @@ fn share_prefetch(
         req = req.header(Header::new("x-share-password", password.to_string()));
     }
     req.dispatch().status()
+}
+
+fn stored_share_password(album_id: &str, share_id: &str) -> Option<String> {
+    let read_txn = TREE.in_disk.begin_read().expect("begin read");
+    let table = read_txn.open_table(METADATA_TABLE).expect("open table");
+    let guard = table
+        .get(album_id)
+        .expect("get album")
+        .expect("album exists");
+    let MetadataRecord::Album(album) = guard.value() else {
+        panic!("not an album");
+    };
+    album
+        .share_list
+        .iter()
+        .find(|(k, _)| k.as_str() == share_id)
+        .and_then(|(_, share)| share.password.clone())
+}
+
+fn set_legacy_share_password(album_id: &str, share_id: &str, password: &str) {
+    let txn = TREE.in_disk.begin_write().expect("begin write");
+    {
+        let mut table = txn.open_table(METADATA_TABLE).expect("open table");
+        let mut album = {
+            let guard = table
+                .get(album_id)
+                .expect("get album")
+                .expect("album exists");
+            match guard.value() {
+                MetadataRecord::Album(a) => a,
+                _ => panic!("not an album"),
+            }
+        };
+        for (key, share) in &mut album.share_list {
+            if key.as_str() == share_id {
+                share.password = Some(password.to_string());
+            }
+        }
+        table
+            .insert(album_id, MetadataRecord::Album(album))
+            .expect("insert album");
+    }
+    txn.commit().expect("commit");
 }
 
 /// Album reads carry share presence, never the secret — for the admin and
@@ -226,4 +272,118 @@ fn edit_share_keeps_sets_and_clears_password() {
         Status::Ok,
         "cleared share must accept a passwordless request"
     );
+}
+
+#[test]
+fn share_password_is_hashed_at_rest() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/sharehash/photo.jpg");
+
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "description": "hashed",
+                "password": "s3cret-share-pw",
+                "showMetadata": true,
+                "showDownload": true,
+                "showUpload": false,
+                "exp": 0
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(create.status(), Status::Ok, "create_share");
+    let share_id = create.into_string().expect("share id").trim().to_string();
+
+    let stored = stored_share_password(&album_id, &share_id).expect("stored password");
+    assert!(
+        stored.starts_with("$argon2id$"),
+        "stored share password must be argon2id, got: {stored}"
+    );
+    assert!(
+        !stored.contains("s3cret-share-pw"),
+        "stored value must not contain the plaintext password"
+    );
+}
+
+#[test]
+fn a_hashed_share_password_grants_access() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/shareaccess/photo.jpg");
+
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "description": "guarded",
+                "password": "s3cret-share-pw",
+                "showMetadata": true,
+                "showDownload": true,
+                "showUpload": false,
+                "exp": 0
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(create.status(), Status::Ok, "create_share");
+    let share_id = create.into_string().expect("share id").trim().to_string();
+
+    assert_eq!(
+        share_prefetch(&client, &album_id, &share_id, Some("s3cret-share-pw")),
+        Status::Ok,
+        "correct share password"
+    );
+    assert_eq!(
+        share_prefetch(&client, &album_id, &share_id, Some("wrong")),
+        Status::Unauthorized,
+        "wrong share password"
+    );
+}
+
+#[test]
+fn a_legacy_plaintext_share_row_still_grants_access() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/sharelegacy/photo.jpg");
+
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "description": "legacy",
+                "password": null,
+                "showMetadata": true,
+                "showDownload": true,
+                "showUpload": false,
+                "exp": 0
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(create.status(), Status::Ok, "create_share");
+    let share_id = create.into_string().expect("share id").trim().to_string();
+
+    // Simulate a pre-hashing plaintext row (no migration).
+    set_legacy_share_password(&album_id, &share_id, "legacy-pw");
+
+    assert_eq!(
+        share_prefetch(&client, &album_id, &share_id, Some("legacy-pw")),
+        Status::Ok,
+        "legacy plaintext password"
+    );
+
+    let stored = stored_share_password(&album_id, &share_id).expect("stored password");
+    assert_eq!(stored, "legacy-pw", "legacy row must not be rewritten");
 }

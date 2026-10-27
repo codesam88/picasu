@@ -286,6 +286,8 @@ pub struct Share {
     #[schema(value_type = String)]
     pub url: ArrayString<64>,
     pub description: String,
+    /// Share password: an argon2id PHC string for passwords set through the
+    /// API, or a legacy plaintext value for rows written before hashing.
     pub password: Option<String>,
     pub show_metadata: bool,
     pub show_download: bool,

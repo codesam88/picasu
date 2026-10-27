@@ -1,3 +1,4 @@
+use crate::auth::password::hash_share_password;
 use crate::error::{AppError, ErrorKind};
 use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
@@ -113,7 +114,7 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
             let share = Share {
                 url: share_id,
                 description: create_share.description,
-                password: create_share.password,
+                password: create_share.password.map(|p| hash_share_password(&p)),
                 show_metadata: create_share.show_metadata,
                 show_download: create_share.show_download,
                 show_upload: create_share.show_upload,
