@@ -332,9 +332,12 @@ export async function executeAssert(
       const full = url.startsWith('http') ? url : `${ctx.backendUrl}${url}`
       const response =
         method === 'GET'
-          ? await page.request.fetch(full)
+          ? await page.request.fetch(full, {
+              headers: interpolateDeep(spec.headers, ctx.vars) as any
+            })
           : await page.request.fetch(full, {
               method,
+              headers: interpolateDeep(spec.headers, ctx.vars) as any,
               data: interpolateDeep(spec.body, ctx.vars) as any
             })
       const expected = Array.isArray(spec.status) ? spec.status : [spec.status]

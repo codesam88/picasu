@@ -54,8 +54,10 @@ export const updateAdminConfig = async (
   return adminConfigUpdateResponseSchema.parse(response.data)
 }
 
-export const disableReadOnly = async (): Promise<void> => {
-  await axios.post('/post/admin/config/disable-read-only')
+export const disableReadOnly = async (password: string): Promise<void> => {
+  await axios.post('/post/admin/config/disable-read-only', null, {
+    headers: { 'X-Picasu-Password': password }
+  })
 }
 
 export const exportAdminConfig = async (): Promise<AdminConfigExportResponse> => {

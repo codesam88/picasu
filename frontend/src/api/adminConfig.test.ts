@@ -73,10 +73,12 @@ describe('updateAdminConfig', () => {
 })
 
 describe('disableReadOnly', () => {
-  test('POSTs no body to disable route', async () => {
+  test('POSTs disable route with password header', async () => {
     mockedAxios.post = vi.fn().mockResolvedValue({ data: '' })
-    await expect(disableReadOnly()).resolves.toBeUndefined()
-    expect(mockedAxios.post).toHaveBeenCalledWith('/post/admin/config/disable-read-only')
+    await expect(disableReadOnly('secret')).resolves.toBeUndefined()
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/admin/config/disable-read-only', null, {
+      headers: { 'X-Picasu-Password': 'secret' }
+    })
   })
 })
 

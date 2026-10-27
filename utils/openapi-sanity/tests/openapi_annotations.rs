@@ -1036,11 +1036,12 @@ const DYNAMIC_GUARDS: [&str; 1] = ["GuardShare"];
 /// source root — in the scan's sorted order, pinned so a guard whose impl moves
 /// out of the tree fails here instead of silently dropping out of P2 and P4
 /// (which both look the guard up by name and skip what they do not find).
-const RESOLVED_GUARDS: [&str; 9] = [
+const RESOLVED_GUARDS: [&str; 10] = [
     "GuardAuth",
     "GuardHash",
     "GuardHashOriginal",
     "GuardReadOnlyMode",
+    "GuardReauth",
     "GuardShare",
     "GuardTimestamp",
     "GuardUpload",

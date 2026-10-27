@@ -370,6 +370,10 @@ fn password_change_and_demotion_take_effect() {
         .put("/put/users/password")
         .cookie(cookie("matrix-admin", true))
         .header(ContentType::JSON)
+        .header(rocket::http::Header::new(
+            "x-picasu-password",
+            test_password("t-admin-old"),
+        ))
         .body(
             json!({ "userId": "matrix-member", "newPassword": test_password("t-member-new") })
                 .to_string(),

@@ -10,7 +10,7 @@ use crate::auth::login_throttle::LoginThrottle;
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{GuardReadOnlyMode, GuardUser};
+use crate::router::auth::{GuardReadOnlyMode, GuardReauth, GuardUser};
 use crate::router::post::users_authenticate::ThrottleClientIp;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
@@ -37,7 +37,7 @@ const PW_JTI_LONG: (u64, u32, u64, u64) = (86_400, 3, 60, 3600);
 /// throttle: password guesses must never move login budgets or vice versa.
 static PASSWORD_THROTTLE: Mutex<Option<LoginThrottle>> = Mutex::new(None);
 
-fn with_password_throttle<R>(f: impl FnOnce(&mut LoginThrottle) -> R) -> R {
+pub(crate) fn with_password_throttle<R>(f: impl FnOnce(&mut LoginThrottle) -> R) -> R {
     let mut slot = PASSWORD_THROTTLE
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
@@ -71,7 +71,7 @@ pub(crate) struct PasswordThrottleCtx {
 /// Revoke the attempting session: the guess budget for this (ip, jti) is
 /// spent. Revocation expiry is the token's own `exp` — the entry dies with
 /// the token it revokes.
-fn revoke_attempt_session(jti: &str, exp: u64) -> AppResult<()> {
+pub(crate) fn revoke_attempt_session(jti: &str, exp: u64) -> AppResult<()> {
     crate::auth::revocations::revoke(&crate::auth::revocations::session_key(jti), exp)?;
     Ok(())
 }
@@ -132,72 +132,12 @@ pub(crate) fn set_password_sync(
         ));
     }
     if target == caller_id {
-        let presented = old_password.unwrap_or_default().trim();
-        let path = users::user_store_path();
-        let store = crate::auth::user_store::UserStore::load(&path)
-            .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-        // The throttle counts evaluated old-password guesses only: it is
-        // contacted here, after the store load and the 400/403/404 gates
-        // above, so store failures, weak new passwords, permission refusals
-        // and unknown users record nothing. Reserve sits immediately
-        // before the KDF: no early return between reserve and
-        // release/record can leak a slot (a leaked slot would over-count
-        // the crowded-flight check, and eviction spares in-flight
-        // entries). A live ban means this (ip, jti) already spent its
-        // budget: revoke the session instead of spending another KDF round.
-        if let Some(ctx) = throttle {
-            let ban = with_password_throttle(|t| t.reserve(&ctx.ip, &ctx.jti, ctx.now));
-            if ban > 0 {
-                // Reap idle entries on the banned path: banned-window
-                // requests otherwise mint one entry per jti while
-                // `record_failure` (which enforces the caps) never runs.
-                with_password_throttle(|t| t.sweep(ctx.now));
-                revoke_attempt_session(&ctx.jti, ctx.exp)?;
-                return Err(AppError::new(
-                    ErrorKind::Auth,
-                    "too many incorrect password attempts; session revoked",
-                ));
-            }
-        }
-        if !store.verify(&target, presented) {
-            if let Some(ctx) = throttle {
-                // Release first so `record_failure` counts this attempt
-                // exactly once (mirrors the login handler).
-                let ban = with_password_throttle(|t| {
-                    t.release(&ctx.ip, &ctx.jti);
-                    t.record_failure(&ctx.ip, &ctx.jti, ctx.now)
-                });
-                if ban > 0 {
-                    revoke_attempt_session(&ctx.jti, ctx.exp)?;
-                    return Err(AppError::new(
-                        ErrorKind::Auth,
-                        "too many incorrect password attempts; session revoked",
-                    ));
-                }
-            }
-            // Value-credential tier: the request's session cookie was
-            // accepted, so this is input validation (400), not
-            // authentication (401) — a 401 here would tear down the SPA
-            // display session although the cookie stays valid. The
-            // attempts-left count lets the UI count down from a
-            // server-provided number instead of hardcoding the policy.
-            let detail = match throttle {
-                None => "Incorrect current password".to_string(),
-                Some(ctx) => {
-                    match with_password_throttle(|t| t.remaining(&ctx.ip, &ctx.jti, ctx.now)) {
-                        0 => "Incorrect current password (no attempts remaining)".to_string(),
-                        1 => "Incorrect current password (1 attempt remaining)".to_string(),
-                        n => format!("Incorrect current password ({n} attempts remaining)"),
-                    }
-                }
-            };
-            return Err(
-                AppError::new(ErrorKind::InvalidInput, detail).context("Password change failed")
-            );
-        }
-        if let Some(ctx) = throttle {
-            with_password_throttle(|t| t.record_success(&ctx.ip, &ctx.jti, ctx.now));
-        }
+        // Re-authentication is enforced by `GuardReauth` (the
+        // `X-Picasu-Password` header) before this handler runs; the
+        // `old_password` body field is retained for compatibility but is
+        // no longer the verification source.
+        let _ = old_password;
+        let _ = throttle;
     }
     // The store write bumps the user's token version: every outstanding
     // token of that user dies with the old password, in the same
@@ -257,11 +197,13 @@ pub async fn set_user_password_handler(
     // would lose its enrollment hint.
     user: GuardResult<GuardUser>,
     read_only: GuardResult<GuardReadOnlyMode>,
+    reauth: GuardResult<GuardReauth>,
     ip: ThrottleClientIp,
     body: Json<SetUserPasswordRequest>,
 ) -> AppResult<Status> {
     let user = user?;
     let _ = read_only?;
+    let _ = reauth?;
     let (caller_id, caller_admin) = caller_identity(&user.claims);
     let req = body.into_inner();
     // Kill switch mirrors login: `PICASU_RATE_LIMITS=false` bypasses the
@@ -313,13 +255,17 @@ mod tests {
         cookie: Cookie<'static>,
         body: &serde_json::Value,
     ) -> Status {
-        client
+        let mut req = client
             .put("/put/users/password")
             .cookie(cookie)
-            .header(ContentType::JSON)
-            .body(body.to_string())
-            .dispatch()
-            .status()
+            .header(ContentType::JSON);
+        if let Some(pw) = body.get("oldPassword").and_then(|v| v.as_str()) {
+            req = req.header(rocket::http::Header::new(
+                "x-picasu-password",
+                pw.to_string(),
+            ));
+        }
+        req.body(body.to_string()).dispatch().status()
     }
 
     #[test]
@@ -328,11 +274,20 @@ mod tests {
         let client = setup();
         seed("s4d-root", true, None);
         seed("s4d-bob", false, Some(test_password("t-bob-old").as_str()));
-        let status = put_password(
-            &client,
-            cookie("s4d-root", true),
-            &json!({ "userId": "s4d-bob", "newPassword": test_password("t-bob-new") }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-root", true))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("s4d-root"),
+            ))
+            .body(
+                json!({ "userId": "s4d-bob", "newPassword": test_password("t-bob-new") })
+                    .to_string(),
+            )
+            .dispatch()
+            .status();
         assert_eq!(status, Status::Ok);
         let store =
             crate::auth::user_store::UserStore::load(&crate::auth::users::user_store_path())
@@ -344,7 +299,7 @@ mod tests {
     /// (the request's own session was accepted): input validation → 400,
     /// never 401 — a 401 here would tear down the SPA display session.
     #[test]
-    fn admin_self_change_without_old_is_400() {
+    fn admin_self_change_without_old_is_403() {
         let _g = lock();
         let client = setup();
         seed(
@@ -357,7 +312,7 @@ mod tests {
             cookie("s4d-admin", true),
             &json!({ "userId": "s4d-admin", "newPassword": test_password("t-admin-new") }),
         );
-        assert_eq!(status, Status::BadRequest);
+        assert_eq!(status, Status::Forbidden);
     }
 
     #[test]
@@ -369,11 +324,20 @@ mod tests {
             true,
             Some(test_password("t-admin2-old").as_str()),
         );
-        let status = put_password(
-            &client,
-            cookie("s4d-admin2", true),
-            &json!({ "userId": "s4d-admin2", "oldPassword": test_password("t-admin2-old"), "newPassword": test_password("t-admin2-new") }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-admin2", true))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("t-admin2-old"),
+            ))
+            .body(
+                json!({ "userId": "s4d-admin2", "oldPassword": test_password("t-admin2-old"), "newPassword": test_password("t-admin2-new") })
+                    .to_string(),
+            )
+            .dispatch()
+            .status();
         assert_eq!(status, Status::Ok);
     }
 
@@ -386,27 +350,39 @@ mod tests {
             false,
             Some(test_password("t-carol-old").as_str()),
         );
-        let status = put_password(
-            &client,
-            cookie("s4d-carol", false),
-            &json!({ "userId": "s4d-carol", "oldPassword": test_password("t-carol-old"), "newPassword": test_password("t-carol-new") }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-carol", false))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("t-carol-old"),
+            ))
+            .body(
+                json!({ "userId": "s4d-carol", "oldPassword": test_password("t-carol-old"), "newPassword": test_password("t-carol-new") })
+                    .to_string(),
+            )
+            .dispatch()
+            .status();
         assert_eq!(status, Status::Ok);
     }
 
-    /// A wrong old password on self-change is a value-credential failure
-    /// (the session cookie was accepted): input validation → 400, never 401.
+    /// A wrong re-authentication password on self-change is rejected by the
+    /// guard with 403.
     #[test]
-    fn self_service_with_wrong_old_password_is_400() {
+    fn self_service_with_wrong_old_password_is_403() {
         let _g = lock();
         let client = setup();
         seed("s4d-dave", false, Some("s4d-dave-old"));
-        let status = put_password(
-            &client,
-            cookie("s4d-dave", false),
-            &json!({ "userId": "s4d-dave", "oldPassword": "nope", "newPassword": "s4d-dave-new" }),
-        );
-        assert_eq!(status, Status::BadRequest);
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-dave", false))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new("x-picasu-password", "nope"))
+            .body(json!({ "userId": "s4d-dave", "oldPassword": "nope", "newPassword": "s4d-dave-new" }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Forbidden);
     }
 
     /// Overstepping the password-change attempt budget revokes the session:
@@ -424,11 +400,11 @@ mod tests {
         );
         let jar = cookie("s4d-budget", false);
         let wrong = || json!({ "userId": "s4d-budget", "oldPassword": "wrong-guess", "newPassword": test_password("t-budget-new") });
-        // Three wrong guesses stay value-credential failures (400).
+        // Three wrong guesses stay re-authentication failures (403).
         for _ in 0..3 {
             assert_eq!(
                 put_password(&client, jar.clone(), &wrong()),
-                Status::BadRequest
+                Status::Forbidden
             );
         }
         // The overstepping attempt drops the session.
@@ -466,10 +442,10 @@ mod tests {
         for _ in 0..3 {
             assert_eq!(
                 put_password(&client, jar.clone(), &wrong()),
-                Status::BadRequest
+                Status::Forbidden
             );
         }
-        // Still alive: the 3rd 400 revoked nothing. A correct-old /
+        // Still alive: the 3rd 403 revoked nothing. A correct-old /
         // weak-new probe fails validation (400) only when the guard
         // accepts the session — a dead session is 401 at the guard.
         assert_eq!(
@@ -505,7 +481,7 @@ mod tests {
         for _ in 0..3 {
             assert_eq!(
                 put_password(&client, jar_a.clone(), &wrong()),
-                Status::BadRequest
+                Status::Forbidden
             );
         }
         assert_eq!(
@@ -541,7 +517,7 @@ mod tests {
             for _ in 0..6 {
                 assert_eq!(
                     put_password(&client, jar.clone(), &wrong()),
-                    Status::BadRequest
+                    Status::Forbidden
                 );
             }
             // Session and budget untouched: a validation probe still
@@ -586,6 +562,10 @@ mod tests {
                     .put("/put/users/password")
                     .cookie(jar.clone())
                     .header(ContentType::JSON)
+                    .header(rocket::http::Header::new(
+                        "x-picasu-password",
+                        "wrong-guess",
+                    ))
                     .body(wrong().to_string())
                     .dispatch()
                     .into_string()
@@ -603,9 +583,13 @@ mod tests {
             .put("/put/users/password")
             .cookie(jar2)
             .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                "wrong-guess",
+            ))
             .body(wrong().to_string())
             .dispatch();
-        assert_eq!(resp.status(), Status::BadRequest);
+        assert_eq!(resp.status(), Status::Forbidden);
         assert!(
             resp.into_string()
                 .unwrap_or_default()
@@ -660,11 +644,17 @@ mod tests {
         let _g = lock();
         let client = setup();
         seed("s4d-root", true, None);
-        let status = put_password(
-            &client,
-            cookie("s4d-root", true),
-            &json!({ "userId": "s4d-root", "newPassword": "   " }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-root", true))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("s4d-root"),
+            ))
+            .body(json!({ "userId": "s4d-root", "newPassword": "   " }).to_string())
+            .dispatch()
+            .status();
         assert_eq!(status, Status::BadRequest);
     }
 
@@ -676,11 +666,17 @@ mod tests {
         let client = setup();
         seed("s4d-root", true, None);
         let pw = test_password("t-pw-shape");
-        let status = put_password(
-            &client,
-            cookie("s4d-root", true),
-            &json!({ "userId": "s4d-root", "newPassword": pw, "admin": false }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-root", true))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("s4d-root"),
+            ))
+            .body(json!({ "userId": "s4d-root", "newPassword": pw, "admin": false }).to_string())
+            .dispatch()
+            .status();
         assert_eq!(
             status,
             Status::UnprocessableEntity,
@@ -695,18 +691,30 @@ mod tests {
         seed("s4d-root", true, None);
         seed("s4d-bob", false, Some(test_password("t-bob-old").as_str()));
         // 7 chars: below the minimum for new passwords.
-        let status = put_password(
-            &client,
-            cookie("s4d-root", true),
-            &json!({ "userId": "s4d-bob", "newPassword": "short1!" }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-root", true))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("s4d-root"),
+            ))
+            .body(json!({ "userId": "s4d-bob", "newPassword": "short1!" }).to_string())
+            .dispatch()
+            .status();
         assert_eq!(status, Status::BadRequest);
         // 12 chars passes (admin -> other recovery path needs no old).
-        let status = put_password(
-            &client,
-            cookie("s4d-root", true),
-            &json!({ "userId": "s4d-bob", "newPassword": "123456789012" }),
-        );
+        let status = client
+            .put("/put/users/password")
+            .cookie(cookie("s4d-root", true))
+            .header(ContentType::JSON)
+            .header(rocket::http::Header::new(
+                "x-picasu-password",
+                test_password("s4d-root"),
+            ))
+            .body(json!({ "userId": "s4d-bob", "newPassword": "123456789012" }).to_string())
+            .dispatch()
+            .status();
         assert_eq!(status, Status::Ok);
     }
 

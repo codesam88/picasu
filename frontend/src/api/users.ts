@@ -59,11 +59,17 @@ export const setUserPassword = async (
   oldPassword: string,
   newPassword: string
 ): Promise<void> => {
-  await axios.put('/put/users/password', {
-    userId,
-    oldPassword,
-    newPassword
-  })
+  await axios.put(
+    '/put/users/password',
+    {
+      userId,
+      oldPassword,
+      newPassword
+    },
+    {
+      headers: { 'X-Picasu-Password': oldPassword }
+    }
+  )
 }
 
 /// Sign in with `{ userId, password }` and return the session profile.

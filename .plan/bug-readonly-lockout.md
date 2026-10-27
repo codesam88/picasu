@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: done
 type: bug
 priority: high
 area: backend
@@ -117,3 +117,25 @@ Consequence for the decided fix: the re-auth guard must cover **import_config**
 too, not only a new disable endpoint — otherwise a captured admin token defeats
 the re-authentication requirement through the side door. Recorded as finding F9
 in `.plan/auth-hardening.md`.
+
+## Outcome (2026-10-27)
+
+Implemented as decided, against the post-F9 world: the re-auth guard
+(`GuardReauth`, `backend/src/router/auth.rs`) requires a valid session plus
+the account password in the `X-Picasu-Password` header, verified through
+the user store (argon2id, constant-time) — the import side-door no longer
+exists, and the dedicated `POST /post/admin/config/disable-read-only`
+route is the operation that carries it (with `GuardAuth`, without
+`GuardReadOnlyMode`). `PUT /put/users/password` shares the guard; its
+inline non-constant-time compare moved out, `oldPassword` stays in the
+DTO for parse compatibility but no longer authenticates.
+
+The password-change throttle moved with the comparison into the guard, so
+both re-auth routes share the budget: 403 + attempts-left on a wrong
+guess, 401 with session revocation on overstep, IP pre-check across
+sessions, kill switch intact. The five contract tests were updated only
+in status (400 -> 403) and are not ignored. Frontend: the read-only
+toggle prompts for the password and calls the disable route; the password
+change sends the header. `PUT /put/admin/config` documents its 405.
+e2e: `api.response` gained an optional `headers` map; the read-only
+scenario lifts with the password header and passes in Playwright.

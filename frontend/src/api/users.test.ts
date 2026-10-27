@@ -134,11 +134,17 @@ describe('setUserPassword', () => {
   test('puts userId, old and new passwords to /put/users/password', async () => {
     mockedAxios.put = vi.fn().mockResolvedValue({ data: '' })
     await setUserPassword('alice', 'old-secret', 'new-secret')
-    expect(mockedAxios.put).toHaveBeenCalledWith('/put/users/password', {
-      userId: 'alice',
-      oldPassword: 'old-secret',
-      newPassword: 'new-secret'
-    })
+    expect(mockedAxios.put).toHaveBeenCalledWith(
+      '/put/users/password',
+      {
+        userId: 'alice',
+        oldPassword: 'old-secret',
+        newPassword: 'new-secret'
+      },
+      {
+        headers: { 'X-Picasu-Password': 'old-secret' }
+      }
+    )
   })
 })
 
