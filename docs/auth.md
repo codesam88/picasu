@@ -347,7 +347,12 @@ expiry.
 | `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                                | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
 | `GuardReauth`       | valid session plus the account password in the `X-Picasu-Password` header (403 otherwise) | `POST /post/admin/config/disable-read-only` (lift) and `PUT /put/users/password` (self-change) — re-authentication for privileged operations                               |
 
-### Admin-only route inventory (2026-10-26)
+The OpenAPI contract now declares its four security schemes — `cookie_jwt`,
+`bearer_token`, `album_id` and `share_id` — in `backend/openapi.json`,
+registered through `SecurityAddon` (`backend/src/openapi_components.rs`);
+they match the mechanisms described above.
+
+### Admin-only route inventory (2026-10-27)
 
 The authority split for the API: manage acts stay admin-only, content and
 gallery reads/writes accept any live authenticated user. The guard table
@@ -370,15 +375,15 @@ guards below catch the code up with it. The `/users/` hierarchy is a
 resource grouping (user identity as a resource), not an authority split,
 and stays as is — no user/self rework.
 
-**Stays admin-only (21 routes).** Each row names the reason.
+**Stays admin-only (22 routes).** Each row names the reason.
 
-| Group              | Routes                                                                                                                                                                                      | Why admin-only                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity admin     | `GET /get/users`, `PUT /put/users/admin`, `POST /post/invites`, `GET /get/invites`, `DELETE /delete/invites/*`, `POST /post/users/bootstrap`                                                | User enumeration, role elevation, invite mint/revoke, first-admin enrollment. Bootstrap is admin-by-construction (flag ∧ empty store, forced admin). |
-| Config and secrets | `PUT /put/admin/config`, `GET /get/admin/config`, `GET /get/admin/config/export`, `GET /get/config/export`, `POST /post/config/auth-key/reset`, `POST /post/admin/config/disable-read-only` | Global config write/read, full export, signing-secret rotation (kills every session), kill-switch lift (AUTH-12 exception).                          |
-| Repository jobs    | `POST /post/index/album`, `POST /post/index/cancel`, `GET /get/index/status`                                                                                                                | Filesystem-wide scan control and progress; viewers never trigger scans.                                                                              |
-| Public exposure    | `POST /post/create_share`, `PUT /put/edit_share`, `PUT /put/delete_share`                                                                                                                   | Delegation authority: publishing albums outside the user base.                                                                                       |
-| Host disclosure    | `GET /get/path-completion`, `GET /get/test/*` probes                                                                                                                                        | Absolute server paths; test internals.                                                                                                               |
+| Group              | Routes                                                                                                                                                                                      | Why admin-only                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity admin     | `GET /get/users`, `PUT /put/users/admin`, `POST /post/invites`, `GET /get/invites`, `DELETE /delete/invites/*`, `POST /post/users/bootstrap`, `DELETE /delete/users/{user_id}`              | User enumeration, role elevation, invite mint/revoke, first-admin enrollment, user-record destruction/remediation authority. Bootstrap is admin-by-construction (flag ∧ empty store, forced admin). |
+| Config and secrets | `PUT /put/admin/config`, `GET /get/admin/config`, `GET /get/admin/config/export`, `GET /get/config/export`, `POST /post/config/auth-key/reset`, `POST /post/admin/config/disable-read-only` | Global config write/read, full export, signing-secret rotation (kills every session), kill-switch lift (AUTH-12 exception).                                                                         |
+| Repository jobs    | `POST /post/index/album`, `POST /post/index/cancel`, `GET /get/index/status`                                                                                                                | Filesystem-wide scan control and progress; viewers never trigger scans.                                                                                                                             |
+| Public exposure    | `POST /post/create_share`, `PUT /put/edit_share`, `PUT /put/delete_share`                                                                                                                   | Delegation authority: publishing albums outside the user base.                                                                                                                                      |
+| Host disclosure    | `GET /get/path-completion`, `GET /get/test/*` probes                                                                                                                                        | Absolute server paths; test internals.                                                                                                                                                              |
 
 **Demote to user-level (any live authenticated user).** Each row names the
 prerequisite that makes the demotion safe.
