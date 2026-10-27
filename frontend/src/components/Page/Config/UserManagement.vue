@@ -6,6 +6,15 @@
 
       <v-list-item v-for="user in users" :key="user.userId" :title="user.userId">
         <template #append>
+          <v-btn
+            v-if="!isRowLocked(user)"
+            icon="mdi-delete-outline"
+            variant="text"
+            color="error"
+            size="small"
+            :disabled="saving"
+            @click="askDelete(user)"
+          ></v-btn>
           <v-switch
             v-model="user.admin"
             color="primary"
@@ -41,6 +50,19 @@
           </v-card-actions>
         </v-card>
       </v-dialog>
+
+      <v-dialog v-model="deleteConfirmOpen" max-width="480">
+        <v-card>
+          <v-card-title class="font-weight-bold">Delete user?</v-card-title>
+          <v-card-text> Delete {{ pendingDelete?.userId }}? This cannot be undone. </v-card-text>
+          <v-card-actions class="justify-end">
+            <v-btn variant="text" @click="cancelDelete">Cancel</v-btn>
+            <v-btn color="error" variant="flat" :loading="saving" @click="confirmDelete">
+              Delete
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </v-card>
   </v-col>
 </template>
@@ -48,7 +70,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { listUsers, setUserAdmin } from '@/api/users'
+import { listUsers, setUserAdmin, deleteUser } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -63,6 +85,8 @@ const users = ref<UserSummary[]>([])
 const saving = ref(false)
 const confirmOpen = ref(false)
 const pendingTarget = ref<UserSummary | null>(null)
+const deleteConfirmOpen = ref(false)
+const pendingDelete = ref<UserSummary | null>(null)
 
 // --- Computed ---
 const adminCount = computed(() => users.value.filter((u) => u.admin).length)
@@ -125,6 +149,36 @@ const confirmDemote = async () => {
   if (target === null) return
   target.admin = false
   await applyRoleChange(target, false)
+}
+
+const askDelete = (user: UserSummary) => {
+  pendingDelete.value = user
+  deleteConfirmOpen.value = true
+}
+
+const cancelDelete = () => {
+  deleteConfirmOpen.value = false
+  pendingDelete.value = null
+}
+
+const confirmDelete = async () => {
+  const target = pendingDelete.value
+  deleteConfirmOpen.value = false
+  pendingDelete.value = null
+  if (target === null) return
+  saving.value = true
+  try {
+    await deleteUser(target.userId)
+    messageStore.success(`${target.userId} deleted`)
+    await refreshUsers()
+  } catch (error: unknown) {
+    if (!axios.isAxiosError(error) || error.response === undefined) {
+      messageStore.error(errorDisplay(error))
+    }
+    await refreshUsers()
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(refreshUsers)

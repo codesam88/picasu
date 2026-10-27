@@ -14,22 +14,22 @@ existing tickets (nothing live lost).
 
 ## Tickets
 
-| ID     | Slug                              | Status  | Priority | Area     |
-| ------ | --------------------------------- | ------- | -------- | -------- |
-| FEAT1a | `spec-reconciliation-4xx`         | done    | high     | testing  |
-| FEAT1b | `api-assurance` (gate step)       | done    | medium   | testing  |
-| FEAT2  | `security-schemes-declaration`    | done    | medium   | backend  |
-| FEAT3  | `bug-rebuild-dir-album-cache`     | done    | high     | backend  |
-| FEAT4  | `auth-hardening`                  | done    | high     | backend  |
-| FEAT5  | `auth-flows-user-delete`          | open    | medium   | backend  |
-| FEAT5  | `bug-readonly-lockout`            | done    | high     | backend  |
-| FEAT6  | `auth-admin-panel`                | open    | high     | frontend |
-| FEAT7  | `authz-check`                     | backlog | high     | backend  |
-| FEAT7  | `authz-props`                     | open    | high     | backend  |
-| FEAT7  | `flow-model-conformance`          | open    | high     | testing  |
-| FEAT7  | `error-handling-and-activity-log` | open    | high     | frontend |
-| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog | medium   | testing  |
-| CLEAN5 | (no single ticket)                | done    | medium   | testing  |
+| ID     | Slug                              | Status      | Priority | Area     |
+| ------ | --------------------------------- | ----------- | -------- | -------- |
+| FEAT1a | `spec-reconciliation-4xx`         | done        | high     | testing  |
+| FEAT1b | `api-assurance` (gate step)       | done        | medium   | testing  |
+| FEAT2  | `security-schemes-declaration`    | done        | medium   | backend  |
+| FEAT3  | `bug-rebuild-dir-album-cache`     | done        | high     | backend  |
+| FEAT4  | `auth-hardening`                  | done        | high     | backend  |
+| FEAT5  | `auth-flows-user-delete`          | done        | medium   | backend  |
+| FEAT5  | `bug-readonly-lockout`            | done        | high     | backend  |
+| FEAT6  | `auth-admin-panel`                | in-progress | high     | frontend |
+| FEAT7  | `authz-check`                     | backlog     | high     | backend  |
+| FEAT7  | `authz-props`                     | open        | high     | backend  |
+| FEAT7  | `flow-model-conformance`          | open        | high     | testing  |
+| FEAT7  | `error-handling-and-activity-log` | open        | high     | frontend |
+| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog     | medium   | testing  |
+| CLEAN5 | (no single ticket)                | done        | medium   | testing  |
 
 ## Quick cleanups
 
@@ -92,10 +92,12 @@ existing tickets (nothing live lost).
   dual-path verify and rehash on next login — and
   `PICASU_PBKDF_ITERATIONS` is replaced by the test-only
   `PICASU_WEAK_PWHASH=1` switch.
-- **FEAT5 — two bounded backend slices with decided designs:**
-  `DELETE /delete/users/{id}` with the zero-admin 409 invariant plus its
-  admin UI (`auth-flows-user-delete`), and the re-authentication guard
-  on the read-only lift (`bug-readonly-lockout` decided fix).
+- **FEAT5 — both slices done.** `DELETE /delete/users/{id}` ships with
+  the zero-admin 409 invariant enforced inside the store transaction
+  and a delete control beside demote in the user panel
+  (`auth-flows-user-delete`); the re-authentication guard covers the
+  read-only lift and the password change, throttle moved with it
+  (`bug-readonly-lockout`).
 - **FEAT6 — auth-admin-panel closeout.** Registration-toggle decision
   from the ticket's options, wire or delete the caller-less `createUser`,
   remaining elevation/set-password controls; then mark done.

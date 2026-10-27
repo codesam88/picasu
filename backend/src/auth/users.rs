@@ -98,6 +98,33 @@ pub fn set_admin(id: &str, admin: bool) -> Result<()> {
     Ok(())
 }
 
+/// Remove a user: the identity record (and its password hash) are dropped in
+/// one store write. Refuses with [`ErrorKind::Conflict`] when the deletion
+/// would leave zero admins — the same invariant as [`set_admin_role`].
+///
+/// Returns `Ok(())` on success and [`ErrorKind::NotFound`] when `id` names no
+/// user, [`ErrorKind::InvalidInput`] when `id` is invalid.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] for an invalid id,
+/// [`ErrorKind::NotFound`] for an unknown id, [`ErrorKind::Conflict`] when
+/// the deletion would leave zero admins, and [`ErrorKind::Database`]/
+/// [`ErrorKind::IO`] when the store cannot be read or written.
+pub fn delete_user(id: &str) -> Result<(), AppError> {
+    let target = validate_user_id(id)?;
+    // The store's `delete` enforces the zero-admin invariant atomically
+    // (single write transaction, single writer) and returns `false` only
+    // when the id is absent.
+    let removed = crate::auth::user_store::delete(&user_store_path(), &target, false)?;
+    if !removed {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
+    }
+    Ok(())
+}
+
 /// Invalidate every outstanding token of `id` by bumping its token version.
 /// The user's password, role and attributes stay; only the tokens die.
 ///

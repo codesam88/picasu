@@ -2,7 +2,7 @@
 use rocket::Route;
 
 pub fn generate_delete_routes() -> Vec<Route> {
-    routes![delete_data, delete_invite]
+    routes![delete_data, delete_invite, delete_user_handler]
 }
 
 // src/router/delete/delete_data.rs
@@ -346,4 +346,184 @@ pub fn delete_invite(
         ));
     }
     Ok(())
+}
+
+/// Delete a user account (admin remediation).
+///
+/// Admin-only: a non-admin, share, or missing credential is denied at
+/// dispatch with 401. The deletion refuses to leave zero admins; deleting
+/// the sole admin is therefore impossible, while self-delete with another
+/// admin present succeeds. The identity record (including its password
+/// hash) is removed in one store write.
+///
+/// Corner cases: Unknown `user_id` names no user. An invalid id (empty or
+/// over 64 chars) is a 400. Read-only mode refuses with 405.
+///
+/// Errors: 400 invalid `user_id` — 401 missing or invalid credentials,
+/// non-admin caller, or share credentials — 404 unknown `user_id` — 405
+/// read-only mode — 409 deletion would leave zero admins — 500 storage
+/// failure.
+#[utoipa::path(
+        tag = "auth",
+        params(
+            ("user_id" = &str, Path, description = "User id to delete"),
+        ),
+        security(("cookie_jwt" = [])),
+        responses(
+            (status = 200, description = "User deleted"),
+            (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
+            (status = 404, description = "Unknown user id"),
+            (status = 405, description = "Read-only mode"),
+            (status = 409, description = "Deletion would leave zero admins"),
+            (status = 500, description = "Internal error"),
+        )
+    )
+]
+#[delete("/delete/users/<user_id>")]
+pub fn delete_user_handler(
+    auth: GuardResult<GuardAuth>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    user_id: &str,
+) -> AppResult<()> {
+    let _ = auth?;
+    let _ = read_only_mode?;
+    crate::auth::users::delete_user(user_id)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rocket::http::Status;
+
+    use crate::tests::bootstrap::{cookie, lock, seed, setup, write_config};
+    use serde_json::json;
+
+    fn del(
+        client: &rocket::local::blocking::Client,
+        cookie: Option<rocket::http::Cookie<'static>>,
+        user_id: &str,
+    ) -> Status {
+        let mut req = client.delete(format!("/delete/users/{user_id}"));
+        if let Some(c) = cookie {
+            req = req.cookie(c);
+        }
+        req.dispatch().status()
+    }
+
+    #[test]
+    fn delete_ok_is_200() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        seed("d-bob", false, None);
+        let status = del(&client, Some(cookie("d-root", true)), "d-bob");
+        assert_eq!(status, Status::Ok);
+        assert!(
+            crate::auth::users::user_record("d-bob")
+                .expect("get")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn delete_unknown_is_404() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        let status = del(&client, Some(cookie("d-root", true)), "d-ghost");
+        assert_eq!(status, Status::NotFound);
+    }
+
+    #[test]
+    fn delete_sole_admin_self_is_409() {
+        let _g = lock();
+        let client = setup();
+        seed("d-sole", true, None);
+        let status = del(&client, Some(cookie("d-sole", true)), "d-sole");
+        assert_eq!(status, Status::Conflict);
+        assert!(
+            crate::auth::users::user_record("d-sole")
+                .expect("get")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn delete_sole_admin_while_others_are_users_is_409() {
+        let _g = lock();
+        let client = setup();
+        seed("d-admin", true, None);
+        seed("d-user", false, None);
+        let status = del(&client, Some(cookie("d-admin", true)), "d-admin");
+        assert_eq!(status, Status::Conflict);
+    }
+
+    #[test]
+    fn delete_non_admin_caller_is_401() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        seed("d-bob", false, None);
+        let status = del(&client, Some(cookie("d-bob", false)), "d-bob");
+        assert_eq!(status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn delete_unauthenticated_is_401() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        let status = del(&client, None, "d-root");
+        assert_eq!(status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn delete_read_only_is_405() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        seed("d-bob", false, None);
+        write_config(&json!({ "read_only_mode": true }));
+        let status = del(&client, Some(cookie("d-root", true)), "d-bob");
+        assert_eq!(status, Status::MethodNotAllowed);
+    }
+
+    #[test]
+    fn delete_bad_id_is_400() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        let status = del(&client, Some(cookie("d-root", true)), "   ");
+        assert_eq!(status, Status::BadRequest);
+    }
+
+    #[test]
+    fn delete_removes_store_entry_and_login_fails() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        seed("d-victim", false, None);
+        let pw = crate::tests::fixtures::test_password("d-victim");
+        let status = del(&client, Some(cookie("d-root", true)), "d-victim");
+        assert_eq!(status, Status::Ok);
+        // Store entry gone.
+        assert!(
+            crate::auth::user_store::read(&crate::auth::users::user_store_path(), "d-victim")
+                .is_none()
+        );
+        // Login with deleted credentials fails.
+        let login_status = crate::tests::bootstrap::login_status(&client, "d-victim", &pw);
+        assert_eq!(login_status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn delete_self_with_other_admin_present_succeeds() {
+        let _g = lock();
+        let client = setup();
+        seed("d-a", true, None);
+        seed("d-b", true, None);
+        let status = del(&client, Some(cookie("d-a", true)), "d-a");
+        assert_eq!(status, Status::Ok);
+    }
 }

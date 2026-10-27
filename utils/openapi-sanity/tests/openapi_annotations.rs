@@ -990,7 +990,7 @@ fn p4_an_undeclarable_status_on_a_bindingless_route_fails() {
 /// Pinned rather than derived, so a scan that silently stops finding annotations
 /// — a broken file walk, a swallowed parse error — fails here instead of
 /// reporting a clean tree it never looked at. Update it with the annotation.
-const ANNOTATIONS_IN_ROUTER: usize = 75;
+const ANNOTATIONS_IN_ROUTER: usize = 76;
 
 /// The declaration inventory section B was calibrated against: 25 declared
 /// parameters, all of them the inline `("name" = Type, Location, …)` form, and 26
@@ -1004,7 +1004,7 @@ const ANNOTATIONS_IN_ROUTER: usize = 75;
 /// without a decision. The third is what keeps B3 and B4 honest: a scan that
 /// stopped reading `request_body` would find nothing to compare and report the
 /// same emptiness as a clean tree.
-const DECLARATION_INVENTORY: (usize, usize, usize) = (25, 0, 26);
+const DECLARATION_INVENTORY: (usize, usize, usize) = (26, 0, 26);
 
 /// How many of those declared request bodies B3 actually compares against a
 /// route binding — the tree's 26 declarations less the one `request_body = Value`
