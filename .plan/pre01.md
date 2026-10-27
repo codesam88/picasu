@@ -19,7 +19,7 @@ existing tickets (nothing live lost).
 | FEAT1a | `spec-reconciliation-4xx`         | done        | high     | testing  |
 | FEAT1b | `api-assurance` (gate step)       | done        | medium   | testing  |
 | FEAT2  | `security-schemes-declaration`    | done        | medium   | backend  |
-| FEAT3  | `bug-rebuild-dir-album-cache`     | open        | high     | backend  |
+| FEAT3  | `bug-rebuild-dir-album-cache`     | done        | high     | backend  |
 | FEAT4  | `auth-hardening`                  | in-progress | high     | backend  |
 | FEAT5  | `auth-flows-user-delete`          | open        | medium   | backend  |
 | FEAT5  | `bug-readonly-lockout`            | backlog     | high     | backend  |
@@ -79,10 +79,12 @@ existing tickets (nothing live lost).
   share-header schemes in the generator and reference them per operation;
   `just openapi-check` stays green. Unblocks Schemathesis auth
   auto-inference; pairs with FEAT1's gate run.
-- **FEAT3 — rebuild/dir-album cache bug.** Real correctness bug
-  (Schemathesis F0): after `POST /post/rebuild`, share snapshots match
-  nothing until restart. Reproduce over HTTP, fix cache refresh or
-  invalidation in the rebuild path, pin the regression.
+- **FEAT3 — rebuild/dir-album cache bug.** Done — superseded by
+  `unify-index-rebuild`: the broken `POST /post/rebuild` path was
+  retired in favour of `POST /post/index/album` with `clear`, which
+  resets, re-registers and sweeps the dir-album cache. Pinned by
+  `bug_rebuild_dir_album_cache_reset_scan_returns_rows` (prefetch
+  returns N rows after reset+scan, no restart).
 - **FEAT4 — auth-hardening closeout.** Fast pair first: `Cache-Control:
 private` on `/object` and dropping `?token=` from the four bearer-guard
   call sites (finishes F10). Then the F8 decision: share-password hashing

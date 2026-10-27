@@ -119,12 +119,8 @@ for _ in $(seq 1 120); do
 done
 state="$(curl -s "$BASE/get/index/status" -H "Cookie: jwt=$TOKEN" | python3 -c 'import sys,json; print(json.load(sys.stdin)["state"])')"
 [ "$state" = "completed" ] || { echo "index did not complete (state=$state)" >&2; exit 1; }
-
-kill_server
-start_server
-TOKEN="$(login_token)"
-[ -n "$TOKEN" ] || { echo "failed to obtain admin JWT after restart" >&2; exit 1; }
-echo "$TOKEN" >"$STATE_DIR/admin.jwt"
+# No restart: the index path resets and rebuilds the dir-album cache in
+# process, so share snapshots are consistent as soon as indexing completes.
 
 albums="$(curl -s "$BASE/get/get-albums" -H "Cookie: jwt=$TOKEN")"
 alpha="$(echo "$albums" | python3 -c 'import sys,json; print(next(a["albumId"] for a in json.load(sys.stdin) if a.get("dirPath")=="alpha"))')"
