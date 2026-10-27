@@ -14,22 +14,22 @@ existing tickets (nothing live lost).
 
 ## Tickets
 
-| ID     | Slug                              | Status      | Priority | Area     |
-| ------ | --------------------------------- | ----------- | -------- | -------- |
-| FEAT1a | `spec-reconciliation-4xx`         | done        | high     | testing  |
-| FEAT1b | `api-assurance` (gate step)       | done        | medium   | testing  |
-| FEAT2  | `security-schemes-declaration`    | done        | medium   | backend  |
-| FEAT3  | `bug-rebuild-dir-album-cache`     | done        | high     | backend  |
-| FEAT4  | `auth-hardening`                  | done        | high     | backend  |
-| FEAT5  | `auth-flows-user-delete`          | done        | medium   | backend  |
-| FEAT5  | `bug-readonly-lockout`            | done        | high     | backend  |
-| FEAT6  | `auth-admin-panel`                | in-progress | high     | frontend |
-| FEAT7  | `authz-check`                     | backlog     | high     | backend  |
-| FEAT7  | `authz-props`                     | open        | high     | backend  |
-| FEAT7  | `flow-model-conformance`          | open        | high     | testing  |
-| FEAT7  | `error-handling-and-activity-log` | open        | high     | frontend |
-| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog     | medium   | testing  |
-| CLEAN5 | (no single ticket)                | done        | medium   | testing  |
+| ID     | Slug                              | Status  | Priority | Area     |
+| ------ | --------------------------------- | ------- | -------- | -------- |
+| FEAT1a | `spec-reconciliation-4xx`         | done    | high     | testing  |
+| FEAT1b | `api-assurance` (gate step)       | done    | medium   | testing  |
+| FEAT2  | `security-schemes-declaration`    | done    | medium   | backend  |
+| FEAT3  | `bug-rebuild-dir-album-cache`     | done    | high     | backend  |
+| FEAT4  | `auth-hardening`                  | done    | high     | backend  |
+| FEAT5  | `auth-flows-user-delete`          | done    | medium   | backend  |
+| FEAT5  | `bug-readonly-lockout`            | done    | high     | backend  |
+| FEAT6  | `auth-admin-panel`                | done    | high     | frontend |
+| FEAT7  | `authz-check`                     | backlog | high     | backend  |
+| FEAT7  | `authz-props`                     | open    | high     | backend  |
+| FEAT7  | `flow-model-conformance`          | open    | high     | testing  |
+| FEAT7  | `error-handling-and-activity-log` | open    | high     | frontend |
+| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog | medium   | testing  |
+| CLEAN5 | (no single ticket)                | done    | medium   | testing  |
 
 ## Quick cleanups
 
@@ -98,9 +98,14 @@ existing tickets (nothing live lost).
   (`auth-flows-user-delete`); the re-authentication guard covers the
   read-only lift and the password change, throttle moved with it
   (`bug-readonly-lockout`).
-- **FEAT6 — auth-admin-panel closeout.** Registration-toggle decision
-  from the ticket's options, wire or delete the caller-less `createUser`,
-  remaining elevation/set-password controls; then mark done.
+- **FEAT6 — auth-admin-panel done.** The registration toggle stays
+  writable (option A): the ticket's host-only premise was R12-specific
+  and config-v2 made `allow_registration` a runtime API knob again.
+  The panel gains admin-create-user (wiring the caller-less
+  `createUser`, resolving R22), per-row set-password behind the
+  re-auth header prompt, invite status/revoke display, and read-back
+  display — with pins at the api/util layers plus the house
+  structural pins for .vue glue.
 - **FEAT7 — structural assurance.** Largest items, start when the
   critical path is clear: `authz-check` (encode `authz-model.md` as data
   - bidirectional gate), `authz-props` (proptest world + P-1…P-12),

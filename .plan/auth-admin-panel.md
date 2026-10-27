@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: frontend
@@ -80,3 +80,24 @@ Backend: extend config/knob matrices only for new read-back fields.
 
 vitest, `frontend-check`, `openapi-check` after regen, `cargo test` +
 `backend-check` for backend changes, `docs-check`.
+
+## Outcome (2026-10-27)
+
+All four steps done. The registration-toggle decision resolved as
+**option A (writable)**: the ticket's option-1 rationale was conditioned
+on R12 rejecting `allowRegistration` in `PUT /put/config`, but that route
+is gone — `PUT /put/admin/config` accepts the knob (pinned by backend
+test, `docs/config.md` tier table lists it runtime-writable), so the
+premise never carried to config-v2 and the panel keeps the working
+toggle. Step 1's read-back already existed via the admin endpoint.
+
+`createUser` (R22, caller-less) is now wired by the admin create form
+(register with an admin session never grants admin — verified against the
+handler); set-password prompts for the caller's own password for the
+`X-Picasu-Password` re-auth header (403 surfaced, no redirect); invites
+gained per-row status derivation (extracted to `inviteStatus.ts`, six
+unit cases) and an optimistic revoke flip; elevation was already
+bidirectional. Pins live at the api/util layers; `.vue` glue follows the
+house structural-pin convention (node vitest, no mount harness — the
+reasoning is recorded in the new test file's header, matching
+`userManagement.test.ts`).
