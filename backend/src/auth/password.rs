@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
+use argon2::{
+    Argon2, PasswordHasher, PasswordVerifier, password_hash::phc::PasswordHash as ArgonPasswordHash,
+};
+
 use crate::error::{AppError, ErrorKind};
 
 /// PBKDF2-HMAC-SHA256 iteration count for new password hashes.
@@ -195,6 +199,39 @@ pub fn hash_password(password: &str) -> PasswordHash {
 pub fn verify_password(password: &str, expected: &PasswordHash) -> bool {
     let candidate = derive(password, &expected.salt, expected.iterations);
     candidate.ct_eq(&expected.hash).into()
+}
+
+/// Hash a share password with argon2id at the OWASP-recommended minimum
+/// cost (m=19456 KiB, t=2, p=1) and a per-hash random salt. Returns the
+/// PHC-encoded string stored in `Share.password`.
+///
+/// # Panics
+/// Panics only if the system RNG fails, which indicates a broken host.
+#[must_use]
+pub fn hash_share_password(password: &str) -> String {
+    Argon2::default()
+        .hash_password(password.as_bytes())
+        .expect("argon2 hashing cannot fail for valid inputs")
+        .to_string()
+}
+
+/// Verify a candidate share password against a stored value.
+///
+/// Dual-path by design (no migration): a stored value beginning with the
+/// argon2 PHC prefix `$argon2id$` is verified through argon2; anything
+/// else is treated as a legacy plaintext value and compared verbatim.
+#[must_use]
+pub fn verify_share_password(candidate: &str, stored: &str) -> bool {
+    if stored.starts_with("$argon2id$") {
+        let Ok(parsed) = ArgonPasswordHash::new(stored) else {
+            return false;
+        };
+        Argon2::default()
+            .verify_password(candidate.as_bytes(), &parsed)
+            .is_ok()
+    } else {
+        candidate == stored
+    }
 }
 
 /// KDF rounds executed on the login path (tests only): incremented by

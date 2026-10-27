@@ -558,10 +558,12 @@ and `backend/src/tests/auth_users.rs`.
 Present-tense gaps against current state of the art, with the reasoning
 behind each:
 
-- **Share passwords are stored plaintext** and compared verbatim. Shares
-  are low-entropy, human-distributed bearer strings; rotation means
-  recreating the share. User passwords are PBKDF2 hashes and never
-  exported.
+- **Legacy share passwords may remain plaintext.** Share passwords set
+  through the API are stored as argon2id hashes (m=19456 KiB, t=2, p=1)
+  and verified through argon2id; rows written before this change keep
+  their plaintext value until the share is recreated or its password
+  changed, and those are still compared verbatim. User passwords are
+  PBKDF2 hashes and never exported.
 - **Login throttling is time-boxed, not a lockout.** Bans decay and a
   restart clears them; there is no permanent account/IP lockout. The
   `register` path is not throttled (it creates accounts; credential

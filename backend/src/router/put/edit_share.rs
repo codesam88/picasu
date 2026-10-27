@@ -1,3 +1,4 @@
+use crate::auth::password::hash_share_password;
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
@@ -85,7 +86,9 @@ pub async fn edit_share(
                 // a full-object replace without keep-semantics would silently
                 // wipe every password on any other edit.
                 let mut share = json_data.share.clone();
-                match share.password.as_deref() {
+                // Snapshot the incoming secret before borrowing `share.password`.
+                let incoming = share.password.clone();
+                match incoming.as_deref() {
                     Some("") => share.password = None,
                     None => {
                         share.password = album
@@ -93,7 +96,7 @@ pub async fn edit_share(
                             .get(&share.url)
                             .and_then(|existing| existing.password.clone());
                     }
-                    Some(_) => {}
+                    Some(pw) => share.password = Some(hash_share_password(pw)),
                 }
                 album.share_list.insert(share.url, share);
                 metadata_table

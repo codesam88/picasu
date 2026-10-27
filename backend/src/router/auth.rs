@@ -1,5 +1,6 @@
 #![allow(clippy::module_inception)]
 
+use crate::auth::password::verify_share_password;
 use crate::model::album::ResolvedShare;
 #[allow(unused_imports)]
 use crate::model::album::Share;
@@ -750,7 +751,7 @@ fn validate_share_access(share: &Share, req: &Request<'_>) -> Result<(), AppErro
     if let Some(ref pwd) = share.password {
         // Check Header: x-share-password
         if let Some(header_pwd) = req.headers().get_one("x-share-password")
-            && header_pwd == pwd
+            && verify_share_password(header_pwd, pwd)
         {
             return Ok(());
         }
@@ -832,15 +833,28 @@ fn resolve_share_internal(
         ));
     };
 
-    let share = album.share_list.remove(share_id).ok_or_else(|| {
+    let mut share = album.share_list.remove(share_id).ok_or_else(|| {
         AppError::new(
             ErrorKind::NotFound,
             format!("Share '{share_id}' not found in album '{album_id}'"),
         )
     })?;
 
+    // Keep the credential the caller presented so the resolved share can
+    // echo it for the capability chain; at rest the stored value stays
+    // hashed.
+    let presented_password = req.headers().get_one("x-share-password").map(str::to_owned);
+
     // Validate share access (password and expiration)
     validate_share_access(&share, req)?;
+
+    // Echo the presented password (not the stored hash) in the resolved
+    // share, so later media requests resend a usable credential.
+    if share.password.is_some()
+        && let Some(pw) = presented_password
+    {
+        share.password = Some(pw);
+    }
 
     let resolved_share = ResolvedShare::new(
         ArrayString::<64>::from(album_id)
