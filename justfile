@@ -28,7 +28,7 @@ nextest-present:
 # Backend tests (cargo-nextest)
 [group('backend')]
 backend-test: frontend-build-maybe nextest-present
-    cd backend && PICASU_PBKDF_ITERATIONS="1000" cargo nextest run && cargo test --doc
+    cd backend && PICASU_WEAK_PWHASH=1 cargo nextest run && cargo test --doc
 
 # Backend tests in release mode
 [group('backend')]
@@ -439,7 +439,7 @@ run: build
     # Dev-sandbox-only KDF effort (matches the e2e launcher); production default untouched.
     cd backend && \
         PICASU_BOOTSTRAP_ADMIN=true \
-        PICASU_PBKDF_ITERATIONS=1000 \
+        PICASU_WEAK_PWHASH=1 \
         PICASU_CONFIG_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_DATA_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_IMAGE_HOME="{{justfile_directory()}}/sandbox/images" \

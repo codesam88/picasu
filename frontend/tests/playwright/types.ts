@@ -49,13 +49,12 @@ export const GivenIndex = z
 /// Declared backend startup options. Keys mirror the real Picasu option
 /// names (`AppConfig` field names in `backend/src/model/config.rs`
 /// `config_tier_table`): `bootstrap_admin` = `PICASU_BOOTSTRAP_ADMIN`,
-/// `login_ip_base_ban_secs` = `PICASU_LOGIN_IP_BASE_BAN_SECS`, plus
-/// env-only `pbkdf_iterations` = `PICASU_PBKDF_ITERATIONS`. Absent `server:`
-/// keeps the harness default (bootstrap open, 1000 iterations).
+/// `login_ip_base_ban_secs` = `PICASU_LOGIN_IP_BASE_BAN_SECS`. Absent
+/// `server:` keeps the harness defaults (bootstrap open, weak password
+/// hashing).
 export const ServerDeclaration = z
   .object({
     bootstrap_admin: z.boolean().optional(),
-    pbkdf_iterations: z.number().int().positive().optional(),
     login_ip_base_ban_secs: z.number().int().nonnegative().optional()
   })
   .strict()

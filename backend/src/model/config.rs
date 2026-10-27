@@ -244,7 +244,7 @@ pub struct AppConfig {
 // and `docs/config.md` derive from this table. Unlisted fields fail the
 // table test in the `tests` module below.
 //
-// `PICASU_PBKDF_ITERATIONS`, `PICASU_CONFIG_HOME`, and `PICASU_RATE_LIMITS`
+// `PICASU_WEAK_PWHASH`, `PICASU_CONFIG_HOME`, and `PICASU_RATE_LIMITS`
 // are out-of-schema env-only knobs: they are not `AppConfig` fields and are
 // not covered by this table (see the env-only note in `docs/config.md`).
 

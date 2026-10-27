@@ -187,9 +187,9 @@ export async function startBackend(
     // `POST /post/users/bootstrap`, which only responds while the bootstrap
     // window is open.
     PICASU_BOOTSTRAP_ADMIN: 'true',
-    // Test-only PBKDF effort: production KDF cost (~10s/verify in debug
-    // builds) would dominate every login flow under test.
-    PICASU_PBKDF_ITERATIONS: '1000'
+    // Test-only weak password hashing: production argon2id cost would
+    // dominate every login flow under test.
+    PICASU_WEAK_PWHASH: '1'
   }
   for (const [key, value] of Object.entries(options.extraEnv ?? {})) {
     if (value === undefined) {

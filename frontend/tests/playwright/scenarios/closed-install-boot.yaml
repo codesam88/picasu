@@ -6,7 +6,6 @@ covers:
     - route:/login
 server:
   bootstrap_admin: false
-  pbkdf_iterations: 1000
 given:
   - empty: true
 steps:

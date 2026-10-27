@@ -26,9 +26,6 @@ function serverExtraEnv(server: ServerDeclaration | undefined): Record<string, s
   if (server.bootstrap_admin !== undefined) {
     extraEnv['PICASU_BOOTSTRAP_ADMIN'] = server.bootstrap_admin ? 'true' : undefined
   }
-  if (server.pbkdf_iterations !== undefined) {
-    extraEnv['PICASU_PBKDF_ITERATIONS'] = String(server.pbkdf_iterations)
-  }
   if (server.login_ip_base_ban_secs !== undefined) {
     extraEnv['PICASU_LOGIN_IP_BASE_BAN_SECS'] = String(server.login_ip_base_ban_secs)
   }
@@ -65,8 +62,7 @@ test.describe('UI scenarios', () => {
       if (cliUsers.length > 0) {
         await provisionCliUsers(
           activePaths,
-          cliUsers.map((item) => item.cli_user),
-          scenario.server?.pbkdf_iterations ?? 1000
+          cliUsers.map((item) => item.cli_user)
         )
       }
       const extraEnv = serverExtraEnv(scenario.server)

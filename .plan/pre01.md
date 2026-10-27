@@ -14,22 +14,22 @@ existing tickets (nothing live lost).
 
 ## Tickets
 
-| ID     | Slug                              | Status      | Priority | Area     |
-| ------ | --------------------------------- | ----------- | -------- | -------- |
-| FEAT1a | `spec-reconciliation-4xx`         | done        | high     | testing  |
-| FEAT1b | `api-assurance` (gate step)       | done        | medium   | testing  |
-| FEAT2  | `security-schemes-declaration`    | done        | medium   | backend  |
-| FEAT3  | `bug-rebuild-dir-album-cache`     | done        | high     | backend  |
-| FEAT4  | `auth-hardening`                  | in-progress | high     | backend  |
-| FEAT5  | `auth-flows-user-delete`          | open        | medium   | backend  |
-| FEAT5  | `bug-readonly-lockout`            | backlog     | high     | backend  |
-| FEAT6  | `auth-admin-panel`                | open        | high     | frontend |
-| FEAT7  | `authz-check`                     | backlog     | high     | backend  |
-| FEAT7  | `authz-props`                     | open        | high     | backend  |
-| FEAT7  | `flow-model-conformance`          | open        | high     | testing  |
-| FEAT7  | `error-handling-and-activity-log` | open        | high     | frontend |
-| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog     | medium   | testing  |
-| CLEAN5 | (no single ticket)                | done        | medium   | testing  |
+| ID     | Slug                              | Status  | Priority | Area     |
+| ------ | --------------------------------- | ------- | -------- | -------- |
+| FEAT1a | `spec-reconciliation-4xx`         | done    | high     | testing  |
+| FEAT1b | `api-assurance` (gate step)       | done    | medium   | testing  |
+| FEAT2  | `security-schemes-declaration`    | done    | medium   | backend  |
+| FEAT3  | `bug-rebuild-dir-album-cache`     | done    | high     | backend  |
+| FEAT4  | `auth-hardening`                  | done    | high     | backend  |
+| FEAT5  | `auth-flows-user-delete`          | open    | medium   | backend  |
+| FEAT5  | `bug-readonly-lockout`            | backlog | high     | backend  |
+| FEAT6  | `auth-admin-panel`                | open    | high     | frontend |
+| FEAT7  | `authz-check`                     | backlog | high     | backend  |
+| FEAT7  | `authz-props`                     | open    | high     | backend  |
+| FEAT7  | `flow-model-conformance`          | open    | high     | testing  |
+| FEAT7  | `error-handling-and-activity-log` | open    | high     | frontend |
+| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog | medium   | testing  |
+| CLEAN5 | (no single ticket)                | done    | medium   | testing  |
 
 ## Quick cleanups
 
@@ -85,11 +85,13 @@ existing tickets (nothing live lost).
   resets, re-registers and sweeps the dir-album cache. Pinned by
   `bug_rebuild_dir_album_cache_reset_scan_returns_rows` (prefetch
   returns N rows after reset+scan, no restart).
-- **FEAT4 — auth-hardening closeout.** Fast pair first: `Cache-Control:
-private` on `/object` and dropping `?token=` from the four bearer-guard
-  call sites (finishes F10). Then the F8 decision: share-password hashing
-  at rest (storage format + validation + migration of existing plaintext
-  shares) — own sub-decision before any code.
+- **FEAT4 — auth-hardening closeout.** Done: `Cache-Control: private`
+  on `/object` (public-mode revision note) and header-only bearer
+  (F10); F8 closed with argon2id for both password stores — shares
+  keep legacy plaintext rows until recreated (no migration), users
+  dual-path verify and rehash on next login — and
+  `PICASU_PBKDF_ITERATIONS` is replaced by the test-only
+  `PICASU_WEAK_PWHASH=1` switch.
 - **FEAT5 — two bounded backend slices with decided designs:**
   `DELETE /delete/users/{id}` with the zero-admin 409 invariant plus its
   admin UI (`auth-flows-user-delete`), and the re-authentication guard

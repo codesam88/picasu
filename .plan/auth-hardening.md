@@ -81,7 +81,13 @@ returning the raw token in the body.
 
 #### F8 — Credentials stored and transported in plaintext (Medium, from source)
 
-Status: partial — user passwords are PBKDF2 hashes; share passwords remain plaintext (model/album.rs Share.password, == compare auth.rs); auth_key necessarily readable, owner-only 0600 test-pinned.
+Status: fixed — user and share passwords are argon2id PHC strings at rest
+(OWASP minimums m=19456 KiB, t=2, p=1; `PICASU_WEAK_PWHASH=1` selects
+trivial cost for test runs and never belongs in production). Shares keep
+the decided no-migration stance: legacy plaintext rows verify verbatim
+until recreated or re-set. Users dual-path verify and rehash legacy
+PBKDF2 rows in place on the next successful login (no token-version
+bump). auth_key necessarily readable, owner-only 0600 test-pinned.
 
 `password` and `auth_key` sit in `config.toml` as plaintext (verified on disk),
 share passwords are stored plaintext in the album records, and passwords are
@@ -156,9 +162,10 @@ Resolved:
 
 1. F5 done (buckets + 429 + IP logging); F6 done (closed by default, bind
    accepted as configurable); F7 done (server HttpOnly cookie).
-2. F8 partial: user passwords hashed; share passwords plaintext; `auth_key`
-   permissions load-bearing. F10 done (2026-10-27): header-only bearer,
-   `Cache-Control: private` on `/object`, invite/share URL shapes
-   untouched.
+2. F8 done (2026-10-27): argon2id for both password stores — shares keep
+   legacy plaintext rows until recreated, users dual-path verify and
+   upgrade on next login; `auth_key` permissions load-bearing. F10 done
+   (2026-10-27): header-only bearer, `Cache-Control: private` on
+   `/object`, invite/share URL shapes untouched.
 3. F9 done by deleting the import endpoint; the read-only lift is the
    dedicated `POST /post/admin/config/disable-read-only` route.

@@ -21,13 +21,9 @@ export interface CliUserDecl {
 /// (non-admin) user — the online bootstrap route only enrolls the first
 /// admin while the store is empty — and the store's engine lock requires
 /// the server to be down, so this must run pre-launch.
-export async function provisionCliUsers(
-  paths: WorkerPaths,
-  users: CliUserDecl[],
-  pbkdfIterations: number = 1000
-): Promise<void> {
+export async function provisionCliUsers(paths: WorkerPaths, users: CliUserDecl[]): Promise<void> {
   for (const user of users) {
-    await provisionOneUser(paths, user, pbkdfIterations)
+    await provisionOneUser(paths, user)
   }
 }
 
@@ -48,11 +44,7 @@ function resolveCmdBinary(): { cmd: string; args: string[]; cwd?: string } {
   }
 }
 
-function provisionOneUser(
-  paths: WorkerPaths,
-  user: CliUserDecl,
-  pbkdfIterations: number
-): Promise<void> {
+function provisionOneUser(paths: WorkerPaths, user: CliUserDecl): Promise<void> {
   const { cmd, args, cwd } = resolveCmdBinary()
   const cliArgs = [
     ...args,
@@ -69,7 +61,7 @@ function provisionOneUser(
       env: {
         ...process.env,
         PICASU_DATA_HOME: paths.DATA_DIR,
-        PICASU_PBKDF_ITERATIONS: String(pbkdfIterations)
+        PICASU_WEAK_PWHASH: '1'
       },
       stdio: ['ignore', 'pipe', 'pipe']
     })

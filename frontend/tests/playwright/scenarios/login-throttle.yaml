@@ -13,7 +13,6 @@ covers:
     - '#nav-search-input'
 server:
   bootstrap_admin: true
-  pbkdf_iterations: 1000
   login_ip_base_ban_secs: 2
 given:
   - empty: true

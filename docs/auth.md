@@ -413,7 +413,7 @@ boundary; nothing else is outstanding.
 - **`auth_key` rotation** — changing it invalidates every outstanding token of
   all three types at once.
 - **User store** — `<DATA_HOME>/auth/users.redb` is the userdb of record:
-  `username ⇒ {hash?, admin, home, ver}` (PBKDF2 hash optional — a hash-less
+  `username ⇒ {hash?, admin, home, ver}` (argon2id hash optional — a hash-less
   entry cannot log in). Every read-modify-write is one redb write
   transaction, so mutations are atomic and serial; the engine's file lock
   excludes other processes while the server holds the store open. The
@@ -563,7 +563,9 @@ behind each:
   and verified through argon2id; rows written before this change keep
   their plaintext value until the share is recreated or its password
   changed, and those are still compared verbatim. User passwords are
-  PBKDF2 hashes and never exported.
+  argon2id hashes (m=19456 KiB, t=2, p=1) and never exported; rows
+  written before this change as PBKDF2 hashes verify until the user's
+  next successful login, which rehashes them in place to argon2id.
 - **Login throttling is time-boxed, not a lockout.** Bans decay and a
   restart clears them; there is no permanent account/IP lockout. The
   `register` path is not throttled (it creates accounts; credential

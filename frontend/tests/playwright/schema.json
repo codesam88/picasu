@@ -589,7 +589,6 @@
           "type": "object",
           "properties": {
             "bootstrap_admin": { "type": "boolean" },
-            "pbkdf_iterations": { "type": "integer", "minimum": 1 },
             "login_ip_base_ban_secs": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": false

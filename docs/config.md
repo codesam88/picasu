@@ -165,7 +165,7 @@ changed. The tier table is the single source of truth in
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
 | runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
 | host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`     | env var, CLI flag, or `config.toml`                       | yes      |
-| env-only | `PICASU_CONFIG_HOME`, `PICASU_PBKDF_ITERATIONS`, `PICASU_RATE_LIMITS`                                                                                                                 | env var only                                              | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`                                                                                                                      | env var only                                              | yes      |
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
@@ -252,9 +252,9 @@ envelope via `GET /get/admin/config/export` (`version: 1`,
 
 Three settings are environment-only by construction: `PICASU_CONFIG_HOME`
 (selects where `config.toml` itself lives, so it cannot come from the
-file or the API), `PICASU_PBKDF_ITERATIONS` (test-only password-hashing
-effort — never set in production, accepted from neither the file nor the
-API), and `PICASU_RATE_LIMITS` (exact `false` bypasses all login
+file or the API), `PICASU_WEAK_PWHASH` (test-only: `=1` runs argon2id at
+trivial cost — never set in production, accepted from neither the file
+nor the API), and `PICASU_RATE_LIMITS` (exact `false` bypasses all login
 throttling for schemathesis fuzzing; failure logging stays on).
 
 ## Advanced: Rocket configuration

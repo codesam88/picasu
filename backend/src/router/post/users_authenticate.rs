@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
 
 use crate::auth::login_throttle::{LoginThrottle, select_client_ip};
-use crate::auth::password::{password_iterations, verify_password};
+use crate::auth::password::verify_password;
 use crate::auth::user_store::UserStore;
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
@@ -71,7 +71,7 @@ fn set_session_cookie(jar: &CookieJar<'_>, https: bool, token: String) {
 /// Name of the environment-only kill switch for the login throttle
 /// (schemathesis fuzzing). Read straight from the process environment at
 /// request time — never from `[server]` config and never API-writable —
-/// mirroring `PICASU_PBKDF_ITERATIONS` in `auth/password.rs`.
+/// mirroring `PICASU_WEAK_PWHASH` in `auth/password.rs`.
 pub(crate) const RATE_LIMITS_ENV_VAR: &str = "PICASU_RATE_LIMITS";
 
 /// The three login-throttle bucket schedules read from `APP_CONFIG`
@@ -116,7 +116,7 @@ const SWEEP_INTERVAL_SECS: u64 = 60;
 /// (including `FALSE` or `false `) leaves it enabled — a fuzz harness sets
 /// it deliberately, while an operator typo must never silently disable
 /// brute-force protection. Read from the process environment at request
-/// time, mirroring `PICASU_PBKDF_ITERATIONS`.
+/// time, mirroring `PICASU_WEAK_PWHASH`.
 pub(crate) fn rate_limits_disabled() -> bool {
     #[cfg(test)]
     match RATE_LIMITS_FORCED.load(Ordering::Relaxed) {
@@ -268,11 +268,7 @@ pub(crate) fn run_dummy_verify() -> bool {
     crate::auth::password::VERIFY_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     verify_password(
         &format!("{:x}-{:x}", rand::random::<u64>(), rand::random::<u64>()),
-        &crate::auth::password::PasswordHash {
-            salt: rand::random(),
-            hash: rand::random(),
-            iterations: password_iterations(),
-        },
+        crate::auth::password::dummy_hash(),
     )
 }
 
@@ -1393,11 +1389,10 @@ mod tests {
         // Timing threshold only holds at production effort: under the
         // test-only iteration default/override the round is deliberately
         // cheap, so only correctness is asserted there.
-        if crate::auth::password::password_iterations() == crate::auth::password::DEFAULT_ITERATIONS
-        {
+        if std::env::var("PICASU_WEAK_PWHASH").ok().as_deref() != Some("1") {
             assert!(
                 start.elapsed().as_millis() > 50,
-                "dummy verify must cost a PBKDF2 round"
+                "dummy verify must cost an argon2 round"
             );
         }
     }

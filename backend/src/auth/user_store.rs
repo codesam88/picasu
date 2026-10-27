@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use redb::{ReadableDatabase as _, ReadableTable as _};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::auth::password::{PasswordHash, hash_password, restrict_permissions, verify_password};
 use crate::error::{AppError, ErrorKind};
@@ -13,11 +13,9 @@ use crate::error::{AppError, ErrorKind};
 /// The identity record: the password hash fields plus the identity
 /// attributes, flattened into one row. Pre-change (hash-only) entries still
 /// deserialize because `admin`, `home` and `ver` default.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UserRecord {
-    #[serde(flatten)]
-    #[serde(default)]
-    pub hash: Option<PasswordHash>,
+    pub hash: Option<String>,
     #[serde(default)]
     pub admin: bool,
     #[serde(default)]
@@ -28,6 +26,53 @@ pub struct UserRecord {
     /// role) and by an explicit invalidation.
     #[serde(default)]
     pub ver: u64,
+}
+
+impl<'de> serde::Deserialize<'de> for UserRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let obj = value
+            .as_object()
+            .ok_or_else(|| D::Error::custom("user record must be an object"))?;
+        let admin = obj
+            .get("admin")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let home = obj.get("home").and_then(|v| v.as_str()).map(String::from);
+        let ver = obj
+            .get("ver")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let hash = if obj.contains_key("salt") && obj.contains_key("iterations") {
+            // Legacy flattened PBKDF2 row (salt/hash/iterations at top level).
+            let legacy: PasswordHash =
+                serde_json::from_value(value.clone()).map_err(D::Error::custom)?;
+            Some(serde_json::to_string(&legacy).map_err(D::Error::custom)?)
+        } else if let Some(h) = obj.get("hash") {
+            match h {
+                serde_json::Value::Null => None,
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Object(_) => {
+                    let legacy: PasswordHash =
+                        serde_json::from_value(h.clone()).map_err(D::Error::custom)?;
+                    Some(serde_json::to_string(&legacy).map_err(D::Error::custom)?)
+                }
+                _ => return Err(D::Error::custom("invalid password hash")),
+            }
+        } else {
+            None
+        };
+        Ok(UserRecord {
+            hash,
+            admin,
+            home,
+            ver,
+        })
+    }
 }
 
 /// The single table of the user store: user id to the JSON encoding of
@@ -226,6 +271,19 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
     })
 }
 
+/// Rewrite the stored hash for `id` with an argon2id hash of `password`
+/// without bumping the token version — an in-place upgrade of a legacy
+/// row, not a password change.
+pub fn upgrade_password_hash(path: &Path, id: &str, password: &str) -> Result<(), AppError> {
+    let hash = crate::auth::password::hash_password(password.trim());
+    rmw(path, |users| {
+        if let Some(entry) = users.get_mut(id.trim()) {
+            entry.hash = Some(hash.clone());
+        }
+        Ok(())
+    })
+}
+
 /// Set the admin flag of an existing user and invalidate the user's
 /// outstanding tokens: the role lives in the token, so the new role takes
 /// effect at the next sign-in. Returns `Ok(false)` when the flag already
@@ -397,12 +455,15 @@ impl UserStore {
     }
 
     pub fn verify(&self, user_id: &str, password: &str) -> bool {
-        self.users
-            .get(user_id)
-            .is_some_and(|stored| match &stored.hash {
-                Some(hash) => verify_password(password, hash),
-                None => false,
-            })
+        let stored = self.users.get(user_id.trim());
+        let Some(hash) = stored.and_then(|s| s.hash.clone()) else {
+            return false;
+        };
+        let ok = verify_password(password, &hash);
+        if ok && !hash.starts_with("$argon2id$") {
+            let _ = upgrade_password_hash(&self.path, user_id.trim(), password.trim());
+        }
+        ok
     }
 
     pub fn is_empty(&self) -> bool {
@@ -501,11 +562,13 @@ mod tests {
         let guard = table.get("alice").expect("get").expect("alice row");
         let value: serde_json::Value =
             serde_json::from_str(guard.value()).expect("value decodes as JSON");
-        assert!(value.get("salt").is_some(), "salt must be present");
-        assert!(value.get("hash").is_some(), "hash must be present");
+        let hash = value
+            .get("hash")
+            .and_then(|v| v.as_str())
+            .expect("hash string");
         assert!(
-            value.get("iterations").is_some(),
-            "iterations must be present"
+            hash.starts_with("$argon2id$"),
+            "hash must be argon2id at rest"
         );
     }
 
