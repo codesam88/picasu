@@ -372,6 +372,7 @@ export const UiAssertApiResponse = z
         url: z.string(),
         status: z.union([z.number(), z.array(z.number())]),
         method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().default('GET'),
+        headers: z.record(z.string(), z.string()).optional(),
         body: z.unknown().optional(),
         header: z
           .object({

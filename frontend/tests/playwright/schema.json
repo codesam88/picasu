@@ -434,6 +434,7 @@
               "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" } }]
             },
             "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
+            "headers": { "type": "object", "additionalProperties": { "type": "string" } },
             "body": true,
             "json": { "type": "object" },
             "json_absent": { "type": "string" },

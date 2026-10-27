@@ -99,6 +99,8 @@ steps:
       - api.response:
           url: /post/admin/config/disable-read-only
           method: POST
+          headers:
+            x-picasu-password: e2e_test_pwd
           status: 200 # the kill-switch may always lift itself (AUTH-12 exception)
 
   - when:

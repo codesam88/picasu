@@ -2728,7 +2728,7 @@
     },
     "/post/admin/config/disable-read-only": {
       "post": {
-        "description": "Clears `readOnlyMode` and persists the change. Admin-only and deliberately\nNOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable\nwhile it is on; the L3 confirm lives client-side.\n\nErrors: 401 missing or invalid admin credentials — 500 config write failure.",
+        "description": "Clears `readOnlyMode` and persists the change. Admin-only and deliberately\nNOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable\nwhile it is on. Requires re-authentication via the `X-Picasu-Password`\nheader (403 when it is missing or wrong).\n\nErrors: 401 missing or invalid admin credentials — 403 missing or wrong\nre-authentication password — 500 config write failure.",
         "operationId": "disable_read_only_handler",
         "responses": {
           "200": {
@@ -2736,6 +2736,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "500": {
             "description": "Internal error"

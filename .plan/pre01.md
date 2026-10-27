@@ -22,7 +22,7 @@ existing tickets (nothing live lost).
 | FEAT3  | `bug-rebuild-dir-album-cache`     | done    | high     | backend  |
 | FEAT4  | `auth-hardening`                  | done    | high     | backend  |
 | FEAT5  | `auth-flows-user-delete`          | open    | medium   | backend  |
-| FEAT5  | `bug-readonly-lockout`            | backlog | high     | backend  |
+| FEAT5  | `bug-readonly-lockout`            | done    | high     | backend  |
 | FEAT6  | `auth-admin-panel`                | open    | high     | frontend |
 | FEAT7  | `authz-check`                     | backlog | high     | backend  |
 | FEAT7  | `authz-props`                     | open    | high     | backend  |

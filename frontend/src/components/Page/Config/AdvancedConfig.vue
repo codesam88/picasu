@@ -48,7 +48,15 @@
       <v-card>
         <v-card-title class="font-weight-bold">Disable read-only mode?</v-card-title>
         <v-card-text>
-          This lifts the read-only kill-switch and re-enables writes. Continue?
+          This lifts the read-only kill-switch and re-enables writes. Enter your password to
+          confirm.
+          <v-text-field
+            v-model="disablePassword"
+            type="password"
+            label="Password"
+            class="mt-2"
+            @keyup.enter="confirmDisable"
+          ></v-text-field>
         </v-card-text>
         <v-card-actions class="justify-end">
           <v-btn variant="text" @click="cancelDisable">Cancel</v-btn>
@@ -78,6 +86,7 @@ const loading = ref(false)
 const resetting = ref(false)
 const disabling = ref(false)
 const confirmOpen = ref(false)
+const disablePassword = ref('')
 
 const onReadOnlyToggle = (value: unknown) => {
   const next = value === true
@@ -94,19 +103,22 @@ const onReadOnlyToggle = (value: unknown) => {
 
 const cancelDisable = () => {
   confirmOpen.value = false
+  disablePassword.value = ''
 }
 
 const confirmDisable = async () => {
   confirmOpen.value = false
   disabling.value = true
+  const password = disablePassword.value
   const success = await tryWithMessageStore('mainId', async () => {
-    await disableReadOnly()
+    await disableReadOnly(password)
     readOnlyMode.value = false
     return true
   })
   if (success === true) {
     messageStore.success('Read-only mode disabled')
   }
+  disablePassword.value = ''
   disabling.value = false
 }
 

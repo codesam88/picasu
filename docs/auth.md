@@ -332,16 +332,17 @@ expiry.
 
 ### Request guards (the authorization manifest)
 
-| Guard               | Accepts                                                                                 | Used by                                                                                                                                                                    |
-| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role                                                    | config write/export, auth-key reset, user management (list/set-admin), invites, index jobs, shares, fs completion, album-index status, test probes                         |
-| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected                  | `PUT /put/users/password`, album/tag lists (`GET /get/get-tags`, `GET /get/get-albums`), content writes (upload, move, trash, delete, describe, cover, rotate, regenerate) |
-| `GuardShare`        | share headers/query, or cookie of any live authenticated user (admin or not)            | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                  |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter             | get-data, get-metadata, get-scroll-bar                                                                                                                                     |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                             | `GET /object/compressed/...`                                                                                                                                               |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim                           | `GET /object/imported/...`                                                                                                                                                 |
-| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or any live authenticated user | `POST /upload`                                                                                                                                                             |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                              | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
+| Guard               | Accepts                                                                                   | Used by                                                                                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | cookie of a user with the admin role                                                      | config write/export, auth-key reset, user management (list/set-admin), invites, index jobs, shares, fs completion, album-index status, test probes                         |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected                    | `PUT /put/users/password`, album/tag lists (`GET /get/get-tags`, `GET /get/get-albums`), content writes (upload, move, trash, delete, describe, cover, rotate, regenerate) |
+| `GuardShare`        | share headers/query, or cookie of any live authenticated user (admin or not)              | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                  |
+| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter               | get-data, get-metadata, get-scroll-bar                                                                                                                                     |
+| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                               | `GET /object/compressed/...`                                                                                                                                               |
+| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim                             | `GET /object/imported/...`                                                                                                                                                 |
+| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or any live authenticated user   | `POST /upload`                                                                                                                                                             |
+| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                                | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
+| `GuardReauth`       | valid session plus the account password in the `X-Picasu-Password` header (403 otherwise) | `POST /post/admin/config/disable-read-only` (lift) and `PUT /put/users/password` (self-change) — re-authentication for privileged operations                               |
 
 ### Admin-only route inventory (2026-10-26)
 
@@ -604,4 +605,5 @@ The architecture's core decisions verify well under attack:
 SAMEORIGIN`, `Permissions-Policy`), and `GuardReadOnlyMode` blocks mutations
   while read-only mode is on. Read-only mode is lifted only through
   `POST /post/admin/config/disable-read-only` (admin-only, not read-only-
-  gated).
+  gated) and requires the admin password again via the
+  `X-Picasu-Password` header.

@@ -1035,6 +1035,149 @@ impl<'r> FromRequest<'r> for GuardUser {
     }
 }
 
+// src/router/fairing/guard_reauth.rs
+
+/// Request guard for re-authentication: a valid admin/user session (resolved
+/// from the `jwt` cookie) plus the account password presented in the
+/// `X-Picasu-Password` request header, verified against the caller's stored
+/// hash via `UserStore::verify`. Used by the read-only lift and the
+/// self-service password change, so a captured token alone cannot perform
+/// either.
+///
+/// Session failures surface as 401; a missing or wrong password as 403.
+pub struct GuardReauth {
+    #[allow(dead_code)]
+    pub claims: Claims,
+}
+
+#[rocket::async_trait]
+#[allow(clippy::too_many_lines)]
+impl<'r> FromRequest<'r> for GuardReauth {
+    type Error = GuardError;
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let Ok(claims) = try_jwt_cookie_user(req, &VALIDATION) else {
+            return Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(ErrorKind::Auth, "Authentication error"),
+            ));
+        };
+        let Role::User { id, .. } = &claims.role else {
+            return Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(ErrorKind::Auth, "Authentication error"),
+            ));
+        };
+        let id = id.clone();
+
+        let ip = match crate::router::post::users_authenticate::ThrottleClientIp::from_request(req)
+            .await
+        {
+            Outcome::Success(t) => t.0,
+            _ => String::new(),
+        };
+        let rate_limits_disabled = crate::router::post::users_authenticate::rate_limits_disabled();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .ok();
+        let throttle = if rate_limits_disabled {
+            None
+        } else {
+            now.map(
+                |now| crate::router::put::users_password::PasswordThrottleCtx {
+                    ip,
+                    jti: claims.jti.clone(),
+                    exp: claims.exp,
+                    now,
+                },
+            )
+        };
+
+        let Some(presented) = req.headers().get_one("x-picasu-password") else {
+            return Outcome::Error((
+                Status::Forbidden,
+                AppError::new(
+                    ErrorKind::PermissionDenied,
+                    "Re-authentication password required",
+                ),
+            ));
+        };
+        let presented = presented.to_string();
+
+        let path = crate::auth::users::user_store_path();
+        let Ok(store) = crate::auth::user_store::UserStore::load(&path) else {
+            return Outcome::Error((
+                Status::InternalServerError,
+                AppError::new(ErrorKind::IO, "User store unavailable"),
+            ));
+        };
+
+        if let Some(ctx) = &throttle {
+            let ban = crate::router::put::users_password::with_password_throttle(|t| {
+                t.reserve(&ctx.ip, &ctx.jti, ctx.now)
+            });
+            if ban > 0 {
+                crate::router::put::users_password::with_password_throttle(|t| t.sweep(ctx.now));
+                let _ =
+                    crate::router::put::users_password::revoke_attempt_session(&ctx.jti, ctx.exp);
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    AppError::new(
+                        ErrorKind::Auth,
+                        "too many incorrect password attempts; session revoked",
+                    ),
+                ));
+            }
+        }
+
+        if !store.verify(&id, &presented) {
+            if let Some(ctx) = &throttle {
+                let ban = crate::router::put::users_password::with_password_throttle(|t| {
+                    t.release(&ctx.ip, &ctx.jti);
+                    t.record_failure(&ctx.ip, &ctx.jti, ctx.now)
+                });
+                if ban > 0 {
+                    let _ = crate::router::put::users_password::revoke_attempt_session(
+                        &ctx.jti, ctx.exp,
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(
+                            ErrorKind::Auth,
+                            "too many incorrect password attempts; session revoked",
+                        ),
+                    ));
+                }
+            }
+            let detail = match &throttle {
+                None => "Incorrect current password".to_string(),
+                Some(ctx) => {
+                    match crate::router::put::users_password::with_password_throttle(|t| {
+                        t.remaining(&ctx.ip, &ctx.jti, ctx.now)
+                    }) {
+                        0 => "Incorrect current password (no attempts remaining)".to_string(),
+                        1 => "Incorrect current password (1 attempt remaining)".to_string(),
+                        n => format!("Incorrect current password ({n} attempts remaining)"),
+                    }
+                }
+            };
+            return Outcome::Error((
+                Status::Forbidden,
+                AppError::new(ErrorKind::PermissionDenied, detail),
+            ));
+        }
+
+        if let Some(ctx) = &throttle {
+            crate::router::put::users_password::with_password_throttle(|t| {
+                t.record_success(&ctx.ip, &ctx.jti, ctx.now);
+            });
+        }
+
+        Outcome::Success(GuardReauth { claims })
+    }
+}
+
 // src/router/fairing/guard_hash.rs
 use log::warn;
 use rocket::serde::json::Json;

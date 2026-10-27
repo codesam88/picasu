@@ -125,6 +125,7 @@ fn password_change_wipes_all_sessions() {
         .put("/put/users/password")
         .cookie(Cookie::new("jwt", tok_a.clone()))
         .header(ContentType::JSON)
+        .header(rocket::http::Header::new("x-picasu-password", test_password("t-carol-old")))
         .body(json!({"userId":"r6-carol","oldPassword": test_password("t-carol-old"), "newPassword": test_password("t-carol-new")}).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
@@ -163,6 +164,10 @@ fn admin_reset_wipes_target_sessions() {
         .put("/put/users/password")
         .cookie(Cookie::new("jwt", tok_admin.clone()))
         .header(ContentType::JSON)
+        .header(rocket::http::Header::new(
+            "x-picasu-password",
+            test_password("t-admin-old"),
+        ))
         .body(json!({"userId":"r6-dave","newPassword": test_password("t-dave-new")}).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
