@@ -54,7 +54,7 @@
         <v-list-item v-for="invite in invites" :key="invite.id" :title="invite.prefix + '…'">
           <template #subtitle>
             <span>
-              by {{ invite.createdBy }}
+              status: {{ status(invite) }} · by {{ invite.createdBy }}
               <span v-if="invite.username"> · for {{ invite.username }}</span>
               <span v-else> · open</span>
               <span v-if="invite.usedBy"> · used by {{ invite.usedBy }}</span>
@@ -88,6 +88,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { listInvites, createInvite, revokeInvite, buildInviteLink } from '@/api/invites'
 import type { InviteView } from '@/api/invites'
+import { inviteStatus } from '@/script/utils/inviteStatus'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { errorDisplay } from '@/script/utils/errorDisplay'
@@ -100,6 +101,7 @@ const usernameInput = ref('')
 const creating = ref(false)
 const revoking = ref<string | null>(null)
 const createdLink = ref<string | null>(null)
+const revokedIds = ref<Set<string>>(new Set())
 
 const expiresInHours = computed(() => {
   const trimmed = expiryInput.value.trim()
@@ -141,6 +143,7 @@ const revoke = async (id: string) => {
   try {
     await tryWithMessageStore('mainId', async () => {
       await revokeInvite(id)
+      revokedIds.value.add(id)
       messageStore.success('Invite revoked')
       await refreshInvites()
       return true
@@ -170,6 +173,9 @@ const formatExpiry = (expiresAt: number): string => {
   const date = new Date(expiresAt * 1000)
   return date.toLocaleString()
 }
+
+const status = (invite: InviteView): string =>
+  inviteStatus(invite, Date.now() / 1000, revokedIds.value.has(invite.id))
 
 onMounted(refreshInvites)
 </script>

@@ -4,8 +4,52 @@
       <v-card-title class="font-weight-bold">User Management</v-card-title>
       <v-divider thickness="4" variant="double"></v-divider>
 
+      <v-card-text v-if="isAdmin">
+        <v-row dense>
+          <v-col cols="12" sm="5">
+            <v-text-field
+              v-model="newUsername"
+              label="Username"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="5">
+            <v-text-field
+              v-model="newPassword"
+              label="Initial password"
+              type="password"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="2" class="d-flex align-center">
+            <v-btn
+              color="primary"
+              variant="flat"
+              block
+              :loading="creating"
+              @click="createUserAction"
+            >
+              Create
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card-text>
+
       <v-list-item v-for="user in users" :key="user.userId" :title="user.userId">
         <template #append>
+          <v-btn
+            v-if="isAdmin"
+            icon="mdi-key-variant"
+            variant="text"
+            color="primary"
+            size="small"
+            :disabled="saving"
+            @click="askSetPassword(user)"
+          ></v-btn>
           <v-btn
             v-if="!isRowLocked(user)"
             icon="mdi-delete-outline"
@@ -63,6 +107,41 @@
           </v-card-actions>
         </v-card>
       </v-dialog>
+
+      <v-dialog v-model="setPasswordOpen" max-width="480">
+        <v-card>
+          <v-card-title class="font-weight-bold">Set password</v-card-title>
+          <v-card-text>
+            Set a new password for {{ pendingSetPassword?.userId }}. Enter your admin password to
+            confirm.
+            <v-text-field
+              v-model="newSetPassword"
+              type="password"
+              label="New password"
+              class="mt-2"
+              @keyup.enter="confirmSetPassword"
+            ></v-text-field>
+            <v-text-field
+              v-model="adminPassword"
+              type="password"
+              label="Your password"
+              class="mt-2"
+              @keyup.enter="confirmSetPassword"
+            ></v-text-field>
+          </v-card-text>
+          <v-card-actions class="justify-end">
+            <v-btn variant="text" @click="cancelSetPassword">Cancel</v-btn>
+            <v-btn
+              color="primary"
+              variant="flat"
+              :loading="settingPassword"
+              @click="confirmSetPassword"
+            >
+              Set
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </v-card>
   </v-col>
 </template>
@@ -70,15 +149,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { listUsers, setUserAdmin, deleteUser } from '@/api/users'
+import { listUsers, setUserAdmin, deleteUser, createUser, setUserPassword } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { errorDisplay } from '@/script/utils/errorDisplay'
-import { useCurrentUser, selfRowState } from '@/script/utils/currentUser'
+import { useCurrentUser, selfRowState, canSeeUserPanel } from '@/script/utils/currentUser'
 
 const messageStore = useMessageStore('mainId')
 const me = useCurrentUser()
+const isAdmin = computed(() => canSeeUserPanel(me.value))
 
 // --- State ---
 const users = ref<UserSummary[]>([])
@@ -87,6 +167,14 @@ const confirmOpen = ref(false)
 const pendingTarget = ref<UserSummary | null>(null)
 const deleteConfirmOpen = ref(false)
 const pendingDelete = ref<UserSummary | null>(null)
+const newUsername = ref('')
+const newPassword = ref('')
+const creating = ref(false)
+const setPasswordOpen = ref(false)
+const pendingSetPassword = ref<UserSummary | null>(null)
+const newSetPassword = ref('')
+const adminPassword = ref('')
+const settingPassword = ref(false)
 
 // --- Computed ---
 const adminCount = computed(() => users.value.filter((u) => u.admin).length)
@@ -178,6 +266,69 @@ const confirmDelete = async () => {
     await refreshUsers()
   } finally {
     saving.value = false
+  }
+}
+
+const createUserAction = async () => {
+  if (newUsername.value.trim() === '' || newPassword.value === '') return
+  creating.value = true
+  try {
+    await tryWithMessageStore('mainId', async () => {
+      await createUser(newUsername.value.trim(), newPassword.value)
+      messageStore.success(`${newUsername.value.trim()} created`)
+      newUsername.value = ''
+      newPassword.value = ''
+      await refreshUsers()
+      return true
+    })
+  } catch (error: unknown) {
+    const axiosErr = error as { response?: unknown }
+    if (axiosErr.response === undefined) {
+      messageStore.error(errorDisplay(error))
+    }
+  } finally {
+    creating.value = false
+  }
+}
+
+const askSetPassword = (user: UserSummary) => {
+  pendingSetPassword.value = user
+  newSetPassword.value = ''
+  adminPassword.value = ''
+  setPasswordOpen.value = true
+}
+
+const cancelSetPassword = () => {
+  setPasswordOpen.value = false
+  pendingSetPassword.value = null
+  newSetPassword.value = ''
+  adminPassword.value = ''
+}
+
+const confirmSetPassword = async () => {
+  const target = pendingSetPassword.value
+  if (target === null) return
+  setPasswordOpen.value = false
+  settingPassword.value = true
+  const newPasswordValue = newSetPassword.value
+  const adminPwd = adminPassword.value
+  try {
+    await tryWithMessageStore('mainId', async () => {
+      await setUserPassword(target.userId, newPasswordValue, adminPwd)
+      messageStore.success(`Password set for ${target.userId}`)
+      newSetPassword.value = ''
+      adminPassword.value = ''
+      await refreshUsers()
+      return true
+    })
+  } catch (error: unknown) {
+    const axiosErr = error as { response?: unknown }
+    if (axiosErr.response === undefined) {
+      messageStore.error(errorDisplay(error))
+    }
+  } finally {
+    settingPassword.value = false
+    pendingSetPassword.value = null
   }
 }
 

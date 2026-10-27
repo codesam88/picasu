@@ -55,23 +55,23 @@ export const deleteUser = async (userId: string): Promise<void> => {
   await axios.delete(`/delete/users/${encodeURIComponent(userId)}`)
 }
 
-/// Change a user's password via `PUT /put/users/password`. A self-change
-/// always presents the current password; only an admin recovering another
-/// user omits it (no UI for that path yet).
+/// Change a user's password via `PUT /put/users/password`. The caller's own
+/// password travels in the `X-Picasu-Password` header (re-authentication);
+/// the body carries only `{ userId, newPassword }`. Covers both self-change
+/// (caller == target) and admin recovery (caller != target).
 export const setUserPassword = async (
   userId: string,
-  oldPassword: string,
-  newPassword: string
+  newPassword: string,
+  reauthPassword: string
 ): Promise<void> => {
   await axios.put(
     '/put/users/password',
     {
       userId,
-      oldPassword,
       newPassword
     },
     {
-      headers: { 'X-Picasu-Password': oldPassword }
+      headers: { 'X-Picasu-Password': reauthPassword }
     }
   )
 }

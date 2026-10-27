@@ -111,7 +111,7 @@ const savePassword = async () => {
       oldPassword.value,
       newPassword.value,
       confirmPassword.value,
-      (old, next) => setUserPassword(userId, old, next)
+      (old, next) => setUserPassword(userId, next, old)
     )
     if (!ok) return false
 
