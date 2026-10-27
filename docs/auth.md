@@ -562,15 +562,6 @@ behind each:
   are low-entropy, human-distributed bearer strings; rotation means
   recreating the share. User passwords are PBKDF2 hashes and never
   exported.
-- **Bearer tokens are accepted in the URL query** (`?token=`), because
-  media elements and embeds cannot set headers. Tokens in URLs leak
-  into proxy logs, browser history, and `Referer` headers; prefer the
-  `Authorization` header where the client controls it.
-- **Authenticated media is served `Cache-Control: public`** with a long
-  `max-age`. A caching reverse proxy in front of Picasu may retain and
-  re-serve media to later unauthenticated requests for the same URL;
-  use `private` handling downstream or keep caching proxies out of the
-  media path.
 - **Login throttling is time-boxed, not a lockout.** Bans decay and a
   restart clears them; there is no permanent account/IP lockout. The
   `register` path is not throttled (it creates accounts; credential

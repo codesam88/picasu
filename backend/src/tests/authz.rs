@@ -246,6 +246,81 @@ fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
     );
 }
 
+// ── F10: query-string bearer and shared-cache headers ─────────────────────
+
+/// A valid bearer token in the query string must be refused: `?token=` leaks
+/// credentials into proxy logs, browser history and `Referer` headers, and
+/// every client here controls the `Authorization` header instead. The control
+/// leg proves the token itself is good, so the 401 is about the transport.
+#[test]
+fn a_valid_bearer_token_in_the_query_is_refused() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (album, asset) = create_album(&client, "/authz_query_token/album/photo.jpg");
+    let share = create_share(&client, &album, false, false);
+    let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
+
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {snapshot_token}"),
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "control: the header form authenticates"
+    );
+
+    let resp = client
+        .get(format!(
+            "/get/get-data?timestamp={ts}&start=0&end=1&token={snapshot_token}"
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "the same token in the query string must not authenticate"
+    );
+}
+
+/// Authorized media is marked `Cache-Control: private`: `public` lets a
+/// shared cache retain a response and re-serve it to a later unauthenticated
+/// request for the same URL (RFC 9111).
+#[test]
+fn media_responses_are_not_shared_cacheable() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (album, asset) = create_album(&client, "/authz_cache_header/album/photo.jpg");
+    let share = create_share(&client, &album, true, true);
+    let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
+    let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
+
+    let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+    let claims: crate::router::auth::ClaimsHash =
+        crate::router::auth::decode_typed(&asset_token, &validation).expect("decode asset token");
+    let hash = claims.hash.to_string();
+    let resp = client
+        .get(format!("/object/compressed/{}/{}.jpg", &hash[0..2], hash))
+        .header(Header::new("x-album-id", album))
+        .header(Header::new("x-share-id", share))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {asset_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "media serving");
+    let cache_control = resp
+        .headers()
+        .get_one("Cache-Control")
+        .expect("Cache-Control on media responses");
+    assert!(
+        cache_control.contains("private") && !cache_control.contains("public"),
+        "media must be private for shared caches, got {cache_control}"
+    );
+}
+
 // ── original serving requires allow_original ──────────────────────────────
 
 /// A bearer token with `allow_original=false` must be denied with 401 on

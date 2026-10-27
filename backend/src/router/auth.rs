@@ -541,7 +541,13 @@ use serde::de::DeserializeOwned;
 
 // Error types for share validation are now handled by AppError
 
-/// Extract and validate Authorization header Bearer token
+/// Extract and validate Authorization header Bearer token.
+///
+/// Header-only: the query form (`?token=`) leaked credentials into proxy
+/// logs, browser history and `Referer` headers. URL-passable credentials
+/// keep their own shapes instead — share links carry a path slug and the
+/// `x-album-id`/`x-share-id` (or `albumId`/`shareId`) pair, invite links
+/// carry `?invite=` in the frontend route and redeem via POST body.
 pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
     if let Some(auth_header) = req.headers().get_one("Authorization") {
         match auth_header.strip_prefix("Bearer ") {
@@ -554,13 +560,7 @@ pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
         }
     }
 
-    if let Some(Ok(token)) = req.query_value::<&str>("token") {
-        return Ok(token);
-    }
-
-    Err(anyhow!(
-        "Request is missing the Authorization header or token query parameter"
-    ))
+    Err(anyhow!("Request is missing the Authorization header"))
 }
 
 /// Decode JWT token with given claims type and validation
