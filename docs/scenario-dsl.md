@@ -378,16 +378,15 @@ steps:
 ### `server:` — declared backend startup options
 
 Keys mirror the real Picasu option names (`AppConfig` field names in
-`backend/src/model/config.rs`): `bootstrap_admin` (`PICASU_BOOTSTRAP_ADMIN`),
-`login_ip_base_ban_secs` (`PICASU_LOGIN_IP_BASE_BAN_SECS`), plus env-only
-`pbkdf_iterations` (`PICASU_PBKDF_ITERATIONS`). Absent `server:` keeps the
-harness default (bootstrap open, 1000 iterations). A scenario that declares
-`server:` boots its own backend with the mapped env.
+`backend/src/model/config.rs`): `bootstrap_admin` (`PICASU_BOOTSTRAP_ADMIN`)
+and `login_ip_base_ban_secs` (`PICASU_LOGIN_IP_BASE_BAN_SECS`). Absent
+`server:` keeps the harness defaults (bootstrap open, weak password
+hashing). A scenario that declares `server:` boots its own backend with
+the mapped env.
 
 ```yaml
 server:
   bootstrap_admin: false
-  pbkdf_iterations: 1000
 ```
 
 ### `when:` — user interactions (ordered list)

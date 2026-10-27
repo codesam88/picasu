@@ -15,7 +15,6 @@ covers:
 # as the viewer cookie alone.
 server:
   bootstrap_admin: false
-  pbkdf_iterations: 1000
 given:
   - empty: true
   - cli_user:

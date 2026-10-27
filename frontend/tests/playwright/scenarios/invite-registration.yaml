@@ -15,7 +15,6 @@ covers:
     - .desktop-small-image
 server:
   bootstrap_admin: true
-  pbkdf_iterations: 1000
 given:
   - empty: true
   - user:

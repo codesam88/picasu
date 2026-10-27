@@ -219,13 +219,13 @@ from the contract.
 
 ### Tooling caveats
 
-- **`PICASU_PBKDF_ITERATIONS`**: test-only PBKDF effort override
-  (wired into `just backend-test` and the e2e backend launcher at a
-  very low count; unit tests default to it via `cfg(test)` even
-  without the env var). PBKDF itself is never bypassed;
-  absent/unparseable falls back to the 600k production default, and
-  the override is env-only so it cannot arrive via config. Plain
-  `cargo test` pays full KDF cost only in integration tests, which
+- **`PICASU_WEAK_PWHASH`**: test-only argon2id cost override. Set to
+  exactly `1` to run argon2id at trivial cost (m=8192 KiB, t=1, p=1)
+  for both user and share password hashing; unset or any other value
+  keeps production params (m=19456 KiB, t=2, p=1). Wired into
+  `just backend-test` and the e2e backend launcher. The override is
+  env-only and read per hash call, so tests can flip it within one
+  process; never set in production.
   link the lib without `cfg(test)`.
 - **clippy `unwrap_used`**: enforced under `-D warnings` over
   `--all-targets`, so test code is gated the same as lib and bins.

@@ -4,7 +4,6 @@ use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
 
 use pbkdf2::pbkdf2_hmac;
-use rand::random;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
@@ -15,9 +14,7 @@ use argon2::{
 
 use crate::error::{AppError, ErrorKind};
 
-/// PBKDF2-HMAC-SHA256 iteration count for new password hashes.
-pub const DEFAULT_ITERATIONS: u32 = 600_000;
-/// Length of the per-password random salt in bytes.
+/// Length of the per-password random salt in bytes (legacy PBKDF2 rows).
 pub const SALT_LEN: usize = 16;
 pub const HASH_LEN: usize = 32;
 
@@ -114,55 +111,45 @@ pub fn check_strength(user_id: &str, canonical: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Environment variable overriding the PBKDF2 iteration count for new
-/// hashes (and the unknown-user dummy round). Test-only: set to a very
-/// low count (e.g. `1000`) to keep password hashing off the dev-loop
-/// critical path. PBKDF itself is never bypassed — only the effort
-/// factor changes. Env-only so it cannot arrive via a config file;
-/// absent or unparseable falls back below (fail secure, never fail
-/// weak). Production must never set this.
-pub const ITERATIONS_ENV_VAR: &str = "PICASU_PBKDF_ITERATIONS";
+/// Environment variable selecting trivial argon2id cost for test runs.
+/// Only the literal value `1` enables it; unset, empty, or any other
+/// value keeps production params. Read per hash call so tests can flip
+/// it within one process. Env-only so it cannot arrive via a config
+/// file. Production must never set this — hashes become cheap to crack.
+pub const WEAK_PWHASH_ENV_VAR: &str = "PICASU_WEAK_PWHASH";
 
-/// Default when no explicit override applies: a very low count under
-/// `cfg(test)` (unit tests always run cheap), else [`DEFAULT_ITERATIONS`].
-/// Integration tests link the lib without `cfg(test)`, so they follow
-/// the production default unless the env var is set (as `just
-/// backend-test` does).
-#[cfg(test)]
-const TEST_ITERATIONS: u32 = 1_000;
+static DUMMY_HASH: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| hash_password("dummy"));
 
-/// Parse an iteration override: positive integers only, clamped to a
-/// minimum of 1; anything else (including absent) is `None` for default.
-fn parse_iterations_override(var: Option<&str>) -> Option<u32> {
-    var.and_then(|s| s.trim().parse::<u32>().ok())
-        .filter(|&n| n > 0)
+/// PHC string used by the unknown-user dummy verify. Generated lazily at
+/// production or weak cost depending on the environment.
+pub(crate) fn dummy_hash() -> &'static str {
+    DUMMY_HASH.as_str()
 }
 
-/// Iteration count for new password hashes: the explicit env override
-/// when set, else the test default under `cfg(test)`, else
-/// [`DEFAULT_ITERATIONS`]. Logs once when the env override is active so
-/// a production process running weakened hashing is unmistakable.
-pub(crate) fn password_iterations() -> u32 {
-    match parse_iterations_override(std::env::var(ITERATIONS_ENV_VAR).ok().as_deref()) {
-        Some(n) => {
-            static WARN_ONCE: std::sync::Once = std::sync::Once::new();
-            WARN_ONCE.call_once(|| {
-                log::warn!(
-                    "{ITERATIONS_ENV_VAR}={n}: weakened password hashing for tests — never set in production"
-                );
-            });
-            n
-        }
-        None => {
-            #[cfg(test)]
-            {
-                TEST_ITERATIONS
-            }
-            #[cfg(not(test))]
-            {
-                DEFAULT_ITERATIONS
-            }
-        }
+/// True when the weak-cost override is active (env reads `1`).
+#[must_use]
+pub fn weak_pwhash_enabled() -> bool {
+    std::env::var(WEAK_PWHASH_ENV_VAR).ok().as_deref() == Some("1")
+}
+
+/// Build the argon2id hasher at production or trivial cost depending on
+/// the weak override (read per call).
+fn argon2_hasher() -> Argon2<'static> {
+    if weak_pwhash_enabled() {
+        static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+        WARN_ONCE.call_once(|| {
+            log::warn!(
+                "{WEAK_PWHASH_ENV_VAR}=1: weakened password hashing for tests — never set in production"
+            );
+        });
+        Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2::Params::new(8192, 1, 1, None).expect("valid params"),
+        )
+    } else {
+        Argon2::default()
     }
 }
 
@@ -176,29 +163,42 @@ pub struct PasswordHash {
     pub iterations: u32,
 }
 
-/// Hash a password with a fresh random salt.
+/// Hash a password with argon2id at production cost (or trivial cost when
+/// the weak override is active) and a per-hash random salt. Returns the
+/// PHC-encoded string stored in the user record.
 ///
 /// # Panics
-/// Panics if the system RNG fails, which indicates a broken host.
+/// Panics only if the system RNG fails, which indicates a broken host.
 #[must_use]
-pub fn hash_password(password: &str) -> PasswordHash {
-    // Generated directly: no zero-initialized buffer that reads as a
-    // hardcoded salt, and still panics on RNG failure as documented.
-    let salt: [u8; SALT_LEN] = random();
-    let iterations = password_iterations();
-    let hash = derive(password, &salt, iterations);
-    PasswordHash {
-        salt,
-        hash,
-        iterations,
-    }
+pub fn hash_password(password: &str) -> String {
+    argon2_hasher()
+        .hash_password(password.as_bytes())
+        .expect("argon2 hashing cannot fail for valid inputs")
+        .to_string()
 }
 
-/// Check a password against a stored hash using a constant-time comparison.
+/// Verify a candidate password against a stored value, constant-time in
+/// both paths.
+///
+/// Dual-path by design (legacy rows are not migrated): a stored value
+/// beginning with the argon2 PHC prefix `$argon2id$` verifies through
+/// argon2; anything else is treated as a legacy PBKDF2 hash serialized
+/// as JSON and verified through PBKDF2-HMAC-SHA256.
 #[must_use]
-pub fn verify_password(password: &str, expected: &PasswordHash) -> bool {
-    let candidate = derive(password, &expected.salt, expected.iterations);
-    candidate.ct_eq(&expected.hash).into()
+pub fn verify_password(password: &str, stored: &str) -> bool {
+    if stored.starts_with("$argon2id$") {
+        let Ok(parsed) = ArgonPasswordHash::new(stored) else {
+            return false;
+        };
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok()
+    } else if let Ok(legacy) = serde_json::from_str::<PasswordHash>(stored) {
+        let candidate = derive(password, &legacy.salt, legacy.iterations);
+        candidate.ct_eq(&legacy.hash).into()
+    } else {
+        false
+    }
 }
 
 /// Hash a share password with argon2id at the OWASP-recommended minimum
@@ -209,7 +209,7 @@ pub fn verify_password(password: &str, expected: &PasswordHash) -> bool {
 /// Panics only if the system RNG fails, which indicates a broken host.
 #[must_use]
 pub fn hash_share_password(password: &str) -> String {
-    Argon2::default()
+    argon2_hasher()
         .hash_password(password.as_bytes())
         .expect("argon2 hashing cannot fail for valid inputs")
         .to_string()
@@ -312,20 +312,9 @@ mod tests {
     use crate::tests::fixtures::test_password;
 
     #[test]
-    fn iteration_override_parsing() {
-        assert_eq!(parse_iterations_override(None), None);
-        assert_eq!(parse_iterations_override(Some("1000")), Some(1000));
-        assert_eq!(parse_iterations_override(Some("  2048  ")), Some(2048));
-        // Zero, negative, non-numeric, and empty all fall back to default.
-        assert_eq!(parse_iterations_override(Some("0")), None);
-        assert_eq!(parse_iterations_override(Some("-5")), None);
-        assert_eq!(parse_iterations_override(Some("fast")), None);
-        assert_eq!(parse_iterations_override(Some("")), None);
-    }
-
-    #[test]
     fn hash_verify_roundtrip() {
         let stored = hash_password(&test_password("t-ok"));
+        assert!(stored.starts_with("$argon2id$"));
         assert!(verify_password(&test_password("t-ok"), &stored));
     }
 
@@ -404,16 +393,14 @@ mod tests {
     }
 
     #[test]
-    fn tampered_salt_rejected() {
+    fn tampered_hash_rejected() {
         let mut stored = hash_password(&test_password("t-ok"));
-        stored.salt[0] ^= 0xff;
-        assert!(!verify_password(&test_password("t-ok"), &stored));
-    }
-
-    #[test]
-    fn tampered_iterations_rejected() {
-        let mut stored = hash_password(&test_password("t-ok"));
-        stored.iterations += 1;
+        // Flip a character in the PHC string.
+        let mut chars: Vec<char> = stored.chars().collect();
+        if let Some(c) = chars.last_mut() {
+            *c = if *c == 'a' { 'b' } else { 'a' };
+        }
+        stored = chars.into_iter().collect();
         assert!(!verify_password(&test_password("t-ok"), &stored));
     }
 
@@ -421,8 +408,7 @@ mod tests {
     fn same_password_hashes_differ() {
         let first = hash_password(&test_password("t-same"));
         let second = hash_password(&test_password("t-same"));
-        assert_ne!(first.hash, second.hash);
-        assert_ne!(first.salt, second.salt);
+        assert_ne!(first, second);
         assert!(verify_password(&test_password("t-same"), &first));
         assert!(verify_password(&test_password("t-same"), &second));
     }

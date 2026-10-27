@@ -116,12 +116,12 @@ refuse to leave the store without one. `--force` overrides the refusal for
 
 ## Environment variables
 
-| Variable                   | Effect in the CLI                                                    |
-| -------------------------- | -------------------------------------------------------------------- |
-| `PICASU_DATA_HOME`         | Data home; the store is `<data home>/auth/users.redb`.               |
-| `PICASU_CONFIG_HOME`       | Where `config.toml` is read from.                                    |
-| `PICASU_TRIVIAL_PASSWORDS` | `true` accepts weak passwords, exactly as on the server.             |
-| `PICASU_PBKDF_ITERATIONS`  | PBKDF2 effort for new hashes. Test-only; never set it in production. |
+| Variable                   | Effect in the CLI                                                      |
+| -------------------------- | ---------------------------------------------------------------------- |
+| `PICASU_DATA_HOME`         | Data home; the store is `<data home>/auth/users.redb`.                 |
+| `PICASU_CONFIG_HOME`       | Where `config.toml` is read from.                                      |
+| `PICASU_TRIVIAL_PASSWORDS` | `true` accepts weak passwords, exactly as on the server.               |
+| `PICASU_WEAK_PWHASH`       | `1` runs argon2id at trivial cost. Test-only; never set in production. |
 
 `PICASU_TRIVIAL_PASSWORDS` and the `trivial_passwords` key in
 `config.toml` carry the same meaning as on the server: the environment

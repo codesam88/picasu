@@ -2,7 +2,7 @@
 //!
 //! Each test owns a fresh temp dir wired through `PICASU_DATA_HOME`, so the
 //! suite is serial-safe by construction: tests spawn the compiled binary as
-//! separate processes and never share a store. `PICASU_PBKDF_ITERATIONS=1000`
+//! separate processes and never share a store. `PICASU_WEAK_PWHASH=1`
 //! keeps hashing off the dev-loop critical path, mirroring `just
 //! backend-test`.
 
@@ -52,7 +52,7 @@ fn run_env(env: &Env, args: &[&str], stdin: Option<&str>) -> Output {
         .env_remove("PICASU_DATA_HOME")
         .env_remove("PICASU_CONFIG_HOME")
         .env_remove("PICASU_TRIVIAL_PASSWORDS")
-        .env("PICASU_PBKDF_ITERATIONS", "1000");
+        .env("PICASU_WEAK_PWHASH", "1");
     if let Some(home) = &env.data_home {
         child.env("PICASU_DATA_HOME", home);
     }

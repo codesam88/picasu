@@ -143,7 +143,7 @@ fn init_logger() {
 /// environment variable wins over the `trivial_passwords` key in
 /// `config.toml`, and an unparsable value keeps the config value. The
 /// PBKDF2 effort needs no setup here — the library reads
-/// `PICASU_PBKDF_ITERATIONS` when it hashes.
+/// `PICASU_WEAK_PWHASH` when it hashes.
 fn apply_password_policy() {
     let from_env = std::env::var("PICASU_TRIVIAL_PASSWORDS")
         .ok()
