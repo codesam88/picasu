@@ -126,6 +126,10 @@ const SECURITY_GUARD_MISMATCH: &str =
 const SECURITY_GUARD_CONFORMING: &str =
     include_str!("fixtures/openapi_annotations/s2_conforming.rs");
 
+const READONLY_WITHOUT_405: &str =
+    include_str!("fixtures/openapi_annotations/s5_readonly_without_405.rs");
+const READONLY_WITH_405: &str = include_str!("fixtures/openapi_annotations/s5_conforming.rs");
+
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
 // Every rule has a fixture that must produce its finding and a conforming
@@ -1196,4 +1200,26 @@ fn s_security_guard_match_is_accepted() {
         "",
         "a matching declaration must be silent"
     );
+}
+
+// ── Section S5 — readonly guard vs 405 declared ─────────────────────────────
+
+/// S5: a signature carrying `GuardReadOnlyMode` without a declared 405 fails.
+#[test]
+fn s_readonly_without_405_fails() {
+    let findings = check_source("s5_readonly_without_405.rs", READONLY_WITHOUT_405);
+
+    assert_eq!(
+        render(&findings),
+        "s5_readonly_without_405.rs:7: readonly_without_405: GuardReadOnlyMode can answer 405, but responses() does not declare it",
+        "a missing 405 is a finding at the responses line"
+    );
+}
+
+/// The conforming counterpart: the guard's 405 is declared.
+#[test]
+fn s_readonly_with_405_is_accepted() {
+    let findings = check_source("s5_conforming.rs", READONLY_WITH_405);
+
+    assert_eq!(render(&findings), "", "a declared 405 must be silent");
 }

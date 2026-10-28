@@ -1,6 +1,6 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Nineteen rules are implemented
+//! Twenty rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
@@ -1937,7 +1937,31 @@ fn security_guard_mismatch(handler: &AnnotatedHandler) -> Vec<Finding> {
     )]
 }
 
-/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1 and S2 of
+/// S5 — `GuardReadOnlyMode` in the signature requires a declared 405.
+///
+/// The guard answers 405 on a locked server, so an operation that carries it
+/// must document the rejection. The rule keys off the signature alone, so it
+/// fires even when the guard's `FromRequest` impl is not in the scanned tree.
+fn readonly_without_405(handler: &AnnotatedHandler) -> Vec<Finding> {
+    if !guard_idents(handler).any(|ident| ident == "GuardReadOnlyMode") {
+        return Vec::new();
+    }
+    if handler.annotation.statuses.is_empty() {
+        return Vec::new();
+    }
+    let declared = declared_codes(handler);
+    if declared.contains(&405) {
+        return Vec::new();
+    }
+    vec![Finding::at(
+        &handler.file,
+        responses_line(handler),
+        "readonly_without_405",
+        "GuardReadOnlyMode can answer 405, but responses() does not declare it",
+    )]
+}
+
+/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2 and S5 of
 /// section S: every rule over one handler, in a fixed order so a report reads
 /// the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
@@ -1963,6 +1987,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         declared_statuses_within_universe(handler, derivations),
         auth_metadata_without_security(handler),
         security_guard_mismatch(handler),
+        readonly_without_405(handler),
     ]
     .concat()
 }
