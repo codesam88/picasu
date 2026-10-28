@@ -1,0 +1,10 @@
+warning: unknown guard type(s) ["GuardFoo"]: cannot verify tokenTyp agreement
+  --> $DIR/fail_unknown_guard.rs:14:1
+   |
+LL | pub fn handler(auth: GuardResult<GuardFoo>) {}
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(token_typ_agreement)]` on by default
+
+warning: 1 warning emitted
+
