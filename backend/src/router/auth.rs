@@ -1420,16 +1420,30 @@ pub struct TimestampGuardModified {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for TimestampGuardModified {
-    type Error = ();
+    type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let Ok(token) = extract_bearer_token(req) else {
-            return Outcome::Forward(Status::Unauthorized);
+        let token = match extract_bearer_token(req) {
+            Ok(token) => token,
+            Err(err) => {
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    AppError::from_err(ErrorKind::Auth, err)
+                        .context("Bearer token extraction failed"),
+                ));
+            }
         };
-        match decode_typed::<ClaimsTimestamp>(token, &VALIDATION) {
-            Ok(claims) => Outcome::Success(TimestampGuardModified { claims }),
-            Err(_) => Outcome::Forward(Status::Unauthorized),
-        }
+
+        let claims: ClaimsTimestamp = match decode_typed(token, &VALIDATION) {
+            Ok(claims) => claims,
+            Err(err) => {
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    AppError::from_err(ErrorKind::Auth, err).context("JWT decoding failed"),
+                ));
+            }
+        };
+        Outcome::Success(TimestampGuardModified { claims })
     }
 }
 
