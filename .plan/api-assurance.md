@@ -311,3 +311,9 @@ auth set above is gating.
   `bug-snapshot-unknown-500`, `bug-spa-fallback-missing-param`,
   `bug-create-dir-album-eexist`, `spec-reconciliation-4xx`,
   `schemathesis-campaign-config`).
+- Step 5 done: `docs/test-strategy.md` records the settled api-level
+  assurance layer (5-check oracle scope, advisory runners with gating
+  preconditions, quarterly re-pin cadence, `docs/briefs/` knowledge
+  layer) next to the e2e suites; settled contract facts (parameter
+  descriptions, registered security schemes) stated with no stale
+  claims.
