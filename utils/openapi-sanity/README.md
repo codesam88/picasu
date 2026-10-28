@@ -278,10 +278,10 @@ work rather than defects in what is built. Each is an item in
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md)
 with its status:
 
-- No rule interprets `security(...)` or `securitySchemes`. A9 fails closed on
-  the spelling, so an annotation that declares one stops a clean report; the
-  committed document declares neither, and deriving the policy from the
-  authz-check artifact is plan step 6.
+- S2 interprets the scheme names in `security(...)` against the guards in
+  the handler signature. What remains open is deriving a policy from the
+  authz-check artifact (plan step 6); the committed document's schemes are
+  checked against the guards, not against a policy.
 
 ## Run it
 

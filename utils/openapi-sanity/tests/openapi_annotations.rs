@@ -121,6 +121,11 @@ const AUTH_METADATA_WITHOUT_SECURITY: &str =
 const AUTH_METADATA_CONFORMING: &str =
     include_str!("fixtures/openapi_annotations/s1_conforming.rs");
 
+const SECURITY_GUARD_MISMATCH: &str =
+    include_str!("fixtures/openapi_annotations/s2_security_guard_mismatch.rs");
+const SECURITY_GUARD_CONFORMING: &str =
+    include_str!("fixtures/openapi_annotations/s2_conforming.rs");
+
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
 // Every rule has a fixture that must produce its finding and a conforming
@@ -1163,5 +1168,32 @@ fn s_auth_metadata_with_security_is_accepted() {
         render(&findings),
         "",
         "metadata paired with a security declaration must be silent"
+    );
+}
+
+// ── Section S2 — security scheme vs guard types ─────────────────────────────
+
+/// S2: a declared scheme that does not match the guard fails.
+#[test]
+fn s_security_guard_mismatch_fails() {
+    let findings = check_source("s2_security_guard_mismatch.rs", SECURITY_GUARD_MISMATCH);
+
+    assert_eq!(
+        render(&findings),
+        "s2_security_guard_mismatch.rs:8: security_guard_mismatch: security(...) does not match the handler's guards: expected {cookie_jwt}, declared {bearer_token}",
+        "a mismatched scheme is a finding at the security line"
+    );
+}
+
+/// The conforming counterpart: GuardShare's two-group declaration, with
+/// GuardReadOnlyMode present but excluded.
+#[test]
+fn s_security_guard_match_is_accepted() {
+    let findings = check_source("s2_conforming.rs", SECURITY_GUARD_CONFORMING);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "a matching declaration must be silent"
     );
 }

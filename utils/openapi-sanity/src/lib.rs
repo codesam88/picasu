@@ -1,14 +1,14 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Eighteen rules are implemented
+//! Nineteen rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
 //! statuses — what the handler can answer versus what `responses(…)` claims.
 //! **Section S** pairs `x-picasu-auth` metadata with its `security(…)`
-//! declaration. What remains open in that plan — including that no rule
-//! interprets a `security(…)` scheme, though A9 fails closed on the spelling
-//! itself — is listed under "Known gaps" in this crate's README.
+//! declaration. S2 compares the declared scheme groups against the guards in
+//! the handler signature. What remains open is listed under "Known gaps" in
+//! this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -121,9 +121,10 @@
 //! - `tags(["a", "b"])` sets tags in one list; A3 counts `tag = "…"` occurrences
 //!   only.
 //! - `context_path` sets a base path on the annotation; A1 rejects `path = "…"`.
-//! - `security(…)` declares the operation's security requirements; the scheme
-//!   names are not interpreted by any rule, and S1 pairs the declaration with
-//!   `x-picasu-auth` metadata instead of leaving the two to drift.
+//! - `security(…)` declares the operation's security requirements; S2
+//!   interprets the scheme names against the guards in the signature, and S1
+//!   pairs the declaration with `x-picasu-auth` metadata instead of leaving
+//!   the two to drift.
 //!
 //! An unreadable `request_body = …` value is the declaration-side counterpart:
 //! [`declared_body_matches_binding`] states it does not compare a schema it
@@ -417,9 +418,13 @@ pub struct Annotation {
     /// annotation declares none.
     pub request_body: Option<Located<DeclaredBody>>,
     /// Whether the annotation declares `security(...)`, with the line it is
-    /// written on. Section S pairs the declaration with `x-picasu-auth`
-    /// metadata; the scheme names themselves are not interpreted.
+    /// written on. S1 pairs the declaration with `x-picasu-auth` metadata;
+    /// S2 compares its scheme names against the signature guards.
     pub has_security: Option<Located<()>>,
+    /// The scheme-name groups declared by `security(...)`, with the line it is
+    /// written on. `None` when the annotation declares no `security(...)`. Each
+    /// group is the set of schemes that must all hold for that alternative.
+    pub security_groups: Option<Located<Vec<BTreeSet<String>>>>,
     /// `x-picasu-*` extension keys the annotation declares, with the line each
     /// is written on. A modeled extension reaches section S; any other
     /// extension key stays in `unsupported` so A9 keeps failing closed on it.
@@ -549,9 +554,7 @@ impl Annotation {
                         // by this checker, but the declaration is recorded so
                         // section S can pair it with `x-picasu-auth` metadata.
                         "security" => {
-                            annotation
-                                .has_security
-                                .get_or_insert_with(|| Located::new((), line));
+                            read_security(&group.stream(), line, &mut annotation);
                         }
                         // `extensions(…)` carries per-entry `("key" = value)`
                         // pairs. Keys under the project's `x-picasu-*`
@@ -732,6 +735,34 @@ fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotatio
             annotation.unsupported.push(Located::new(key, line));
         }
     }
+}
+
+/// Read `security(…)`: each top-level entry is one alternative requirement
+/// group, and the scheme names inside it are the schemes that must all hold.
+/// `security(())` yields one empty group; `security()` yields none.
+fn read_security(stream: &TokenStream, line: usize, annotation: &mut Annotation) {
+    let mut groups = Vec::new();
+    for entry in split_entries(stream) {
+        let mut trees = entry.into_iter();
+        let group = match trees.next() {
+            Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => group,
+            _ => continue,
+        };
+        let mut schemes = BTreeSet::new();
+        for inner in split_entries(&group.stream()) {
+            let mut inner_trees = inner.into_iter();
+            if let Some(TokenTree::Literal(literal)) = inner_trees.next() {
+                schemes.insert(literal_text(&literal));
+            }
+        }
+        groups.push(schemes);
+    }
+    annotation
+        .security_groups
+        .get_or_insert_with(|| Located::new(groups, line));
+    annotation
+        .has_security
+        .get_or_insert_with(|| Located::new((), line));
 }
 
 /// The text of the first string literal anywhere in these tokens, descending into
@@ -1822,9 +1853,93 @@ fn auth_metadata_without_security(handler: &AnnotatedHandler) -> Vec<Finding> {
         .collect()
 }
 
-/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1 of section S:
-/// every rule over one handler, in a fixed order so a report reads the same
-/// way twice.
+/// The security-requirement groups a guard's `FromRequest` impl accepts, as a
+/// list of alternatives. An empty list means the guard contributes no scheme
+/// (for example `GuardReadOnlyMode` and `GuardReauth`) and is excluded from
+/// derivation.
+fn guard_security_groups(guard: &str) -> Option<Vec<BTreeSet<String>>> {
+    match guard {
+        "GuardAuth" | "GuardUser" => Some(vec![BTreeSet::from(["cookie_jwt".to_owned()])]),
+        "GuardShare" | "GuardUpload" => Some(vec![
+            BTreeSet::from(["album_id".to_owned(), "share_id".to_owned()]),
+            BTreeSet::from(["cookie_jwt".to_owned()]),
+        ]),
+        "GuardTimestamp" | "GuardHash" | "GuardHashOriginal" | "TimestampGuardModified" => {
+            Some(vec![BTreeSet::from(["bearer_token".to_owned()])])
+        }
+        "GuardReadOnlyMode" | "GuardReauth" => Some(Vec::new()),
+        _ => None,
+    }
+}
+
+fn render_security_groups(groups: &BTreeSet<BTreeSet<String>>) -> String {
+    let mut parts = Vec::new();
+    for group in groups {
+        if group.is_empty() {
+            parts.push("()".to_owned());
+        } else {
+            parts.push(format!(
+                "{{{}}}",
+                group.iter().cloned().collect::<Vec<_>>().join(", ")
+            ));
+        }
+    }
+    if parts.is_empty() {
+        "(none)".to_owned()
+    } else {
+        parts.join(" | ")
+    }
+}
+
+/// S2 — `security(...)` scheme groups vs. the guards in the signature.
+fn security_guard_mismatch(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    let Some(declared) = &annotation.security_groups else {
+        return Vec::new();
+    };
+
+    let mut expected: BTreeSet<BTreeSet<String>> = BTreeSet::new();
+    let mut has_contributing = false;
+    let mut seen = BTreeSet::new();
+    for ident in guard_idents(handler) {
+        if !seen.insert(ident.to_owned()) {
+            continue;
+        }
+        let Some(groups) = guard_security_groups(ident) else {
+            continue;
+        };
+        if groups.is_empty() {
+            continue;
+        }
+        has_contributing = true;
+        for group in groups {
+            expected.insert(group);
+        }
+    }
+    if !has_contributing {
+        expected.insert(BTreeSet::new());
+    }
+
+    let declared_set: BTreeSet<BTreeSet<String>> = declared.value.iter().cloned().collect();
+    if declared_set == expected {
+        return Vec::new();
+    }
+
+    vec![Finding::at(
+        &handler.file,
+        declared.line,
+        "security_guard_mismatch",
+        &format!(
+            "security(...) does not match the handler's guards: expected {}, declared {}",
+            render_security_groups(&expected),
+            render_security_groups(&declared_set)
+        ),
+    )]
+}
+
+/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1 and S2 of
+/// section S: every rule over one handler, in a fixed order so a report reads
+/// the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -1847,6 +1962,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         body_kind_statuses_declared(handler, derivations),
         declared_statuses_within_universe(handler, derivations),
         auth_metadata_without_security(handler),
+        security_guard_mismatch(handler),
     ]
     .concat()
 }
