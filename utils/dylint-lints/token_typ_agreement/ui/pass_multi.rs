@@ -9,7 +9,7 @@ pub struct GuardReadOnlyMode;
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser", "GuardReadOnlyMode"],
-        "tokenTyp": ["admin"]
+        "tokenTyp": ["session"]
     })))
 )]
 pub fn handler(auth: GuardResult<GuardUser>, ro: GuardResult<GuardReadOnlyMode>) {}

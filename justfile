@@ -138,7 +138,7 @@ openapi-gen:
 
 # Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match
+openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check
 
 # Run dylint auth lints on the backend (advisory)
 [group('utils')]
@@ -242,6 +242,30 @@ plan-lint:
 env-var-check:
     node --test {{justfile_directory()}}/scripts/env-var-lint.test.mjs
     node {{justfile_directory()}}/scripts/env-var-lint.mjs {{justfile_directory()}}
+
+# Ensure committed auth-matrix artifacts match generator output
+[group('tooling')]
+auth-matrix-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmpdir="$(mktemp -d)"
+    trap 'rm -rf "$tmpdir"' EXIT
+    mkdir -p "$tmpdir/backend"
+    cp "{{justfile_directory()}}/backend/openapi.json" "$tmpdir/backend/openapi.json"
+    node "{{justfile_directory()}}/scripts/auth-matrix.mjs" "$tmpdir"
+    if ! diff -u "{{justfile_directory()}}/docs/auth-matrix.md" "$tmpdir/docs/auth-matrix.md"; then
+        echo ""
+        echo "docs/auth-matrix.md is out of date with the generator."
+        echo "Run 'node scripts/auth-matrix.mjs .' and commit the result."
+        exit 1
+    fi
+    if ! diff -u "{{justfile_directory()}}/backend/auth-matrix.json" "$tmpdir/backend/auth-matrix.json"; then
+        echo ""
+        echo "backend/auth-matrix.json is out of date with the generator."
+        echo "Run 'node scripts/auth-matrix.mjs .' and commit the result."
+        exit 1
+    fi
+    echo "auth-matrix artifacts match the generated output"
 
 # run plan <args>, depends on `just install-plan`
 [group('tooling')]

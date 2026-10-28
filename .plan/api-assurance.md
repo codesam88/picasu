@@ -107,21 +107,21 @@ generate from.
 
 ## Status overview (single source of status; bodies below hold design detail)
 
-| Item                                                                                    | Status                                                                                      |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)            | done (see Progress)                                                                         |
-| Step 6 AUTH-3 lint + triage                                                             | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline) |
-| Step 6 AUTH-11/12                                                                       | open, blocked on `effects` vocabulary                                                       |
-| Step 6 decode agreement                                                                 | done (`decode_agreement` crate)                                                             |
-| Step 6 claims-consumption (F3)                                                          | open, queued                                                                                |
-| Step 7 UI fixtures                                                                      | done (4 crates); UI-suite CI wiring open; allowlist/baseline open                           |
-| Step 8 expiry/decode ratchets                                                           | open                                                                                        |
-| Step 9 env-var lint                                                                     | done, gating; sequencing sentence needs amendment (open decision); further domains open     |
-| Step 10 + S-rules                                                                       | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done         |
-| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites)           | open (allowlist/baseline); CI wiring done, S3 gated in CI                                   |
-| Consumers: matrix generator                                                             | open, next                                                                                  |
-| Consumers: hook derivation, generated negatives (incl. S4), effects/invariants backfill | open                                                                                        |
-| `authz-model.md` derivation-back                                                        | deferred until matrix proves itself                                                         |
+| Item                                                                                    | Status                                                                                           |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)            | done (see Progress)                                                                              |
+| Step 6 AUTH-3 lint + triage                                                             | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline)      |
+| Step 6 AUTH-11/12                                                                       | open, blocked on `effects` vocabulary                                                            |
+| Step 6 decode agreement                                                                 | done (`decode_agreement` crate)                                                                  |
+| Step 6 claims-consumption (F3)                                                          | open, queued                                                                                     |
+| Step 7 UI fixtures                                                                      | done (4 crates); UI-suite CI wiring open; allowlist/baseline open                                |
+| Step 8 expiry/decode ratchets                                                           | open                                                                                             |
+| Step 9 env-var lint                                                                     | done, gating; sequencing sentence needs amendment (open decision); further domains open          |
+| Step 10 + S-rules                                                                       | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done              |
+| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites)           | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
+| Consumers: matrix generator                                                             | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
+| Consumers: hook derivation, generated negatives (incl. S4), effects/invariants backfill | open                                                                                             |
+| `authz-model.md` derivation-back                                                        | deferred until matrix proves itself                                                              |
 
 ## Steps (sketch — phases in order, details at build time)
 
@@ -333,11 +333,9 @@ extension next to the native `security(...)` clause:
 security(("cookie_jwt" = [])),
 extensions(("x-picasu-auth" = json!({
     "guards": ["GuardAuth"],
-    "tokenTyp": ["admin"],
+    "tokenTyp": ["session"],
     "admin": "admin",
     "shareScope": "n-a",
-    "readonly": false,
-    "reauth": false,
     "public": false,
     "effects": [],
     "invariants": ["AUTH-2"]
@@ -345,13 +343,15 @@ extensions(("x-picasu-auth" = json!({
 ```
 
 Field semantics: `guards` mirrors the handler signature;
-`tokenTyp` disambiguates the bearer scheme (`admin`, `snapshot`,
-`asset`, `share`); `admin` records the inline admin check
-(`admin`, `either`, `n-a`); `shareScope` the binding rule
-(`own-album`, `any`, `n-a`); `readonly`/`reauth` the 405 and
-re-authentication behavior; `public: true` pairs with
+`tokenTyp` names the credential types (`session` for the cookie
+session token, `snapshot`/`asset` for bearers, `share` for share
+credentials); `admin` records the role constraint (`admin`,
+`any`, `none`); `shareScope` the binding rule
+(`own-album`, `n-a`); `public: true` pairs with
 `security: []`; `effects` the manage/effect classification AUTH-11/12
 needs; `invariants` the `authz-model.md` IDs for traceability.
+Readonly and reauth behavior are derived from `guards`
+(`GuardReadOnlyMode`, `GuardReauth`), not stored.
 Background: `docs/briefs/openapi-auth-metadata.md`,
 `docs/briefs/auth-policy-engines.md`,
 `docs/briefs/schemathesis-modeling.md`.

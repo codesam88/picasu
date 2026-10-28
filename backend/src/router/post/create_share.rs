@@ -52,11 +52,9 @@ pub struct CreateShare {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []

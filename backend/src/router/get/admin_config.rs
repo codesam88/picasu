@@ -181,11 +181,9 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []
@@ -239,11 +237,9 @@ pub fn get_admin_config_handler(
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []

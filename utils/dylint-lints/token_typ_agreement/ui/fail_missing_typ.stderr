@@ -1,4 +1,4 @@
-warning: handler tokenTyp [] does not match guard-derived typs ["admin"]
+warning: handler tokenTyp [] does not match guard-derived typs ["session"]
   --> $DIR/fail_missing_typ.rs:14:1
    |
 LL | pub fn handler(auth: GuardResult<GuardUser>) {}

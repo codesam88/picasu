@@ -9,7 +9,7 @@ pub struct GuardHash;
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardShare", "GuardHash"],
-        "tokenTyp": ["admin", "share", "asset"]
+        "tokenTyp": ["session", "share", "asset"]
     })))
 )]
 pub fn handler(share: GuardResult<GuardShare>, hash: GuardResult<GuardHash>) {}

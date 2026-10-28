@@ -28,11 +28,9 @@ use std::path::Path;
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser"],
-            "tokenTyp": ["admin"],
-            "admin": "either",
+            "tokenTyp": ["session"],
+            "admin": "any",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []
@@ -121,11 +119,9 @@ impl From<&Share> for ShareInfo {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser"],
-            "tokenTyp": ["admin"],
-            "admin": "either",
+            "tokenTyp": ["session"],
+            "admin": "any",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []

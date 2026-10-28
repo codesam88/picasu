@@ -1768,7 +1768,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -1776,11 +1776,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -1835,11 +1833,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -1902,11 +1898,9 @@
             "AUTH-16"
           ],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -1971,11 +1965,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2016,11 +2008,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2064,18 +2054,16 @@
           "config"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare"
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin",
+            "session",
             "share"
           ]
         }
@@ -2120,11 +2108,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2167,18 +2153,16 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser"
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2253,7 +2237,7 @@
           "timeline"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [
             "GuardTimestamp"
@@ -2262,8 +2246,6 @@
             "AUTH-7"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
             "snapshot"
@@ -2306,11 +2288,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2372,7 +2352,7 @@
           "timeline"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [
             "GuardTimestamp"
@@ -2381,8 +2361,6 @@
             "AUTH-7"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
             "snapshot"
@@ -2437,7 +2415,7 @@
           "timeline"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [
             "GuardTimestamp"
@@ -2446,8 +2424,6 @@
             "AUTH-7"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
             "snapshot"
@@ -2496,18 +2472,16 @@
           "timeline"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser"
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2548,11 +2522,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2599,11 +2571,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2660,7 +2630,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [
             "GuardTimestamp"
@@ -2669,8 +2639,6 @@
             "AUTH-7"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
             "snapshot"
@@ -2734,11 +2702,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2807,18 +2773,16 @@
           "timeline"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare"
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share"
           ]
         }
@@ -2862,18 +2826,16 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser"
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -2905,13 +2867,11 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [],
           "invariants": [],
           "public": true,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": []
         }
@@ -2959,11 +2919,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3050,7 +3008,7 @@
           "serving"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare",
@@ -3060,11 +3018,9 @@
             "AUTH-8"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share",
             "asset"
           ]
@@ -3123,7 +3079,7 @@
           "serving"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare",
@@ -3133,11 +3089,9 @@
             "AUTH-8"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share",
             "asset"
           ]
@@ -3182,11 +3136,9 @@
             "AUTH-15"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": true,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3230,11 +3182,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3296,7 +3246,7 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -3304,11 +3254,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3375,11 +3323,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3436,11 +3382,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3480,11 +3424,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3548,11 +3490,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3574,13 +3514,11 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [],
           "invariants": [],
           "public": true,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": []
         }
@@ -3637,7 +3575,7 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [
             "TimestampGuardModified"
@@ -3646,8 +3584,6 @@
             "AUTH-10"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
             "snapshot"
@@ -3710,7 +3646,7 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare"
@@ -3719,11 +3655,9 @@
             "AUTH-10"
           ],
           "public": false,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share"
           ]
         }
@@ -3778,13 +3712,11 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "n-a",
+          "admin": "none",
           "effects": [],
           "guards": [],
           "invariants": [],
           "public": true,
-          "readonly": false,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": []
         }
@@ -3852,11 +3784,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3929,11 +3859,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -3997,11 +3925,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4063,7 +3989,7 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4071,11 +3997,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4135,11 +4059,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4194,7 +4116,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4202,11 +4124,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4261,7 +4181,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4269,11 +4189,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4333,11 +4251,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4402,7 +4318,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4410,11 +4326,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4466,7 +4380,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4474,11 +4388,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4533,7 +4445,7 @@
           "assets"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4541,11 +4453,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4600,7 +4510,7 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4608,11 +4518,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4671,7 +4579,7 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare",
@@ -4679,11 +4587,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share"
           ]
         }
@@ -4743,7 +4649,7 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardShare",
@@ -4751,11 +4657,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share"
           ]
         }
@@ -4821,11 +4725,9 @@
             "AUTH-16"
           ],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -4880,7 +4782,7 @@
           "auth"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUser",
@@ -4891,11 +4793,9 @@
             "AUTH-15"
           ],
           "public": false,
-          "readonly": true,
-          "reauth": true,
           "shareScope": "n-a",
           "tokenTyp": [
-            "admin"
+            "session"
           ]
         }
       }
@@ -5208,7 +5108,7 @@
           "upload"
         ],
         "x-picasu-auth": {
-          "admin": "either",
+          "admin": "any",
           "effects": [],
           "guards": [
             "GuardUpload",
@@ -5216,11 +5116,9 @@
           ],
           "invariants": [],
           "public": false,
-          "readonly": true,
-          "reauth": false,
           "shareScope": "own-album",
           "tokenTyp": [
-            "admin",
+            "session",
             "share"
           ]
         }

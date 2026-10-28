@@ -10,13 +10,13 @@ extension declares a `tokenTyp` list and a set of guards (resolved from the
 handler's parameters, unwrapping `GuardResult<T>`). The lint derives the
 expected typ set from the guards:
 
-| Guard                                      | Derived typ      |
-| ------------------------------------------ | ---------------- |
-| `GuardAuth`, `GuardUser`                   | `admin`          |
-| `GuardHash`, `GuardHashOriginal`           | `asset`          |
-| `TimestampGuardModified`, `GuardTimestamp` | `snapshot`       |
-| `GuardShare`, `GuardUpload`                | `admin`, `share` |
-| `GuardReadOnlyMode`, `GuardReauth`         | (none)           |
+| Guard                                      | Derived typ        |
+| ------------------------------------------ | ------------------ |
+| `GuardAuth`, `GuardUser`                   | `session`          |
+| `GuardHash`, `GuardHashOriginal`           | `asset`            |
+| `TimestampGuardModified`, `GuardTimestamp` | `snapshot`         |
+| `GuardShare`, `GuardUpload`                | `session`, `share` |
+| `GuardReadOnlyMode`, `GuardReauth`         | (none)             |
 
 The two sets must be equal in both directions: every guard-derived typ must
 appear in `tokenTyp`, and every `tokenTyp` entry must be backed by a guard.
@@ -50,7 +50,7 @@ Fixed code (silent):
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
-        "tokenTyp": ["admin"]
+        "tokenTyp": ["session"]
     })))
 )]
 pub async fn handler(auth: GuardResult<GuardUser>) {}

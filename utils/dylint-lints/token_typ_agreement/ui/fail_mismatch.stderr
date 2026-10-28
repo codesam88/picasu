@@ -1,4 +1,4 @@
-warning: handler tokenTyp ["asset"] does not match guard-derived typs ["admin"]
+warning: handler tokenTyp ["asset"] does not match guard-derived typs ["session"]
   --> $DIR/fail_mismatch.rs:14:1
    |
 LL | pub fn handler(auth: GuardResult<GuardUser>) {}

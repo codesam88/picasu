@@ -7,7 +7,7 @@ pub struct GuardResult<T>(pub T);
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": [],
-        "tokenTyp": ["admin"]
+        "tokenTyp": ["session"]
     })))
 )]
 pub fn handler() {}

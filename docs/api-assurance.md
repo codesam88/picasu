@@ -38,17 +38,15 @@ Per-operation authorization semantics that OpenAPI `security`
 cannot express live in an `x-picasu-auth` extension next to the
 native `security(...)` clause:
 
-| Field        | Meaning                                                           |
-| ------------ | ----------------------------------------------------------------- |
-| `guards`     | handler signature guard types, verbatim                           |
-| `tokenTyp`   | credential types accepted (`admin`, `snapshot`, `asset`, `share`) |
-| `admin`      | `admin` (admin-only), `either`, `n-a`                             |
-| `shareScope` | `own-album`, `n-a`                                                |
-| `readonly`   | `GuardReadOnlyMode` present                                       |
-| `reauth`     | `GuardReauth` present                                             |
-| `public`     | no credential required (pairs with `security(())`)                |
-| `effects`    | manage/effect classification (**pending**: all `[]`)              |
-| `invariants` | `authz-model.md` IDs, only where source-verified                  |
+| Field        | Meaning                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| `guards`     | handler signature guard types, verbatim                             |
+| `tokenTyp`   | credential types accepted (`session`, `snapshot`, `asset`, `share`) |
+| `admin`      | `admin` (admin-only), `any`, `none`                                 |
+| `shareScope` | `own-album`, `n-a`                                                  |
+| `public`     | no credential required (pairs with `security(())`)                  |
+| `effects`    | manage/effect classification (**pending**: all `[]`)                |
+| `invariants` | `authz-model.md` IDs, only where source-verified                    |
 
 All 51 annotated handlers carry the key; the 23 SPA page shells are
 unannotated by design. `effects` has no controlled vocabulary yet;
@@ -72,12 +70,13 @@ behavioral tests. Each rule lives where its inputs live.
 
 ## Consumers (planned unless noted)
 
-1. **Auth matrix.** Per-op table generated from the committed spec,
-   diffed in CI; doubles as the security-review baseline and
-   permission changelog. Its docs output may feed widdershins into
-   the API reference; exact shape (human table, machine JSON, or
-   both) is decided at build time for human as well as tool
-   consumption. _(Placeholder.)_
+1. **Auth matrix (implemented).** `scripts/auth-matrix.mjs` emits the
+   human table (`docs/auth-matrix.md`, the review baseline) and the
+   machine file (`backend/auth-matrix.json`, per-operation records
+   for downstream consumers) from the committed spec; `auth-matrix-check`
+   diffs both in CI as an `openapi-check` phase. The reference still
+   generates from `openapi.json` directly; the matrix stays a separate
+   review artifact unless a future step merges them.
 2. **Schemathesis derivation.** Share-guarded sets, typ-aware token
    selection, scope pairs, and destructive-op disables generated
    from the matrix instead of hand lists. _(Placeholder.)_

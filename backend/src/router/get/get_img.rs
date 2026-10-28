@@ -56,11 +56,9 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = []), ("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardShare", "GuardHash"],
-            "tokenTyp": ["admin", "share", "asset"],
-            "admin": "either",
+            "tokenTyp": ["session", "share", "asset"],
+            "admin": "any",
             "shareScope": "own-album",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": ["AUTH-8"]
@@ -153,11 +151,9 @@ pub async fn compressed_file(
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = []), ("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardShare", "GuardHashOriginal"],
-            "tokenTyp": ["admin", "share", "asset"],
-            "admin": "either",
+            "tokenTyp": ["session", "share", "asset"],
+            "admin": "any",
             "shareScope": "own-album",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": ["AUTH-8"]

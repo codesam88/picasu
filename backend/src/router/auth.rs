@@ -901,6 +901,7 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
 }
 
 /// Try to authorize upload via share headers with upload permission
+#[allow(dead_code)]
 pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     if let Some(album_id) = req.headers().get_one("x-album-id")
         && let Some(share_id) = req.headers().get_one("x-share-id")
@@ -1341,10 +1342,8 @@ pub struct RenewHashTokenReturn {
         extensions(("x-picasu-auth" = json!({
             "guards": ["TimestampGuardModified"],
             "tokenTyp": ["snapshot"],
-            "admin": "n-a",
+            "admin": "none",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": ["AUTH-10"]
@@ -1609,11 +1608,9 @@ pub struct RenewTimestampTokenReturn {
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardShare"],
-            "tokenTyp": ["admin", "share"],
-            "admin": "either",
+            "tokenTyp": ["session", "share"],
+            "admin": "any",
             "shareScope": "own-album",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": ["AUTH-10"]
@@ -1684,6 +1681,7 @@ pub async fn renew_timestamp_token(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
+#[allow(dead_code)]
 pub struct GuardUpload;
 
 #[rocket::async_trait]
