@@ -42,6 +42,17 @@ pub struct EditShare {
         tag = "albums",
         request_body = EditShare,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Share updated"),
             (status = 400, description = "Invalid input"),
@@ -144,6 +155,17 @@ pub struct DeleteShare {
         tag = "albums",
         request_body = DeleteShare,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Share deleted"),
             (status = 400, description = "Invalid input"),

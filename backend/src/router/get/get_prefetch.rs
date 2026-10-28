@@ -302,6 +302,17 @@ fn execute_prefetch_logic(
         ),
         request_body = serde_json::Value,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare"],
+            "tokenTyp": ["admin", "share"],
+            "admin": "either",
+            "shareScope": "own-album",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
             (status = 400, description = "Invalid input"),

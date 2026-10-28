@@ -47,6 +47,17 @@ pub struct SetUserDefinedDescription {
         tag = "albums",
         request_body = SetUserDefinedDescription,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin", "share"],
+            "admin": "either",
+            "shareScope": "own-album",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Description updated"),
             (status = 400, description = "Invalid input"),

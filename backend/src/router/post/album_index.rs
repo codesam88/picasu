@@ -37,6 +37,17 @@ pub struct IndexAlbumRequest {
         tag = "index",
         request_body = IndexAlbumRequest,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 202, description = "Album indexing started"),
             (status = 400, description = "Invalid input"),
@@ -79,6 +90,17 @@ pub fn index_album_handler(
 #[utoipa::path(
         tag = "index",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Album index cancelled"),
             (status = 400, description = "Invalid input"),

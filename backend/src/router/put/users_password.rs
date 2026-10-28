@@ -177,6 +177,17 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
         tag = "auth",
         request_body = SetUserPasswordRequest,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser", "GuardReadOnlyMode", "GuardReauth"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": true,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-15"]
+        }))),
         responses(
             (status = 200, description = "Password updated"),
             (status = 400, description = "Invalid input or wrong current password"),

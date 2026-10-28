@@ -45,6 +45,17 @@ pub struct EditTagsData {
         tag = "assets",
         request_body = EditTagsData,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Tags updated", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),

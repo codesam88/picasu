@@ -349,6 +349,18 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
 #[utoipa::path(
         tag = "auth",
         request_body = LoginRequest,
+        security(()),
+        extensions(("x-picasu-auth" = json!({
+            "guards": [],
+            "tokenTyp": [],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": true,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Session profile; JWT in HttpOnly Set-Cookie", body = UserSummary),
             (status = 400, description = "Invalid input"),
@@ -486,6 +498,18 @@ pub async fn authenticate(
 /// valid; the cookie is always cleared and the answer is always 204.
 #[utoipa::path(
         tag = "auth",
+        security(()),
+        extensions(("x-picasu-auth" = json!({
+            "guards": [],
+            "tokenTyp": [],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": true,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 204, description = "Session cookie cleared"),
         )

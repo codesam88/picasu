@@ -120,6 +120,17 @@ pub struct SetAlbumCover {
         tag = "albums",
         request_body = SetAlbumCover,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Album cover updated"),
             (status = 400, description = "Invalid input"),
@@ -243,6 +254,17 @@ pub struct SetAlbumTitle {
         tag = "albums",
         request_body = SetAlbumTitle,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin", "share"],
+            "admin": "either",
+            "shareScope": "own-album",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),

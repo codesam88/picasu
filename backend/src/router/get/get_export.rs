@@ -31,6 +31,17 @@ pub struct ExportEntry {
 #[utoipa::path(
         tag = "timeline",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Export data as JSON"),
             (status = 400, description = "Invalid input"),

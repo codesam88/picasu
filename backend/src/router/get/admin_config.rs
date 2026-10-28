@@ -179,6 +179,17 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
 #[utoipa::path(
     tag = "config",
     security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
     responses(
         (status = 200, description = "Annotated configuration", body = Vec<ConfigFieldEntry>),
         (status = 401, response = Unauthorized),
@@ -226,6 +237,17 @@ pub fn get_admin_config_handler(
 #[utoipa::path(
     tag = "config",
     security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
     responses(
         (status = 200, description = "Exported runtime configuration", body = AdminConfigExportResponse),
         (status = 401, response = Unauthorized),
