@@ -134,6 +134,9 @@ const REAUTH_WITHOUT_HEADER: &str =
     include_str!("fixtures/openapi_annotations/s6_reauth_without_header.rs");
 const REAUTH_WITH_HEADER: &str = include_str!("fixtures/openapi_annotations/s6_conforming.rs");
 
+const UNDECLARED_AUTH: &str = include_str!("fixtures/openapi_annotations/s7_undeclared_auth.rs");
+const IMPLICIT_PUBLIC: &str = include_str!("fixtures/openapi_annotations/s7_implicit_public.rs");
+const PUBLIC_EXPLICIT: &str = include_str!("fixtures/openapi_annotations/s7_conforming.rs");
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
 // Every rule has a fixture that must produce its finding and a conforming
@@ -1249,4 +1252,48 @@ fn s_reauth_with_header_is_accepted() {
     let findings = check_source("s6_conforming.rs", REAUTH_WITH_HEADER);
 
     assert_eq!(render(&findings), "", "a named header must be silent");
+}
+
+// ── Section S7 — public/explicit boundary ───────────────────────────────────
+
+/// S7: a contributing guard with no `security(...)` declaration fails.
+#[test]
+fn s_undeclared_auth_fails() {
+    let findings = check_source("s7_undeclared_auth.rs", UNDECLARED_AUTH);
+
+    assert_eq!(
+        render(&findings),
+        "s7_undeclared_auth.rs:11: undeclared_auth: the handler enforces credentials \
+         the document does not publish",
+        "a missing security declaration on a guarded handler is a finding at the \
+         signature line"
+    );
+}
+
+/// S7: a handler with no contributing guard whose security is not `()` fails.
+#[test]
+fn s_implicit_public_fails() {
+    let findings = check_source("s7_implicit_public.rs", IMPLICIT_PUBLIC);
+
+    assert_eq!(
+        render(&findings),
+        "s7_implicit_public.rs:7: security_guard_mismatch: security(...) does not match \
+         the handler's guards: expected (), declared {cookie_jwt}\n\
+         s7_implicit_public.rs:7: implicit_public: public must be explicit via \
+         `security(())`",
+        "a non-public declaration on a guardless handler is both a mismatch and an \
+         implicit-public finding"
+    );
+}
+
+/// The conforming counterpart: explicit public and guarded+secured are silent.
+#[test]
+fn s_public_explicit_boundary_is_accepted() {
+    let findings = check_source("s7_conforming.rs", PUBLIC_EXPLICIT);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "explicit public and secured guards must be silent"
+    );
 }

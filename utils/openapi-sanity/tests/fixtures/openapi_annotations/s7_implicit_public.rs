@@ -1,0 +1,13 @@
+// S7 violation: a handler with no contributing guard whose `security(...)`
+// is not the explicitly-public `security(())`.
+
+/// Fetch one widget.
+#[utoipa::path(
+    tag = "assets",
+    security(("cookie_jwt" = [])),
+    responses((status = 200, description = "Ok"))
+)]
+#[get("/get/widget")]
+pub async fn widget() -> AppResult<Json<Widget>> {
+    Ok(Json(Widget))
+}
