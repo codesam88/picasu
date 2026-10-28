@@ -114,11 +114,11 @@ generate from.
 | Step 6 AUTH-11/12                                                                       | open, blocked on `effects` vocabulary                                                       |
 | Step 6 decode agreement                                                                 | done (`decode_agreement` crate)                                                             |
 | Step 6 claims-consumption (F3)                                                          | open, queued                                                                                |
-| Step 7 UI fixtures                                                                      | done (4 crates); suite-runner wiring open, part of dylint story                             |
+| Step 7 UI fixtures                                                                      | done (4 crates); UI-suite CI wiring open; allowlist/baseline open                           |
 | Step 8 expiry/decode ratchets                                                           | open                                                                                        |
 | Step 9 env-var lint                                                                     | done, gating; sequencing sentence needs amendment (open decision); further domains open     |
-| Step 10 + S-rules                                                                       | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 advisory (`token_typ_agreement`); done       |
-| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites)           | open; prerequisite for S3 gating                                                            |
+| Step 10 + S-rules                                                                       | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done         |
+| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites)           | open (allowlist/baseline); CI wiring done, S3 gated in CI                                   |
 | Consumers: matrix generator                                                             | open, next                                                                                  |
 | Consumers: hook derivation, generated negatives (incl. S4), effects/invariants backfill | open                                                                                        |
 | `authz-model.md` derivation-back                                                        | deferred until matrix proves itself                                                         |
@@ -285,9 +285,10 @@ whether `ui_test` cooperates with the manual multi-lint registration
 on the pinned nightly. Done when all three lints carry committed
 fixtures and the re-pin procedure is "run the suites", not
 "re-prove by hand". Status: fixtures committed for all four lint
-crates (AUTH-2, AUTH-3, decode agreement, token-typ); the runner
-wiring (recipe + CI) is open, folded into the dylint gating story
-above.
+crates (AUTH-2, AUTH-3, decode agreement, token-typ); the UI-suite
+runner wiring (recipe + CI) is open, folded into the dylint gating
+story above (CI currently runs the lints over the backend, not the
+crates' own UI suites).
 
 ### 8. Expiry-confinement and decode-path ratchets
 
@@ -388,7 +389,7 @@ each rule lives where its inputs live and nowhere else:
 | ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | S1   | metadata without a published declaration         | openapi-sanity (done, gating; paired both ways, internal probes exempt)                         |
 | S2   | `security` schemes vs guard types in signature   | openapi-sanity (done, gating)                                                                   |
-| S3   | `tokenTyp` vs guard-decoded claims types         | dylint: `token_typ_agreement` crate (done, advisory via `just dylint-check`)                    |
+| S3   | `tokenTyp` vs guard-decoded claims types         | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI))                 |
 | S4   | `shareScope` vs body/database binding check      | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
 | S5   | `readonly` vs `GuardReadOnlyMode` + 405 declared | openapi-sanity: P1/P2 shape                                                                     |
 | S6   | `reauth` vs `GuardReauth` + documented header    | openapi-sanity: signature + annotation text                                                     |
@@ -435,7 +436,7 @@ security reviewers); this file stays the implementation roadmap.
   accepted break) wired into `openapi-check`; RED verified both directions
   independently.
 - Step 2 done: AUTH-2 dylint lint in `utils/dylint-lints`, run through
-  upstream cargo-dylint (`just dylint-check`, advisory-only);
+  upstream cargo-dylint (`just dylint-check`, now gating in CI);
   GREEN (0 warnings) and RED (exactly 1 warning) verified independently,
   tree byte-identical. P3/P4 move deferred; open follow-ups are the
   `if let Ok`-without-else false negative and the quarterly nightly
@@ -469,7 +470,6 @@ security reviewers); this file stays the implementation roadmap.
   docs, S7 public-explicit boundary — each with fixture RED/GREEN
   pair, count pins, silent real-tree gate, committed separately. S1
   paired both ways (internal-tagged probes exempt). S3
-  (`token_typ_agreement` dylint, advisory) done 2026-10-28 with UI
+  (`token_typ_agreement` dylint, gating in CI) done 2026-10-28 with UI
   fixtures and clean-tree/RED verification. S4 (behavioral
-  cross-scope probes) remains open; S3 gating is parked on the
-  dylint story.
+  cross-scope probes) remains open; S3 is now gated in CI.

@@ -193,10 +193,10 @@ from the contract.
   `content_type_conformance`, `response_schema_conformance`,
   `response_headers_conformance` — schema conformance plus no 5xx. Acceptance
   checks stay off until the spec claims them.
-- **Runners (advisory)** — none of these gate PRs; flipping any to gating
-  requires the contract to be reconciled and the baseline to be clean:
-  - `just dylint-check` — static auth invariants (advisory; zero-finding
-    discipline is the gating precondition).
+- **Gating:** `just dylint-check` — static auth invariants (zero-finding discipline).
+- **Runners (advisory)** — the fuzz runners stay advisory; flipping
+  either to gating requires the contract to be reconciled and the
+  baseline to be clean:
   - `just fuzz-check` — tier 1 single-operation sweep against a throwaway
     seeded instance, compared to `utils/schemathesis/baseline.yaml`.
   - `just fuzz-run` — tier 2 stateful campaign against a served seeded instance.

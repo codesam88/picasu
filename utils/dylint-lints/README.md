@@ -29,7 +29,7 @@ Install cargo-dylint once (pinned version, idempotent):
 just install-dylint
 ```
 
-Run the checks (advisory — not part of `just check`):
+Run the checks (not part of `just check`; gating in CI):
 
 ```sh
 just dylint-check
@@ -78,9 +78,8 @@ Per-lint limits live with their lints: see
 [`auth2_guard_propagation/README.md`](auth2_guard_propagation/README.md#known-limits)
 and
 [`auth3_no_forward_denial/README.md`](auth3_no_forward_denial/README.md#known-limits).
-The 3 known `AUTH3_NO_FORWARD_DENIAL` findings on the clean tree (all
-`backend/src/router/auth.rs`, triaged as genuine denial-as-forward) are
-documented in the
+The lint is clean on the current tree (zero findings); the triage
+history of the three formerly-flagged sites is in the
 [AUTH-3 README](auth3_no_forward_denial/README.md#why-it-matters).
 
 ## Toolchain

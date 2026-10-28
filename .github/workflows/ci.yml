@@ -217,3 +217,40 @@ jobs:
         run: |
           just frontend-vitest
           just frontend-playwright
+
+  dylint:
+    name: Dylint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install just
+        uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: just
+
+      - name: Add Rust (stable)
+        run: rustup component add clippy rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      # The lint crates pin nightly-2026-08-01 and need rustc-dev + llvm-tools;
+      # the main build stays on stable. Installed alongside, not instead of,
+      # stable so `just install-dylint` (a `cargo install`) keeps working.
+      - name: Install nightly toolchain + components
+        run: rustup toolchain install nightly-2026-08-01 --component rustc-dev,llvm-tools
+
+      - name: Install cargo-dylint
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          just install-dylint
+          cargo dylint --version
+
+      - name: Dylint check (zero-tolerance)
+        env:
+          DYLINT_RUSTFLAGS: "-D warnings"
+        run: just dylint-check

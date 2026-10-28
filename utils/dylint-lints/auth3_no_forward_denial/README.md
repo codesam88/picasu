@@ -42,7 +42,7 @@ status with a wrong body. Two proven incidents on this tree (both in
 
 Triage of the 3 existing sites: each is a genuine denial-as-forward, none
 is legitimate route-variant selection, so no allowlist exception is
-recorded and the lint warns on the clean tree. If a future site is judged
+recorded. The three sites were fixed (denial-as-forward became denial-as-error), so the lint is clean on the current tree. If a future site is judged
 legitimate route-variant selection, record it with a per-site
 `#[allow(auth3_no_forward_denial)]` plus the reason — no project-wide
 suppression lives in the lint.

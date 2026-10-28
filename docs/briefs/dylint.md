@@ -92,8 +92,7 @@ Nothing in the stack promises stability — not `rustc_private`, not
 post is the canonical anecdote). So: pin one nightly for lint runs,
 keep the main build on stable, re-pin on a cadence driven by lint
 releases, and treat every re-pin as a porting task with GREEN/RED
-proofs, not a version bump. The check stays advisory until it earns
-gating; lints that cry wolf in CI get ignored, then deleted.
+proofs, not a version bump. The check is now gating in CI; lints that cry wolf get ignored, then deleted.
 
 ## Alternatives and when they win
 
