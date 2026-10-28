@@ -351,6 +351,55 @@ spec → checker rule GREEN/RED → matrix row) with no gate
 regression. Done when all 74 ops are annotated and the agreement
 rules gate.
 
+### 11. Check-enforcement split + consumer rollout (open — next step)
+
+The S1..S7 correspondence rules split by what each tool can see, so
+each rule lives where its inputs live and nowhere else:
+
+| Rule | Problem / purpose                                 | Enforcement                                                                                     |
+| ---- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| S1   | metadata without a published declaration          | openapi-sanity (done, gating)                                                                   |
+| S2   | `security` schemes vs guard types in signature    | openapi-sanity: annotation text vs signature idents, same name-matching as P2                   |
+| S3   | `tokenTyp` vs decoded claims type through helpers | dylint: extends `decode_agreement`, reads turbofish at call sites                               |
+| S4   | `shareScope` vs body/database binding check       | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
+| S5   | `readonly` vs `GuardReadOnlyMode` + 405 declared  | openapi-sanity: P1/P2 shape                                                                     |
+| S6   | `reauth` vs `GuardReauth` + documented header     | openapi-sanity: signature + annotation text                                                     |
+| S7   | `public` vs `security(())` + no guard             | openapi-sanity: signature + annotation form                                                     |
+
+Split justification: annotation/signature comparisons are syn's home
+turf; type/call-graph questions are dylint's; binding semantics are
+behavioral. Forcing all seven into one tool would re-implement
+attribute parsing in HIR or hardcode call tables in syn. The
+dylint gating story (allowlist mechanism for triaged findings, CI
+wiring, re-pin as `run the suites`) is prerequisite for S3 gating
+anything.
+
+Consumers, in build order:
+
+1. **Matrix generator** — per-op auth table from the committed spec,
+   diffed in CI; doubles as the security-review baseline. Its docs
+   output may feed widdershins into the final API reference; exact
+   shape (human table vs machine JSON vs both) decided at build time
+   for human as well as tool consumption.
+2. **Schemathesis hook generation** — share-guarded sets, typ-aware
+   token selection, scope pairs, destructive-op disables derived from
+   the matrix instead of hand lists.
+3. **Test generation** — token×guard cross-product negatives with
+   expected 401/403/404 per cell.
+4. **`effects` vocabulary + `invariants` backfill** — controlled
+   manage/effect classification (AUTH-11/12), then link ops to it;
+   `authz-model.md` stays the prose authority until the
+   annotation-based model can derive its docs back, at which point
+   the model replaces the hand-maintained file.
+
+Relation to the rest of this plan: steps 1–5 are done foundations
+(contract gate, hybrid lint runner, pilot, reconciliation, strategy
+record); steps 6–9 stay open (AUTH-3/11/12 spikes, UI-fixture
+runner, expiry/decode ratchets, cross-domain lints) and remain part
+of the overall strategy. Final shape and reasoning land in
+`docs/api-assurance.md` (permanent record for developers and
+security reviewers); this file stays the implementation roadmap.
+
 ## Progress
 
 - Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
@@ -387,3 +436,7 @@ rules gate.
   generated auth matrix diffed in CI, `effects` controlled vocabulary
   (all `[]` for now), `invariants` backfill once the manage/effect
   classification lands, query-param share fallback documentation.
+- Step 11 open: enforcement split (S1 done; S2/S5/S6/S7 syn, S3
+  dylint, S4 behavioral) and consumer rollout (matrix, hooks, test
+  generation, effects/invariants backfill); final shape to
+  `docs/api-assurance.md`.

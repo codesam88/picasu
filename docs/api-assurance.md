@@ -1,0 +1,110 @@
+# API Assurance
+
+> **Purpose and audience.** This document is the spec of the API
+> assurance strategy and the tooling that implements it, for
+> developers and security reviewers. Assurance runs in two
+> directions: checks mechanically keep the API specification close to
+> the implementation, and generators drive tests and verification
+> tools from the specification. This page is the permanent record of
+> the _currently implemented_ strategy — anything planned but not yet
+> built is marked as such. The implementation roadmap lives in
+> `.plan/api-assurance.md` and is not repeated here except as status
+> labels.
+
+## Strategy
+
+1. **Spec ← implementation.** Every behavioral claim the published
+   contract makes about authentication is checked against the handler
+   that answers it. A mismatch is a finding in CI, not a review
+   observation.
+2. **Tests ← spec.** The committed contract feeds configuration and
+   fixtures into black-box testing (Schemathesis) and generated
+   negative tests, so the handwritten suites pin flows while derived
+   suites cover the cross-product.
+
+## Contract foundations (implemented)
+
+The OpenAPI document is generated from `#[utoipa::path]` annotations
+(`#[utoipauto]` collector) and held to the implementation by
+`just openapi-check`: source-shape rules (`openapi-sanity`), a
+regeneration diff, Spectral lint, and route-set parity
+(`picasu --check-openapi`, 74/74 routes matched). Breaking changes
+fail via `openapi-breakcheck`. See `docs/openapi-generator.md` for
+the pipeline.
+
+## Auth metadata model
+
+Per-operation authorization semantics that OpenAPI `security`
+cannot express live in an `x-picasu-auth` extension next to the
+native `security(...)` clause:
+
+| Field        | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `guards`     | handler signature guard types, verbatim                           |
+| `tokenTyp`   | credential types accepted (`admin`, `snapshot`, `asset`, `share`) |
+| `admin`      | `admin` (admin-only), `either`, `n-a`                             |
+| `shareScope` | `own-album`, `n-a`                                                |
+| `readonly`   | `GuardReadOnlyMode` present                                       |
+| `reauth`     | `GuardReauth` present                                             |
+| `public`     | no credential required (pairs with `security(())`)                |
+| `effects`    | manage/effect classification (**pending**: all `[]`)              |
+| `invariants` | `authz-model.md` IDs, only where source-verified                  |
+
+All 51 annotated handlers carry the key; the 23 SPA page shells are
+unannotated by design. `effects` has no controlled vocabulary yet;
+`invariants` backfill waits on the manage/effect classification.
+
+## Correspondence rules
+
+| Rule | Claim checked                              | Enforced by                           | Status                          |
+| ---- | ------------------------------------------ | ------------------------------------- | ------------------------------- |
+| S1   | metadata present ⇔ `security(...)` present | `openapi-sanity`                      | gating                          |
+| S2   | `security` schemes ⇔ guard types           | `openapi-sanity` (planned)            | open                            |
+| S3   | `tokenTyp` ⇔ decoded claims type           | dylint (`decode_agreement` extension) | open, needs dylint gating story |
+| S4   | `shareScope` ⇔ body binding check          | behavioral cross-scope probes         | open                            |
+| S5   | `readonly` ⇔ guard + 405 declared          | `openapi-sanity` (planned)            | open                            |
+| S6   | `reauth` ⇔ guard + documented header       | `openapi-sanity` (planned)            | open                            |
+| S7   | `public` ⇔ `security(())` + no guard       | `openapi-sanity` (planned)            | open                            |
+
+Split rationale: annotation/signature comparisons belong to the syn
+checker, type/call-graph questions to dylint, binding semantics to
+behavioral tests. Each rule lives where its inputs live.
+
+## Consumers (planned unless noted)
+
+1. **Auth matrix.** Per-op table generated from the committed spec,
+   diffed in CI; doubles as the security-review baseline and
+   permission changelog. Its docs output may feed widdershins into
+   the API reference; exact shape (human table, machine JSON, or
+   both) is decided at build time for human as well as tool
+   consumption. _(Placeholder.)_
+2. **Schemathesis derivation.** Share-guarded sets, typ-aware token
+   selection, scope pairs, and destructive-op disables generated
+   from the matrix instead of hand lists. _(Placeholder.)_
+3. **Generated negatives.** Token×guard cross-product with expected
+   401/403/404 per cell. _(Placeholder.)_
+4. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
+   until the annotation-based model can derive its docs back; at
+   that point the model replaces the hand-maintained file. Shape to
+   be settled when the matrix lands. _(Placeholder.)_
+
+## Runners and gates
+
+| Command                             | Scope                                    | Gate                                           |
+| ----------------------------------- | ---------------------------------------- | ---------------------------------------------- |
+| `just openapi-check`                | spec parity, shape, lint, routes         | gating (CI + precommit on `backend/`)          |
+| `just dylint-check`                 | AUTH-2, AUTH-3, decode agreement         | advisory; gating needs zero-finding discipline |
+| `just fuzz-check` / `just fuzz-run` | 5-check oracle sweep / stateful campaign | advisory; baseline-compared                    |
+| `just env-var-check`                | config consistency                       | gating                                         |
+
+Quarterly re-pin cadence applies to Schemathesis, dylint nightlies,
+and the other pinned tools. Research digests live in `docs/briefs/`.
+
+## Open gaps
+
+- `effects` controlled vocabulary and manage/effect classification
+  (AUTH-11/12).
+- `invariants` backfill beyond the source-verified set.
+- Query-param share fallback is invisible to the published schemes.
+- Single `bearer_token` scheme covers three token types; `tokenTyp`
+  is authoritative until schemes split.
