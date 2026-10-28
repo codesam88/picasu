@@ -379,3 +379,11 @@ rules gate.
   success is annotation coverage over 74 ops, guard↔spec agreement at
   zero mismatches, regeneration stability, and model-parameterized
   Schemathesis probes.
+- Step 10 rollout done 2026-10-28 (`spike/x-picasu-auth`): all 51
+  utoipa-annotated handlers carry the key (23 unannotated page shells
+  excluded by design); every annotated op has `security` (public trio
+  explicit via `security(())`); S1 pairing rule gates the tree;
+  `openapi-check` green with 74/74 routes matched. Open follow-ups:
+  generated auth matrix diffed in CI, `effects` controlled vocabulary
+  (all `[]` for now), `invariants` backfill once the manage/effect
+  classification lands, query-param share fallback documentation.
