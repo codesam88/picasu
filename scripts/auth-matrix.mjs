@@ -97,12 +97,6 @@ function scopeCell(a) {
   return '—'
 }
 
-// Readonly and reauth are derived from the guard list, not stored:
-// GuardMutate answers 405, GuardReauth demands the password header.
-function hasGuard(a, name) {
-  return (a.guards || []).includes(name)
-}
-
 const lines = []
 lines.push('# Auth matrix')
 lines.push('')
@@ -131,18 +125,17 @@ lines.push('  - `none(snapshot)` / `none(asset)`: token-gated, no user role.')
 lines.push('- **Tokens**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public). `session` and `share` are alternative presenter credentials (whichever the presenter holds); `snapshot` / `asset` are bearer tokens that are additionally required whenever listed.');
 lines.push('- **Reading a row**: Role says whose identity may present; Tokens says which credentials must validate — one presenter credential plus every listed bearer token.');
 lines.push('- **Scope**: share binding (`own album` or `—` when not share-scoped).')
-lines.push('- **Guards**: request guards verbatim from the handler signature.')
-lines.push('- **Readonly** / **Reauth**: derived from the guard list (`GuardMutate` answers 405, `GuardReauth` demands the password header).')
+lines.push('- **Guards**: request guards verbatim from the handler signature (`GuardMutate` marks read-only-gated mutating routes, `GuardReauth` the password-confirmed ones).')
 lines.push('- **Effects**: reserved for a future manage/effect vocabulary (all `—` today).')
 lines.push('')
 lines.push('## Modeled operations')
 lines.push('')
-lines.push('| Op | Name | Role | Tokens | Scope | Guards | Readonly | Reauth | Effects |')
-lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+lines.push('| Op | Name | Role | Tokens | Scope | Guards | Effects |')
+lines.push('| --- | --- | --- | --- | --- | --- | --- |')
 for (const r of modeled) {
   const a = r['x-picasu-auth']
   lines.push(
-    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${hasGuard(a, 'GuardMutate') ? 'yes' : 'no'} | ${hasGuard(a, 'GuardReauth') ? 'yes' : 'no'} | ${cell(a.effects)} |`
+    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${cell(a.effects)} |`
   )
 }
 lines.push('')
