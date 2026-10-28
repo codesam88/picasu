@@ -40,10 +40,8 @@ use crate::router::{AppResult, GuardResult};
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardTimestamp"],
             "tokenTyp": ["snapshot"],
-            "admin": "n-a",
+            "admin": "none",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": ["AUTH-7"]

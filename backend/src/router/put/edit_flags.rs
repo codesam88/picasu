@@ -51,11 +51,9 @@ pub struct EditFlagsData {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin"],
-            "admin": "either",
+            "tokenTyp": ["session"],
+            "admin": "any",
             "shareScope": "n-a",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []

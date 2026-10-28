@@ -353,10 +353,8 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
         extensions(("x-picasu-auth" = json!({
             "guards": [],
             "tokenTyp": [],
-            "admin": "n-a",
+            "admin": "none",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": true,
             "effects": [],
             "invariants": []
@@ -502,10 +500,8 @@ pub async fn authenticate(
         extensions(("x-picasu-auth" = json!({
             "guards": [],
             "tokenTyp": [],
-            "admin": "n-a",
+            "admin": "none",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": true,
             "effects": [],
             "invariants": []

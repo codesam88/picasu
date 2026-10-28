@@ -39,11 +39,9 @@ pub struct IndexAlbumRequest {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []
@@ -92,11 +90,9 @@ pub fn index_album_handler(
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []

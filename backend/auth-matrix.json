@@ -1,0 +1,1714 @@
+[
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "redirect_to_photo",
+    "path": "/",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "albums",
+    "path": "/albums",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "albums_view",
+    "path": "/albums/view/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "config",
+    "path": "/config",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "DELETE",
+    "modeled": true,
+    "operationId": "delete_data",
+    "path": "/delete/delete-data",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "DELETE",
+    "modeled": true,
+    "operationId": "delete_invite",
+    "path": "/delete/invites/{invite_id}",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "DELETE",
+    "modeled": true,
+    "operationId": "delete_user_handler",
+    "path": "/delete/users/{user_id}",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [
+        "AUTH-16"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "favicon",
+    "path": "/favicon.ico",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_admin_config_handler",
+    "path": "/get/admin/config",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_admin_config_export_handler",
+    "path": "/get/admin/config/export",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_config_handler",
+    "path": "/get/config",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session",
+        "share"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "export_config_handler",
+    "path": "/get/config/export",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_albums",
+    "path": "/get/get-albums",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_data",
+    "path": "/get/get-data",
+    "security": [
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "timeline"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [
+        "GuardTimestamp"
+      ],
+      "invariants": [
+        "AUTH-7"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "snapshot"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_export",
+    "path": "/get/get-export",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "timeline"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_rows",
+    "path": "/get/get-rows",
+    "security": [
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "timeline"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [
+        "GuardTimestamp"
+      ],
+      "invariants": [
+        "AUTH-7"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "snapshot"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_scroll_bar",
+    "path": "/get/get-scroll-bar",
+    "security": [
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "timeline"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [
+        "GuardTimestamp"
+      ],
+      "invariants": [
+        "AUTH-7"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "snapshot"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_tags",
+    "path": "/get/get-tags",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "timeline"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_album_index_status",
+    "path": "/get/index/status",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "index"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "list_invites_handler",
+    "path": "/get/invites",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_metadata",
+    "path": "/get/metadata/{asset_id}",
+    "security": [
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [
+        "GuardTimestamp"
+      ],
+      "invariants": [
+        "AUTH-7"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "snapshot"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_fs_completion",
+    "path": "/get/path-completion",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "prefetch",
+    "path": "/get/prefetch",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "timeline"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "get_self_profile_handler",
+    "path": "/get/self/profile",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "server_info_handler",
+    "path": "/get/server-info",
+    "security": [
+      {}
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [],
+      "invariants": [],
+      "public": true,
+      "shareScope": "n-a",
+      "tokenTyp": []
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "list_users_handler",
+    "path": "/get/users",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "links",
+    "path": "/links",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "login",
+    "path": "/login",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "compressed_file",
+    "path": "/object/compressed/{file_path}",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      },
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "serving"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare",
+        "GuardHash"
+      ],
+      "invariants": [
+        "AUTH-8"
+      ],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share",
+        "asset"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
+    "operationId": "imported_file",
+    "path": "/object/imported/{file_path}",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      },
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "serving"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare",
+        "GuardHashOriginal"
+      ],
+      "invariants": [
+        "AUTH-8"
+      ],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share",
+        "asset"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "disable_read_only_handler",
+    "path": "/post/admin/config/disable-read-only",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReauth"
+      ],
+      "invariants": [
+        "AUTH-15"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "reset_auth_key_handler",
+    "path": "/post/config/auth-key/reset",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "create_dir_album",
+    "path": "/post/create_dir_album",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "create_share",
+    "path": "/post/create_share",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "index_album_handler",
+    "path": "/post/index/album",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "index"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "cancel_album_index_handler",
+    "path": "/post/index/cancel",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "index"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "create_invite_handler",
+    "path": "/post/invites",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "logout",
+    "path": "/post/logout",
+    "security": [
+      {}
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [],
+      "invariants": [],
+      "public": true,
+      "shareScope": "n-a",
+      "tokenTyp": []
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "renew_hash_token",
+    "path": "/post/renew-hash-token",
+    "security": [
+      {
+        "bearer_token": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [
+        "TimestampGuardModified"
+      ],
+      "invariants": [
+        "AUTH-10"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "snapshot"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "renew_timestamp_token",
+    "path": "/post/renew-timestamp-token",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare"
+      ],
+      "invariants": [
+        "AUTH-10"
+      ],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "authenticate",
+    "path": "/post/users/authenticate",
+    "security": [
+      {}
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "none",
+      "effects": [],
+      "guards": [],
+      "invariants": [],
+      "public": true,
+      "shareScope": "n-a",
+      "tokenTyp": []
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "bootstrap_admin_handler",
+    "path": "/post/users/bootstrap",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "register_user_handler",
+    "path": "/post/users/register",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "update_admin_config_handler",
+    "path": "/put/admin/config",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "config"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "assign_album",
+    "path": "/put/assign_album",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "delete_share",
+    "path": "/put/delete_share",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "edit_flags",
+    "path": "/put/edit_flags",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "edit_rating",
+    "path": "/put/edit_rating",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "edit_share",
+    "path": "/put/edit_share",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "edit_tag",
+    "path": "/put/edit_tag",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "regenerate_thumbnail_with_frame",
+    "path": "/put/regenerate-thumbnail-with-frame",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "rotate_image",
+    "path": "/put/rotate-image",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "assets"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "set_album_cover",
+    "path": "/put/set_album_cover",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "set_album_title",
+    "path": "/put/set_album_title",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "set_user_defined_description",
+    "path": "/put/set_user_defined_description",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardShare",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "set_user_admin_handler",
+    "path": "/put/users/admin",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "effects": [],
+      "guards": [
+        "GuardAuth",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [
+        "AUTH-16"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "set_user_password_handler",
+    "path": "/put/users/password",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUser",
+        "GuardReadOnlyMode",
+        "GuardReauth"
+      ],
+      "invariants": [
+        "AUTH-15"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "tokenTyp": [
+        "session"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "redirect_to_login",
+    "path": "/redirect-to-login",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "register",
+    "path": "/register",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "sregister_sw",
+    "path": "/registerSW.js",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "service_worker",
+    "path": "/serviceWorker.js",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "setting",
+    "path": "/setting",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "share",
+    "path": "/share/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "tags",
+    "path": "/tags",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "timeline",
+    "path": "/timeline",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "timeline_view",
+    "path": "/timeline/view/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "trashed",
+    "path": "/trashed",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "trashed_view",
+    "path": "/trashed/view/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "unauthorized",
+    "path": "/unauthorized",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "POST",
+    "modeled": true,
+    "operationId": "upload",
+    "path": "/upload",
+    "security": [
+      {
+        "album_id": [],
+        "share_id": []
+      },
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "upload"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "effects": [],
+      "guards": [
+        "GuardUpload",
+        "GuardReadOnlyMode"
+      ],
+      "invariants": [],
+      "public": false,
+      "shareScope": "own-album",
+      "tokenTyp": [
+        "session",
+        "share"
+      ]
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "videos",
+    "path": "/videos",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "videos_view",
+    "path": "/videos/view/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "album_page",
+    "path": "/{dynamic_album_id}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "spa_fallback",
+    "path": "/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  }
+]

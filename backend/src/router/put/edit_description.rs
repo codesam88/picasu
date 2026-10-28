@@ -49,11 +49,9 @@ pub struct SetUserDefinedDescription {
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardShare", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin", "share"],
-            "admin": "either",
+            "tokenTyp": ["session", "share"],
+            "admin": "any",
             "shareScope": "own-album",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []

@@ -61,10 +61,8 @@ impl<'r> rocket::response::Responder<'r, 'static> for NoStoreJson {
         extensions(("x-picasu-auth" = json!({
             "guards": [],
             "tokenTyp": [],
-            "admin": "n-a",
+            "admin": "none",
             "shareScope": "n-a",
-            "readonly": false,
-            "reauth": false,
             "public": true,
             "effects": [],
             "invariants": []

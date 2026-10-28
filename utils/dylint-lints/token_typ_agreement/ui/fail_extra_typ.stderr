@@ -1,4 +1,4 @@
-warning: handler tokenTyp ["admin"] does not match guard-derived typs []
+warning: handler tokenTyp ["session"] does not match guard-derived typs []
   --> $DIR/fail_extra_typ.rs:13:1
    |
 LL | pub fn handler() {}

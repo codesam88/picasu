@@ -61,11 +61,9 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin"],
-            "admin": "either",
+            "tokenTyp": ["session"],
+            "admin": "any",
             "shareScope": "n-a",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []
@@ -335,11 +333,9 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": []
@@ -393,11 +389,9 @@ pub fn delete_invite(
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAuth", "GuardReadOnlyMode"],
-            "tokenTyp": ["admin"],
+            "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "readonly": true,
-            "reauth": false,
             "public": false,
             "effects": [],
             "invariants": ["AUTH-16"]
