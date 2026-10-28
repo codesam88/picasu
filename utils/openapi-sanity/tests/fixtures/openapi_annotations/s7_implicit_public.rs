@@ -5,6 +5,17 @@
 #[utoipa::path(
     tag = "assets",
     security(("cookie_jwt" = [])),
+    extensions(("x-picasu-auth" = json!({
+        "guards": [],
+        "tokenTyp": [],
+        "admin": "n-a",
+        "shareScope": "n-a",
+        "readonly": false,
+        "reauth": false,
+        "public": true,
+        "effects": [],
+        "invariants": []
+    }))),
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]

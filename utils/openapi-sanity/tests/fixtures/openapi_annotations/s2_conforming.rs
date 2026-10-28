@@ -25,6 +25,17 @@ type AppResult<T> = Result<T, AppError>;
 #[utoipa::path(
     tag = "assets",
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+    extensions(("x-picasu-auth" = json!({
+        "guards": ["GuardShare", "GuardReadOnlyMode"],
+        "tokenTyp": ["admin", "share"],
+        "admin": "either",
+        "shareScope": "own-album",
+        "readonly": true,
+        "reauth": false,
+        "public": false,
+        "effects": [],
+        "invariants": []
+    }))),
     responses(
         (status = 200, description = "Ok"),
         (status = 405, description = "Read-only mode"),

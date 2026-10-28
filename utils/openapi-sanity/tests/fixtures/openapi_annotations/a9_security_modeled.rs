@@ -7,6 +7,17 @@
 #[utoipa::path(
     tag = "assets",
     security(("cookie_jwt" = [])),
+    extensions(("x-picasu-auth" = json!({
+        "guards": ["GuardAuth"],
+        "tokenTyp": ["admin"],
+        "admin": "admin",
+        "shareScope": "n-a",
+        "readonly": false,
+        "reauth": false,
+        "public": false,
+        "effects": [],
+        "invariants": []
+    }))),
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]
@@ -18,6 +29,17 @@ pub async fn widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
 #[utoipa::path(
     tag = "assets",
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+    extensions(("x-picasu-auth" = json!({
+        "guards": ["GuardShare"],
+        "tokenTyp": ["admin", "share"],
+        "admin": "either",
+        "shareScope": "own-album",
+        "readonly": false,
+        "reauth": false,
+        "public": false,
+        "effects": [],
+        "invariants": []
+    }))),
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/other-widget")]
