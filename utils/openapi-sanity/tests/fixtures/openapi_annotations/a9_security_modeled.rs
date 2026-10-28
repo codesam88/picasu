@@ -10,7 +10,7 @@
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]
-pub async fn widget() -> AppResult<Json<Widget>> {
+pub async fn widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }
 
@@ -21,6 +21,6 @@ pub async fn widget() -> AppResult<Json<Widget>> {
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/other-widget")]
-pub async fn other_widget() -> AppResult<Json<Widget>> {
+pub async fn other_widget(share: GuardShare) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }
