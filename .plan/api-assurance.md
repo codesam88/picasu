@@ -356,15 +356,15 @@ rules gate.
 The S1..S7 correspondence rules split by what each tool can see, so
 each rule lives where its inputs live and nowhere else:
 
-| Rule | Problem / purpose                                 | Enforcement                                                                                     |
-| ---- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| S1   | metadata without a published declaration          | openapi-sanity (done, gating)                                                                   |
-| S2   | `security` schemes vs guard types in signature    | openapi-sanity: annotation text vs signature idents, same name-matching as P2                   |
-| S3   | `tokenTyp` vs decoded claims type through helpers | dylint: extends `decode_agreement`, reads turbofish at call sites                               |
-| S4   | `shareScope` vs body/database binding check       | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
-| S5   | `readonly` vs `GuardReadOnlyMode` + 405 declared  | openapi-sanity: P1/P2 shape                                                                     |
-| S6   | `reauth` vs `GuardReauth` + documented header     | openapi-sanity: signature + annotation text                                                     |
-| S7   | `public` vs `security(())` + no guard             | openapi-sanity: signature + annotation form                                                     |
+| Rule | Problem / purpose                                | Enforcement                                                                                     |
+| ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| S1   | metadata without a published declaration         | openapi-sanity (done, gating; paired both ways, internal probes exempt)                         |
+| S2   | `security` schemes vs guard types in signature   | openapi-sanity (done, gating)                                                                   |
+| S3   | `tokenTyp` vs guard-decoded claims types         | dylint: `token_typ_agreement` crate (done, advisory via `just dylint-check`)                    |
+| S4   | `shareScope` vs body/database binding check      | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
+| S5   | `readonly` vs `GuardReadOnlyMode` + 405 declared | openapi-sanity: P1/P2 shape                                                                     |
+| S6   | `reauth` vs `GuardReauth` + documented header    | openapi-sanity: signature + annotation text                                                     |
+| S7   | `public` vs `security(())` + no guard            | openapi-sanity: signature + annotation form                                                     |
 
 Split justification: annotation/signature comparisons are syn's home
 turf; type/call-graph questions are dylint's; binding semantics are
@@ -443,6 +443,9 @@ security reviewers); this file stays the implementation roadmap.
 - Step 11 rules S2/S5/S6/S7 done 2026-10-28 (`spike/x-picasu-auth`):
   S2 security-guard correspondence, S5 readonly-405, S6 reauth-header
   docs, S7 public-explicit boundary — each with fixture RED/GREEN
-  pair, count pins, silent real-tree gate, committed separately. S3
-  (dylint) and S4 (behavioral cross-scope probes) remain open; S3 is
-  parked on the dylint gating story.
+  pair, count pins, silent real-tree gate, committed separately. S1
+  paired both ways (internal-tagged probes exempt). S3
+  (`token_typ_agreement` dylint, advisory) done 2026-10-28 with UI
+  fixtures and clean-tree/RED verification. S4 (behavioral
+  cross-scope probes) remains open; S3 gating is parked on the
+  dylint story.
