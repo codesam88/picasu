@@ -1,0 +1,16 @@
+name: "negative: missing or garbage timestamp bearer rejected for renew-hash-token"
+# The TimestampGuardModified guard on POST /post/renew-hash-token must deny
+# with 401 when the bearer token is missing or unparseable, not fall through.
+when:
+  - call: "POST /post/renew-hash-token"
+    raw_body: '{"expired_hash_token": "garbage"}'
+    auth: false
+    then:
+      - response.status: 401
+  - call: "POST /post/renew-hash-token"
+    raw_body: '{"expired_hash_token": "garbage"}'
+    auth: false
+    headers:
+      Authorization: "Bearer garbage"
+then:
+  - response.status: 401
