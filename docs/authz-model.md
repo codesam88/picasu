@@ -21,15 +21,15 @@ state**. Routing, storage, and image processing are out of scope.
 
 ## 2. Domains and notation
 
-| Symbol        | Meaning                                                               |
-| ------------- | --------------------------------------------------------------------- |
-| `A`           | albums, identified by album id                                        |
-| `X`           | assets, identified by asset id                                        |
-| `T`           | snapshot ids (millisecond epoch integers)                             |
-| `album(x)`    | the album an asset `x` belongs to                                     |
-| `scope(t)`    | the album a snapshot `t` is scoped to (⊥ = unscoped/admin)            |
-| `F ⊆ {M,D,U}` | a share's flags: `M` metadata, `D` download, `U` upload               |
-| `sh`          | a share record `⟨a, F, e, w⟩`: album, flags, expiry `e`, password `w` |
+| Symbol        | Meaning                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `A`           | albums, identified by album id                                                                                                 |
+| `X`           | assets, identified by asset id                                                                                                 |
+| `T`           | snapshot ids (millisecond epoch integers)                                                                                      |
+| `album(x)`    | the album an asset `x` belongs to                                                                                              |
+| `scope(t)`    | the album a snapshot `t` is scoped to (⊥ = unscoped/admin)                                                                     |
+| `F ⊆ {M,D,U}` | a share's flags: `M` metadata, `D` download, `U` upload (recorded but not enforced — shares are read-only regardless of flags) |
+| `sh`          | a share record `⟨a, F, e, w⟩`: album, flags, expiry `e`, password `w`                                                          |
 
 A share is **live** iff it exists in the DB and `e = ⊥ ∨ now ≤ e` and (if `w ≠ ⊥`)
 the presented password equals `w`.
@@ -49,13 +49,13 @@ Cap  ::= ⊤ | Share(a,F) | Snap(a,F,t) | Asset(x,o) | ⊥
 `holds : Cap → 2^(Act × Res)` is the permission set; the order is
 `c ⊑ c' ⟺ holds(c) ⊆ holds(c')`, with `⊥` empty and `⊤` all of `Act × Res`.
 
-| Cap           | `holds(c)` (conditions in brackets)                                                                                                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Share(a,F)`  | `list(t)` `[scope(t)=a]`, `read_meta(x)` `[x∈a ∧ M∈F]`, `read_thumb(x)` `[x∈a]`, `read_orig(x)` `[x∈a ∧ D∈F]`, `write_meta(x)` `[x∈a]`, `write_album(a)`, `upload(a)` `[U∈F]`, `read_config` |
-| `Snap(a,F,t)` | `list(t)`, `read_meta(x)` `[x∈a ∧ M∈F]`, `read_thumb(x)` `[x∈a]`, `read_orig(x)` `[x∈a ∧ D∈F]`                                                                                               |
-| `Asset(x,o)`  | `read_thumb(x)`, `read_orig(x)` `[o]`                                                                                                                                                        |
-| `⊤`           | `Act × Res`                                                                                                                                                                                  |
-| `⊥`           | `∅`                                                                                                                                                                                          |
+| Cap           | `holds(c)` (conditions in brackets)                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `Share(a,F)`  | `list(t)` `[scope(t)=a]`, `read_meta(x)` `[x∈a ∧ M∈F]`, `read_thumb(x)` `[x∈a]`, `read_orig(x)` `[x∈a ∧ D∈F]`, `read_config` |
+| `Snap(a,F,t)` | `list(t)`, `read_meta(x)` `[x∈a ∧ M∈F]`, `read_thumb(x)` `[x∈a]`, `read_orig(x)` `[x∈a ∧ D∈F]`                               |
+| `Asset(x,o)`  | `read_thumb(x)`, `read_orig(x)` `[o]`                                                                                        |
+| `⊤`           | `Act × Res`                                                                                                                  |
+| `⊥`           | `∅`                                                                                                                          |
 
 `bound : Cap → 2^Res` is the resource scope a capability is confined to:
 
@@ -80,7 +80,6 @@ A guard denotes a partial map from a request to the capability it establishes,
 | `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                                                                                                                                                                                                                                                                                                                                         |
 | `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                                                                                                                                                                                                                                                                                                                                       |
 | `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                                                                                                                                                                                                                                                                                                                                            |
-| `GuardUpload`       | `Share(a,{U})` if it resolves a live share with `U ∈ F` and a matching `presignedAlbumId`; else the request's live `User` identity                                                                                                                                                                                                                                                                                                  |
 | `GuardReadOnlyMode` | `⊤` if read-only mode is off                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `GuardReauth`       | `⊤`-with-proof if the request carries a live session identity of any role and the `X-Picasu-Password` header verifies (constant-time) against that caller's stored argon2id hash; `⊥` otherwise (401 for no/invalid session, 403 for missing/wrong password). Authority is not granted here — it comes from the route's other guards (lift = `GuardAuth` ∩ re-auth, password change = `GuardUser` ∩ `GuardReadOnlyMode` ∩ re-auth). |
 
@@ -150,7 +149,7 @@ and tests cite.
 
 **AUTH-1 — Type soundness.** `decode_g(tok) ≠ ⊥ ⟹ typ(tok) = expected(g)`, where
 `expected` maps `GuardAuth` → `admin` (identity token, admin role required),
-`GuardShare`/`GuardUpload`/`GuardUser` → identity token of any role,
+`GuardShare`/`GuardUser` → identity token of any role,
 `GuardTimestamp` → `snapshot`, `GuardHash`/`GuardHashOriginal` → `asset`.
 Decoding a token as a type it does not declare fails.
 
@@ -169,11 +168,13 @@ from `⟦G(r)⟧(req)`'s claims; equivalently, `target(r,req) ∈ bound(cap)` fo
 established `cap`. A target read from the body or query is a violation.
 
 **AUTH-5 — Flag soundness.** `(read_meta(x), x) ∈ needs(r)` via a share cap
-requires `M ∈ F`; `(read_orig(x), x)` requires `D ∈ F`; `(upload(a), a)` requires
-`U ∈ F`. Follows from §3; the implementation must realize it.
+requires `M ∈ F`; `(read_orig(x), x)` requires `D ∈ F`. Uploads require a
+user session (`GuardUser`) — the share `U` flag is recorded but confers
+nothing. Follows from §3; the implementation must realize it.
 
-**AUTH-6 — Album scoping.** For any `(act, x)` with `act ∈ {read_*, write_meta}`
-established by a share cap, `album(x) = a`. For `write_album(a')`, `a' = a`.
+**AUTH-6 — Album scoping.** For any `(act, x)` with `act ∈ {read_*}` established
+by a share cap, `album(x) = a`. Share caps establish no writes, so there is
+no share-established `write_album` to scope.
 
 **AUTH-7 — Snapshot binding.** `⟦GuardTimestamp⟧(req) = Snap(a,F,t) ⟹ t =`
 `query_timestamp(req)`; a token for one snapshot cannot read another.

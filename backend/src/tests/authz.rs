@@ -116,24 +116,6 @@ fn prefetch_as_share(
     )
 }
 
-/// Admin `POST /get/prefetch`, returning snapshot id, token, and located index.
-fn prefetch_as_admin(client: &Client, locate: &str) -> (i64, String, Option<usize>) {
-    let resp = client
-        .post(format!("/get/prefetch?locate={locate}"))
-        .cookie(auth_cookie(client))
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(resp.status(), Status::Ok, "prefetch as admin");
-    let body: Value = resp.into_json().expect("prefetch json");
-    (
-        body["prefetch"]["timestamp"].as_i64().expect("timestamp"),
-        body["token"].as_str().expect("token").to_string(),
-        body["prefetch"]["locateTo"]
-            .as_u64()
-            .map(|v| usize::try_from(v).expect("prefetch locateTo fits in usize")),
-    )
-}
-
 /// The per-asset `ClaimsHash` token carried in a `get-data` row.
 fn get_data_asset_token(client: &Client, ts: i64, snapshot_token: &str) -> String {
     let resp = client
@@ -375,29 +357,30 @@ fn metadata_is_scoped_to_the_shares_album() {
     );
 }
 
-// ── share-guarded writes are bound to the caller ────────────────────
+// ── shares are read-only: share credentials write nothing ───────────────
 
-/// A share on `AlbumB` must not rename `AlbumA`.
+/// A share may not rename albums — not even its own. Share writes are
+/// rejected at the guard with 401; the album is untouched.
 #[test]
-fn share_cannot_rename_another_album() {
+fn share_cannot_rename_any_album() {
     let _g = lock();
     let client = setup_image_home();
     let (album_a, _asset_a) = create_album(&client, "/authz_rename_a/album/photo.jpg");
-    let (album_b, _asset_b) = create_album(&client, "/authz_rename_b/album/photo.jpg");
-    let share_b = create_share(&client, &album_b, true, false);
+    let (_album_b, _asset_b) = create_album(&client, "/authz_rename_b/album/photo.jpg");
+    let share_a = create_share(&client, &album_a, true, false);
     let before = album_title(&client, &album_a);
 
     let resp = client
         .put("/put/set_album_title")
-        .header(Header::new("x-album-id", album_b.clone()))
-        .header(Header::new("x-share-id", share_b.clone()))
+        .header(Header::new("x-album-id", album_a.clone()))
+        .header(Header::new("x-share-id", share_a.clone()))
         .header(ContentType::JSON)
         .body(json!({ "albumId": album_a.clone(), "title": "pwned" }).to_string())
         .dispatch();
     assert_eq!(
         resp.status(),
-        Status::Forbidden,
-        "a share must not rename another album"
+        Status::Unauthorized,
+        "a share must not rename any album, including its own"
     );
     assert_eq!(
         album_title(&client, &album_a),
@@ -406,29 +389,28 @@ fn share_cannot_rename_another_album() {
     );
 }
 
-/// A share on `AlbumA` must not write a description into `AlbumB`'s asset by
-/// supplying `AlbumB`'s snapshot timestamp.
+/// A share may not write asset descriptions — not even into its own album.
 #[test]
-fn share_cannot_write_another_albums_asset() {
+fn share_cannot_write_any_albums_asset() {
     let _g = lock();
     let client = setup_image_home();
-    let (album_a, _asset_a) = create_album(&client, "/authz_desc_a/album/photo.jpg");
-    let (_album_b, asset_b) = create_album(&client, "/authz_desc_b/album/photo.jpg");
+    let (album_a, asset_a) = create_album(&client, "/authz_desc_a/album/photo.jpg");
+    let (_album_b, _asset_b) = create_album(&client, "/authz_desc_b/album/photo.jpg");
     let share_a = create_share(&client, &album_a, true, false);
-    let (ts_b, _, idx_b) = prefetch_as_admin(&client, &asset_b);
-    let idx_b = idx_b.expect("album B asset must be locatable");
+    let (ts_a, _, idx_a) = prefetch_as_share(&client, &album_a, &share_a, Some(&asset_a));
+    let idx_a = idx_a.expect("album A asset must be locatable");
 
     let resp = client
         .put("/put/set_user_defined_description")
         .header(Header::new("x-album-id", album_a.clone()))
         .header(Header::new("x-share-id", share_a.clone()))
         .header(ContentType::JSON)
-        .body(json!({ "index": idx_b, "description": "pwned", "timestamp": ts_b }).to_string())
+        .body(json!({ "index": idx_a, "description": "pwned", "timestamp": ts_a }).to_string())
         .dispatch();
     assert_eq!(
         resp.status(),
-        Status::Forbidden,
-        "a share must not write another album's asset"
+        Status::Unauthorized,
+        "a share must not write any asset description, including its own album's"
     );
 }
 

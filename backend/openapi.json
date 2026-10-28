@@ -4527,7 +4527,7 @@
     },
     "/put/set_album_title": {
       "put": {
-        "description": "`albumId` names the album to edit and `title` its new display title. Both\nthe raw display `title` and `custom_title`, the value written to the album's\n`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree\nis rebuilt before the call returns.\n\nCorner cases: `title: null` clears `custom_title` and falls `title` back to\nthe directory-derived default, so a cleared title leaves no empty string\nbehind.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 403 a share targeting an album other than its own —\n405 read-only mode — 500 storage failure.",
+        "description": "`albumId` names the album to edit and `title` its new display title. Both\nthe raw display `title` and `custom_title`, the value written to the album's\n`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree\nis rebuilt before the call returns.\n\nCorner cases: `title: null` clears `custom_title` and falls `title` back to\nthe directory-derived default, so a cleared title leaves no empty string\nbehind.\n\nErrors: 400 malformed body — 401 missing or invalid session —\n403 no enrolled user — 405 read-only mode — 500 storage failure.",
         "operationId": "set_album_title",
         "requestBody": {
           "content": {
@@ -4550,7 +4550,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Share targeting another album"
+            "description": "Forbidden"
           },
           "404": {
             "description": "Not found"
@@ -4567,10 +4567,6 @@
         },
         "security": [
           {
-            "album_id": [],
-            "share_id": []
-          },
-          {
             "cookie_jwt": []
           }
         ],
@@ -4582,22 +4578,21 @@
           "admin": "any",
           "effects": [],
           "guards": [
-            "GuardShare",
+            "GuardUser",
             "GuardReadOnlyMode"
           ],
           "invariants": [],
           "public": false,
-          "shareScope": "own-album",
+          "shareScope": "n-a",
           "tokenTyp": [
-            "session",
-            "share"
+            "session"
           ]
         }
       }
     },
     "/put/set_user_defined_description": {
       "put": {
-        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: the share's `showMetadata` flag is not consulted, so a share\nwithout metadata rights may still write a description, but a share may only\ntarget assets that belong to its own album — any other asset is refused. An\nindex whose asset record no longer exists is skipped and still answers 200,\nand a failed sidecar write is logged rather than failing the request.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 403 a share targeting another album's asset — 405 read-only\nmode — 500 unknown snapshot, out-of-range index, or storage failure.",
+        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: an index whose asset record no longer exists is skipped\nand still answers 200, and a failed sidecar write is logged rather than\nfailing the request.\n\nErrors: 400 malformed body — 401 missing or invalid session —\n403 no enrolled user — 405 read-only mode — 500 unknown snapshot,\nout-of-range index, or storage failure.",
         "operationId": "set_user_defined_description",
         "requestBody": {
           "content": {
@@ -4620,7 +4615,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Share targeting another album's asset"
+            "description": "Forbidden"
           },
           "404": {
             "description": "Not found"
@@ -4637,10 +4632,6 @@
         },
         "security": [
           {
-            "album_id": [],
-            "share_id": []
-          },
-          {
             "cookie_jwt": []
           }
         ],
@@ -4652,15 +4643,14 @@
           "admin": "any",
           "effects": [],
           "guards": [
-            "GuardShare",
+            "GuardUser",
             "GuardReadOnlyMode"
           ],
           "invariants": [],
           "public": false,
-          "shareScope": "own-album",
+          "shareScope": "n-a",
           "tokenTyp": [
-            "session",
-            "share"
+            "session"
           ]
         }
       }
@@ -5036,7 +5026,7 @@
     },
     "/upload": {
       "post": {
-        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand indexed before the response returns.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that\npart without writing or indexing it, and any other value is a 400. Every\npart is validated before the first file is written, so a rejected name, an\nextension outside the image or video whitelist, or a\n`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves\nnothing behind. The stored extension always comes from the part's\n`Content-Type` rather than the client filename, and a file the indexing\npipeline cannot decode is removed again and reported as a 400.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, count mismatch, missing `imagePath`, or an undecodable\nfile — 401 missing or invalid admin or share credentials — 405 read-only\nmode — 500 storage failure.",
+        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand indexed before the response returns.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that\npart without writing or indexing it, and any other value is a 400. Every\npart is validated before the first file is written, so a rejected name, an\nextension outside the image or video whitelist, or a\n`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves\nnothing behind. The stored extension always comes from the part's\n`Content-Type` rather than the client filename, and a file the indexing\npipeline cannot decode is removed again and reported as a 400.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, count mismatch, missing `imagePath`, or an undecodable\nfile — 401 missing or invalid session — 405 read-only\nmode — 500 storage failure.",
         "operationId": "upload",
         "parameters": [
           {
@@ -5087,6 +5077,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "405": {
             "description": "Read-only mode"
           },
@@ -5095,10 +5088,6 @@
           }
         },
         "security": [
-          {
-            "album_id": [],
-            "share_id": []
-          },
           {
             "cookie_jwt": []
           }
@@ -5111,15 +5100,14 @@
           "admin": "any",
           "effects": [],
           "guards": [
-            "GuardUpload",
+            "GuardUser",
             "GuardReadOnlyMode"
           ],
           "invariants": [],
           "public": false,
-          "shareScope": "own-album",
+          "shareScope": "n-a",
           "tokenTyp": [
-            "session",
-            "share"
+            "session"
           ]
         }
       }

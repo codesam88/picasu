@@ -1887,7 +1887,7 @@ fn security_without_metadata(handler: &AnnotatedHandler) -> Vec<Finding> {
 fn guard_security_groups(guard: &str) -> Option<Vec<BTreeSet<String>>> {
     match guard {
         "GuardAuth" | "GuardUser" => Some(vec![BTreeSet::from(["cookie_jwt".to_owned()])]),
-        "GuardShare" | "GuardUpload" => Some(vec![
+        "GuardShare" => Some(vec![
             BTreeSet::from(["album_id".to_owned(), "share_id".to_owned()]),
             BTreeSet::from(["cookie_jwt".to_owned()]),
         ]),

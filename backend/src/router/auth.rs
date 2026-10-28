@@ -900,27 +900,6 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
     }
 }
 
-/// Try to authorize upload via share headers with upload permission
-#[allow(dead_code)]
-pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
-    if let Some(album_id) = req.headers().get_one("x-album-id")
-        && let Some(share_id) = req.headers().get_one("x-share-id")
-        && let Ok(read_txn) = TREE.in_disk.begin_read()
-        && let Ok(table) = read_txn.open_table(METADATA_TABLE)
-        && let Ok(Some(data_guard)) = table.get(album_id)
-        && let MetadataRecord::Album(mut album) = data_guard.value()
-        && let Some(share) = album.share_list.remove(share_id)
-        && share.show_upload
-        && validate_share_access(&share, req).is_ok()
-        && let Some(Ok(album_id_parsed)) = req.query_value::<&str>("presigned_album_id_opt")
-    {
-        // The payload is keyed by the album's `asset_id`.
-        return album_id == album_id_parsed;
-    }
-
-    false
-}
-
 // src/router/fairing/guard_auth.rs
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
@@ -1679,29 +1658,4 @@ pub async fn renew_timestamp_token(
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
-}
-
-#[allow(dead_code)]
-pub struct GuardUpload;
-
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for GuardUpload {
-    type Error = GuardError;
-
-    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        // Try to authorize upload via share first
-        if try_authorize_upload_via_share(req) {
-            return Outcome::Success(GuardUpload);
-        }
-
-        // Fall back to JWT cookie authentication (any live user, admin or not)
-        match try_jwt_cookie_user(req, &VALIDATION) {
-            Ok(_) => return Outcome::Success(GuardUpload),
-            Err(err) => {
-                let full_err =
-                    AppError::from_err(ErrorKind::Auth, err).context("Authentication error");
-                Outcome::Error((Status::Unauthorized, full_err))
-            }
-        }
-    }
 }

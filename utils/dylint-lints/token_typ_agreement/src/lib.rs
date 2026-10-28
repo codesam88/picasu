@@ -42,10 +42,9 @@ fn classify_guard(name: &str) -> GuardKind {
         "GuardAuth" | "GuardUser" => GuardKind::Typs(vec!["session"]),
         "GuardHash" | "GuardHashOriginal" => GuardKind::Typs(vec!["asset"]),
         "TimestampGuardModified" | "GuardTimestamp" => GuardKind::Typs(vec!["snapshot"]),
-        // GuardShare/GuardUpload resolve via the share table and fall back to
-        // try_jwt_cookie_auth (Claims) presents the session token, so they accept
-        // session tokens too.
-        "GuardShare" | "GuardUpload" => GuardKind::Typs(vec!["session", "share"]),
+        // GuardShare resolves via the share table and falls back to
+        // try_jwt_cookie_auth, so it accepts session tokens too.
+        "GuardShare" => GuardKind::Typs(vec!["session", "share"]),
         "GuardReadOnlyMode" | "GuardReauth" => GuardKind::None,
         _ => GuardKind::Unknown,
     }

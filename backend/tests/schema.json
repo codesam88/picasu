@@ -377,6 +377,12 @@
             },
             "content_type": {
               "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           },
           "required": ["file"],

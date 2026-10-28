@@ -1382,10 +1382,6 @@
     "path": "/put/set_album_title",
     "security": [
       {
-        "album_id": [],
-        "share_id": []
-      },
-      {
         "cookie_jwt": []
       }
     ],
@@ -1396,15 +1392,14 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare",
+        "GuardUser",
         "GuardReadOnlyMode"
       ],
       "invariants": [],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "n-a",
       "tokenTyp": [
-        "session",
-        "share"
+        "session"
       ]
     }
   },
@@ -1415,10 +1410,6 @@
     "path": "/put/set_user_defined_description",
     "security": [
       {
-        "album_id": [],
-        "share_id": []
-      },
-      {
         "cookie_jwt": []
       }
     ],
@@ -1429,15 +1420,14 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare",
+        "GuardUser",
         "GuardReadOnlyMode"
       ],
       "invariants": [],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "n-a",
       "tokenTyp": [
-        "session",
-        "share"
+        "session"
       ]
     }
   },
@@ -1641,10 +1631,6 @@
     "path": "/upload",
     "security": [
       {
-        "album_id": [],
-        "share_id": []
-      },
-      {
         "cookie_jwt": []
       }
     ],
@@ -1655,15 +1641,14 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardUpload",
+        "GuardUser",
         "GuardReadOnlyMode"
       ],
       "invariants": [],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "n-a",
       "tokenTyp": [
-        "session",
-        "share"
+        "session"
       ]
     }
   },

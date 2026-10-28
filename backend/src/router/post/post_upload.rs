@@ -4,7 +4,7 @@ use crate::process::dir_album::get_dir_path_for_album;
 use crate::process::format::{self, Detection, kind_for_extension};
 use crate::process::sanitize::{FilenameSanitize, find_unique_path, sanitize_filename};
 use crate::router::auth::GuardReadOnlyMode;
-use crate::router::auth::GuardUpload;
+use crate::router::auth::GuardUser;
 use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TREE;
@@ -161,7 +161,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 ///
 /// Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
 /// rejected filename, count mismatch, missing `imagePath`, or an undecodable
-/// file — 401 missing or invalid admin or share credentials — 405 read-only
+/// file — 401 missing or invalid session — 405 read-only
 /// mode — 500 storage failure.
 #[utoipa::path(
         tag = "upload",
@@ -171,12 +171,12 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             ("on_conflict" = Option<String>, Query, description = "Conflict policy for an existing target file: rename (default; suffixes -001, -002, …) or skip; any other value is a 400"),
             ("auto_rename" = Option<bool>, Query, description = "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error."),
         ),
-        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUpload", "GuardReadOnlyMode"],
-            "tokenTyp": ["session", "share"],
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["session"],
             "admin": "any",
-            "shareScope": "own-album",
+            "shareScope": "n-a",
             "public": false,
             "effects": [],
             "invariants": []
@@ -185,6 +185,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             (status = 200, description = "Upload successful"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -195,7 +196,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     data = "<form>"
 )]
 pub async fn upload(
-    auth: GuardResult<GuardUpload>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
     on_conflict: Option<String>,

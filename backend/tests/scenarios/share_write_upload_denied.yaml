@@ -1,0 +1,31 @@
+name: share credentials are denied on upload
+given:
+  - dir_album: /e2e_share_write_upload/album
+    id_as: $album_id
+  - photo: /e2e_share_write_upload/src/photo.jpg
+when:
+  - call: POST /post/create_share
+    body:
+      albumId: "${album_id}"
+      description: "share"
+      password: null
+      showMetadata: true
+      showDownload: true
+      showUpload: true
+      exp: 0
+    capture:
+      share_id: response
+    then:
+      - response.status: 200
+  - upload:
+      file: /e2e_share_write_upload/src/photo.jpg
+      filename: photo.jpg
+      target_album: "${album_id}"
+      auth: false
+      headers:
+        x-album-id: "${album_id}"
+        x-share-id: "${share_id}"
+    then:
+      - response.status: 401
+then:
+  - response.status: 401
