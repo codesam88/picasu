@@ -198,8 +198,8 @@ from the contract.
     discipline is the gating precondition).
   - `just fuzz-check` — tier 1 single-operation sweep against a throwaway
     seeded instance, compared to `utils/schemathesis/baseline.yaml`.
-  - `just fuzz` — tier 2 stateful campaign against a running seeded instance.
-  - `just schemathesis-run` — raw escape hatch over a running instance.
+  - `just fuzz-run` — tier 2 stateful campaign against a served seeded instance.
+  - `scripts/schemathesis-run.sh` — raw Schemathesis passthrough over a running instance.
 - **Quarterly re-pin cadence** applies to Schemathesis (pinned in the
   justfile as `schemathesis_version`) and the other pinned tools.
 - **Tool knowledge layer:** `docs/briefs/` (e.g. `docs/briefs/schemathesis.md`)

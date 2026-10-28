@@ -34,7 +34,7 @@ baseline, bigger stateful budget, CI wiring as an advisory gate first.
 All four steps done. `utils/schemathesis/` holds both tiers
 (`check.toml`/`campaign.toml`, hooks, seed, `check_report.py`,
 `json2sarif.py`); `just fuzz-check` is the bounded tier-1 check,
-`just fuzz` the stateful campaign. Links: built-in inference + the
+`just fuzz-run` the stateful campaign. Links: built-in inference + the
 OpenAPI resource pool, no spec changes (7/8 links covered in
 verification; token chains stay in hooks). Baseline carries only the
 filed bug classes. `.github/workflows/fuzz-advisory.yml` runs nightly

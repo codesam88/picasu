@@ -72,7 +72,7 @@ existing tickets (nothing live lost).
   FEAT1a done: `spec-reconciliation-4xx` landed (422/404 documented,
   415 normalized, export content-type corrected; exit sweep clean of
   spec noise). FEAT1b done: the Schemathesis campaign config shipped
-  as the two-tier harness (`just fuzz-check` / `just fuzz`, advisory
+  as the two-tier harness (`just fuzz-check` / `just fuzz-run`, advisory
   nightly SARIF workflow) and the env-var config-consistency lint
   (`just env-var-check`, wired into `check`/precommit/CI).
 - **FEAT2 — security schemes in the contract.** Declare cookie/bearer/
