@@ -57,6 +57,18 @@ impl<'r> rocket::response::Responder<'r, 'static> for NoStoreJson {
 /// Errors: 500 storage failure.
 #[utoipa::path(
         tag = "auth",
+        security(()),
+        extensions(("x-picasu-auth" = json!({
+            "guards": [],
+            "tokenTyp": [],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": true,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Enrollment state", body = ServerInfo),
             (status = 500, description = "Internal error"),

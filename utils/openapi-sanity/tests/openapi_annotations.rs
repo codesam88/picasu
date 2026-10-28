@@ -116,6 +116,10 @@ const ROUTE_400_CONFORMING: &str =
     include_str!("fixtures/openapi_annotations/p4_route_400_conforming.rs");
 const IMPOSSIBLE_ROUTE_400: &str =
     include_str!("fixtures/openapi_annotations/p4_impossible_route_400.rs");
+const AUTH_METADATA_WITHOUT_SECURITY: &str =
+    include_str!("fixtures/openapi_annotations/s1_auth_metadata_without_security.rs");
+const AUTH_METADATA_CONFORMING: &str =
+    include_str!("fixtures/openapi_annotations/s1_conforming.rs");
 
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
@@ -1123,5 +1127,41 @@ fn the_router_tree_is_clean() {
         "",
         "every rule must hold across the tree:\n{}",
         render(&report.findings)
+    );
+}
+
+// ── Section S — auth metadata ───────────────────────────────────────────────
+//
+// S1: an `x-picasu-auth` extension claims authorization semantics for the
+// operation, so the annotation must also declare `security(...)` — the
+// document half of the claim. `security(())` is the explicitly-public form.
+
+/// S1: metadata without a `security(...)` declaration fails.
+#[test]
+fn s_auth_metadata_without_security_fails() {
+    let findings = check_source(
+        "s1_auth_metadata_without_security.rs",
+        AUTH_METADATA_WITHOUT_SECURITY,
+    );
+
+    assert_eq!(
+        render(&findings),
+        "s1_auth_metadata_without_security.rs:9: auth_metadata_without_security: the \
+         annotation declares `x-picasu-auth` metadata but no `security(...)`, so the \
+         model claims semantics the document does not publish; declare `security(...)` \
+         (`security(())` for explicitly public operations)",
+        "metadata without a security declaration is a finding at the extensions line"
+    );
+}
+
+/// The conforming counterpart: metadata paired with an explicit declaration.
+#[test]
+fn s_auth_metadata_with_security_is_accepted() {
+    let findings = check_source("s1_conforming.rs", AUTH_METADATA_CONFORMING);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "metadata paired with a security declaration must be silent"
     );
 }
