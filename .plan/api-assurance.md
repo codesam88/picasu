@@ -293,6 +293,64 @@ the same recipe: pick a property with a machine-readable declaration
 source, write the lint, pin GREEN/RED. No new lint starts until the
 auth set above is gating.
 
+### 10. Machine-readable auth metadata (spike: `x-picasu-auth` extension)
+
+Per-operation authorization semantics that OpenAPI `security` cannot
+express (token typ, inline admin, share scope/binding, read-only and
+re-auth behavior, explicit-public) ride in the annotation as a vendor
+extension next to the native `security(...)` clause:
+
+```rust
+security(("cookie_jwt" = [])),
+extensions(("x-picasu-auth" = json!({
+    "guards": ["GuardAuth"],
+    "tokenTyp": ["admin"],
+    "admin": "admin",
+    "shareScope": "n-a",
+    "readonly": false,
+    "reauth": false,
+    "public": false,
+    "effects": [],
+    "invariants": ["AUTH-2"]
+}))),
+```
+
+Field semantics: `guards` mirrors the handler signature;
+`tokenTyp` disambiguates the bearer scheme (`admin`, `snapshot`,
+`asset`, `share`); `admin` records the inline admin check
+(`admin`, `either`, `n-a`); `shareScope` the binding rule
+(`own-album`, `any`, `n-a`); `readonly`/`reauth` the 405 and
+re-authentication behavior; `public: true` pairs with
+`security: []`; `effects` the manage/effect classification AUTH-11/12
+needs; `invariants` the `authz-model.md` IDs for traceability.
+Background: `docs/briefs/openapi-auth-metadata.md`,
+`docs/briefs/auth-policy-engines.md`,
+`docs/briefs/schemathesis-modeling.md`.
+
+Interfaces: `openapi-sanity` parses the extension (A9 no longer
+fires), validates shape against one schema, and cross-checks
+extension against guard signature (`GuardShare` present ⇒ share
+schemes in `security`; `GuardReadOnlyMode` ⇒ 405 declared;
+`public: true` ⇔ `security: []`); a generated per-operation auth
+matrix (op × principals × typ × scope × readonly × reauth × effects)
+is diffed in CI next to the spec for security review; the
+Schemathesis tier-2 hooks consume the matrix for share-guarded sets,
+typ-aware token selection, scope pairs, and the destructive-op
+disable list instead of hand lists; Spectral ignores the key;
+generators read it via `vendorExtensions` if an SDK ever needs it.
+
+Success monitoring: annotation coverage (ops carrying the key over
+74, tracked per run); guard↔spec agreement (mismatches found by the
+new rules, must converge to zero, each mismatch is a bug in code or
+annotation); regeneration stability (`openapi.json` + matrix
+byte-identical on re-run); Schemathesis auth auto-inference coverage
+(share/type-aware probes parameterized by the model, not fixtures);
+review sign-off on the generated matrix. The spike passes when one
+simple operation carries the key end-to-end (annotation → committed
+spec → checker rule GREEN/RED → matrix row) with no gate
+regression. Done when all 74 ops are annotated and the agreement
+rules gate.
+
 ## Progress
 
 - Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
@@ -317,3 +375,7 @@ auth set above is gating.
   layer) next to the e2e suites; settled contract facts (parameter
   descriptions, registered security schemes) stated with no stale
   claims.
+- Step 10 spike open: `x-picasu-auth` extension plan recorded above;
+  success is annotation coverage over 74 ops, guard↔spec agreement at
+  zero mismatches, regeneration stability, and model-parameterized
+  Schemathesis probes.
