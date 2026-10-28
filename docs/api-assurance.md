@@ -56,15 +56,15 @@ unannotated by design. `effects` has no controlled vocabulary yet;
 
 ## Correspondence rules
 
-| Rule | Claim checked                              | Enforced by                           | Status                          |
-| ---- | ------------------------------------------ | ------------------------------------- | ------------------------------- |
-| S1   | metadata present ⇔ `security(...)` present | `openapi-sanity`                      | gating                          |
-| S2   | `security` schemes ⇔ guard types           | `openapi-sanity`                      | gating                          |
-| S3   | `tokenTyp` ⇔ decoded claims type           | dylint (`decode_agreement` extension) | open, needs dylint gating story |
-| S4   | `shareScope` ⇔ body binding check          | behavioral cross-scope probes         | open                            |
-| S5   | `readonly` ⇔ guard + 405 declared          | `openapi-sanity`                      | gating                          |
-| S6   | `reauth` ⇔ guard + documented header       | `openapi-sanity`                      | gating                          |
-| S7   | `public` ⇔ `security(())` + no guard       | `openapi-sanity`                      | gating                          |
+| Rule | Claim checked                              | Enforced by                              | Status                                     |
+| ---- | ------------------------------------------ | ---------------------------------------- | ------------------------------------------ |
+| S1   | metadata present ⇔ `security(...)` present | `openapi-sanity`                         | gating                                     |
+| S2   | `security` schemes ⇔ guard types           | `openapi-sanity`                         | gating                                     |
+| S3   | `tokenTyp` ⇔ decoded claims type           | dylint (`token_typ_agreement`, advisory) | implemented; gating needs the dylint story |
+| S4   | `shareScope` ⇔ body binding check          | behavioral cross-scope probes            | open                                       |
+| S5   | `readonly` ⇔ guard + 405 declared          | `openapi-sanity`                         | gating                                     |
+| S6   | `reauth` ⇔ guard + documented header       | `openapi-sanity`                         | gating                                     |
+| S7   | `public` ⇔ `security(())` + no guard       | `openapi-sanity`                         | gating                                     |
 
 Split rationale: annotation/signature comparisons belong to the syn
 checker, type/call-graph questions to dylint, binding semantics to
