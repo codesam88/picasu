@@ -135,10 +135,11 @@ The route-set half of the contract is therefore enforced: a mounted public route
 missing from the spec, and a spec operation no build mounts, both fail. The
 annotation half is enforced as well — the response statuses a handler can answer,
 the parameter and body declarations against the route, the tag vocabulary and
-the doc-comment provenance of summaries are checked by `openapi-sanity`. Still
-review-time: parameter descriptions (21 of the 22 published parameters have none),
-the security schemes (none are registered), and the semantics of string-valued
-identifiers. The first two are tracked as backlog.
+the doc-comment provenance of summaries are checked by `openapi-sanity`. Settled:
+all 24 published parameters carry descriptions (B5), and the document
+registers four security schemes (`cookie_jwt`, `bearer_token`, `album_id`,
+`share_id`), referenced by the guarded operations. Still review-time: the
+semantics of string-valued identifiers.
 
 See `docs/openapi-generator.md` for the full design, and
 `docs/openapi-reference.md` for the rendered reference.
