@@ -1,14 +1,15 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Twenty-one rules are implemented
+//! Twenty-two rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
 //! statuses — what the handler can answer versus what `responses(…)` claims.
 //! **Section S** pairs `x-picasu-auth` metadata with its `security(…)`
 //! declaration. S2 compares the declared scheme groups against the guards in
-//! the handler signature. What remains open is listed under "Known gaps" in
-//! this crate's README.
+//! the handler signature. S7 enforces the public/explicit boundary between a
+//! handler's contributing guards and its `security(…)` declaration. What
+//! remains open is listed under "Known gaps" in this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -1996,9 +1997,51 @@ fn reauth_without_header(handler: &AnnotatedHandler) -> Vec<Finding> {
     )]
 }
 
-/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5 and S6 of
-/// section S: every rule over one handler, in a fixed order so a report reads
-/// the same way twice.
+/// S7 — the public/explicit boundary.
+///
+/// A handler's guards decide whether it enforces credentials. The document's
+/// `security(...)` declaration must agree: a handler with a contributing guard
+/// must declare `security(...)` (otherwise the credentials it enforces are
+/// unpublished), and a handler with no contributing guard is public and must
+/// say so explicitly through `security(())` rather than leaving the declaration
+/// absent or non-empty.
+fn public_explicit_boundary(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+
+    let has_contributing = guard_idents(handler)
+        .any(|ident| guard_security_groups(ident).is_some_and(|groups| !groups.is_empty()));
+
+    if has_contributing {
+        if annotation.security_groups.is_none() {
+            return vec![Finding::at(
+                &handler.file,
+                handler.signature_line(),
+                "undeclared_auth",
+                "the handler enforces credentials the document does not publish",
+            )];
+        }
+        return Vec::new();
+    }
+
+    // No contributing guard: public must be explicit.
+    if let Some(declared) = &annotation.security_groups {
+        let is_explicit_public =
+            declared.value.len() == 1 && declared.value.first().is_some_and(BTreeSet::is_empty);
+        if !is_explicit_public {
+            return vec![Finding::at(
+                &handler.file,
+                declared.line,
+                "implicit_public",
+                "public must be explicit via `security(())`",
+            )];
+        }
+    }
+    Vec::new()
+}
+
+/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5, S6 and
+/// S7 of section S: every rule over one handler, in a fixed order so a report
+/// reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -2024,6 +2067,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         security_guard_mismatch(handler),
         readonly_without_405(handler),
         reauth_without_header(handler),
+        public_explicit_boundary(handler),
     ]
     .concat()
 }
