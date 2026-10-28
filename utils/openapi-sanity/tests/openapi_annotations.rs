@@ -120,6 +120,8 @@ const AUTH_METADATA_WITHOUT_SECURITY: &str =
     include_str!("fixtures/openapi_annotations/s1_auth_metadata_without_security.rs");
 const AUTH_METADATA_CONFORMING: &str =
     include_str!("fixtures/openapi_annotations/s1_conforming.rs");
+const SECURITY_WITHOUT_METADATA: &str =
+    include_str!("fixtures/openapi_annotations/s1_security_without_metadata.rs");
 
 const SECURITY_GUARD_MISMATCH: &str =
     include_str!("fixtures/openapi_annotations/s2_security_guard_mismatch.rs");
@@ -1295,5 +1297,17 @@ fn s_public_explicit_boundary_is_accepted() {
         render(&findings),
         "",
         "explicit public and secured guards must be silent"
+    );
+}
+
+/// S1 reverse: a `security(...)` declaration without model metadata fails.
+#[test]
+fn s_security_without_metadata_fails() {
+    let findings = check_source("s1_security_without_metadata.rs", SECURITY_WITHOUT_METADATA);
+
+    assert_eq!(
+        render(&findings),
+        "s1_security_without_metadata.rs:9: security_without_metadata: the annotation declares `security(...)` but no `x-picasu-auth` metadata, so the document publishes requirements the model does not describe; declare the `x-picasu-auth` extension or remove the declaration",
+        "a declaration without metadata is a finding at the security line"
     );
 }

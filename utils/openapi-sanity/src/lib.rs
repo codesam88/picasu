@@ -1854,6 +1854,32 @@ fn auth_metadata_without_security(handler: &AnnotatedHandler) -> Vec<Finding> {
         .collect()
 }
 
+/// S1 reverse — `security(...)` without `x-picasu-auth` metadata.
+///
+/// The pairing runs both ways: a declaration the model does not describe is
+/// a claim no checker compares against the guards. Unannotated handlers are
+/// out of scope (S7 only constrains the declaration they do carry), as are
+/// `internal`-tagged test probes — they never reach the published document.
+fn security_without_metadata(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    if annotation.tags.iter().any(|tag| tag.value == "internal") {
+        return Vec::new();
+    }
+    if annotation.auth_extensions.is_empty()
+        && let Some(security) = &annotation.has_security
+    {
+        return vec![Finding::at(
+            &handler.file,
+            security.line,
+            "security_without_metadata",
+            "the annotation declares `security(...)` but no `x-picasu-auth` metadata, so \
+             the document publishes requirements the model does not describe; declare the \
+             `x-picasu-auth` extension or remove the declaration",
+        )];
+    }
+    Vec::new()
+}
+
 /// The security-requirement groups a guard's `FromRequest` impl accepts, as a
 /// list of alternatives. An empty list means the guard contributes no scheme
 /// (for example `GuardReadOnlyMode` and `GuardReauth`) and is excluded from
@@ -2064,6 +2090,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         body_kind_statuses_declared(handler, derivations),
         declared_statuses_within_universe(handler, derivations),
         auth_metadata_without_security(handler),
+        security_without_metadata(handler),
         security_guard_mismatch(handler),
         readonly_without_405(handler),
         reauth_without_header(handler),
