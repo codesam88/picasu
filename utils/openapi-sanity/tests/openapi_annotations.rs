@@ -130,6 +130,10 @@ const READONLY_WITHOUT_405: &str =
     include_str!("fixtures/openapi_annotations/s5_readonly_without_405.rs");
 const READONLY_WITH_405: &str = include_str!("fixtures/openapi_annotations/s5_conforming.rs");
 
+const REAUTH_WITHOUT_HEADER: &str =
+    include_str!("fixtures/openapi_annotations/s6_reauth_without_header.rs");
+const REAUTH_WITH_HEADER: &str = include_str!("fixtures/openapi_annotations/s6_conforming.rs");
+
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
 // Every rule has a fixture that must produce its finding and a conforming
@@ -1222,4 +1226,27 @@ fn s_readonly_with_405_is_accepted() {
     let findings = check_source("s5_conforming.rs", READONLY_WITH_405);
 
     assert_eq!(render(&findings), "", "a declared 405 must be silent");
+}
+
+// ── Section S6 — reauth header documentation ────────────────────────────────
+
+/// S6: a signature carrying `GuardReauth` whose doc comment does not name the
+/// password header fails.
+#[test]
+fn s_reauth_without_header_fails() {
+    let findings = check_source("s6_reauth_without_header.rs", REAUTH_WITHOUT_HEADER);
+
+    assert_eq!(
+        render(&findings),
+        "s6_reauth_without_header.rs:5: reauth_without_header: GuardReauth requires the X-Picasu-Password header, but the doc comment does not name it",
+        "a missing header reference is a finding at the doc line"
+    );
+}
+
+/// The conforming counterpart: the guard's header is named in the doc comment.
+#[test]
+fn s_reauth_with_header_is_accepted() {
+    let findings = check_source("s6_conforming.rs", REAUTH_WITH_HEADER);
+
+    assert_eq!(render(&findings), "", "a named header must be silent");
 }

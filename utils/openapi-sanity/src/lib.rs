@@ -1,6 +1,6 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Twenty rules are implemented
+//! Twenty-one rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
@@ -1961,7 +1961,42 @@ fn readonly_without_405(handler: &AnnotatedHandler) -> Vec<Finding> {
     )]
 }
 
-/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2 and S5 of
+/// S6 — `GuardReauth` in the signature requires the doc comment to name the
+/// `X-Picasu-Password` header.
+///
+/// The guard reads the password from that header, and B1 skips headers (no
+/// route binding), so `params(...)` cannot carry it; the doc comment is the
+/// only human-readable surface utoipa renders for it. The rule keys off the
+/// signature alone, so it fires even when the guard's `FromRequest` impl is
+/// not in the scanned tree.
+fn reauth_without_header(handler: &AnnotatedHandler) -> Vec<Finding> {
+    if !guard_idents(handler).any(|ident| ident == "GuardReauth") {
+        return Vec::new();
+    }
+    if handler.doc.is_empty() {
+        return Vec::new();
+    }
+    let names_header = handler.doc.iter().any(|line| {
+        line.value
+            .to_ascii_lowercase()
+            .contains("x-picasu-password")
+    });
+    if names_header {
+        return Vec::new();
+    }
+    vec![Finding::at(
+        &handler.file,
+        handler
+            .doc
+            .first()
+            .map(|line| line.line)
+            .unwrap_or(handler.signature_line()),
+        "reauth_without_header",
+        "GuardReauth requires the X-Picasu-Password header, but the doc comment does not name it",
+    )]
+}
+
+/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5 and S6 of
 /// section S: every rule over one handler, in a fixed order so a report reads
 /// the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
@@ -1988,6 +2023,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         auth_metadata_without_security(handler),
         security_guard_mismatch(handler),
         readonly_without_405(handler),
+        reauth_without_header(handler),
     ]
     .concat()
 }

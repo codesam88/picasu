@@ -167,6 +167,9 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 /// Corner cases: Any authenticated user reaches this route (share tokens
 /// are rejected); unauthenticated callers are denied at dispatch.
 ///
+/// Requires re-authentication via the `X-Picasu-Password` header (403 when
+/// it is missing or wrong).
+///
 /// Errors: 400 invalid `userId`, `newPassword` violating the password
 /// policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
 /// targeting another user — 404 unknown `userId` — 405 read-only mode —
