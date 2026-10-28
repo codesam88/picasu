@@ -105,6 +105,24 @@ generate from.
    drifting from intent — mitigated by oasdiff plus the annotation checks
    already run.
 
+## Status overview (single source of status; bodies below hold design detail)
+
+| Item                                                                                    | Status                                                                                      |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)            | done (see Progress)                                                                         |
+| Step 6 AUTH-3 lint + triage                                                             | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline) |
+| Step 6 AUTH-11/12                                                                       | open, blocked on `effects` vocabulary                                                       |
+| Step 6 decode agreement                                                                 | done (`decode_agreement` crate)                                                             |
+| Step 6 claims-consumption (F3)                                                          | open, queued                                                                                |
+| Step 7 UI fixtures                                                                      | done (4 crates); suite-runner wiring open, part of dylint story                             |
+| Step 8 expiry/decode ratchets                                                           | open                                                                                        |
+| Step 9 env-var lint                                                                     | done, gating; sequencing sentence needs amendment (open decision); further domains open     |
+| Step 10 + S-rules                                                                       | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 advisory (`token_typ_agreement`); done       |
+| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites)           | open; prerequisite for S3 gating                                                            |
+| Consumers: matrix generator                                                             | open, next                                                                                  |
+| Consumers: hook derivation, generated negatives (incl. S4), effects/invariants backfill | open                                                                                        |
+| `authz-model.md` derivation-back                                                        | deferred until matrix proves itself                                                         |
+
 ## Steps (sketch — phases in order, details at build time)
 
 ### 1. oasdiff breaking-change gate
@@ -251,6 +269,10 @@ read-only completeness); background in `docs/briefs/dylint.md`.
   Extends AUTH-2's use analysis with the target-source question
   (claims-derived target vs body/query-derived on a share-guarded
   write); triage may yield genuine F3s.
+- Status: AUTH-3 lint and triage done; the 2 genuine findings need the
+  baseline-vs-fix decision (see Status overview) before anything
+  dylint gates. AUTH-11/12 waits on the `effects` vocabulary.
+  Decode agreement done; F3 still queued.
 
 ### 7. UI-test infrastructure for the lint crates
 
@@ -262,7 +284,10 @@ test` in each lint crate (Dylint ships `ui_test` on the
 whether `ui_test` cooperates with the manual multi-lint registration
 on the pinned nightly. Done when all three lints carry committed
 fixtures and the re-pin procedure is "run the suites", not
-"re-prove by hand".
+"re-prove by hand". Status: fixtures committed for all four lint
+crates (AUTH-2, AUTH-3, decode agreement, token-typ); the runner
+wiring (recipe + CI) is open, folded into the dylint gating story
+above.
 
 ### 8. Expiry-confinement and decode-path ratchets
 
@@ -291,7 +316,10 @@ array instead of prose. Both kill the same drift class the
 `openapi.json` parity gate kills for routes. Further domains follow
 the same recipe: pick a property with a machine-readable declaration
 source, write the lint, pin GREEN/RED. No new lint starts until the
-auth set above is gating.
+auth set above is gating. Status: the env-var lint shipped as a node
+gate ahead of that sequence — the sentence needs amendment to
+dylint-scope (or a recorded supersession) before it can be trusted
+as the decision record; further domains stay open.
 
 ### 10. Machine-readable auth metadata (spike: `x-picasu-auth` extension)
 
@@ -351,7 +379,7 @@ spec → checker rule GREEN/RED → matrix row) with no gate
 regression. Done when all 74 ops are annotated and the agreement
 rules gate.
 
-### 11. Check-enforcement split + consumer rollout (open — next step)
+### 11. Check-enforcement split + consumer rollout (design record)
 
 The S1..S7 correspondence rules split by what each tool can see, so
 each rule lives where its inputs live and nowhere else:
@@ -436,10 +464,6 @@ security reviewers); this file stays the implementation roadmap.
   generated auth matrix diffed in CI, `effects` controlled vocabulary
   (all `[]` for now), `invariants` backfill once the manage/effect
   classification lands, query-param share fallback documentation.
-- Step 11 open: enforcement split (S1 done; S2/S5/S6/S7 syn, S3
-  dylint, S4 behavioral) and consumer rollout (matrix, hooks, test
-  generation, effects/invariants backfill); final shape to
-  `docs/api-assurance.md`.
 - Step 11 rules S2/S5/S6/S7 done 2026-10-28 (`spike/x-picasu-auth`):
   S2 security-guard correspondence, S5 readonly-405, S6 reauth-header
   docs, S7 public-explicit boundary — each with fixture RED/GREEN
