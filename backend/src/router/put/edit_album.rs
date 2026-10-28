@@ -6,7 +6,6 @@ use crate::model::metadata_record::{compose_abstract_data, to_metadata_record};
 use crate::openapi_components::Unauthorized;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::router::auth::GuardReadOnlyMode;
-use crate::router::auth::GuardShare;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::ASSET_BY_ID;
@@ -245,18 +244,17 @@ pub struct SetAlbumTitle {
 /// the directory-derived default, so a cleared title leaves no empty string
 /// behind.
 ///
-/// Errors: 400 malformed body — 401 missing or invalid admin or share
-/// credentials — 403 a share targeting an album other than its own —
-/// 405 read-only mode — 500 storage failure.
+/// Errors: 400 malformed body — 401 missing or invalid session —
+/// 403 no enrolled user — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetAlbumTitle,
-        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardShare", "GuardReadOnlyMode"],
-            "tokenTyp": ["session", "share"],
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["session"],
             "admin": "any",
-            "shareScope": "own-album",
+            "shareScope": "n-a",
             "public": false,
             "effects": [],
             "invariants": []
@@ -267,7 +265,7 @@ pub struct SetAlbumTitle {
             (status = 404, description = "Not found"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
-            (status = 403, description = "Share targeting another album"),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -275,25 +273,15 @@ pub struct SetAlbumTitle {
 ]
 #[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
-    auth: GuardResult<GuardShare>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
-    let auth = auth?;
+    let _ = auth?;
     let _ = read_only_mode?;
 
     let set_album_title_inner = set_album_title.into_inner();
     let album_id = set_album_title_inner.album_id;
-
-    // A share may only edit its own album. An admin (no share) may edit any.
-    if let Some(share) = auth.claims.get_share()
-        && share.album_id != album_id
-    {
-        return Err(AppError::new(
-            ErrorKind::PermissionDenied,
-            "Share cannot edit another album",
-        ));
-    }
 
     tokio::task::spawn_blocking(move || {
         update_album(album_id, |album| {

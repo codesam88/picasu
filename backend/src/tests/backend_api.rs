@@ -741,13 +741,20 @@ fn execute_upload<'c>(
     if auth {
         req = req.cookie(auth_cookie(client));
     }
-    let req = req
-        .header(rocket::http::Header::new(
-            "Content-Type",
-            format!("multipart/form-data; boundary={boundary}"),
-        ))
-        .body(body);
-
+    let mut req = req.header(rocket::http::Header::new(
+        "Content-Type",
+        format!("multipart/form-data; boundary={boundary}"),
+    ));
+    if let Some(headers) = upload.get("headers").and_then(|h| h.as_object()) {
+        for (hdr_name, hdr_val) in headers {
+            let val_str = match hdr_val {
+                Value::String(s) => interpolate(s, vars),
+                other => other.to_string(),
+            };
+            req = req.header(rocket::http::Header::new(hdr_name.clone(), val_str));
+        }
+    }
+    req = req.body(body);
     req.dispatch()
 }
 
@@ -1256,19 +1263,36 @@ fn process_capture(call: &Value, body_bytes: &[u8], vars: &mut HashMap<String, S
     if let Some(capture) = call.get("capture").and_then(|c| c.as_object())
         && !capture.is_empty()
     {
-        let body: Value = serde_json::from_slice(body_bytes).expect("capture: valid JSON");
-
-        for (var_name, json_path_val) in capture {
-            let bare = var_name.trim_start_matches('$');
-            let field = json_path_val
-                .as_str()
-                .unwrap_or_else(|| panic!("capture {var_name}: value must be a string JSON path"));
-            let access_path = field.strip_prefix("response.").unwrap_or(field);
-            let val = navigate_json(&body, access_path);
-            let str_val = val
-                .as_str()
-                .map_or_else(|| val.to_string(), std::string::ToString::to_string);
-            vars.insert(bare.to_string(), str_val);
+        // Most responses are JSON; a few endpoints (e.g. create_share) answer
+        // with a bare text body. Support capturing that whole body as a
+        // variable so scenarios can mint shares and present their id.
+        if let Ok(body) = serde_json::from_slice::<Value>(body_bytes) {
+            for (var_name, json_path_val) in capture {
+                let bare = var_name.trim_start_matches('$');
+                let field = json_path_val.as_str().unwrap_or_else(|| {
+                    panic!("capture {var_name}: value must be a string JSON path")
+                });
+                let access_path = field.strip_prefix("response.").unwrap_or(field);
+                let val = navigate_json(&body, access_path);
+                let str_val = val
+                    .as_str()
+                    .map_or_else(|| val.to_string(), std::string::ToString::to_string);
+                vars.insert(bare.to_string(), str_val);
+            }
+        } else {
+            let text = String::from_utf8_lossy(body_bytes).trim().to_string();
+            for (var_name, json_path_val) in capture {
+                let bare = var_name.trim_start_matches('$');
+                let field = json_path_val.as_str().unwrap_or_else(|| {
+                    panic!("capture {var_name}: value must be a string JSON path")
+                });
+                let access_path = field.strip_prefix("response.").unwrap_or(field);
+                if field == "response" || access_path.is_empty() {
+                    vars.insert(bare.to_string(), text.clone());
+                } else {
+                    panic!("capture {var_name}: response is not JSON, cannot read '{access_path}'");
+                }
+            }
         }
     }
 }

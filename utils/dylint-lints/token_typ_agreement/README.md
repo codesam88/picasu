@@ -15,7 +15,7 @@ expected typ set from the guards:
 | `GuardAuth`, `GuardUser`                   | `session`          |
 | `GuardHash`, `GuardHashOriginal`           | `asset`            |
 | `TimestampGuardModified`, `GuardTimestamp` | `snapshot`         |
-| `GuardShare`, `GuardUpload`                | `session`, `share` |
+| `GuardShare`                               | `session`, `share` |
 | `GuardReadOnlyMode`, `GuardReauth`         | (none)             |
 
 The two sets must be equal in both directions: every guard-derived typ must

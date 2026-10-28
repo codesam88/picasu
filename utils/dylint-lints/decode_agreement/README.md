@@ -38,7 +38,6 @@ every `decode_typed` call site per guard impl, verified before pinning):
 | `TimestampGuardModified` | `ClaimsTimestamp` (turbofish)                                                                                      | `TimestampGuardModified::from_request` |
 | `GuardTimestamp`         | `ClaimsTimestamp` (inferred annotation)                                                                            | `GuardTimestamp::from_request`         |
 | `GuardShare`             | none — resolves (share-table lookup minting `Claims::new_share`, falling back to `try_jwt_cookie_auth` → `Claims`) | —                                      |
-| `GuardUpload`            | none — boolean share check, falling back to `try_jwt_cookie_auth` → `Claims`                                       | —                                      |
 | `GuardReadOnlyMode`      | none — config flag, no token                                                                                       | —                                      |
 
 Renewal handlers (not guard impls, out of the lint's scope) agree as well:
@@ -78,7 +77,7 @@ Fixed code (silent):
 
 - Only direct `decode_typed` calls inside the `FromRequest` impl are
   checked; the transitive decode inside `try_jwt_cookie_auth` (used by
-  `GuardAuth`/`GuardShare`/`GuardUpload`) is documented in the table, not
+  `GuardAuth`/`GuardShare`) is documented in the table, not
   followed.
 - Handler-body decodes (the two `ALLOW_EXPIRED` renewal paths) are outside
   the lint's scope; they are covered by review against the table above.

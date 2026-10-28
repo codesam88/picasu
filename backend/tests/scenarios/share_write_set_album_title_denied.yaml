@@ -1,0 +1,28 @@
+name: share credentials are denied on set_album_title
+given:
+  - dir_album: /e2e_share_write_title/album
+    id_as: $album_id
+when:
+  - call: POST /post/create_share
+    body:
+      albumId: "${album_id}"
+      description: "share"
+      password: null
+      showMetadata: true
+      showDownload: true
+      showUpload: true
+      exp: 0
+    capture:
+      share_id: response
+    then:
+      - response.status: 200
+  - call: PUT /put/set_album_title
+    raw_body: '{"albumId":"${album_id}","title":"Shared Title"}'
+    auth: false
+    headers:
+      x-album-id: "${album_id}"
+      x-share-id: "${share_id}"
+    then:
+      - response.status: 401
+then:
+  - response.status: 401

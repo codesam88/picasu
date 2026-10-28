@@ -16,7 +16,7 @@
 //! Expected table (established empirically from `backend/src/router/auth.rs`):
 //! `GuardAuth`/`GuardUser` → `Claims`, `GuardHash`/`GuardHashOriginal` →
 //! `ClaimsHash`, `TimestampGuardModified`/`GuardTimestamp` → `ClaimsTimestamp`.
-//! `GuardShare`/`GuardUpload` resolve (share-table lookup, possibly via
+//! `GuardShare` resolves (share-table lookup, possibly via
 //! `try_jwt_cookie_auth` which decodes `Claims`) rather than decoding
 //! directly; `GuardReadOnlyMode` decodes nothing. A direct `decode_typed`
 //! call inside any of those impls warns.
@@ -104,7 +104,7 @@ fn enclosing_guard_name(tcx: TyCtxt<'_>, hir_id: HirId) -> Option<String> {
 }
 
 /// The model-assigned claims type for a guard, or `None` for guards that
-/// must not decode directly (`GuardShare`, `GuardUpload`,
+/// must not decode directly (`GuardShare` resolves rather than decoding);
 /// `GuardReadOnlyMode`).
 fn expected_claims(guard: &str) -> Option<&'static str> {
     match guard {

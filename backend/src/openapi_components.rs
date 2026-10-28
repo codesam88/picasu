@@ -31,7 +31,7 @@ pub struct UnauthorizedBody {
 /// annotations as `(status = 401, response = Unauthorized)`.
 ///
 /// Operations behind an authentication guard (`GuardAuth`, `GuardShare`,
-/// `GuardTimestamp`, `GuardHash`, `GuardHashOriginal`, `GuardUpload`,
+/// `GuardTimestamp`, `GuardHash`, `GuardHashOriginal`,
 /// `TimestampGuardModified`) or that reject invalid credentials in the handler
 /// body return this response.
 ///
