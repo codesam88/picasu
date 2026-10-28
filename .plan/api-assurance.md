@@ -440,3 +440,9 @@ security reviewers); this file stays the implementation roadmap.
   dylint, S4 behavioral) and consumer rollout (matrix, hooks, test
   generation, effects/invariants backfill); final shape to
   `docs/api-assurance.md`.
+- Step 11 rules S2/S5/S6/S7 done 2026-10-28 (`spike/x-picasu-auth`):
+  S2 security-guard correspondence, S5 readonly-405, S6 reauth-header
+  docs, S7 public-explicit boundary — each with fixture RED/GREEN
+  pair, count pins, silent real-tree gate, committed separately. S3
+  (dylint) and S4 (behavioral cross-scope probes) remain open; S3 is
+  parked on the dylint gating story.
