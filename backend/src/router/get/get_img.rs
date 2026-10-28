@@ -54,6 +54,17 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
             ("file_path" = PathBuf, Path, description = "Path of the file below DATA_HOME/object/compressed; the extension must be .jpg or .mp4"),
         ),
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = []), ("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare", "GuardHash"],
+            "tokenTyp": ["admin", "share", "asset"],
+            "admin": "either",
+            "shareScope": "own-album",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-8"]
+        }))),
         responses(
             (status = 200, description = "Compressed file"),
             (status = 400, description = "Invalid input"),
@@ -140,6 +151,17 @@ pub async fn compressed_file(
             ("file_path" = PathBuf, Path, description = "Path of the original below imagePath; the last segment is <id>.<ext>"),
         ),
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = []), ("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare", "GuardHashOriginal"],
+            "tokenTyp": ["admin", "share", "asset"],
+            "admin": "either",
+            "shareScope": "own-album",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-8"]
+        }))),
         responses(
             (status = 200, description = "Imported original file"),
             (status = 400, description = "Invalid input"),

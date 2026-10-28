@@ -62,6 +62,17 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
             ("end" = usize, Query, description = "Row index to stop at (exclusive), clamped to the snapshot length"),
         ),
         security(("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardTimestamp"],
+            "tokenTyp": ["snapshot"],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-7"]
+        }))),
         responses(
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
             (status = 400, description = "Invalid input"),
@@ -212,6 +223,17 @@ pub async fn get_data(
             ("timestamp" = i64, Query, description = "Snapshot to read, identified by the timestamp returned by prefetch"),
         ),
         security(("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardTimestamp"],
+            "tokenTyp": ["snapshot"],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-7"]
+        }))),
         responses(
             (status = 200, description = "Row data", body = Row),
             (status = 400, description = "Invalid input"),
@@ -254,6 +276,17 @@ pub async fn get_rows(
             ("timestamp" = i64, Query, description = "Snapshot to read, identified by the timestamp returned by prefetch"),
         ),
         security(("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardTimestamp"],
+            "tokenTyp": ["snapshot"],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-7"]
+        }))),
         responses(
             (status = 200, description = "Scroll bar data", body = Vec<ScrollBarData>),
             (status = 400, description = "Invalid input"),

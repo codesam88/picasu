@@ -58,6 +58,17 @@ pub struct RegisterRequest {
         tag = "auth",
         request_body = RegisterRequest,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Account registered (non-admin)", body = UserSummary),
             (status = 400, description = "Invalid input"),

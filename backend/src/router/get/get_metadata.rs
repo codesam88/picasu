@@ -37,6 +37,17 @@ use crate::router::{AppResult, GuardResult};
             ("timestamp" = i64, Query, description = "Must equal the prefetch token's timestamp claim"),
         ),
         security(("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardTimestamp"],
+            "tokenTyp": ["snapshot"],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-7"]
+        }))),
         responses(
             (status = 200, description = "Full metadata record for the asset"),
             (status = 404, description = "Unknown asset_id"),

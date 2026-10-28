@@ -22,6 +22,17 @@ use crate::router::{AppResult, GuardResult};
 #[utoipa::path(
     tag = "config",
     security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReauth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": true,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-15"]
+        }))),
     responses(
         (status = 200, description = "Read-only mode disabled"),
         (status = 401, response = Unauthorized),

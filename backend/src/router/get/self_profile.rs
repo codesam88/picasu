@@ -44,6 +44,17 @@ pub struct SelfProfileResponse {
 #[utoipa::path(
     tag = "auth",
     security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
     responses(
         (status = 200, description = "Self profile", body = SelfProfileResponse),
         (status = 401, response = Unauthorized),

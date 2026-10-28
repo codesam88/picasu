@@ -59,6 +59,17 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
         tag = "assets",
         request_body = DeleteList,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
@@ -322,6 +333,17 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             ("invite_id" = &str, Path, description = "Invite id as listed by GET /get/invites"),
         ),
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Invite revoked"),
             (status = 401, response = Unauthorized),
@@ -369,6 +391,17 @@ pub fn delete_invite(
             ("user_id" = &str, Path, description = "User id to delete"),
         ),
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-16"]
+        }))),
         responses(
             (status = 200, description = "User deleted"),
             (status = 400, description = "Invalid input"),

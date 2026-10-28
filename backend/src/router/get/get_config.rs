@@ -42,6 +42,17 @@ pub struct ConfigResponse {
 #[utoipa::path(
         tag = "config",
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare"],
+            "tokenTyp": ["admin", "share"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Public configuration", body = ConfigResponse),
             (status = 400, description = "Invalid input"),
@@ -76,6 +87,17 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 #[utoipa::path(
         tag = "config",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Exported configuration", body = crate::model::config::AppConfig, content_type = "application/json"),
             (status = 400, description = "Invalid input"),

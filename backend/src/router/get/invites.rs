@@ -21,6 +21,17 @@ use crate::router::{AppResult, GuardResult};
 #[utoipa::path(
         tag = "auth",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Invite metadata, never tokens", body = [InviteView]),
             (status = 401, response = Unauthorized),

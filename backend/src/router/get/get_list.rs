@@ -26,6 +26,17 @@ use std::path::Path;
 #[utoipa::path(
         tag = "timeline",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "List of tags", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
@@ -108,6 +119,17 @@ impl From<&Share> for ShareInfo {
 #[utoipa::path(
         tag = "albums",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
             (status = 401, response = Unauthorized),

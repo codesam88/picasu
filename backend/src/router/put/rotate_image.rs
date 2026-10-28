@@ -43,6 +43,17 @@ pub struct RotateImageRequest {
         tag = "assets",
         request_body = RotateImageRequest,
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Image rotated"),
             (status = 400, description = "Invalid input"),

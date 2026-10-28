@@ -30,6 +30,17 @@ pub struct AuthKeyResetResponse {
 #[utoipa::path(
         tag = "config",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Signing key rotated", body = AuthKeyResetResponse),
             (status = 401, response = Unauthorized),

@@ -1338,6 +1338,17 @@ pub struct RenewHashTokenReturn {
         tag = "auth",
         request_body = RenewHashToken,
         security(("bearer_token" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["TimestampGuardModified"],
+            "tokenTyp": ["snapshot"],
+            "admin": "n-a",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-10"]
+        }))),
         responses(
             (status = 200, description = "Hash token renewed", body = RenewHashTokenReturn),
             (status = 400, description = "Invalid input"),
@@ -1582,6 +1593,17 @@ pub struct RenewTimestampTokenReturn {
         tag = "auth",
         request_body = RenewTimestampToken,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardShare"],
+            "tokenTyp": ["admin", "share"],
+            "admin": "either",
+            "shareScope": "own-album",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": ["AUTH-10"]
+        }))),
         responses(
             (status = 200, description = "Timestamp token renewed", body = RenewTimestampTokenReturn),
             (status = 400, description = "Invalid input"),

@@ -22,6 +22,17 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
 #[utoipa::path(
         tag = "index",
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Album index status", body = AlbumIndexStatus),
             (status = 401, response = Unauthorized),

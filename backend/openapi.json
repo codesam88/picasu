@@ -1766,7 +1766,23 @@
         "summary": "Delete the listed assets: files, sidecars and metadata rows are removed.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/delete/invites/{invite_id}": {
@@ -1809,7 +1825,23 @@
         "summary": "Revoke an invite token.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/delete/users/{user_id}": {
@@ -1858,7 +1890,25 @@
         "summary": "Delete a user account (admin remediation).",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [
+            "AUTH-16"
+          ],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/favicon.ico": {
@@ -1912,7 +1962,22 @@
         "summary": "Full annotated view of every configuration field.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/admin/config/export": {
@@ -1942,7 +2007,22 @@
         "summary": "Export the runtime-tier configuration as a versioned envelope.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/config": {
@@ -1982,7 +2062,23 @@
         "summary": "Serve the client-visible server configuration.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin",
+            "share"
+          ]
+        }
       }
     },
     "/get/config/export": {
@@ -2015,7 +2111,22 @@
         "summary": "Export the full server configuration as JSON.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/get-albums": {
@@ -2054,7 +2165,22 @@
         "summary": "List every album the metadata tree knows.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/get-data": {
@@ -2125,7 +2251,24 @@
         "summary": "Serve one page of timeline/list rows for a snapshot timestamp.",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [
+            "GuardTimestamp"
+          ],
+          "invariants": [
+            "AUTH-7"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "snapshot"
+          ]
+        }
       }
     },
     "/get/get-export": {
@@ -2154,7 +2297,22 @@
         "summary": "Export the whole tree as JSON.",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/get-rows": {
@@ -2212,7 +2370,24 @@
         "summary": "Serve the display layout of one batched row of a snapshot.",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [
+            "GuardTimestamp"
+          ],
+          "invariants": [
+            "AUTH-7"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "snapshot"
+          ]
+        }
       }
     },
     "/get/get-scroll-bar": {
@@ -2260,7 +2435,24 @@
         "summary": "Serve the scroll bar positions of a snapshot.",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [
+            "GuardTimestamp"
+          ],
+          "invariants": [
+            "AUTH-7"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "snapshot"
+          ]
+        }
       }
     },
     "/get/get-tags": {
@@ -2302,7 +2494,22 @@
         "summary": "List every tag in the tree with the number of assets carrying it.",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/index/status": {
@@ -2332,7 +2539,22 @@
         "summary": "Report the state of the most recently started album-indexing job.",
         "tags": [
           "index"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/invites": {
@@ -2368,7 +2590,22 @@
         "summary": "List invite tokens' metadata.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/metadata/{asset_id}": {
@@ -2421,7 +2658,24 @@
         "summary": "Serve the full metadata of a single asset.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [
+            "GuardTimestamp"
+          ],
+          "invariants": [
+            "AUTH-7"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "snapshot"
+          ]
+        }
       }
     },
     "/get/path-completion": {
@@ -2471,7 +2725,22 @@
         "summary": "Complete a filesystem directory path for the path-completion field.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/prefetch": {
@@ -2536,7 +2805,23 @@
         "summary": "Evaluate a list query, snapshot its result, and return the snapshot id.",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share"
+          ]
+        }
       }
     },
     "/get/self/profile": {
@@ -2575,7 +2860,22 @@
         "summary": "Read the caller's own identity from the user store.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/get/server-info": {
@@ -2650,7 +2950,22 @@
         "summary": "List all users as `{ userId, admin }` pairs ordered by id.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/links": {
@@ -2733,7 +3048,27 @@
         "summary": "Serve the compressed thumbnail or preview of a hashed asset.",
         "tags": [
           "serving"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare",
+            "GuardHash"
+          ],
+          "invariants": [
+            "AUTH-8"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share",
+            "asset"
+          ]
+        }
       }
     },
     "/object/imported/{file_path}": {
@@ -2786,7 +3121,27 @@
         "summary": "Serve the original file from its current location under `imagePath`.",
         "tags": [
           "serving"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare",
+            "GuardHashOriginal"
+          ],
+          "invariants": [
+            "AUTH-8"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share",
+            "asset"
+          ]
+        }
       }
     },
     "/post/admin/config/disable-read-only": {
@@ -2815,7 +3170,25 @@
         "summary": "Lift the read-only kill-switch.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReauth"
+          ],
+          "invariants": [
+            "AUTH-15"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": true,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/config/auth-key/reset": {
@@ -2848,7 +3221,22 @@
         "summary": "Rotate the JWT signing key.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/create_dir_album": {
@@ -2906,7 +3294,23 @@
         "summary": "Create a subdirectory under a dir-album and register it as an album.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/create_share": {
@@ -2961,7 +3365,23 @@
         "summary": "Create a share for an album and return its generated id.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/index/album": {
@@ -3006,7 +3426,23 @@
         "summary": "Index every media file under a directory tree in the background.",
         "tags": [
           "index"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/index/cancel": {
@@ -3035,7 +3471,22 @@
         "summary": "Request cancellation of the running album index job.",
         "tags": [
           "index"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/invites": {
@@ -3087,7 +3538,23 @@
         "summary": "Create a single-use invite token.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/logout": {
@@ -3099,10 +3566,24 @@
             "description": "Session cookie cleared"
           }
         },
+        "security": [
+          {}
+        ],
         "summary": "Clear the session cookie.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [],
+          "invariants": [],
+          "public": true,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": []
+        }
       }
     },
     "/post/renew-hash-token": {
@@ -3154,7 +3635,24 @@
         "summary": "Exchange an expired image-serving token for a freshly issued one.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [
+            "TimestampGuardModified"
+          ],
+          "invariants": [
+            "AUTH-10"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "snapshot"
+          ]
+        }
       }
     },
     "/post/renew-timestamp-token": {
@@ -3210,7 +3708,25 @@
         "summary": "Exchange an expired prefetch timestamp token for a freshly issued one.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare"
+          ],
+          "invariants": [
+            "AUTH-10"
+          ],
+          "public": false,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share"
+          ]
+        }
       }
     },
     "/post/users/authenticate": {
@@ -3254,10 +3770,24 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {}
+        ],
         "summary": "Sign in and issue the session cookie (`HttpOnly`).",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [],
+          "invariants": [],
+          "public": true,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": []
+        }
       }
     },
     "/post/users/bootstrap": {
@@ -3312,7 +3842,23 @@
         "summary": "Enroll the first administrator.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/post/users/register": {
@@ -3373,7 +3919,23 @@
         "summary": "Register a new user account.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/admin/config": {
@@ -3425,7 +3987,23 @@
         "summary": "Patch the runtime-tier configuration.",
         "tags": [
           "config"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/assign_album": {
@@ -3483,7 +4061,23 @@
         "summary": "Move one asset, or one album directory, into another album.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/delete_share": {
@@ -3531,7 +4125,23 @@
         "summary": "Remove one share from an album.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/edit_flags": {
@@ -3582,7 +4192,23 @@
         "summary": "Set or clear the trash flag on the listed assets.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/edit_rating": {
@@ -3633,7 +4259,23 @@
         "summary": "Rate the listed assets 0–5, or clear the rating.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/edit_share": {
@@ -3681,7 +4323,23 @@
         "summary": "Create or replace one of an album's share entries.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/edit_tag": {
@@ -3742,7 +4400,23 @@
         "summary": "Add and remove tags on the listed assets and return the resulting tag list.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/regenerate-thumbnail-with-frame": {
@@ -3790,7 +4464,23 @@
         "summary": "Replace an asset's compressed thumbnail with an uploaded frame.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/rotate-image": {
@@ -3841,7 +4531,23 @@
         "summary": "Rotate an image 90° counter-clockwise and rebuild its derivatives.",
         "tags": [
           "assets"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/set_album_cover": {
@@ -3892,7 +4598,23 @@
         "summary": "Set the cover image of an album.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/set_album_title": {
@@ -3947,7 +4669,24 @@
         "summary": "Set the display title of an album.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share"
+          ]
+        }
       }
     },
     "/put/set_user_defined_description": {
@@ -4002,7 +4741,24 @@
         "summary": "Set or clear the user-defined description of an asset.",
         "tags": [
           "albums"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardShare",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share"
+          ]
+        }
       }
     },
     "/put/users/admin": {
@@ -4053,7 +4809,25 @@
         "summary": "Grant or revoke a user's admin role.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "effects": [],
+          "guards": [
+            "GuardAuth",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [
+            "AUTH-16"
+          ],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/put/users/password": {
@@ -4104,7 +4878,26 @@
         "summary": "Change a user's password.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUser",
+            "GuardReadOnlyMode",
+            "GuardReauth"
+          ],
+          "invariants": [
+            "AUTH-15"
+          ],
+          "public": false,
+          "readonly": true,
+          "reauth": true,
+          "shareScope": "n-a",
+          "tokenTyp": [
+            "admin"
+          ]
+        }
       }
     },
     "/redirect-to-login": {
@@ -4413,7 +5206,24 @@
         "summary": "Upload media files into an album or the upload folder and index each one.",
         "tags": [
           "upload"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "either",
+          "effects": [],
+          "guards": [
+            "GuardUpload",
+            "GuardReadOnlyMode"
+          ],
+          "invariants": [],
+          "public": false,
+          "readonly": true,
+          "reauth": false,
+          "shareScope": "own-album",
+          "tokenTyp": [
+            "admin",
+            "share"
+          ]
+        }
       }
     },
     "/videos": {

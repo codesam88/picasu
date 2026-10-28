@@ -49,6 +49,17 @@ pub struct RegenerateThumbnailForm<'r> {
         tag = "assets",
         request_body(content_type = "multipart/form-data", content = Object),
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "tokenTyp": ["admin"],
+            "admin": "either",
+            "shareScope": "n-a",
+            "readonly": true,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Thumbnail regenerated"),
             (status = 400, description = "Invalid input"),

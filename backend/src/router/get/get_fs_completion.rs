@@ -53,6 +53,17 @@ fn absolutize(p: &Path) -> PathBuf {
             ("path" = Option<String>, Query, description = "Directory path prefix to complete; absent or blank lists the roots and working directory"),
         ),
         security(("cookie_jwt" = [])),
+        extensions(("x-picasu-auth" = json!({
+            "guards": ["GuardAuth"],
+            "tokenTyp": ["admin"],
+            "admin": "admin",
+            "shareScope": "n-a",
+            "readonly": false,
+            "reauth": false,
+            "public": false,
+            "effects": [],
+            "invariants": []
+        }))),
         responses(
             (status = 200, description = "Filesystem path completion", body = FsCompletion),
             (status = 400, description = "Invalid input"),
