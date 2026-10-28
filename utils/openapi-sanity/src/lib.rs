@@ -1,13 +1,14 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Seventeen rules from `.plan/openapi-annotation-checks.md` are implemented
+//! Eighteen rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
 //! statuses — what the handler can answer versus what `responses(…)` claims.
-//! What remains open in that plan — including that no rule interprets a
-//! `security(…)` scheme, though A9 fails closed on the spelling itself — is
-//! listed under "Known gaps" in this crate's README.
+//! **Section S** pairs `x-picasu-auth` metadata with its `security(…)`
+//! declaration. What remains open in that plan — including that no rule
+//! interprets a `security(…)` scheme, though A9 fails closed on the spelling
+//! itself — is listed under "Known gaps" in this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -120,8 +121,9 @@
 //! - `tags(["a", "b"])` sets tags in one list; A3 counts `tag = "…"` occurrences
 //!   only.
 //! - `context_path` sets a base path on the annotation; A1 rejects `path = "…"`.
-//! - `security(…)` declares a policy no rule interprets yet; the spelling is
-//!   recorded until the authz-check plan derives the schemes.
+//! - `security(…)` declares the operation's security requirements; the scheme
+//!   names are not interpreted by any rule, and S1 pairs the declaration with
+//!   `x-picasu-auth` metadata instead of leaving the two to drift.
 //!
 //! An unreadable `request_body = …` value is the declaration-side counterpart:
 //! [`declared_body_matches_binding`] states it does not compare a schema it
@@ -414,6 +416,14 @@ pub struct Annotation {
     /// `request_body`, with the line it is written on, or `None` when the
     /// annotation declares none.
     pub request_body: Option<Located<DeclaredBody>>,
+    /// Whether the annotation declares `security(...)`, with the line it is
+    /// written on. Section S pairs the declaration with `x-picasu-auth`
+    /// metadata; the scheme names themselves are not interpreted.
+    pub has_security: Option<Located<()>>,
+    /// `x-picasu-*` extension keys the annotation declares, with the line each
+    /// is written on. A modeled extension reaches section S; any other
+    /// extension key stays in `unsupported` so A9 keeps failing closed on it.
+    pub auth_extensions: Vec<Located<String>>,
     /// The media type the `request_body` names explicitly, either
     /// `request_body(content_type = "…")` or a `request_body(content(… = …))`
     /// group. `None` means the annotation names none and utoipa guesses one.
@@ -536,9 +546,18 @@ impl Annotation {
                         }
                         // `security(…)` declares the operation's security
                         // requirements. The scheme names are not interpreted
-                        // by this checker, but the form is accepted so
-                        // annotated handlers do not trip A9.
-                        "security" => {}
+                        // by this checker, but the declaration is recorded so
+                        // section S can pair it with `x-picasu-auth` metadata.
+                        "security" => {
+                            annotation
+                                .has_security
+                                .get_or_insert_with(|| Located::new((), line));
+                        }
+                        // `extensions(…)` carries per-entry `("key" = value)`
+                        // pairs. Keys under the project's `x-picasu-*`
+                        // vocabulary are modeled for section S; any other key
+                        // is recorded for A9 instead of dropped.
+                        "extensions" => read_extensions(&group.stream(), line, &mut annotation),
                         // `method(GET)`, `tags([…])` and the rest: legal utoipa
                         // spellings outside the modeled grammar, recorded for
                         // A9 rather than dropped.
@@ -684,6 +703,33 @@ fn read_request_body_group(stream: &TokenStream, line: usize, annotation: &mut A
             annotation
                 .body_content_type
                 .get_or_insert_with(|| Located::new(media_type, key_line));
+        }
+    }
+}
+
+/// Read `extensions(…)`: each entry is `("key" = value)`. Keys under the
+/// project's `x-picasu-*` vocabulary are modeled for section S; any other key
+/// is recorded as unsupported so A9 keeps failing closed on it. Values are not
+/// read — the extension's shape is generated output's concern, while the
+/// pairing rule only needs the declared key.
+fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotation) {
+    for entry in split_entries(stream) {
+        let mut trees = entry.into_iter();
+        let Some(TokenTree::Group(tuple)) = trees.next() else {
+            continue;
+        };
+        if tuple.delimiter() != Delimiter::Parenthesis {
+            continue;
+        }
+        let mut fields = tuple.stream().into_iter();
+        let key = match fields.next() {
+            Some(TokenTree::Literal(literal)) => literal_text(&literal),
+            _ => continue,
+        };
+        if key.starts_with("x-picasu-") {
+            annotation.auth_extensions.push(Located::new(key, line));
+        } else {
+            annotation.unsupported.push(Located::new(key, line));
         }
     }
 }
@@ -1749,8 +1795,36 @@ fn unsupported_annotation_form(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
-/// A1 to A7 and A9 of section A and B1 to B5 of section B: every rule over one
-/// handler, in a fixed order so a report reads the same way twice.
+/// S1 — `x-picasu-auth` metadata without a `security(...)` declaration.
+///
+/// The extension claims authorization semantics for the operation, so the
+/// annotation must also publish the document half of the claim. `security(())`
+/// is the explicitly-public form; absence is not a quieter public, it is an
+/// unpublished claim.
+fn auth_metadata_without_security(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    if annotation.auth_extensions.is_empty() || annotation.has_security.is_some() {
+        return Vec::new();
+    }
+    annotation
+        .auth_extensions
+        .iter()
+        .map(|extension| {
+            Finding::at(
+                &handler.file,
+                extension.line,
+                "auth_metadata_without_security",
+                "the annotation declares `x-picasu-auth` metadata but no `security(...)`, so \
+                 the model claims semantics the document does not publish; declare \
+                 `security(...)` (`security(())` for explicitly public operations)",
+            )
+        })
+        .collect()
+}
+
+/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1 of section S:
+/// every rule over one handler, in a fixed order so a report reads the same
+/// way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -1772,6 +1846,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         guard_statuses_declared(handler, derivations),
         body_kind_statuses_declared(handler, derivations),
         declared_statuses_within_universe(handler, derivations),
+        auth_metadata_without_security(handler),
     ]
     .concat()
 }

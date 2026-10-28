@@ -2597,10 +2597,24 @@
             "description": "Internal error"
           }
         },
+        "security": [
+          {}
+        ],
         "summary": "Report anonymous enrollment state for boot routing.",
         "tags": [
           "auth"
-        ]
+        ],
+        "x-picasu-auth": {
+          "admin": "n-a",
+          "effects": [],
+          "guards": [],
+          "invariants": [],
+          "public": true,
+          "readonly": false,
+          "reauth": false,
+          "shareScope": "n-a",
+          "tokenTyp": []
+        }
       }
     },
     "/get/users": {
