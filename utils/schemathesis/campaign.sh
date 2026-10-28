@@ -33,15 +33,36 @@ if ! curl -s -o /dev/null --max-time 5 "$BASE_URL/" 2>/dev/null; then
     exit 2
 fi
 
+# Login convenience for foreign instances: when no JWT arrived from seed.env
+# but credentials are supplied, authenticate now.
+if [ -z "${PICASU_JWT:-}" ] && [ -n "${FUZZ_ADMIN_PASSWORD:-}" ]; then
+    ADMIN_USER="${FUZZ_ADMIN_USER:-admin}"
+    login_headers="$(mktemp)"
+    login_body="$(mktemp)"
+    http_code="$(curl -s -D "$login_headers" -o "$login_body" -w '%{http_code}' \
+        -X POST "$BASE_URL/post/users/authenticate" \
+        -H 'Content-Type: application/json' \
+        -d "{\"userId\":\"$ADMIN_USER\",\"password\":\"$FUZZ_ADMIN_PASSWORD\"}")"
+    token="$(sed -n 's/^set-cookie: jwt=\([^;]*\).*/\1/pI' "$login_headers" | tr -d '\r')"
+    rm -f "$login_headers" "$login_body"
+    if [ "$http_code" != "200" ] || [ -z "$token" ]; then
+        echo "campaign: login failed for user '$ADMIN_USER' at $BASE_URL (HTTP $http_code)" >&2
+        exit 1
+    fi
+    export PICASU_JWT="$token"
+fi
+
 mkdir -p utils/schemathesis/out
 REPORT="utils/schemathesis/out/report.json"
 rm -f "$REPORT" # a stale report must never be compared after a failed run
 
-# Default budget; a pass-through --max-time wins.
+# Default budget in minutes (explicit --max-time in the args wins); the
+# campaign-facing knob is FUZZ_MIN so `FUZZ_MIN=2 just fuzz-run` shortens a run.
+FUZZ_MIN="${FUZZ_MIN:-15}"
 if [[ " $* " == *" --max-time "* ]]; then
     time_args=("$@")
 else
-    time_args=(--max-time 900 "$@")
+    time_args=(--max-time "$((FUZZ_MIN * 60))" "$@")
 fi
 
 set +e

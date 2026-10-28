@@ -194,28 +194,22 @@ schemathesis_version := "4.30.1"
 install-schemathesis:
     ./scripts/install-schemathesis.sh "{{ schemathesis_version }}"
 
-# Fuzz a running seeded backend (advisory)
-[group('utils')]
-schemathesis-run *args:
-    ./scripts/schemathesis-run.sh "{{ schemathesis_version }}" backend/openapi.json http://localhost:5673 {{ args }}
+# Common fuzz flows; the fundamental commands (raw launcher, campaign engine,
+# tier-1 check) are scripts under scripts/ and utils/schemathesis/, combined
+# as documented in utils/schemathesis/README.md.
 
-# Tier-1 Schemathesis check: seeded backend + single-op sweep + baseline compare
-[group('utils')]
-schemathesis-check: frontend-build-maybe
+# Tier-1 gate: seeded sweep against a throwaway instance, baseline-compared
+fuzz-check: frontend-build-maybe install-schemathesis
     utils/schemathesis/check.sh "{{ schemathesis_version }}"
 
-# Top-level gate (peer of check/test)
-fuzz-check: install-schemathesis
-    just schemathesis-check
+# Serve a seeded instance in the foreground (first run seeds; Ctrl-C stops)
+fuzz-serve *args: frontend-build-maybe
+    utils/schemathesis/serve.sh {{ args }}
 
-# Tier-2 Schemathesis campaign against a running seeded backend (advisory)
-[group('utils')]
-schemathesis-campaign *args:
+# Run the campaign against a served instance; budget in minutes via FUZZ_MIN
+fuzz-run *args: install-schemathesis
+    FUZZ_STATE_DIR="${FUZZ_STATE_DIR:-{{justfile_directory()}}/sandbox/fuzz}" \
     utils/schemathesis/campaign.sh "{{ schemathesis_version }}" {{ args }}
-
-# Top-level peer of check/test (advisory)
-fuzz *args: install-schemathesis
-    just schemathesis-campaign {{args}}
 
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at

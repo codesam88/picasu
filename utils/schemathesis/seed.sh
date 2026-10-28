@@ -21,11 +21,6 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
-if curl -s -o /dev/null -w '%{http_code}' "$BASE/" 2>/dev/null | grep -q '^200$'; then
-    echo "port $PORT already serves a backend; pick another PICASU_PORT" >&2
-    exit 1
-fi
-
 kill_server() {
     if [ -f "$STATE_DIR/server.pid" ]; then
         pid="$(cat "$STATE_DIR/server.pid")"
@@ -42,6 +37,12 @@ kill_server() {
 trap 'kill_server' ERR
 
 kill_server
+
+if curl -s -o /dev/null -w '%{http_code}' "$BASE/" 2>/dev/null | grep -q '^200$'; then
+    echo "port $PORT already serves a backend; pick another PICASU_PORT" >&2
+    exit 1
+fi
+
 rm -rf "$DATA_HOME" "$CONFIG_HOME" "$IMAGE_HOME"
 mkdir -p "$DATA_HOME" "$CONFIG_HOME"
 

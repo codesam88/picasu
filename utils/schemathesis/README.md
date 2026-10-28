@@ -2,8 +2,7 @@
 
 ## Tier 1 — check
 
-Runs a bounded single-operation sweep against a throwaway seeded backend and
-compares findings to `baseline.yaml`.
+Runs a bounded single-operation sweep against a throwaway seeded backend and compares findings to `baseline.yaml`.
 
 Run:
 
@@ -16,69 +15,90 @@ What it does:
 - runs schemathesis with the fixed 5-check oracle
 - compares the JSON report to the accepted-findings baseline
 
-Updating the baseline when a bug is fixed: remove the corresponding entry
-from `baseline.yaml` and re-run; a fixed bug must make that finding disappear.
+Updating the baseline when a bug is fixed: remove the corresponding entry from `baseline.yaml` and re-run; a fixed bug must make that finding disappear.
 
-State lives in a temp dir removed on exit. Set `FUZZ_REPORT_OUT=<path>` to
-copy the JSON report out before teardown (used by CI for SARIF conversion).
+State lives in a temp dir removed on exit. Set `FUZZ_REPORT_OUT=<path>` to copy the JSON report out before teardown (used by CI for SARIF conversion).
 
 ## Tier 2 — campaign
 
-Stateful run against a _running_ seeded backend. It does not seed or tear
-down an instance itself.
+Stateful run in two commands: one serves, one fuzzes.
 
-Run against a disposable instance:
+### `just fuzz-serve` — serve a seeded instance in the foreground
 
-    export FUZZ_STATE_DIR=$(mktemp -d)
-    PICASU_PORT=5673 utils/schemathesis/seed.sh
-    source "$FUZZ_STATE_DIR/seed.env"
-    just fuzz --max-time 120
+    just fuzz-serve
 
-Or against a developer instance (default `http://localhost:5673`):
+First run seeds a fresh instance (bootstrap, index, shares) into the stable `sandbox/fuzz/` (repo root, gitignored); later runs restart the same state immediately. Serves `http://127.0.0.1:5673` in the foreground — **Ctrl-C stops it**. A port already occupied by another backend is refused, never hijacked. `source sandbox/fuzz/seed.env` exposes `PICASU_JWT` and the fixture ids to other tools; delete `sandbox/fuzz/` to reseed.
 
-    just fuzz
+### `just fuzz-run` — campaign against the served instance
 
-A run without `seed.env` still works: it goes unauthenticated with the
-probes off, so `just fuzz` against a dev instance needs no setup. Point
-`FUZZ_STATE_DIR` at a seed directory (previous snippet) for the
-authenticated run. The exit status is the baseline comparison — known
-findings pass, new ones fail, and a crashed run exits with
-Schemathesis's own code before comparing.
+    just fuzz-run
 
-Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`,
-`FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, `FUZZ_PASSWORD`, `PICASU_BASE_URL` (all
-provided by `seed.env`, which also points the recipe at the seeded port).
-The campaign targets a running instance, so destructive operations are
-disabled in `campaign.toml` (`update_admin_config_handler`,
-`reset_auth_key_handler`, `disable_read_only_handler`, index rebuild,
-logout, user password/admin mutations) and the hooks' poison guards null
-config fields, protect the admin, and redirect share/delete operations to
-nonexistent fixtures.
+Runs the campaign against `http://127.0.0.1:5673` with the served instance's auth (`sandbox/fuzz/seed.env` is picked up automatically). Budget: `FUZZ_MIN` minutes (default 15) — e.g. `FUZZ_MIN=2 just fuzz-run` for a 2-minute run; an explicit `--max-time` argument wins over `FUZZ_MIN`. Exit status is the baseline comparison — known findings pass, new ones fail, and a crashed run exits with Schemathesis's own code before comparing.
+
+### Campaign engine (`campaign.sh`) — targeting an explicit backend
+
+The justfile keeps only the common flows (`fuzz-check`, `fuzz-serve`,
+`fuzz-run`); the underlying commands are scripts you combine yourself. The
+campaign engine takes the pinned Schemathesis version first (justfile
+`schemathesis_version`):
+
+    utils/schemathesis/campaign.sh <version> --max-time 120
+
+Runs against a backend you provide (`PICASU_BASE_URL`, default `http://localhost:5673`). Authentication options:
+
+(a) Source a `seed.env` from a seeded instance, then run:
+
+    source <state-dir>/seed.env
+    PICASU_BASE_URL=http://127.0.0.1:5673 utils/schemathesis/campaign.sh <version>
+
+(b) Fresh empty store: boot with `--bootstrap-admin`, create the admin, then capture the JWT:
+
+    # server started with --bootstrap-admin --trivial-passwords
+    curl -s -X POST "$BASE/post/users/bootstrap" -H 'Content-Type: application/json' \
+      -d '{"userId":"admin","password":"FuzzPass!234"}'
+    curl -s -D headers -o body -X POST "$BASE/post/users/authenticate" \
+      -H 'Content-Type: application/json' \
+      -d '{"userId":"admin","password":"FuzzPass!234"}'
+    export PICASU_JWT=$(sed -n 's/^set-cookie: jwt=\([^;]*\).*/\1/pI' headers | tr -d '\r')
+
+(c) Populated store: with the server stopped (the store is locked while it is open — "The store is locked while the server holds it open. Writes then fail with ... Stop the server before administering the store."), add an admin offline, then authenticate:
+
+    picasu-cmd --userdb <path> user add fuzz-admin --admin --password <pw>
+    # start the server, then POST /post/users/authenticate and capture Set-Cookie: jwt
+
+(d) Auto-login via environment: set `FUZZ_ADMIN_USER` (default `admin`) and `FUZZ_ADMIN_PASSWORD`; `campaign.sh` authenticates before the run and fails loudly on a 401 or missing cookie:
+
+    FUZZ_ADMIN_PASSWORD='FuzzPass!234' PICASU_BASE_URL=http://127.0.0.1:5673 \
+      utils/schemathesis/campaign.sh <version> --max-time 30
+
+A run without credentials or fixtures still works: it goes unauthenticated with the probes off.
+
+The exit status is the baseline comparison — known findings pass, new ones fail, and a crashed run exits with Schemathesis's own code before comparing.
+
+Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`, `FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, `FUZZ_PASSWORD`, `PICASU_BASE_URL` (all provided by `seed.env`, which also points the recipe at the seeded port). The campaign targets a running instance, so destructive operations are disabled in `campaign.toml` (`update_admin_config_handler`, `reset_auth_key_handler`, `disable_read_only_handler`, index rebuild, logout, user password/admin mutations) and the hooks' poison guards null config fields, protect the admin, and redirect share/delete operations to nonexistent fixtures.
 
 What A1-A5 assert:
 
-- A1 `cross_scope_refused` — a share-A snapshot token cannot read an album-B
-  asset.
-- A2 `demoted_token_rejected` — a demoted user's still-live token loses admin
-  access immediately.
-- A3 `wrong_typ_rejected` — an identity token does not satisfy a
-  snapshot-token guard.
-- A4 `readonly_405` — every mutating operation answers 405 under read-only
-  mode (env-gated via `FUZZ_READONLY=1`).
-- A5 `cross_share_renewal_refused` — share B cannot renew a snapshot minted
-  for share A.
+- A1 `cross_scope_refused` — a share-A snapshot token cannot read an album-B asset.
+- A2 `demoted_token_rejected` — a demoted user's still-live token loses admin access immediately.
+- A3 `wrong_typ_rejected` — an identity token does not satisfy a snapshot-token guard.
+- A4 `readonly_405` — every mutating operation answers 405 under read-only mode (env-gated via `FUZZ_READONLY=1`).
+- A5 `cross_share_renewal_refused` — share B cannot renew a snapshot minted for share A.
 
-Budget: default `--max-time 900s`, overridable via pass-through args.
-Stateful phase uses up to 8 steps per sequence.
+Budget: default `--max-time 900s`, overridable via pass-through args. Stateful phase uses up to 8 steps per sequence.
 
-The campaign runs in three env-gated modes controlled by
-`FUZZ_SHARE_HEADERS`, `FUZZ_MARKERS`, `FUZZ_READONLY` (default-on for the
-first two in `just schemathesis-campaign`).
+The campaign runs in three env-gated modes controlled by `FUZZ_SHARE_HEADERS`, `FUZZ_MARKERS`, `FUZZ_READONLY` (default-on, set by `campaign.sh`).
+
+### Fundamental commands
+
+For combinations beyond the two flows above (all take the pinned version
+first):
+
+    utils/schemathesis/serve.sh [picasu-args]   # what fuzz-serve runs: seed on first use, foreground
+    utils/schemathesis/check.sh <version>       # tier-1 sweep + baseline compare without the recipe
+    utils/schemathesis/campaign.sh <version> …  # the campaign engine (env: PICASU_BASE_URL, FUZZ_STATE_DIR, FUZZ_ADMIN_*, FUZZ_MIN)
+    ./scripts/schemathesis-run.sh <version> <schema> <url> [args…]  # raw uvx passthrough, no harness config
 
 ## SARIF / Security tab
 
-`utils/schemathesis/json2sarif.py <report.json> <baseline.yaml> <out.sarif>`
-converts a run report to SARIF 2.1.0. Baseline-accepted findings are
-excluded; results are advisory (`level: warning`). Operation anchoring is
-line-based against `backend/openapi.json`. The nightly workflow uploads
-the result under the `schemathesis` category.
+`utils/schemathesis/json2sarif.py <report.json> <baseline.yaml> <out.sarif>` converts a run report to SARIF 2.1.0. Baseline-accepted findings are excluded; results are advisory (`level: warning`). Operation anchoring is line-based against `backend/openapi.json`. The nightly workflow uploads the result under the `schemathesis` category.
