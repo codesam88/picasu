@@ -159,15 +159,8 @@ def demoted_cookie():
         headers={"Cookie": f"jwt={ADMIN_JWT}"},
         body={"userId": EDITOR, "password": PASSWORD},
     )
-    status, body = api(
-        "POST",
-        "/post/users/authenticate",
-        body={"userId": EDITOR, "password": PASSWORD},
-    )
-    _ = body
-    if status != 200:
-        raise SystemExit(f"editor login failed: {status}")
-    # The token is in Set-Cookie; re-read it through a raw request.
+    # The session token only exists in Set-Cookie, so read it from the raw
+    # response rather than through the JSON helper.
     token = login_token(EDITOR, PASSWORD)
     api(
         "PUT",
