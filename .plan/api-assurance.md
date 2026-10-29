@@ -107,21 +107,22 @@ generate from.
 
 ## Status overview (single source of status; bodies below hold design detail)
 
-| Item                                                                                    | Status                                                                                           |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)            | done (see Progress)                                                                              |
-| Step 6 AUTH-3 lint + triage                                                             | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline)      |
-| Step 6 AUTH-11/12                                                                       | open, blocked on `effects` vocabulary                                                            |
-| Step 6 decode agreement                                                                 | done (`decode_agreement` crate)                                                                  |
-| Step 6 claims-consumption (F3)                                                          | open, queued                                                                                     |
-| Step 7 UI fixtures                                                                      | done (4 crates); UI-suite CI wiring open; allowlist/baseline open                                |
-| Step 8 expiry/decode ratchets                                                           | open                                                                                             |
-| Step 9 env-var lint                                                                     | done, gating; sequencing sentence needs amendment (open decision); further domains open          |
-| Step 10 + S-rules                                                                       | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done              |
-| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites)           | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
-| Consumers: matrix generator                                                             | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
-| Consumers: hook derivation, generated negatives (incl. S4), effects/invariants backfill | open                                                                                             |
-| `authz-model.md` derivation-back                                                        | deferred until matrix proves itself                                                              |
+| Item                                                                          | Status                                                                                           |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)  | done (see Progress)                                                                              |
+| Step 6 AUTH-3 lint + triage                                                   | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline)      |
+| Step 6 AUTH-11/12                                                             | open, blocked on `effects` vocabulary                                                            |
+| Step 6 decode agreement                                                       | done (`decode_agreement` crate)                                                                  |
+| Step 6 claims-consumption (F3)                                                | open, queued                                                                                     |
+| Step 7 UI fixtures                                                            | done (4 crates); UI-suite CI wiring open; allowlist/baseline open                                |
+| Step 8 expiry/decode ratchets                                                 | open                                                                                             |
+| Step 9 env-var lint                                                           | done, gating; sequencing sentence needs amendment (open decision); further domains open          |
+| Step 10 + S-rules                                                             | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done              |
+| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
+| Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
+| Consumers: hook derivation + S4 probes                                        | done (matrix-derived `utils/schemathesis/auth_matrix.py`, 28 probe-carrying ops)                 |
+| Consumers: generated negatives, effects/invariants backfill                   | open                                                                                             |
+| `authz-model.md` derivation-back                                              | deferred until matrix proves itself                                                              |
 
 ## Steps (sketch — phases in order, details at build time)
 
@@ -392,7 +393,7 @@ each rule lives where its inputs live and nowhere else:
 | S1   | metadata without a published declaration                                                                                                         | openapi-sanity (done, gating; paired both ways, internal probes exempt)         |
 | S2   | `security` schemes vs guard types in signature                                                                                                   | openapi-sanity (done, gating)                                                   |
 | S3   | `tokenTyp` vs guard-decoded claims types                                                                                                         | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI)) |
-| S4   | asset touched is bound to the share's album (prefetch filter, renewal binding, 404-on-mismatch; serving drops out — bearer authorizes the asset) | behavioral: generated cross-scope probes                                        |
+| S4   | asset touched is bound to the share's album (prefetch filter, renewal binding, 404-on-mismatch; serving drops out — bearer authorizes the asset) | behavioral: matrix-derived cross-scope probes (done)                            |
 | S5   | `readonly` vs `GuardMutate` + 405 declared                                                                                                       | openapi-sanity: P1/P2 shape                                                     |
 | S6   | `reauth` vs `GuardReauth` + documented header                                                                                                    | openapi-sanity: signature + annotation text                                     |
 | S7   | `public` vs `security(())` + no guard                                                                                                            | openapi-sanity: signature + annotation form                                     |
@@ -473,5 +474,27 @@ security reviewers); this file stays the implementation roadmap.
   pair, count pins, silent real-tree gate, committed separately. S1
   paired both ways (internal-tagged probes exempt). S3
   (`token_typ_agreement` dylint, gating in CI) done 2026-10-28 with UI
-  fixtures and clean-tree/RED verification. S4 (behavioral
-  cross-scope probes) remains open; S3 is now gated in CI.
+  fixtures and clean-tree/RED verification. S4 is now implemented (see
+  the entry below); S3 is gated in CI.
+- Step 11 S4 + hook derivation done 2026-10-29: the hooks derive their
+  auth knowledge from `backend/auth-matrix.json` via
+  `utils/schemathesis/auth_matrix.py` (share-header sets, probe
+  assignment, wrong-typ selection, read-only exemptions, scope pairs),
+  unit-tested against the committed matrix. Measured on one 5-minute
+  campaign (seed 1, same seeded state) before and after:
+  before — 66/74 ops, 3 findings (`UndocumentedContentType` on
+  get-data/get-rows/get-scroll-bar), warnings missing_auth 19 /
+  missing_test_data 8 / validation_mismatch 19;
+  after — 66/74 ops, 6 findings (`UndocumentedContentType` ×2,
+  `ServerError` ×4 on edit_flags/edit_rating/edit_tag/
+  set_user_defined_description), warnings missing_auth 16 /
+  missing_test_data 6 / validation_mismatch 11. Probe-carrying
+  operations rose from 4 hand-coded to 28 matrix-derived (1
+  cross-scope, 4 wrong-typ, 1 renewal, 22 demoted); A1's expectation
+  is now exactly 404, matching the route contract. The four 500s are
+  the pre-filed `bug-snapshot-unknown-500` (reproduced with a direct
+  request: `PUT /put/edit_flags` with `timestamp: 0` → 500), not a
+  harness regression; tier-1 `just fuzz-check` stays 72 ops / 4
+  findings, all baseline-accepted, `baseline.yaml` untouched. Caveat:
+  the time-budgeted phases make counts directionally comparable, not
+  byte-reproducible.
