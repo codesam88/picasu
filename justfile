@@ -123,10 +123,11 @@ utils-check:
     cargo fmt --check -p snapfab -p paste -p openapi-sanity
     cargo clippy --all-targets -p snapfab -p paste -p openapi-sanity -- -D warnings
 
-# cargo test on utils/ crates
+# cargo test on utils/ crates + the Schemathesis harness derivations
 [group('utils')]
 utils-test:
     cargo test -p snapfab -p openapi-sanity
+    python3 {{justfile_directory()}}/utils/schemathesis/test_auth_matrix.py
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
