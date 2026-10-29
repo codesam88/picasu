@@ -123,6 +123,7 @@ generate from.
 | Consumers: hook derivation + S4 probes                                        | done (matrix-derived `utils/schemathesis/auth_matrix.py`, 28 probe-carrying ops)                 |
 | Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)              |
 | Consumers: effects/invariants backfill                                        | open                                                                                             |
+| Contract checker coverage + strength                                          | open (`.plan/api-assurance-coverage.md`: registry, existence test, generated profile, floor)     |
 | `authz-model.md` derivation-back                                              | deferred until matrix proves itself                                                              |
 
 ## Steps (sketch — phases in order, details at build time)
