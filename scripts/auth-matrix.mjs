@@ -29,7 +29,9 @@ const records = [];
 for (const path of Object.keys(spec.paths).sort()) {
   for (const method of Object.keys(spec.paths[path])) {
     const op = spec.paths[path][method];
-    const auth = op["x-picasu-auth"] ?? null;
+    const rawAuth = op["x-picasu-auth"] ?? null;
+    // Stable shape for consumers: the waiver map is always present.
+    const auth = rawAuth === null ? null : { ...rawAuth, waivers: rawAuth.waivers ?? {} };
     const security = op.security === undefined ? null : op.security;
     const record = sortedObject({
       method: method.toUpperCase(),
@@ -150,12 +152,12 @@ lines.push(
 lines.push(
   "  - `manage`: changes administrative state — identities, config and secrets, index jobs, shares.",
 );
-lines.push(
-  "  - `control`: administrative action that must stay callable while read-only mode is on (lifting the kill-switch); exempt from the read-only requirement by class, not by route.",
-);
 lines.push("  - `—`: public operation, nothing to classify.");
 lines.push(
   "  - Coupling: `write` and `manage` require `GuardMutate` (read-only gate); `manage` also requires the admin role (AUTH-11, AUTH-12).",
+);
+lines.push(
+  "- **Waivers**: a rule the operation is exempt from, with the reason. Rendered below the tables; a waiver naming a rule the operation is not held to is itself a finding.",
 );
 lines.push("");
 lines.push("## Modeled operations");
@@ -176,6 +178,21 @@ lines.push("| --- | --- | --- |");
 for (const r of publicOps) {
   const a = r["x-picasu-auth"];
   lines.push(`| ${opCell(r)} | ${nameCell(r)} | ${cell(a.effects)} |`);
+}
+lines.push("");
+lines.push("## Waivers");
+lines.push("");
+const waived = modeled.filter((r) => r["x-picasu-auth"].waivers && Object.keys(r["x-picasu-auth"].waivers).length > 0);
+if (waived.length === 0) {
+  lines.push("None.");
+} else {
+  lines.push("| Op | Rule | Reason |");
+  lines.push("| --- | --- | --- |");
+  for (const r of waived) {
+    for (const [rule, reason] of Object.entries(r["x-picasu-auth"].waivers)) {
+      lines.push(`| ${opCell(r)} | \`${rule}\` | ${reason} |`);
+    }
+  }
 }
 lines.push("");
 lines.push("## Unmodeled operations (page shells)");

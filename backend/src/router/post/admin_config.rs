@@ -28,8 +28,11 @@ use crate::router::{AppResult, GuardResult};
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": ["control"],
-            "invariants": ["AUTH-11", "AUTH-15"]
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-12", "AUTH-15"],
+            "waivers": {
+                "AUTH-12": "the lift must stay callable while read-only mode is on"
+            }
         }))),
     responses(
         (status = 200, description = "Read-only mode disabled"),
