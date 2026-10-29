@@ -38,15 +38,15 @@ Per-operation authorization semantics that OpenAPI `security`
 cannot express live in an `x-picasu-auth` extension next to the
 native `security(...)` clause:
 
-| Field        | Meaning                                                             |
-| ------------ | ------------------------------------------------------------------- |
-| `guards`     | handler signature guard types, verbatim                             |
-| `tokenTyp`   | credential types accepted (`session`, `snapshot`, `asset`, `share`) |
-| `admin`      | `admin` (admin-only), `any`, `none`                                 |
-| `shareScope` | `own-album`, `n-a`                                                  |
-| `public`     | no credential required (pairs with `security(())`)                  |
-| `effects`    | manage/effect classification (**pending**: all `[]`)                |
-| `invariants` | `authz-model.md` IDs, only where source-verified                    |
+| Field        | Meaning                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `guards`     | handler signature guard types, verbatim                                                                                    |
+| `tokenTyp`   | credential types accepted (`session`, `snapshot`, `asset`, `share`)                                                        |
+| `admin`      | `admin` (admin-only), `any`, `none`                                                                                        |
+| `shareScope` | `album` (target confined to the share's album), `n-a` (no album binding) — always token-derived, never a request parameter |
+| `public`     | no credential required (pairs with `security(())`)                                                                         |
+| `effects`    | manage/effect classification (**pending**: all `[]`)                                                                       |
+| `invariants` | `authz-model.md` IDs, only where source-verified                                                                           |
 
 All 51 annotated handlers carry the key; the 23 SPA page shells are
 unannotated by design. `effects` has no controlled vocabulary yet;

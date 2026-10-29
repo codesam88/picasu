@@ -346,8 +346,10 @@ Field semantics: `guards` mirrors the handler signature;
 `tokenTyp` names the credential types (`session` for the cookie
 session token, `snapshot`/`asset` for bearers, `share` for share
 credentials); `admin` records the role constraint (`admin`,
-`any`, `none`); `shareScope` the binding rule
-(`own-album`, `n-a`); `public: true` pairs with
+`any`, `none`); `shareScope` the enforced album binding (`album`,
+or `n-a` when the operation binds nothing by album — always derived
+from the presented token or identity, never from a request parameter);
+`public: true` pairs with
 `security: []`; `effects` the manage/effect classification AUTH-11/12
 needs; `invariants` the `authz-model.md` IDs for traceability.
 Readonly and reauth behavior are derived from `guards`
@@ -385,15 +387,15 @@ rules gate.
 The S1..S7 correspondence rules split by what each tool can see, so
 each rule lives where its inputs live and nowhere else:
 
-| Rule | Problem / purpose                              | Enforcement                                                                                     |
-| ---- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| S1   | metadata without a published declaration       | openapi-sanity (done, gating; paired both ways, internal probes exempt)                         |
-| S2   | `security` schemes vs guard types in signature | openapi-sanity (done, gating)                                                                   |
-| S3   | `tokenTyp` vs guard-decoded claims types       | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI))                 |
-| S4   | `shareScope` vs body/database binding check    | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
-| S5   | `readonly` vs `GuardMutate` + 405 declared     | openapi-sanity: P1/P2 shape                                                                     |
-| S6   | `reauth` vs `GuardReauth` + documented header  | openapi-sanity: signature + annotation text                                                     |
-| S7   | `public` vs `security(())` + no guard          | openapi-sanity: signature + annotation form                                                     |
+| Rule | Problem / purpose                                                                                                                                | Enforcement                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| S1   | metadata without a published declaration                                                                                                         | openapi-sanity (done, gating; paired both ways, internal probes exempt)         |
+| S2   | `security` schemes vs guard types in signature                                                                                                   | openapi-sanity (done, gating)                                                   |
+| S3   | `tokenTyp` vs guard-decoded claims types                                                                                                         | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI)) |
+| S4   | asset touched is bound to the share's album (prefetch filter, renewal binding, 404-on-mismatch; serving drops out — bearer authorizes the asset) | behavioral: generated cross-scope probes                                        |
+| S5   | `readonly` vs `GuardMutate` + 405 declared                                                                                                       | openapi-sanity: P1/P2 shape                                                     |
+| S6   | `reauth` vs `GuardReauth` + documented header                                                                                                    | openapi-sanity: signature + annotation text                                     |
+| S7   | `public` vs `security(())` + no guard                                                                                                            | openapi-sanity: signature + annotation form                                     |
 
 Split justification: annotation/signature comparisons are syn's home
 turf; type/call-graph questions are dylint's; binding semantics are

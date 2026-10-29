@@ -4,33 +4,33 @@
 //   - backend/auth-matrix.json (machine record per operation)
 //
 // Both are fully derived; do not hand-edit. Run: node scripts/auth-matrix.mjs [repo-root]
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = process.argv[2] ?? '.'
-const openapiPath = join(root, 'backend', 'openapi.json')
-const mdPath = join(root, 'docs', 'auth-matrix.md')
-const jsonPath = join(root, 'backend', 'auth-matrix.json')
+const root = process.argv[2] ?? ".";
+const openapiPath = join(root, "backend", "openapi.json");
+const mdPath = join(root, "docs", "auth-matrix.md");
+const jsonPath = join(root, "backend", "auth-matrix.json");
 
-const spec = JSON.parse(readFileSync(openapiPath, 'utf8'))
+const spec = JSON.parse(readFileSync(openapiPath, "utf8"));
 
 function sortedObject(obj) {
-  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return obj
-  const out = {}
+  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return obj;
+  const out = {};
   for (const key of Object.keys(obj).sort()) {
-    out[key] = sortedObject(obj[key])
+    out[key] = sortedObject(obj[key]);
   }
-  return out
+  return out;
 }
 
-const records = []
+const records = [];
 for (const path of Object.keys(spec.paths).sort()) {
   for (const method of Object.keys(spec.paths[path])) {
-    const op = spec.paths[path][method]
-    const auth = op['x-picasu-auth'] ?? null
-    const security = op.security === undefined ? null : op.security
+    const op = spec.paths[path][method];
+    const auth = op["x-picasu-auth"] ?? null;
+    const security = op.security === undefined ? null : op.security;
     const record = sortedObject({
       method: method.toUpperCase(),
       modeled: auth !== null,
@@ -38,34 +38,34 @@ for (const path of Object.keys(spec.paths).sort()) {
       path,
       security,
       tags: op.tags ?? [],
-      'x-picasu-auth': auth === null ? null : sortedObject(auth),
-    })
-    records.push(record)
+      "x-picasu-auth": auth === null ? null : sortedObject(auth),
+    });
+    records.push(record);
   }
 }
 
 // Machine file
-mkdirSync(join(root, 'backend'), { recursive: true })
-writeFileSync(jsonPath, JSON.stringify(records, null, 2) + '\n')
+mkdirSync(join(root, "backend"), { recursive: true });
+writeFileSync(jsonPath, JSON.stringify(records, null, 2) + "\n");
 
 // Human table
-const modeled = records.filter((r) => r.modeled)
-const publicOps = modeled.filter((r) => r['x-picasu-auth'].public === true)
-const unmodeled = records.filter((r) => !r.modeled)
+const modeled = records.filter((r) => r.modeled);
+const publicOps = modeled.filter((r) => r["x-picasu-auth"].public === true);
+const unmodeled = records.filter((r) => !r.modeled);
 
 function cell(v) {
-  if (v === null || v === undefined) return '—'
-  if (Array.isArray(v)) return v.length ? v.join(', ') : '—'
-  if (typeof v === 'boolean') return v ? 'yes' : 'no'
-  return String(v)
+  if (v === null || v === undefined) return "—";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  return String(v);
 }
 
 function opCell(r) {
-  return `\`${r.method} ${r.path}\``
+  return `\`${r.method} ${r.path}\``;
 }
 
 function nameCell(r) {
-  return `\`${r.operationId}\``
+  return `\`${r.operationId}\``;
 }
 
 // Role joins the constraint with its expansion, derived from the
@@ -74,108 +74,131 @@ function nameCell(r) {
 // admit no role. A bare `admin` is the admin-only guard; anything wider
 // renders as any(...) or none(...).
 function roleOf(a) {
-  if (a.guards.includes('GuardAdmin')) return 'admin'
-  const members = []
+  if (a.guards.includes("GuardAdmin")) return "admin";
+  const members = [];
   if (
-    a.guards.includes('GuardUser') ||
-    a.guards.includes('GuardPresenter')
+    a.guards.includes("GuardUser") ||
+    a.guards.includes("GuardPresenter")
   ) {
-    members.push('admin', 'user')
+    members.push("admin", "user");
   }
-  if (a.guards.includes('GuardPresenter')) {
-    members.push('share')
+  if (a.guards.includes("GuardPresenter")) {
+    members.push("share");
   }
-  if (members.length === 1) return members[0]
-  if (members.length > 1) return `any(${members.join(', ')})`
-  if (a.public === true) return 'none(public)'
-  const t = (a.tokenTyp || []).join(', ')
-  return t ? `none(${t})` : 'none'
+  if (members.length === 1) return members[0];
+  if (members.length > 1) return `any(${members.join(", ")})`;
+  if (a.public === true) return "none(public)";
+  const t = (a.tokenTyp || []).join(", ");
+  return t ? `none(${t})` : "none";
 }
 
 function scopeCell(a) {
-  if (a.shareScope === 'own-album') return 'own album'
-  return '—'
+  if (a.shareScope === "n-a" || !a.shareScope) return "—";
+  return a.shareScope;
 }
 
-const lines = []
-lines.push('# Auth matrix')
-lines.push('')
+const lines = [];
+lines.push("# Auth matrix");
+lines.push("");
 lines.push(
-  'Generated by `scripts/auth-matrix.mjs` from `backend/openapi.json`. Do not edit by hand.'
-)
-lines.push('')
-lines.push('## Summary')
-lines.push('')
-lines.push(`- Operations: ${records.length}`)
-lines.push(`- Modeled: ${modeled.length}`)
-lines.push(`- Public: ${publicOps.length}`)
-lines.push(`- Unmodeled (page shells): ${unmodeled.length}`)
-lines.push('')
-lines.push('## Columns')
-lines.push('')
-lines.push('- **Op**: `METHOD /path` as mounted.')
-lines.push('  - The path is the Rocket route; `{name}` segments are path parameters.')
-lines.push('- **Name**: the operationId (handler-derived, stable across renames of the path).')
-lines.push('- **Role**: who may call.')
-lines.push('  - `admin`: admins only (`GuardAdmin`).')
-lines.push('  - `any(admin, user)`: any authenticated user (`GuardUser`).')
-lines.push('  - `any(admin, user, share)`: share presenters plus any authenticated user (`GuardPresenter` falls back to the session cookie).')
-lines.push('  - `none(public)`: no credential required.')
-lines.push('  - `none(snapshot)` / `none(asset)`: token-gated, no user role.')
-lines.push('- **Tokens**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public). `session` and `share` are alternative presenter credentials (whichever the presenter holds); `snapshot` / `asset` are bearer tokens that are additionally required whenever listed.');
-lines.push('- **Reading a row**: Role says whose identity may present; Tokens says which credentials must validate — one presenter credential plus every listed bearer token.');
-lines.push('- **Scope**: share binding (`own album` or `—` when not share-scoped).')
-lines.push('- **Guards**: request guards verbatim from the handler signature (`GuardMutate` marks read-only-gated mutating routes, `GuardReauth` the password-confirmed ones).')
-lines.push('- **Effects**: reserved for a future manage/effect vocabulary (all `—` today).')
-lines.push('')
-lines.push('## Modeled operations')
-lines.push('')
-lines.push('| Op | Name | Role | Tokens | Scope | Guards | Effects |')
-lines.push('| --- | --- | --- | --- | --- | --- | --- |')
+  "Generated by `scripts/auth-matrix.mjs` from `backend/openapi.json`. Do not edit by hand.",
+);
+lines.push("");
+lines.push("## Summary");
+lines.push("");
+lines.push(`- Operations: ${records.length}`);
+lines.push(`- Modeled: ${modeled.length}`);
+lines.push(`- Public: ${publicOps.length}`);
+lines.push(`- Unmodeled (page shells): ${unmodeled.length}`);
+lines.push("");
+lines.push("## Columns");
+lines.push("");
+lines.push("- **Op**: `METHOD /path` as mounted.");
+lines.push(
+  "  - The path is the Rocket route; `{name}` segments are path parameters.",
+);
+lines.push(
+  "- **Name**: the operationId (handler-derived, stable across renames of the path).",
+);
+lines.push("- **Role**: who may call.");
+lines.push("  - `admin`: admins only (`GuardAdmin`).");
+lines.push("  - `any(admin, user)`: any authenticated user (`GuardUser`).");
+lines.push(
+  "  - `any(admin, user, share)`: share presenters plus any authenticated user (`GuardPresenter` falls back to the session cookie).",
+);
+lines.push("  - `none(public)`: no credential required.");
+lines.push("  - `none(snapshot)` / `none(asset)`: token-gated, no user role.");
+lines.push(
+  "- **Tokens**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public). `session` and `share` are alternative presenter credentials (whichever the presenter holds); `snapshot` / `asset` are bearer tokens that are additionally required whenever listed.",
+);
+lines.push(
+  "- **Reading a row**: Role says whose identity may present; Tokens says which credentials must validate — one presenter credential plus every listed bearer token.",
+);
+lines.push(
+  "- **Scope**: album scope enforced on the target (`album`), or `—` when the operation binds nothing by album. The scope always comes from the presented token or identity, never from a request parameter.",
+);
+lines.push(
+  "- **Guards**: request guards verbatim from the handler signature (`GuardMutate` marks read-only-gated mutating routes, `GuardReauth` the password-confirmed ones).",
+);
+lines.push(
+  "- **Effects**: reserved for a future manage/effect vocabulary (all `—` today).",
+);
+lines.push("");
+lines.push("## Modeled operations");
+lines.push("");
+lines.push("| Op | Name | Role | Tokens | Scope | Guards | Effects |");
+lines.push("| --- | --- | --- | --- | --- | --- | --- |");
 for (const r of modeled) {
-  const a = r['x-picasu-auth']
+  const a = r["x-picasu-auth"];
   lines.push(
-    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${cell(a.effects)} |`
-  )
+    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${cell(a.effects)} |`,
+  );
 }
-lines.push('')
-lines.push('## Public operations')
-lines.push('')
-lines.push('| Op | Name | Effects |')
-lines.push('| --- | --- | --- |')
+lines.push("");
+lines.push("## Public operations");
+lines.push("");
+lines.push("| Op | Name | Effects |");
+lines.push("| --- | --- | --- |");
 for (const r of publicOps) {
-  const a = r['x-picasu-auth']
-  lines.push(`| ${opCell(r)} | ${nameCell(r)} | ${cell(a.effects)} |`)
+  const a = r["x-picasu-auth"];
+  lines.push(`| ${opCell(r)} | ${nameCell(r)} | ${cell(a.effects)} |`);
 }
-lines.push('')
-lines.push('## Unmodeled operations (page shells)')
-lines.push('')
-lines.push('| Op | Name |')
-lines.push('| --- | --- |')
+lines.push("");
+lines.push("## Unmodeled operations (page shells)");
+lines.push("");
+lines.push("| Op | Name |");
+lines.push("| --- | --- |");
 for (const r of unmodeled) {
-  lines.push(`| ${opCell(r)} | ${nameCell(r)} |`)
+  lines.push(`| ${opCell(r)} | ${nameCell(r)} |`);
 }
-lines.push('')
+lines.push("");
 
-mkdirSync(join(root, 'docs'), { recursive: true })
-writeFileSync(mdPath, lines.join('\n'))
+mkdirSync(join(root, "docs"), { recursive: true });
+writeFileSync(mdPath, lines.join("\n"));
 
 // Format markdown with prettier if available (keeps docs-check green).
-const scriptDir = dirname(fileURLToPath(import.meta.url))
-const prettierBin = join(scriptDir, '..', 'frontend', 'node_modules', '.bin', 'prettier')
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const prettierBin = join(
+  scriptDir,
+  "..",
+  "frontend",
+  "node_modules",
+  ".bin",
+  "prettier",
+);
 try {
   if (existsSync(prettierBin)) {
-    execFileSync(prettierBin, ['--write', mdPath], { stdio: 'ignore' })
+    execFileSync(prettierBin, ["--write", mdPath], { stdio: "ignore" });
   } else {
-    execFileSync('npx', ['--no-install', 'prettier', '--write', mdPath], {
-      cwd: join(root, 'frontend'),
-      stdio: 'ignore',
-    })
+    execFileSync("npx", ["--no-install", "prettier", "--write", mdPath], {
+      cwd: join(root, "frontend"),
+      stdio: "ignore",
+    });
   }
 } catch {
   // Formatting is best-effort; diff gate still compares generated output.
 }
 
 console.log(
-  `auth-matrix: wrote ${records.length} records (${modeled.length} modeled, ${unmodeled.length} unmodeled)`
-)
+  `auth-matrix: wrote ${records.length} records (${modeled.length} modeled, ${unmodeled.length} unmodeled)`,
+);
