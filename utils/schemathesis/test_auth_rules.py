@@ -1,6 +1,6 @@
 """Unit tests for the auth-matrix derivations used by the Schemathesis hooks.
 
-Run: python3 utils/schemathesis/test_auth_matrix.py
+Run: python3 utils/schemathesis/test_auth_rules.py
 
 The golden expectations pin the derivations against the committed
 ``backend/auth-matrix.json``: when a backend guard or token-typ changes, the
@@ -18,16 +18,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-import auth_matrix
+import auth_rules
 
 REPO = HERE.parents[1]
 MATRIX_PATH = REPO / "backend" / "auth-matrix.json"
-MATRIX = auth_matrix.load_matrix(MATRIX_PATH)
+MATRIX = auth_rules.load_matrix(MATRIX_PATH)
 
 
 class RealMatrixDerivations(unittest.TestCase):
     def test_share_guarded_ops_are_the_presenter_guarded(self):
-        guarded = auth_matrix.share_guarded_ops(MATRIX)
+        guarded = auth_rules.share_guarded_ops(MATRIX)
         self.assertEqual(
             guarded,
             {
@@ -42,11 +42,11 @@ class RealMatrixDerivations(unittest.TestCase):
         self.assertNotIn(("PUT", "/put/set_album_title"), guarded)
         self.assertNotIn(("PUT", "/put/set_user_defined_description"), guarded)
 
-    def test_probe_plan_targets(self):
-        plan = auth_matrix.probe_plan(MATRIX)
-        cross_scope = {k for k, v in plan.items() if v == auth_matrix.PROBE_CROSS_SCOPE}
-        renewal = {k for k, v in plan.items() if v == auth_matrix.PROBE_RENEW_MISMATCH}
-        wrong_typ = {k for k, v in plan.items() if v == auth_matrix.PROBE_WRONG_TYP}
+    def test_test_plan_targets(self):
+        plan = auth_rules.test_plan(MATRIX)
+        cross_scope = {k for k, v in plan.items() if v == auth_rules.TEST_CROSS_SCOPE}
+        renewal = {k for k, v in plan.items() if v == auth_rules.TEST_RENEW_MISMATCH}
+        wrong_typ = {k for k, v in plan.items() if v == auth_rules.TEST_WRONG_TYP}
         self.assertEqual(cross_scope, {("GET", "/get/metadata/{asset_id}")})
         self.assertEqual(renewal, {("POST", "/post/renew-timestamp-token")})
         self.assertEqual(
@@ -59,22 +59,22 @@ class RealMatrixDerivations(unittest.TestCase):
             },
         )
 
-    def test_probe_plan_covers_every_admin_session_op(self):
-        plan = auth_matrix.probe_plan(MATRIX)
-        admin_ops = auth_matrix.admin_session_ops(MATRIX)
+    def test_test_plan_covers_every_admin_session_op(self):
+        plan = auth_rules.test_plan(MATRIX)
+        admin_ops = auth_rules.admin_session_ops(MATRIX)
         self.assertIn(("GET", "/get/users"), admin_ops)
         self.assertEqual(len(admin_ops), 22)
         for key in admin_ops:
-            self.assertEqual(plan.get(key), auth_matrix.PROBE_DEMOTED, key)
+            self.assertEqual(plan.get(key), auth_rules.TEST_DEMOTED, key)
 
-    def test_probe_plan_is_one_probe_per_op(self):
-        plan = auth_matrix.probe_plan(MATRIX)
-        # No overlap between the four probe classes on the real matrix.
+    def test_test_plan_is_one_check_per_op(self):
+        plan = auth_rules.test_plan(MATRIX)
+        # No overlap between the four check classes on the real matrix.
         classes = [
-            auth_matrix.cross_scope_targets(MATRIX),
-            auth_matrix.renewal_binding_ops(MATRIX),
-            auth_matrix.wrong_typ_targets(MATRIX),
-            auth_matrix.admin_session_ops(MATRIX),
+            auth_rules.cross_scope_targets(MATRIX),
+            auth_rules.renewal_binding_ops(MATRIX),
+            auth_rules.wrong_typ_targets(MATRIX),
+            auth_rules.admin_session_ops(MATRIX),
         ]
         seen = set()
         for keys in classes:
@@ -83,7 +83,7 @@ class RealMatrixDerivations(unittest.TestCase):
         self.assertEqual(set(plan), seen)
 
     def test_readonly_exempt_matches_guard_mutate(self):
-        exempt = auth_matrix.readonly_exempt_ops(MATRIX)
+        exempt = auth_rules.readonly_exempt_ops(MATRIX)
         for key in {
             ("POST", "/post/users/authenticate"),
             ("POST", "/post/admin/config/disable-read-only"),
@@ -93,9 +93,9 @@ class RealMatrixDerivations(unittest.TestCase):
             ("POST", "/get/prefetch"),
         }:
             self.assertIn(key, exempt)
-        rows = {auth_matrix.op_key(row): row for row in auth_matrix.modeled_ops(MATRIX)}
+        rows = {auth_rules.op_key(row): row for row in auth_rules.modeled_ops(MATRIX)}
         for key, row in rows.items():
-            is_mutating = auth_matrix.GUARD_MUTATE in row["x-picasu-auth"]["guards"]
+            is_mutating = auth_rules.GUARD_MUTATE in row["x-picasu-auth"]["guards"]
             if key[0] != "GET" and not is_mutating:
                 self.assertIn(key, exempt)
             if is_mutating:
@@ -103,7 +103,7 @@ class RealMatrixDerivations(unittest.TestCase):
 
     def test_cross_scope_expectation_is_404(self):
         # S4: album mismatch on a share-scoped asset read answers 404, not 403.
-        self.assertEqual(auth_matrix.CROSS_SCOPE_EXPECTED_STATUSES, (404,))
+        self.assertEqual(auth_rules.CROSS_SCOPE_EXPECTED_STATUSES, (404,))
 
 
 class SyntheticRows(unittest.TestCase):
@@ -125,9 +125,9 @@ class SyntheticRows(unittest.TestCase):
 
     def test_non_modeled_rows_are_ignored(self):
         rows = [{"method": "GET", "path": "/{path}", "x-picasu-auth": None}]
-        self.assertEqual(auth_matrix.share_guarded_ops(rows), frozenset())
-        self.assertEqual(auth_matrix.probe_plan(rows), {})
-        self.assertEqual(auth_matrix.readonly_exempt_ops(rows), frozenset())
+        self.assertEqual(auth_rules.share_guarded_ops(rows), frozenset())
+        self.assertEqual(auth_rules.test_plan(rows), {})
+        self.assertEqual(auth_rules.readonly_exempt_ops(rows), frozenset())
 
     def test_probe_priority_cross_scope_wins(self):
         # An op matching several classes gets only the highest-priority probe.
@@ -142,8 +142,8 @@ class SyntheticRows(unittest.TestCase):
                 invariants=["AUTH-10"],
             )
         ]
-        plan = auth_matrix.probe_plan(rows)
-        self.assertEqual(plan[("GET", "/get/thing/{asset_id}")], auth_matrix.PROBE_CROSS_SCOPE)
+        plan = auth_rules.test_plan(rows)
+        self.assertEqual(plan[("GET", "/get/thing/{asset_id}")], auth_rules.TEST_CROSS_SCOPE)
 
     def test_probe_priority_renewal_over_wrong_typ(self):
         rows = [
@@ -156,8 +156,8 @@ class SyntheticRows(unittest.TestCase):
                 invariants=["AUTH-10"],
             )
         ]
-        plan = auth_matrix.probe_plan(rows)
-        self.assertEqual(plan[("POST", "/post/renew")], auth_matrix.PROBE_RENEW_MISMATCH)
+        plan = auth_rules.test_plan(rows)
+        self.assertEqual(plan[("POST", "/post/renew")], auth_rules.TEST_RENEW_MISMATCH)
 
     def test_renewal_requires_album_scope_and_invariant(self):
         rows = [
@@ -178,7 +178,7 @@ class SyntheticRows(unittest.TestCase):
             ),
         ]
         self.assertEqual(
-            auth_matrix.renewal_binding_ops(rows), {("POST", "/post/renew-other")}
+            auth_rules.renewal_binding_ops(rows), {("POST", "/post/renew-other")}
         )
 
     def test_admin_session_ops_require_admin_and_session_typ(self):
@@ -187,36 +187,36 @@ class SyntheticRows(unittest.TestCase):
             self.row("GET", "/b", guards=["GuardUser"], token_typ=["session"], admin="any"),
             self.row("GET", "/c", guards=["GuardAdmin"], token_typ=["session"], admin="none"),
         ]
-        self.assertEqual(auth_matrix.admin_session_ops(rows), {("GET", "/a")})
+        self.assertEqual(auth_rules.admin_session_ops(rows), {("GET", "/a")})
 
 
 class WrongTypToken(unittest.TestCase):
     def test_prefers_session_for_snapshot_guards(self):
-        self.assertEqual(auth_matrix.wrong_typ_token(("snapshot",)), "session")
+        self.assertEqual(auth_rules.wrong_typ_token(("snapshot",)), "session")
 
     def test_any_typ_outside_required(self):
-        self.assertEqual(auth_matrix.wrong_typ_token(("session",)), "share")
-        self.assertEqual(auth_matrix.wrong_typ_token(("session", "share", "asset")), "snapshot")
+        self.assertEqual(auth_rules.wrong_typ_token(("session",)), "share")
+        self.assertEqual(auth_rules.wrong_typ_token(("session", "share", "asset")), "snapshot")
 
     def test_no_requirement_takes_first_vocab_typ(self):
         # Nothing required: any typ works, so the preference order answers.
-        self.assertEqual(auth_matrix.wrong_typ_token(()), "session")
+        self.assertEqual(auth_rules.wrong_typ_token(()), "session")
 
     def test_none_when_all_typs_required(self):
-        self.assertIsNone(auth_matrix.wrong_typ_token(auth_matrix.TOKEN_TYP_VOCAB))
+        self.assertIsNone(auth_rules.wrong_typ_token(auth_rules.TOKEN_TYP_VOCAB))
 
 
 class ScopeMismatchPairs(unittest.TestCase):
     def test_two_pairs_cross_both_ways(self):
         pairs = [("album-a", "share-a"), ("album-b", "share-b")]
         self.assertEqual(
-            auth_matrix.scope_mismatch_pairs(pairs),
+            auth_rules.scope_mismatch_pairs(pairs),
             [(("album-a", "share-a"), ("album-b", "share-b")),
              (("album-b", "share-b"), ("album-a", "share-a"))],
         )
 
     def test_single_pair_has_no_mismatch(self):
-        self.assertEqual(auth_matrix.scope_mismatch_pairs([("album-a", "share-a")]), [])
+        self.assertEqual(auth_rules.scope_mismatch_pairs([("album-a", "share-a")]), [])
 
 
 class MatrixLoading(unittest.TestCase):
@@ -225,7 +225,7 @@ class MatrixLoading(unittest.TestCase):
             json.dump({"ops": []}, handle)
             handle.flush()
             with self.assertRaises(ValueError):
-                auth_matrix.load_matrix(handle.name)
+                auth_rules.load_matrix(handle.name)
 
 
 class DestructiveDisableConsistency(unittest.TestCase):
@@ -252,29 +252,29 @@ class DestructiveDisableConsistency(unittest.TestCase):
 
 
 class ProbePlan(unittest.TestCase):
-    """The committed plan is the executable form of the probe assignment."""
+    """The matrix as executable checks: operation, check kind, expectation."""
 
     def test_plan_matches_the_matrix_and_the_document(self):
-        import emit_probe_plan
+        import fuzz_matrix
 
-        plan = emit_probe_plan.build(REPO)
+        plan = fuzz_matrix.build_checks(REPO)
         spec = json.loads((REPO / "backend" / "openapi.json").read_text())
-        self.assertEqual(len(plan), len(auth_matrix.probe_plan(MATRIX)))
+        self.assertEqual(len(plan), len(auth_rules.test_plan(MATRIX)))
         for entry in plan:
             operation = spec["paths"][entry["path"]][entry["method"].lower()]
             self.assertEqual(operation["operationId"], entry["operationId"])
             self.assertIn("expect", entry)
 
     def test_expectations_distinguish_exact_status_from_refusal(self):
-        import emit_probe_plan
+        import fuzz_matrix
 
-        plan = {entry["probe"]: entry["expect"] for entry in emit_probe_plan.build(REPO)}
-        self.assertEqual(plan[auth_matrix.PROBE_CROSS_SCOPE], {"statuses": [404]})
-        self.assertEqual(plan[auth_matrix.PROBE_WRONG_TYP], {"statuses": [401]})
-        self.assertEqual(plan[auth_matrix.PROBE_RENEW_MISMATCH], {"statuses": [401]})
+        plan = {entry["check"]: entry["expect"] for entry in fuzz_matrix.build_checks(REPO)}
+        self.assertEqual(plan[auth_rules.TEST_CROSS_SCOPE], {"statuses": [404]})
+        self.assertEqual(plan[auth_rules.TEST_WRONG_TYP], {"statuses": [401]})
+        self.assertEqual(plan[auth_rules.TEST_RENEW_MISMATCH], {"statuses": [401]})
         # Registration also has a public path, so a demoted caller is refused
         # with 403 rather than 401; the claim is "not admitted".
-        self.assertEqual(plan[auth_matrix.PROBE_DEMOTED], {"refusal": True})
+        self.assertEqual(plan[auth_rules.TEST_DEMOTED], {"refusal": True})
 
 
 if __name__ == "__main__":

@@ -1,16 +1,21 @@
-"""Execute the generated probe plan against a seeded instance.
+"""Execute the fuzz matrix: one matrix-derived check per operation.
 
-Deterministic replacement for the campaign's security probes: every entry in
-``backend/probe-plan.json`` is executed once with the exact request its probe
-defines, and the expected status is asserted. The plan is generated from the
-auth matrix, so guards and token types reach the probes through the contract
-rather than a hand list; the campaign keeps its generative role.
+A campaign driven by the postulated auth-model invariants rather than by
+generated input. Every operation the auth matrix assigns a check to is called
+once with the exact request that check defines, and the status it must see is
+asserted: cross-scope binding, wrong token type, renewal binding, and a
+demoted identity.
+
+The check list is rebuilt from ``backend/auth-matrix.json`` on every run, so
+guards and token types reach the checks through the contract instead of a hand
+list, and no committed copy can go stale. The generative campaign
+(``campaign.sh``) keeps the random and sequence-based role.
 
 Requires a seeded instance (`seed.sh`, or `just fuzz-serve`), exporting
 ``PICASU_BASE_URL``, ``PICASU_JWT``, ``FUZZ_ALBUM_A``, ``FUZZ_SHARE_A``,
 ``FUZZ_ALBUM_B``, ``FUZZ_SHARE_B`` and ``FUZZ_PASSWORD``.
 
-Usage: python3 utils/schemathesis/probe_runner.py [repo-root]
+Usage: python3 utils/schemathesis/fuzz_matrix.py [repo-root]
 """
 
 import json
@@ -21,6 +26,8 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import auth_rules  # noqa: E402  (path set above)
 
 BASE = os.environ.get("PICASU_BASE_URL", "http://127.0.0.1:8899").rstrip("/")
 ADMIN_JWT = os.environ.get("PICASU_JWT", "")
@@ -29,7 +36,7 @@ SHARE_A = os.environ.get("FUZZ_SHARE_A", "")
 ALBUM_B = os.environ.get("FUZZ_ALBUM_B", "")
 SHARE_B = os.environ.get("FUZZ_SHARE_B", "")
 PASSWORD = os.environ.get("FUZZ_PASSWORD", "")
-EDITOR = "probe-editor"
+EDITOR = "matrix-editor"
 
 
 def api(method, path, headers=None, body=None):
@@ -184,9 +191,29 @@ def login_token(user, password):
     raise SystemExit("login returned no jwt cookie")
 
 
+def build_checks(root: Path) -> list[dict]:
+    """The matrix as executable checks: operation, check kind, expectation."""
+    rows = auth_rules.load_matrix(root / "backend" / "auth-matrix.json")
+    by_key = {(row["method"], row["path"]): row for row in rows}
+    checks = []
+    for (method, path), check in sorted(
+        auth_rules.test_plan(rows).items(), key=lambda item: (item[0][1], item[0][0])
+    ):
+        checks.append(
+            {
+                "operationId": by_key[(method, path)]["operationId"],
+                "method": method,
+                "path": path,
+                "check": check,
+                "expect": auth_rules.EXPECTED[check],
+            }
+        )
+    return checks
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    plan = json.loads((root / "backend" / "probe-plan.json").read_text())
+    plan = build_checks(root)
     spec = json.loads((root / "backend" / "openapi.json").read_text())
 
     token_a, ts_a = share_snapshot(ALBUM_A, SHARE_A)
@@ -198,27 +225,27 @@ def main() -> int:
     failures = []
     counts = {}
     for entry in plan:
-        method, path, probe = entry["method"], entry["path"], entry["probe"]
+        method, path, check = entry["method"], entry["path"], entry["check"]
         operation = spec["paths"][path][method.lower()]
         query = required_query(operation, ts_a)
         body = body_for(spec, operation)
         headers = {}
         params = {}
 
-        if probe == "cross-scope":
+        if check == auth_rules.TEST_CROSS_SCOPE:
             headers["Authorization"] = f"Bearer {token_a}"
             params = {"asset_id": asset_b}
-            headers["X-Probe"] = probe
-        elif probe == "wrong-typ":
+            headers["X-Check"] = check
+        elif check == auth_rules.TEST_WRONG_TYP:
             headers["Authorization"] = f"Bearer {ADMIN_JWT}"
-            headers["X-Probe"] = probe
-        elif probe == "renew-mismatch":
+            headers["X-Check"] = check
+        elif check == auth_rules.TEST_RENEW_MISMATCH:
             headers.update({"x-album-id": ALBUM_B, "x-share-id": SHARE_B})
             body = {"token": token_a}
-            headers["X-Probe"] = probe
-        elif probe == "demoted":
+            headers["X-Check"] = check
+        elif check == auth_rules.TEST_DEMOTED:
             headers["Cookie"] = f"jwt={demoted}"
-            headers["X-Probe"] = probe
+            headers["X-Check"] = check
         else:
             continue
 
@@ -226,7 +253,7 @@ def main() -> int:
         if query:
             url += "?" + "&".join(query)
         status, payload = api(method, url, headers=headers, body=body)
-        counts[probe] = counts.get(probe, 0) + 1
+        counts[check] = counts.get(check, 0) + 1
         expect = entry["expect"]
         admitted = 200 <= status < 300
         matched = (
@@ -236,17 +263,17 @@ def main() -> int:
         )
         if not matched:
             failures.append(
-                f"{entry['operationId']} [{probe}]: expected {expect}, got {status} {payload!r}"
+                f"{entry['operationId']} [{check}]: expected {expect}, got {status} {payload!r}"
             )
 
-    for probe, count in sorted(counts.items()):
-        print(f"{probe}: {count}")
+    for check, count in sorted(counts.items()):
+        print(f"{check}: {count}")
     if failures:
-        print(f"\n{len(failures)} probe failure(s):", file=sys.stderr)
+        print(f"\n{len(failures)} matrix check failure(s):", file=sys.stderr)
         for failure in failures:
             print(f"  {failure}", file=sys.stderr)
         return 1
-    print(f"all {sum(counts.values())} probes matched the generated plan")
+    print(f"all {sum(counts.values())} matrix checks matched the model")
     return 0
 
 

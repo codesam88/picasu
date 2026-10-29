@@ -5,7 +5,7 @@ the login exchange, so the harness still injects the cookie itself):
 - admin session: static Cookie header supplied via schemathesis config from
   ${PICASU_JWT}.
 - share identity: x-album-id / x-share-id headers on the GuardPresenter-guarded
-  operations (derived from backend/auth-matrix.json, see auth_matrix.py), so
+  operations (derived from backend/auth-matrix.json, see auth_rules.py), so
   those routes exercise the guest path.
 - Run-poisoning guards: prevent the fuzzer from rotating authKey, flipping
   readOnlyMode/port/address, demoting the admin, or deleting seeded
@@ -20,7 +20,7 @@ import urllib.request
 import schemathesis
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import auth_matrix
+import auth_rules
 
 BASE_URL = os.environ.get("PICASU_BASE_URL", "http://127.0.0.1:8899")
 JWT = os.environ.get("PICASU_JWT", "")
@@ -47,7 +47,7 @@ MATRIX_PATH = os.environ.get(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "backend", "auth-matrix.json"
     ),
 )
-SHARE_GUARDED = auth_matrix.share_guarded_ops(auth_matrix.load_matrix(MATRIX_PATH))
+SHARE_GUARDED = auth_rules.share_guarded_ops(auth_rules.load_matrix(MATRIX_PATH))
 
 
 @schemathesis.hook

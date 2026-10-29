@@ -138,12 +138,12 @@ jobs:
       - name: API validation (Schemathesis tier 1)
         run: just fuzz-check
 
-      # The generated security probes, executed deterministically against a
-      # throwaway seeded instance: cross-scope, wrong-typ, renewal binding and
-      # demoted token. The plan is generated from the auth matrix and diffed by
-      # `openapi-check`, so the checks cannot drift from the contract.
-      - name: Auth probes (generated from the auth matrix)
-        run: just fuzz-probes
+      # The fuzz matrix: matrix-derived auth checks executed deterministically
+      # against a throwaway seeded instance — cross-scope, wrong-typ, renewal
+      # binding and demoted token. The check list is rebuilt from the auth
+      # matrix on every run, so it cannot drift from the contract.
+      - name: Fuzz matrix (auth-model checks)
+        run: just fuzz-matrix
 
   frontend:
     name: Frontend

@@ -20,8 +20,8 @@ logout and password rotation from wrecking a running instance.
 
 Which operation carries which probe, the share-header injection set and the
 read-only exemptions are derived from ``backend/auth-matrix.json`` by the
-pure functions in ``auth_matrix.py`` (unit-tested in
-``test_auth_matrix.py``); the destructive-operation disables stay hand-tuned
+pure functions in ``auth_rules.py`` (unit-tested in
+``test_auth_rules.py``); the destructive-operation disables stay hand-tuned
 in ``campaign.toml``.
 """
 
@@ -35,7 +35,7 @@ import urllib.request
 import schemathesis
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import auth_matrix
+import auth_rules
 
 MATRIX_PATH = os.environ.get(
     "FUZZ_AUTH_MATRIX",
@@ -43,13 +43,13 @@ MATRIX_PATH = os.environ.get(
         os.path.dirname(os.path.abspath(__file__)), "..", "..", "backend", "auth-matrix.json"
     ),
 )
-MATRIX = auth_matrix.load_matrix(MATRIX_PATH)
-SHARE_GUARDED = auth_matrix.share_guarded_ops(MATRIX)
-PROBE_PLAN = auth_matrix.probe_plan(MATRIX)
-READONLY_EXEMPT = auth_matrix.readonly_exempt_ops(MATRIX)
-# A3 targets are snapshot-typed (auth_matrix.wrong_typ_targets), so the
+MATRIX = auth_rules.load_matrix(MATRIX_PATH)
+SHARE_GUARDED = auth_rules.share_guarded_ops(MATRIX)
+CHECK_PLAN = auth_rules.test_plan(MATRIX)
+READONLY_EXEMPT = auth_rules.readonly_exempt_ops(MATRIX)
+# A3 targets are snapshot-typed (auth_rules.wrong_typ_targets), so the
 # wrong token for them is the session-typed one.
-WRONG_TYP_FOR_SNAPSHOT = auth_matrix.wrong_typ_token(("snapshot",))
+WRONG_TYP_FOR_SNAPSHOT = auth_rules.wrong_typ_token(("snapshot",))
 
 BASE = os.environ.get("PICASU_BASE_URL", "http://127.0.0.1:8899")
 ADMIN_JWT = os.environ.get("PICASU_JWT", "")
@@ -71,7 +71,7 @@ FIXTURES_READY = bool(
 
 # S4 scope pairs: every seeded share identity crossed with the album it must
 # not reach. Probes take the first mismatch (share A vs album B).
-SCOPE_MISMATCHES = auth_matrix.scope_mismatch_pairs(
+SCOPE_MISMATCHES = auth_rules.scope_mismatch_pairs(
     [(ALBUM_A["album"], ALBUM_A["share"]), (ALBUM_B["album"], ALBUM_B["share"])]
 )
 
@@ -209,12 +209,12 @@ def _snapshot_query(case, timestamp):
 
 def _install_markers(case, headers):
     """Attach the probe the auth matrix assigns to this operation."""
-    probe = PROBE_PLAN.get((case.method.upper(), case.path))
+    probe = CHECK_PLAN.get((case.method.upper(), case.path))
     if probe is None:
         return
     (own_album, share), (foreign_album, foreign_share) = SCOPE_MISMATCHES[0]
 
-    if probe == auth_matrix.PROBE_CROSS_SCOPE:
+    if probe == auth_rules.TEST_CROSS_SCOPE:
         token, ts = _share_snapshot(own_album, share)
         headers["X-Pilot"] = probe
         headers["Authorization"] = f"Bearer {token}"
@@ -225,17 +225,17 @@ def _install_markers(case, headers):
             params[name] = asset
         case.path_parameters = params
 
-    elif probe == auth_matrix.PROBE_WRONG_TYP:
+    elif probe == auth_rules.TEST_WRONG_TYP:
         _, ts = _share_snapshot(own_album, share)
         headers["X-Pilot"] = probe
         headers["Authorization"] = f"Bearer {_token_for_typ(WRONG_TYP_FOR_SNAPSHOT)}"
         case.query = _snapshot_query(case, ts)
 
-    elif probe == auth_matrix.PROBE_DEMOTED:
+    elif probe == auth_rules.TEST_DEMOTED:
         headers["X-Pilot"] = probe
         headers["Cookie"] = "jwt=" + _demoted_token()
 
-    elif probe == auth_matrix.PROBE_RENEW_MISMATCH:
+    elif probe == auth_rules.TEST_RENEW_MISMATCH:
         token, _ = _share_snapshot(own_album, share)
         headers["X-Pilot"] = probe
         headers["x-album-id"] = foreign_album
@@ -304,19 +304,19 @@ def _marker(case, name):
 
 @schemathesis.check
 def cross_scope_refused(ctx, response, case):
-    if _marker(case, auth_matrix.PROBE_CROSS_SCOPE) and (
-        response.status_code not in auth_matrix.CROSS_SCOPE_EXPECTED_STATUSES
+    if _marker(case, auth_rules.TEST_CROSS_SCOPE) and (
+        response.status_code not in auth_rules.CROSS_SCOPE_EXPECTED_STATUSES
     ):
         raise AssertionError(
             f"cross-scope read not refused: expected "
-            f"{auth_matrix.CROSS_SCOPE_EXPECTED_STATUSES} for {case.formatted_path}, "
+            f"{auth_rules.CROSS_SCOPE_EXPECTED_STATUSES} for {case.formatted_path}, "
             f"got {response.status_code}"
         )
 
 
 @schemathesis.check
 def wrong_typ_rejected(ctx, response, case):
-    if _marker(case, auth_matrix.PROBE_WRONG_TYP) and response.status_code != 401:
+    if _marker(case, auth_rules.TEST_WRONG_TYP) and response.status_code != 401:
         raise AssertionError(
             f"wrong-typ token accepted: got {response.status_code} on {case.path}"
         )
@@ -324,7 +324,7 @@ def wrong_typ_rejected(ctx, response, case):
 
 @schemathesis.check
 def demoted_token_rejected(ctx, response, case):
-    if _marker(case, auth_matrix.PROBE_DEMOTED) and response.status_code != 401:
+    if _marker(case, auth_rules.TEST_DEMOTED) and response.status_code != 401:
         raise AssertionError(
             f"demoted token still accepted: got {response.status_code} on {case.path}"
         )
@@ -332,7 +332,7 @@ def demoted_token_rejected(ctx, response, case):
 
 @schemathesis.check
 def cross_share_renewal_refused(ctx, response, case):
-    if _marker(case, auth_matrix.PROBE_RENEW_MISMATCH) and response.status_code != 401:
+    if _marker(case, auth_rules.TEST_RENEW_MISMATCH) and response.status_code != 401:
         raise AssertionError(
             f"cross-share renewal not refused: got {response.status_code}"
         )

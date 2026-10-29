@@ -5,9 +5,9 @@ per-operation auth model (``x-picasu-auth``: guards, shareScope, tokenTyp,
 admin, invariants, public), generated from the annotated spec and gated by
 ``openapi-check``. The hooks in this directory consume it through the pure
 functions below instead of hand-maintained operation lists, so a guard or
-token-typ change in the backend flows into the probes on the next matrix
+token-typ change in the backend flows into the checks on the next matrix
 regeneration. ``load_matrix`` is the only I/O; every derivation function is
-pure and unit-tested in ``test_auth_matrix.py``.
+pure and unit-tested in ``test_auth_rules.py``.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ RENEWAL_INVARIANT = "AUTH-10"
 # does not reveal that the id exists (get_metadata contract).
 CROSS_SCOPE_EXPECTED_STATUSES = (404,)
 
-PROBE_CROSS_SCOPE = "cross-scope"
-PROBE_WRONG_TYP = "wrong-typ"
-PROBE_RENEW_MISMATCH = "renew-mismatch"
-PROBE_DEMOTED = "demoted"
+TEST_CROSS_SCOPE = "cross-scope"
+TEST_WRONG_TYP = "wrong-typ"
+TEST_RENEW_MISMATCH = "renew-mismatch"
+TEST_DEMOTED = "demoted"
 
 
 def load_matrix(path):
@@ -94,7 +94,7 @@ def snapshot_typed_ops(rows):
 
 def cross_scope_targets(rows):
     """Snapshot-typed operations whose path template binds an asset id: the
-    cross-scope probe sends a share-A snapshot token against an album-B asset
+    cross-scope check sends a share-A snapshot token against an album-B asset
     and expects ``CROSS_SCOPE_EXPECTED_STATUSES``."""
     return frozenset(
         op_key(row) for row in snapshot_typed_ops(rows) if "{" in row["path"]
@@ -129,16 +129,28 @@ def admin_session_ops(rows):
     )
 
 
-def probe_plan(rows):
-    """Map ``(method, path)`` to the probe that operation carries. One probe
+# What each check asserts. A status check is exact; a refusal check accepts
+# any 4xx, because "the demoted token no longer holds the privilege" is the
+# claim — routes with an additional public path (registration) refuse with 403
+# rather than 401.
+EXPECTED = {
+    TEST_CROSS_SCOPE: {"statuses": list(CROSS_SCOPE_EXPECTED_STATUSES)},
+    TEST_WRONG_TYP: {"statuses": [401]},
+    TEST_RENEW_MISMATCH: {"statuses": [401]},
+    TEST_DEMOTED: {"refusal": True},
+}
+
+
+def test_plan(rows):
+    """Map ``(method, path)`` to the check that operation carries. One check
     per operation, priority: cross-scope > renewal-mismatch > wrong-typ >
     demoted."""
     plan = {}
     for name, keys in (
-        (PROBE_CROSS_SCOPE, cross_scope_targets(rows)),
-        (PROBE_RENEW_MISMATCH, renewal_binding_ops(rows)),
-        (PROBE_WRONG_TYP, wrong_typ_targets(rows)),
-        (PROBE_DEMOTED, admin_session_ops(rows)),
+        (TEST_CROSS_SCOPE, cross_scope_targets(rows)),
+        (TEST_RENEW_MISMATCH, renewal_binding_ops(rows)),
+        (TEST_WRONG_TYP, wrong_typ_targets(rows)),
+        (TEST_DEMOTED, admin_session_ops(rows)),
     ):
         for key in keys:
             plan.setdefault(key, name)

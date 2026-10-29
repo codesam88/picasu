@@ -127,7 +127,7 @@ utils-check:
 [group('utils')]
 utils-test:
     cargo test -p snapfab -p openapi-sanity
-    python3 {{justfile_directory()}}/utils/schemathesis/test_auth_matrix.py
+    python3 {{justfile_directory()}}/utils/schemathesis/test_auth_rules.py
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -137,31 +137,9 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
-# Regenerate the committed probe plan from the auth matrix
-[group('utils')]
-probe-gen:
-    python3 {{justfile_directory()}}/utils/schemathesis/emit_probe_plan.py {{justfile_directory()}}
-
-[private]
-probe-plan-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    mkdir -p "$tmp/backend"
-    cp backend/openapi.json backend/auth-matrix.json "$tmp/backend/"
-    python3 utils/schemathesis/emit_probe_plan.py "$tmp" >/dev/null
-    if ! diff -u backend/probe-plan.json "$tmp/backend/probe-plan.json"; then
-        echo ""
-        echo "backend/probe-plan.json is out of date with the auth matrix."
-        echo "Run 'just probe-gen' and commit the result."
-        exit 1
-    fi
-    echo "probe-plan matches the auth matrix"
-
 # Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check probe-plan-check
+openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check
 
 # Run dylint auth lints on the backend (advisory)
 [group('utils')]
@@ -226,10 +204,10 @@ fuzz-check: frontend-build-maybe install-schemathesis
     utils/schemathesis/check.sh "{{ schemathesis_version }}"
 
 # Serve a seeded instance in the foreground (first run seeds; Ctrl-C stops)
-# Run the generated security probes against a throwaway seeded instance
+# Run the fuzz matrix: matrix-derived auth checks against a throwaway instance
 [group('utils')]
-fuzz-probes: frontend-build-maybe
-    utils/schemathesis/probes.sh
+fuzz-matrix: frontend-build-maybe
+    utils/schemathesis/fuzz_matrix.sh
 
 fuzz-serve *args: frontend-build-maybe
     utils/schemathesis/serve.sh {{ args }}
@@ -348,9 +326,9 @@ format: backend-format utils-format frontend-format docs-format
 [group('global')]
 check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check
 
-# Run tests (backend + utils + frontend)
+# Run tests (backend + utils + frontend + generated auth probes)
 [group('global')]
-test: backend-test utils-test frontend-test
+test: backend-test utils-test frontend-test fuzz-matrix
 
 # install dev tools + precommit hook
 [group('global')]

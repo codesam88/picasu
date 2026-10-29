@@ -59,7 +59,7 @@ unannotated by design. `effects` has no controlled vocabulary yet;
 | S1   | metadata present ⇔ `security(...)` present  | `openapi-sanity`                              | gating                      |
 | S2   | `security` schemes ⇔ guard types            | `openapi-sanity`                              | gating                      |
 | S3   | `tokenTyp` ⇔ decoded claims type            | dylint (`token_typ_agreement`, gating)        | implemented; gating in CI   |
-| S4   | asset touched is bound to the share's album | behavioral cross-scope probes, matrix-derived | gating (`just fuzz-probes`) |
+| S4   | asset touched is bound to the share's album | behavioral cross-scope checks, matrix-derived | gating (`just fuzz-matrix`) |
 | S5   | `readonly` ⇔ guard + 405 declared           | `openapi-sanity`                              | gating                      |
 | S6   | `reauth` ⇔ guard + documented header        | `openapi-sanity`                              | gating                      |
 | S7   | `public` ⇔ `security(())` + no guard        | `openapi-sanity`                              | gating                      |
@@ -79,17 +79,16 @@ behavioral tests. Each rule lives where its inputs live.
    review artifact unless a future step merges them.
 2. **Schemathesis derivation (implemented).** The campaign hooks derive
    their auth knowledge from `backend/auth-matrix.json` through
-   `utils/schemathesis/auth_matrix.py`: the share-header injection set,
+   `utils/schemathesis/auth_rules.py`: the share-header injection set,
    the probe each operation carries, wrong-typ token selection, read-only
    exemptions, and the seeded scope pairs. The derivation is pure and
    unit-tested; a matrix change that alters a probe fails the tests
    instead of drifting. Destructive-operation disables stay hand-tuned in
    the TOML configs, pinned to the matrix by a consistency test. Tier 1
    (`just fuzz-check`) gates CI against `utils/schemathesis/baseline.yaml`,
-   and the probe plan (`backend/probe-plan.json`, generated from the matrix
-   and diffed by `openapi-check`) is executed deterministically by
-   `just fuzz-probes`; the stateful campaign (`just fuzz-run`) stays advisory
-   because its phases are time-budgeted.
+   and the fuzz matrix is rebuilt from the model and executed
+   deterministically by `just fuzz-matrix`; the stateful campaign
+   (`just fuzz-run`) stays advisory because its phases are time-budgeted.
 3. **Generated negatives (implemented, role layer).** `backend/src/tests/matrix_negatives.rs`
    reads the published document and asserts, per operation and principal,
    that the model's exclusions hold: anonymous is refused on every

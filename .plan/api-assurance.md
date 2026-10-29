@@ -119,10 +119,10 @@ generate from.
 | Step 9 env-var lint                                                           | done, gating; sequencing rule amended to dylint scope; further domains open                      |
 | Step 10 + S-rules                                                             | S1/S2/S5/S6/S7/S8 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done           |
 | Fuzz gate (tier 1)                                                            | done — `just fuzz-check` gates CI against the accepted-findings baseline; tier 2 advisory        |
-| Auth probe gate                                                               | done — `backend/probe-plan.json` (generated, diff-gated) executed by `just fuzz-probes` in CI    |
+| Fuzz matrix gate                                                              | done — check list rebuilt from the matrix per run, executed by `just fuzz-matrix` in CI          |
 | Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
 | Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
-| Consumers: hook derivation + S4 probes                                        | done; probes now gating via `backend/probe-plan.json` + `just fuzz-probes` (28 ops)              |
+| Consumers: hook derivation + S4 checks                                        | done; gating via `just fuzz-matrix` (28 ops, rebuilt per run)                                    |
 | Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)              |
 | Consumers: effects/invariants backfill                                        | done (3-class vocabulary, S9/S10/S11 rules, invariant existence test)                            |
 | Contract checker coverage + strength                                          | open (`.plan/api-assurance-coverage.md`: registry, existence test, generated profile, floor)     |
@@ -401,7 +401,7 @@ each rule lives where its inputs live and nowhere else:
 | S1   | metadata without a published declaration                                                                                                         | openapi-sanity (done, gating; paired both ways, internal probes exempt)         |
 | S2   | `security` schemes vs guard types in signature                                                                                                   | openapi-sanity (done, gating)                                                   |
 | S3   | `tokenTyp` vs guard-decoded claims types                                                                                                         | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI)) |
-| S4   | asset touched is bound to the share's album (prefetch filter, renewal binding, 404-on-mismatch; serving drops out — bearer authorizes the asset) | behavioral: matrix-derived cross-scope probes (done)                            |
+| S4   | asset touched is bound to the share's album (prefetch filter, renewal binding, 404-on-mismatch; serving drops out — bearer authorizes the asset) | behavioral: matrix-derived cross-scope checks, executed by `fuzz-matrix` (done) |
 | S5   | `readonly` vs `GuardMutate` + 405 declared                                                                                                       | openapi-sanity: P1/P2 shape                                                     |
 | S6   | `reauth` vs `GuardReauth` + documented header                                                                                                    | openapi-sanity: signature + annotation text                                     |
 | S7   | `public` vs `security(())` + no guard                                                                                                            | openapi-sanity: signature + annotation form                                     |
@@ -484,15 +484,15 @@ security reviewers); this file stays the implementation roadmap.
   (`token_typ_agreement` dylint, gating in CI) done 2026-10-28 with UI
   fixtures and clean-tree/RED verification. S4 is now implemented (see
   the entry below); S3 is gated in CI.
-- Step 11 S4 probe gate done 2026-10-29: `backend/probe-plan.json` is
-  generated from the matrix (`just probe-gen`) and diffed by
-  `openapi-check`; `just fuzz-probes` executes it deterministically
-  (28 probes: 1 cross-scope, 4 wrong-typ, 1 renewal, 22 demoted) and
-  gates CI. The demoted family asserts refusal rather than 401 because
+- Step 11 S4 gate done 2026-10-29: `just fuzz-matrix` rebuilds the check
+  list from the model on every run and executes it deterministically
+  (28 checks: 1 cross-scope, 4 wrong-typ, 1 renewal, 22 demoted),
+  gating CI and included in `just test`. No committed artifact: nothing
+  to diff, nothing to go stale. The demoted family asserts refusal rather than 401 because
   registration also has a public path — a model-accuracy gap recorded
   below. Earlier in the same step: the hooks derive their
   auth knowledge from `backend/auth-matrix.json` via
-  `utils/schemathesis/auth_matrix.py` (share-header sets, probe
+  `utils/schemathesis/auth_rules.py` (share-header sets, probe
   assignment, wrong-typ selection, read-only exemptions, scope pairs),
   unit-tested against the committed matrix. Measured on one 5-minute
   campaign (seed 1, same seeded state) before and after:
