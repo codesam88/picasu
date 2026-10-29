@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Execute the generated probe plan against a throwaway seeded instance.
+# Execute the fuzz matrix against a throwaway seeded instance.
 #
 # Distinct from check.sh: that sweep asserts schema conformance and no 5xx,
-# this one asserts the security probes (cross-scope, wrong-typ, renewal
-# binding, demoted token) that the campaign used to exercise only under a
-# time budget. Both read the committed artifacts; neither carries a hand list.
+# this one asserts the auth-model invariants per operation (cross-scope,
+# wrong-typ, renewal binding, demoted token) that the campaign used to exercise
+# only under a time budget. Both read the committed artifacts; neither carries
+# a hand list.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -37,4 +38,4 @@ utils/schemathesis/seed.sh
 # shellcheck disable=SC1091
 source "$STATE_DIR/seed.env"
 
-python3 utils/schemathesis/probe_runner.py "$REPO_ROOT"
+python3 utils/schemathesis/fuzz_matrix.py "$REPO_ROOT"

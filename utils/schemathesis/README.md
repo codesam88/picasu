@@ -23,17 +23,21 @@ State lives in a temp dir removed on exit. Set `FUZZ_REPORT_OUT=<path>` to copy 
 
 Tier 1 gates CI (`ci.yml`, backend job): a finding outside `baseline.yaml` fails the build. It is deliberately absent from `just check`/precommit, where the seed-and-sweep runtime does not belong.
 
-## Auth probes — deterministic, gating
+## Fuzz matrix — deterministic, gating
 
-    just fuzz-probes
+    just fuzz-matrix
 
-Executes `backend/probe-plan.json` against a throwaway seeded instance: one
-request per probe, with the status the probe asserts. The plan is generated
-from `backend/auth-matrix.json` (`just probe-gen`) and diffed by
-`openapi-check`, so guards and token types reach the probes through the
-contract instead of a hand list.
+A campaign driven by the postulated auth-model invariants rather than by
+generated input: one request per operation the matrix assigns a check to, with
+the status that check asserts. The check list is rebuilt from
+`backend/auth-matrix.json` on every run, so guards and token types reach the
+checks through the contract instead of a hand list — and there is no
+committed copy to go stale.
 
-| Probe            | Request                                                      | Assertion              |
+It runs unconditionally: `just test` includes it, and CI runs it next to the
+tier-1 sweep.
+
+| Check            | Request                                                      | Assertion              |
 | ---------------- | ------------------------------------------------------------ | ---------------------- |
 | `cross-scope`    | share-A snapshot token against an album-B asset              | exactly `404`          |
 | `wrong-typ`      | admin session token as a bearer on a snapshot-only operation | exactly `401`          |
@@ -44,8 +48,9 @@ The demoted family asserts refusal rather than `401` because some admin
 operations also have a public path: registration refuses a non-admin with
 `403` (registration disabled) rather than rejecting the credential.
 
-`just fuzz-probes` runs in CI next to the tier-1 sweep. The campaign below
-keeps the generative role — sequences, random inputs — and stays advisory.
+`just fuzz-matrix` runs in CI next to the tier-1 sweep, and `just test`
+includes it. The campaign below keeps the generative role — sequences, random
+inputs — and stays advisory.
 
 ## Tier 2 — campaign
 
@@ -107,15 +112,15 @@ Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`, `FUZZ_AL
 
 ### Auth knowledge derivation (`backend/auth-matrix.json`)
 
-The hooks do not carry hand lists of auth knowledge. `auth_matrix.py` derives it from `backend/auth-matrix.json` (the committed machine contract of the per-operation `x-picasu-auth` annotation, regenerated and diffed by `openapi-check`):
+The hooks do not carry hand lists of auth knowledge. `auth_rules.py` derives it from `backend/auth-matrix.json` (the committed machine contract of the per-operation `x-picasu-auth` annotation, regenerated and diffed by `openapi-check`):
 
 - share-header injection set — the `GuardPresenter`-guarded operations (both tiers)
-- probe assignment — which operation carries which of the cross-scope / wrong-typ / renewal-mismatch / demoted probes (`probe_plan`, one probe per operation by priority)
+- check assignment — which operation carries which of the cross-scope / wrong-typ / renewal-mismatch / demoted checks (`test_plan`, one check per operation by priority)
 - wrong-typ token selection — a token typ outside the operation's `tokenTyp`
 - read-only exemptions — non-GET operations without `GuardMutate`
 - scope pairs — the seeded share identities crossed with the foreign albums they must not reach
 
-The derivation is pure and unit-tested; `just utils-test` runs the suite (or `python3 utils/schemathesis/test_auth_matrix.py` for the file alone), so CI and the precommit hook enforce it. The tests pin the derivations against the committed matrix, so a backend guard change fails them and forces a probe review instead of silent drift. A missing or malformed matrix file fails the run (override the location with `FUZZ_AUTH_MATRIX`). The destructive-operation disables in `campaign.toml`/`check.toml` stay hand-tuned, with a unit test keeping their operation ids in sync with the matrix.
+The derivation is pure and unit-tested; `just utils-test` runs the suite (or `python3 utils/schemathesis/test_auth_rules.py` for the file alone), so CI and the precommit hook enforce it. The tests pin the derivations against the committed matrix, so a backend guard change fails them and forces a check review instead of silent drift. A missing or malformed matrix file fails the run (override the location with `FUZZ_AUTH_MATRIX`). The destructive-operation disables in `campaign.toml`/`check.toml` stay hand-tuned, with a unit test keeping their operation ids in sync with the matrix.
 
 What A1-A5 assert (probe targets are generated from the matrix, not hand-picked):
 
