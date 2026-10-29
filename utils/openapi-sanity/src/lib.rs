@@ -437,6 +437,13 @@ pub struct Annotation {
     /// `None` when the extension declares no readable array; S8 fails closed on
     /// that, because nothing else compares the array with the signature.
     pub guard_names: Option<Located<Vec<String>>>,
+    /// The `admin` role constraint inside `x-picasu-auth`, with its line.
+    pub admin_role: Option<Located<String>>,
+    /// The `effects` array inside `x-picasu-auth`, with the extension's line.
+    pub effects: Option<Located<Vec<String>>>,
+    /// The `invariants` array inside `x-picasu-auth`, with the extension's
+    /// line.
+    pub invariants: Option<Located<Vec<String>>>,
     /// The media type the `request_body` names explicitly, either
     /// `request_body(content_type = "…")` or a `request_body(content(… = …))`
     /// group. `None` means the annotation names none and utoipa guesses one.
@@ -739,8 +746,14 @@ fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotatio
         };
         if key.starts_with("x-picasu-") {
             if key == "x-picasu-auth" {
-                annotation.guard_names =
-                    collect_guard_names(&tuple.stream()).map(|names| Located::new(names, line));
+                annotation.guard_names = collect_string_array(&tuple.stream(), "guards")
+                    .map(|names| Located::new(names, line));
+                annotation.admin_role = collect_string_value(&tuple.stream(), "admin")
+                    .map(|role| Located::new(role, line));
+                annotation.effects = collect_string_array(&tuple.stream(), "effects")
+                    .map(|values| Located::new(values, line));
+                annotation.invariants = collect_string_array(&tuple.stream(), "invariants")
+                    .map(|values| Located::new(values, line));
             }
             annotation.auth_extensions.push(Located::new(key, line));
         } else {
@@ -756,15 +769,15 @@ fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotatio
 /// token stream. Walking for it keeps this crate's parser dependency-free, at
 /// the cost of matching the key textually — the same trade-off the annotation
 /// reader makes everywhere else.
-fn collect_guard_names(stream: &TokenStream) -> Option<Vec<String>> {
-    let mut guards_key_seen = false;
+fn collect_string_array(stream: &TokenStream, key: &str) -> Option<Vec<String>> {
+    let mut key_seen = false;
     for tree in stream.clone() {
         match tree {
-            TokenTree::Literal(literal) if literal_text(&literal) == "guards" => {
-                guards_key_seen = true;
+            TokenTree::Literal(literal) if literal_text(&literal) == key => {
+                key_seen = true;
             }
             TokenTree::Group(group) => {
-                if guards_key_seen && group.delimiter() == Delimiter::Bracket {
+                if key_seen && group.delimiter() == Delimiter::Bracket {
                     let names = split_entries(&group.stream())
                         .into_iter()
                         .filter_map(|entry| match entry.into_iter().next() {
@@ -774,15 +787,43 @@ fn collect_guard_names(stream: &TokenStream) -> Option<Vec<String>> {
                         .collect();
                     return Some(names);
                 }
-                if !guards_key_seen && let Some(names) = collect_guard_names(&group.stream()) {
+                if !key_seen && let Some(names) = collect_string_array(&group.stream(), key) {
                     return Some(names);
                 }
-                guards_key_seen = false;
+                key_seen = false;
             }
             _ => {}
         }
     }
     None
+}
+
+/// The string value of `"<key>": "…"` inside the extension's JSON value.
+fn collect_string_value(stream: &TokenStream, key: &str) -> Option<String> {
+    let mut trees = stream.clone().into_iter().peekable();
+    loop {
+        let tree = trees.next()?;
+        match tree {
+            // A literal equal to the key is the *key* only when a separator
+            // follows; otherwise it is some other field's value.
+            TokenTree::Literal(literal)
+                if literal_text(&literal) == key
+                    && matches!(trees.peek(), Some(TokenTree::Punct(punct)) if punct.as_char() == ':' || punct.as_char() == '=') =>
+            {
+                trees.next();
+                match trees.next() {
+                    Some(TokenTree::Literal(value)) => return Some(literal_text(&value)),
+                    _ => return None,
+                }
+            }
+            TokenTree::Group(group) => {
+                if let Some(value) = collect_string_value(&group.stream(), key) {
+                    return Some(value);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Read `security(…)`: each top-level entry is one alternative requirement
@@ -2165,9 +2206,114 @@ fn render_name_set(names: &BTreeSet<&str>) -> String {
     )
 }
 
+/// S9 — the declared role constraint must follow the guards.
+///
+/// `admin` is what the matrix renders as the role and what the negative matrix
+/// asserts behaviourally, so a stale value misdescribes the route while every
+/// other static rule reads the signature and stays silent.
+fn admin_role_mismatch(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    let Some(declared) = &annotation.admin_role else {
+        return Vec::new();
+    };
+    let guards: BTreeSet<&str> = guard_idents(handler)
+        .filter(|ident| guard_security_groups(ident).is_some())
+        .collect();
+    let expected = if guards.contains("GuardAdmin") {
+        "admin"
+    } else if guards.contains("GuardUser") || guards.contains("GuardPresenter") {
+        "any"
+    } else {
+        "none"
+    };
+    if declared.value == expected {
+        return Vec::new();
+    }
+    vec![Finding::at(
+        &handler.file,
+        declared.line,
+        "admin_role_mismatch",
+        &format!(
+            "the extension declares admin = {:?}, but the handler's guards make it {:?}; the \
+             matrix renders this value and the negative matrix asserts it",
+            declared.value, expected
+        ),
+    )]
+}
+
+/// Effect classes the model recognises.
+const EFFECT_VOCAB: [&str; 3] = ["read", "write", "manage"];
+
+/// S10 — the declared effect class must be one the guards can support.
+///
+/// `write` promises that read-only mode blocks the operation, so it requires
+/// the read-only gate; `manage` promises an administrative surface, so it
+/// requires the admin role. `read` is exhaustive: an operation that mutates is
+/// not also a read.
+fn effects_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    let Some(effects) = &annotation.effects else {
+        return Vec::new();
+    };
+    let guards: BTreeSet<&str> = guard_idents(handler)
+        .filter(|ident| guard_security_groups(ident).is_some())
+        .collect();
+    let declared: BTreeSet<&str> = effects.value.iter().map(String::as_str).collect();
+    let mut findings = Vec::new();
+
+    for unknown in declared
+        .iter()
+        .filter(|value| !EFFECT_VOCAB.contains(value))
+    {
+        findings.push(Finding::at(
+            &handler.file,
+            effects.line,
+            "effects_unknown",
+            &format!(
+                "the extension declares the effect {unknown:?}, which is not one of \
+                 {EFFECT_VOCAB:?}"
+            ),
+        ));
+    }
+    if declared.contains("read") && declared.len() > 1 {
+        findings.push(Finding::at(
+            &handler.file,
+            effects.line,
+            "effects_mixed",
+            "the extension declares `read` together with a mutating effect, so the class \
+             cannot say whether the operation changes state",
+        ));
+    }
+    if declared.contains("write") && !guards.contains("GuardMutate") {
+        findings.push(Finding::at(
+            &handler.file,
+            effects.line,
+            "write_requires_mutate",
+            "the extension declares the `write` effect, but the handler carries no \
+             GuardMutate, so read-only mode would not block it",
+        ));
+    }
+    if declared.contains("manage")
+        && annotation
+            .admin_role
+            .as_ref()
+            .map(|role| role.value.as_str())
+            != Some("admin")
+    {
+        findings.push(Finding::at(
+            &handler.file,
+            effects.line,
+            "manage_requires_admin",
+            "the extension declares the `manage` effect, but the handler is not \
+             admin-guarded, so a non-admin or share caller could manage the server",
+        ));
+    }
+    findings
+}
+
 /// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5, S6,
-/// S7 and S8 of section S: every rule over one handler, in a fixed order so a
-/// report reads the same way twice.
+/// S7, S8, S9 and S10 of section S: every rule over one handler, in a fixed
+/// order so a report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -2196,6 +2342,8 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         reauth_without_header(handler),
         public_explicit_boundary(handler),
         guard_set_mismatch(handler),
+        admin_role_mismatch(handler),
+        effects_consistency(handler),
     ]
     .concat()
 }

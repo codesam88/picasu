@@ -1350,3 +1350,44 @@ fn s_guard_metadata_without_guards_fails() {
         "an unreadable guard declaration is a finding at the extension line"
     );
 }
+
+// ── Section S9/S10 — role constraint and effect class ─────────────────────
+
+const ADMIN_ROLE_MISMATCH: &str =
+    include_str!("fixtures/openapi_annotations/s9_admin_role_mismatch.rs");
+const EFFECTS_VIOLATIONS: &str =
+    include_str!("fixtures/openapi_annotations/s10_effects_violations.rs");
+const EFFECTS_CONFORMING: &str = include_str!("fixtures/openapi_annotations/s10_conforming.rs");
+
+/// S9: the declared role constraint must follow the guards.
+#[test]
+fn s_admin_role_mismatch_fails() {
+    let findings = check_source("s9_admin_role_mismatch.rs", ADMIN_ROLE_MISMATCH);
+
+    assert_eq!(
+        render(&findings),
+        "s9_admin_role_mismatch.rs:11: admin_role_mismatch: the extension declares admin = \"any\", but the handler's guards make it \"admin\"; the matrix renders this value and the negative matrix asserts it",
+        "a role constraint that disagrees with the guards is a finding"
+    );
+}
+
+/// S10: an effect without its guard, and a manage class without its role.
+#[test]
+fn s_effects_violations_fail() {
+    let findings = check_source("s10_effects_violations.rs", EFFECTS_VIOLATIONS);
+
+    assert_eq!(
+        render(&findings),
+        "s10_effects_violations.rs:28: write_requires_mutate: the extension declares the `write` effect, but the handler carries no GuardMutate, so read-only mode would not block it\n\
+         s10_effects_violations.rs:51: manage_requires_admin: the extension declares the `manage` effect, but the handler is not admin-guarded, so a non-admin or share caller could manage the server",
+        "each unsupported effect is a finding at the effects line"
+    );
+}
+
+/// The conforming counterpart is silent.
+#[test]
+fn s_effects_conforming_is_accepted() {
+    let findings = check_source("s10_conforming.rs", EFFECTS_CONFORMING);
+
+    assert_eq!(render(&findings), "", "supported effects must be silent");
+}

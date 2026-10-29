@@ -1769,12 +1769,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -1826,12 +1830,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -1889,13 +1898,16 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
           "invariants": [
-            "AUTH-16"
+            "AUTH-11",
+            "AUTH-12"
           ],
           "public": false,
           "shareScope": "n-a",
@@ -1959,11 +1971,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2002,11 +2018,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2055,11 +2075,15 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardPresenter"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-9"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2102,11 +2126,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2154,7 +2182,9 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardUser"
           ],
@@ -2238,7 +2268,9 @@
         ],
         "x-picasu-auth": {
           "admin": "none",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardSnapshot"
           ],
@@ -2282,11 +2314,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2353,7 +2389,9 @@
         ],
         "x-picasu-auth": {
           "admin": "none",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardSnapshot"
           ],
@@ -2416,7 +2454,9 @@
         ],
         "x-picasu-auth": {
           "admin": "none",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardSnapshot"
           ],
@@ -2473,7 +2513,9 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardUser"
           ],
@@ -2516,11 +2558,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2565,11 +2611,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2631,7 +2681,9 @@
         ],
         "x-picasu-auth": {
           "admin": "none",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardSnapshot"
           ],
@@ -2696,11 +2748,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -2774,11 +2830,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardPresenter"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-6",
+            "AUTH-9"
+          ],
           "public": false,
           "shareScope": "album",
           "tokenTyp": [
@@ -2827,7 +2888,9 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardUser"
           ],
@@ -2913,11 +2976,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3009,13 +3076,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardPresenter",
             "GuardHash"
           ],
           "invariants": [
-            "AUTH-8"
+            "AUTH-8",
+            "AUTH-9"
           ],
           "public": false,
           "shareScope": "n-a",
@@ -3080,13 +3150,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardPresenter",
             "GuardHashOriginal"
           ],
           "invariants": [
-            "AUTH-8"
+            "AUTH-8",
+            "AUTH-9"
           ],
           "public": false,
           "shareScope": "n-a",
@@ -3127,12 +3200,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardReauth"
           ],
           "invariants": [
+            "AUTH-11",
             "AUTH-15"
           ],
           "public": false,
@@ -3176,11 +3252,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3247,12 +3327,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3316,12 +3400,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3375,12 +3464,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3418,11 +3512,15 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardAdmin"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3483,12 +3581,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3576,11 +3679,14 @@
         ],
         "x-picasu-auth": {
           "admin": "none",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardRenewHash"
           ],
           "invariants": [
+            "AUTH-7",
             "AUTH-10"
           ],
           "public": false,
@@ -3647,11 +3753,15 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "read"
+          ],
           "guards": [
             "GuardPresenter"
           ],
           "invariants": [
+            "AUTH-6",
+            "AUTH-9",
             "AUTH-10"
           ],
           "public": false,
@@ -3777,12 +3887,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3852,12 +3967,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3918,12 +4038,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -3990,12 +4115,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4052,12 +4181,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4117,12 +4251,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4182,12 +4320,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4244,12 +4386,17 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4319,12 +4466,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4381,12 +4532,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4446,12 +4601,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4511,12 +4670,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4576,12 +4739,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4641,12 +4808,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
@@ -4706,13 +4877,16 @@
         ],
         "x-picasu-auth": {
           "admin": "admin",
-          "effects": [],
+          "effects": [
+            "manage"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
           ],
           "invariants": [
-            "AUTH-16"
+            "AUTH-11",
+            "AUTH-12"
           ],
           "public": false,
           "shareScope": "n-a",
@@ -4773,13 +4947,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate",
             "GuardReauth"
           ],
           "invariants": [
+            "AUTH-12",
             "AUTH-15"
           ],
           "public": false,
@@ -5098,12 +5275,16 @@
         ],
         "x-picasu-auth": {
           "admin": "any",
-          "effects": [],
+          "effects": [
+            "write"
+          ],
           "guards": [
             "GuardUser",
             "GuardMutate"
           ],
-          "invariants": [],
+          "invariants": [
+            "AUTH-12"
+          ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [

@@ -224,3 +224,57 @@ test("fixture: generator derives artifacts in a throwaway tree", (t) => {
   assert.equal(records.filter((x) => x.modeled).length, 1);
   assert.equal(records.filter((x) => !x.modeled).length, 1);
 });
+
+test("every effect is one class and only public operations are unclassified", (t) => {
+  const records = JSON.parse(
+    readFileSync(join(repoRoot, "backend", "auth-matrix.json"), "utf8"),
+  );
+  const vocabulary = new Set(["read", "write", "manage"]);
+  for (const record of records) {
+    if (!record.modeled) continue;
+    const auth = record["x-picasu-auth"];
+    if (auth.public) {
+      assert.deepEqual(
+        auth.effects,
+        [],
+        `${record.operationId}: public operations carry no effect`,
+      );
+      continue;
+    }
+    assert.equal(
+      auth.effects.length,
+      1,
+      `${record.operationId}: exactly one effect class`,
+    );
+    assert.ok(
+      vocabulary.has(auth.effects[0]),
+      `${record.operationId}: ${auth.effects[0]}`,
+    );
+  }
+});
+
+test("every referenced invariant is declared in the authz model", (t) => {
+  const records = JSON.parse(
+    readFileSync(join(repoRoot, "backend", "auth-matrix.json"), "utf8"),
+  );
+  const model = readFileSync(join(repoRoot, "docs", "authz-model.md"), "utf8");
+  const declared = new Set(model.match(/AUTH-\d+/g) ?? []);
+  const referenced = new Set();
+  for (const record of records) {
+    const auth = record["x-picasu-auth"];
+    if (!auth) continue;
+    for (const invariant of auth.invariants) referenced.add(invariant);
+  }
+  const unknown = [...referenced].filter(
+    (invariant) => !declared.has(invariant),
+  );
+  assert.deepEqual(
+    unknown,
+    [],
+    `invariants not declared in docs/authz-model.md: ${unknown}`,
+  );
+  assert.ok(
+    referenced.size >= 8,
+    `expected the model to reference at least 8 invariants, saw ${referenced.size}`,
+  );
+});

@@ -100,8 +100,8 @@ pub enum AssignOutcome {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["write"],
+            "invariants": ["AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Item assigned to album", body = AssignResult),

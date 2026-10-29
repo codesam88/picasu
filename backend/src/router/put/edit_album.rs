@@ -125,8 +125,8 @@ pub struct SetAlbumCover {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["write"],
+            "invariants": ["AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Album cover updated"),
@@ -256,8 +256,8 @@ pub struct SetAlbumTitle {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["write"],
+            "invariants": ["AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Album title updated"),

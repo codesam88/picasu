@@ -23,8 +23,8 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "User list", body = Vec<UserSummary>),

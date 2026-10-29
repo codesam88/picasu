@@ -48,8 +48,8 @@ pub struct ConfigResponse {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-9"]
         }))),
         responses(
             (status = 200, description = "Public configuration", body = ConfigResponse),
@@ -91,8 +91,8 @@ pub fn get_config_handler(auth: GuardResult<GuardPresenter>) -> AppResult<Json<C
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Exported configuration", body = crate::model::config::AppConfig, content_type = "application/json"),

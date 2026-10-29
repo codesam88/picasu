@@ -186,8 +186,8 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::ClaimsSession) -> (S
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-15"]
+            "effects": ["write"],
+            "invariants": ["AUTH-12", "AUTH-15"]
         }))),
         responses(
             (status = 200, description = "Password updated"),

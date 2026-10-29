@@ -48,8 +48,8 @@ pub struct EditShare {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Share updated"),
@@ -159,8 +159,8 @@ pub struct DeleteShare {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Share deleted"),

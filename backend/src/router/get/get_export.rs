@@ -37,8 +37,8 @@ pub struct ExportEntry {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Export data as JSON"),
