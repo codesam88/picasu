@@ -325,8 +325,8 @@ as the decision record; further domains stay open.
 ### 10. Machine-readable auth metadata (spike: `x-picasu-auth` extension)
 
 Per-operation authorization semantics that OpenAPI `security` cannot
-express (token typ, inline admin, share scope/binding, read-only and
-re-auth behavior, explicit-public) ride in the annotation as a vendor
+express (token types, inline admin role, share scope/binding,
+explicit-public) ride in the annotation as a vendor
 extension next to the native `security(...)` clause:
 
 ```rust
