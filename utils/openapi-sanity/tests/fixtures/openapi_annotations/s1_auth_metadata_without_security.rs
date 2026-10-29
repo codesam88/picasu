@@ -6,7 +6,10 @@
 /// The widget endpoint answers anonymously.
 #[utoipa::path(
     tag = "assets",
-    extensions(("x-picasu-auth" = json!({"public": true}))),
+    extensions(("x-picasu-auth" = json!({
+        "guards": [],
+        "public": true
+    }))),
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]

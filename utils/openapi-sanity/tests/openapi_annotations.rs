@@ -1310,3 +1310,43 @@ fn s_security_without_metadata_fails() {
         "a declaration without metadata is a finding at the security line"
     );
 }
+
+// ── Section S8 — declared guard set ────────────────────────────────────────
+
+const GUARD_SET_MISMATCH: &str =
+    include_str!("fixtures/openapi_annotations/s8_guard_set_mismatch.rs");
+const GUARD_SET_CONFORMING: &str = include_str!("fixtures/openapi_annotations/s8_conforming.rs");
+const GUARD_METADATA_UNREADABLE: &str =
+    include_str!("fixtures/openapi_annotations/s8_guard_metadata_unreadable.rs");
+
+/// S8: a guard array that disagrees with the signature fails.
+#[test]
+fn s_guard_set_mismatch_fails() {
+    let findings = check_source("s8_guard_set_mismatch.rs", GUARD_SET_MISMATCH);
+
+    assert_eq!(
+        render(&findings),
+        "s8_guard_set_mismatch.rs:11: guard_set_mismatch: the extension declares guards {GuardUser}, but the handler signature carries {GuardAdmin}; every other rule reads the signature, so only this one can catch a drifted array",
+        "a drifted guard array is a finding at the extension line"
+    );
+}
+
+/// The conforming counterpart, including a read-only gate, is silent.
+#[test]
+fn s_guard_set_match_is_accepted() {
+    let findings = check_source("s8_conforming.rs", GUARD_SET_CONFORMING);
+
+    assert_eq!(render(&findings), "", "a matching guard set must be silent");
+}
+
+/// An extension without a readable guard array fails closed.
+#[test]
+fn s_guard_metadata_without_guards_fails() {
+    let findings = check_source("s8_guard_metadata_unreadable.rs", GUARD_METADATA_UNREADABLE);
+
+    assert_eq!(
+        render(&findings),
+        "s8_guard_metadata_unreadable.rs:10: guard_metadata_unreadable: the extension declares no readable `guards` array, so nothing compares the declared guard set with the handler signature; declare `\"guards\": [...]`",
+        "an unreadable guard declaration is a finding at the extension line"
+    );
+}

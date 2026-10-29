@@ -8,7 +8,10 @@
 #[utoipa::path(
     tag = "assets",
     security(()),
-    extensions(("x-picasu-auth" = json!({"public": true}))),
+    extensions(("x-picasu-auth" = json!({
+        "guards": [],
+        "public": true
+    }))),
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]
