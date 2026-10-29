@@ -27,8 +27,8 @@ use crate::router::{AppResult, GuardResult};
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Invite metadata, never tokens", body = [InviteView]),

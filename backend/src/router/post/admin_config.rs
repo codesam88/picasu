@@ -28,8 +28,8 @@ use crate::router::{AppResult, GuardResult};
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-15"]
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-15"]
         }))),
     responses(
         (status = 200, description = "Read-only mode disabled"),

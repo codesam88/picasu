@@ -60,8 +60,8 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-8"]
+            "effects": ["read"],
+            "invariants": ["AUTH-8", "AUTH-9"]
         }))),
         responses(
             (status = 200, description = "Compressed file"),
@@ -155,8 +155,8 @@ pub async fn compressed_file(
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-8"]
+            "effects": ["read"],
+            "invariants": ["AUTH-8", "AUTH-9"]
         }))),
         responses(
             (status = 200, description = "Imported original file"),

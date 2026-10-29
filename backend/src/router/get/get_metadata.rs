@@ -43,7 +43,7 @@ use crate::router::{AppResult, GuardResult};
             "admin": "none",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
+            "effects": ["read"],
             "invariants": ["AUTH-7"]
         }))),
         responses(

@@ -49,8 +49,8 @@ pub struct RotateImageRequest {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["write"],
+            "invariants": ["AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Image rotated"),

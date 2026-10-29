@@ -185,8 +185,8 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
     responses(
         (status = 200, description = "Annotated configuration", body = Vec<ConfigFieldEntry>),
@@ -241,8 +241,8 @@ pub fn get_admin_config_handler(
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
     responses(
         (status = 200, description = "Exported runtime configuration", body = AdminConfigExportResponse),

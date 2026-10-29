@@ -1327,8 +1327,8 @@ pub struct RenewHashTokenReturn {
             "admin": "none",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-10"]
+            "effects": ["read"],
+            "invariants": ["AUTH-7", "AUTH-10"]
         }))),
         responses(
             (status = 200, description = "Hash token renewed", body = RenewHashTokenReturn),
@@ -1594,8 +1594,8 @@ pub struct RenewTimestampTokenReturn {
             "admin": "any",
             "shareScope": "album",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-10"]
+            "effects": ["read"],
+            "invariants": ["AUTH-6", "AUTH-9", "AUTH-10"]
         }))),
         responses(
             (status = 200, description = "Timestamp token renewed", body = RenewTimestampTokenReturn),

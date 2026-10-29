@@ -28,7 +28,7 @@ type AppResult<T> = Result<T, AppError>;
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardPresenter", "GuardMutate"],
         "tokenTyp": ["admin", "share"],
-        "admin": "either",
+        "admin": "any",
         "shareScope": "own-album",
         "readonly": true,
         "reauth": false,

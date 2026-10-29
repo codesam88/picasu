@@ -65,8 +65,8 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["write"],
+            "invariants": ["AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Data deleted"),
@@ -337,8 +337,8 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Invite revoked"),
@@ -393,8 +393,8 @@ pub fn delete_invite(
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": ["AUTH-16"]
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
             (status = 200, description = "User deleted"),

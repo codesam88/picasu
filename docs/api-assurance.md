@@ -45,8 +45,8 @@ native `security(...)` clause:
 | `admin`      | `admin` (admin-only), `any`, `none`                                                                                        |
 | `shareScope` | `album` (target confined to the share's album), `n-a` (no album binding) — always token-derived, never a request parameter |
 | `public`     | no credential required (pairs with `security(())`)                                                                         |
-| `effects`    | manage/effect classification (**pending**: all `[]`)                                                                       |
-| `invariants` | `authz-model.md` IDs, only where source-verified                                                                           |
+| `effects`    | mutation class, exactly one: `read`, `write` (content), `manage` (administrative); empty for public operations             |
+| `invariants` | `authz-model.md` IDs the operation is held to, checked for existence and against the guards                                |
 
 All 51 annotated handlers carry the key; the 23 SPA page shells are
 unannotated by design. `effects` has no controlled vocabulary yet;
@@ -103,7 +103,16 @@ behavioral tests. Each rule lives where its inputs live.
    logic and seeded albums, covered by the scenario suite. What is still
    missing is the full token×guard cross-product: each operation carries one
    principal check, not every cell. _(Partial.)_
-4. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
+4. **`effects` and `invariants` (implemented).** Each operation declares one
+   mutation class — `read`, `write` or `manage` — and the invariants it is
+   held to. Two source rules keep the declaration honest: `manage` requires
+   the admin role (AUTH-11) and `write` requires the read-only gate
+   (AUTH-12); the matrix test checks that every class is in the vocabulary,
+   that exactly one is declared, and that every referenced invariant exists
+   in `authz-model.md`. Known remainder: admin operations that are `manage`
+   but carry no read-only gate — `reset_auth_key_handler` today — are not
+   covered by AUTH-12's mutation half and remain an open decision.
+5. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
    until the annotation-based model can derive its docs back; at
    that point the model replaces the hand-maintained file. Shape to
    be settled when the matrix lands. _(Placeholder.)_

@@ -59,8 +59,8 @@ fn absolutize(p: &Path) -> PathBuf {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Filesystem path completion", body = FsCompletion),

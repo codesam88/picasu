@@ -36,8 +36,8 @@ pub struct AuthKeyResetResponse {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["manage"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Signing key rotated", body = AuthKeyResetResponse),

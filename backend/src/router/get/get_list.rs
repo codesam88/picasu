@@ -32,7 +32,7 @@ use std::path::Path;
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
+            "effects": ["read"],
             "invariants": []
         }))),
         responses(
@@ -123,7 +123,7 @@ impl From<&Share> for ShareInfo {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
+            "effects": ["read"],
             "invariants": []
         }))),
         responses(

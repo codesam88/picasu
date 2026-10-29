@@ -43,8 +43,8 @@ pub struct IndexAlbumRequest {
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["manage"],
+            "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
             (status = 202, description = "Album indexing started"),
@@ -94,8 +94,8 @@ pub fn index_album_handler(
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Album index cancelled"),

@@ -50,7 +50,7 @@ pub struct SelfProfileResponse {
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
+            "effects": ["read"],
             "invariants": []
         }))),
     responses(

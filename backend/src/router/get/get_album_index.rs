@@ -28,8 +28,8 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-11"]
         }))),
         responses(
             (status = 200, description = "Album index status", body = AlbumIndexStatus),

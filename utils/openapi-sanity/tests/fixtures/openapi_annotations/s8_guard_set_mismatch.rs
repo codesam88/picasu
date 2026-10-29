@@ -11,7 +11,7 @@
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
         "tokenTyp": ["session"],
-        "admin": "any",
+        "admin": "admin",
         "shareScope": "n/a",
         "public": false,
         "effects": [],

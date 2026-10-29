@@ -178,8 +178,8 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["write"],
+            "invariants": ["AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Upload successful"),

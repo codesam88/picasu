@@ -32,7 +32,7 @@ pub async fn widget(auth: GuardAdmin) -> AppResult<Json<Widget>> {
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardPresenter"],
         "tokenTyp": ["admin", "share"],
-        "admin": "either",
+        "admin": "any",
         "shareScope": "own-album",
         "readonly": false,
         "reauth": false,

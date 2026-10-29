@@ -308,8 +308,8 @@ fn execute_prefetch_logic(
             "admin": "any",
             "shareScope": "album",
             "public": false,
-            "effects": [],
-            "invariants": []
+            "effects": ["read"],
+            "invariants": ["AUTH-6", "AUTH-9"]
         }))),
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
