@@ -84,9 +84,10 @@ behavioral tests. Each rule lives where its inputs live.
    exemptions, and the seeded scope pairs. The derivation is pure and
    unit-tested; a matrix change that alters a probe fails the tests
    instead of drifting. Destructive-operation disables stay hand-tuned in
-   the TOML configs, pinned to the matrix by a consistency test. The two
-   campaign tiers remain advisory (`just fuzz-check`, `just fuzz-run`),
-   compared against `utils/schemathesis/baseline.yaml`.
+   the TOML configs, pinned to the matrix by a consistency test. Tier 1
+   (`just fuzz-check`) gates CI against `utils/schemathesis/baseline.yaml`;
+   the stateful campaign (`just fuzz-run`) stays advisory because its phases
+   are time-budgeted and need a served instance.
 3. **Generated negatives (implemented, role layer).** `backend/src/tests/matrix_negatives.rs`
    reads the published document and asserts, per operation and principal,
    that the model's exclusions hold: anonymous is refused on every
@@ -113,7 +114,7 @@ behavioral tests. Each rule lives where its inputs live.
 | ----------------------------------- | ---------------------------------------- | ------------------------------------- |
 | `just openapi-check`                | spec parity, shape, lint, routes         | gating (CI + precommit on `backend/`) |
 | `just dylint-check`                 | AUTH-2, AUTH-3, decode agreement         | gating (CI)                           |
-| `just fuzz-check` / `just fuzz-run` | 5-check oracle sweep / stateful campaign | advisory; baseline-compared           |
+| `just fuzz-check` / `just fuzz-run` | 5-check oracle sweep / stateful campaign | sweep gating in CI; campaign advisory |
 | `just env-var-check`                | config consistency                       | gating                                |
 
 Quarterly re-pin cadence applies to Schemathesis, dylint nightlies,

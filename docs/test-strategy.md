@@ -194,11 +194,11 @@ from the contract.
   `response_headers_conformance` — schema conformance plus no 5xx. Acceptance
   checks stay off until the spec claims them.
 - **Gating:** `just dylint-check` — static auth invariants (zero-finding discipline).
-- **Runners (advisory)** — the fuzz runners stay advisory; flipping
-  either to gating requires the contract to be reconciled and the
-  baseline to be clean:
-  - `just fuzz-check` — tier 1 single-operation sweep against a throwaway
-    seeded instance, compared to `utils/schemathesis/baseline.yaml`.
+- **Gating:** `just fuzz-check` — tier 1 single-operation sweep against a
+  throwaway seeded instance, compared to `utils/schemathesis/baseline.yaml`;
+  a finding outside the accepted set fails the job.
+- **Runners (advisory)** — the stateful campaign stays advisory because its
+  phases are time-budgeted and it needs a served instance:
   - `just fuzz-run` — tier 2 stateful campaign against a served seeded instance.
   - `scripts/schemathesis-run.sh` — raw Schemathesis passthrough over a running instance.
 - **Quarterly re-pin cadence** applies to Schemathesis (pinned in the

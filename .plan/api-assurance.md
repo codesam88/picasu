@@ -114,10 +114,11 @@ generate from.
 | Step 6 AUTH-11/12                                                             | open, blocked on `effects` vocabulary                                                            |
 | Step 6 decode agreement                                                       | done (`decode_agreement` crate)                                                                  |
 | Step 6 claims-consumption (F3)                                                | open, queued                                                                                     |
-| Step 7 UI fixtures                                                            | done (4 crates); UI-suite CI wiring open; allowlist/baseline open                                |
+| Step 7 UI fixtures                                                            | done (4 crates, UI suites run in the dylint CI job); allowlist/baseline open                     |
 | Step 8 expiry/decode ratchets                                                 | open                                                                                             |
 | Step 9 env-var lint                                                           | done, gating; sequencing sentence needs amendment (open decision); further domains open          |
-| Step 10 + S-rules                                                             | S1/S2/S5/S6/S7 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done              |
+| Step 10 + S-rules                                                             | S1/S2/S5/S6/S7/S8 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done           |
+| Fuzz gate (tier 1)                                                            | done — `just fuzz-check` gates CI against the accepted-findings baseline; tier 2 advisory        |
 | Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
 | Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
 | Consumers: hook derivation + S4 probes                                        | done (matrix-derived `utils/schemathesis/auth_matrix.py`, 28 probe-carrying ops)                 |
