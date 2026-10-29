@@ -32,7 +32,6 @@ EXPECTED = {
 
 def build(root: Path) -> list[dict]:
     rows = auth_matrix.load_matrix(root / "backend" / "auth-matrix.json")
-    by_op = {row["operationId"]: row for row in rows}
     plan = []
     for (method, path), probe in sorted(
         auth_matrix.probe_plan(rows).items(), key=lambda item: (item[0][1], item[0][0])
@@ -51,9 +50,6 @@ def build(root: Path) -> list[dict]:
                 "expect": EXPECTED[probe],
             }
         )
-    missing = [row["operationId"] for row in rows if row.get("x-picasu-auth") and row["operationId"] not in by_op]
-    if missing:
-        raise SystemExit(f"auth matrix rows lost their operation id: {missing}")
     return plan
 
 
