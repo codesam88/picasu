@@ -89,7 +89,7 @@ The hooks do not carry hand lists of auth knowledge. `auth_matrix.py` derives it
 - read-only exemptions — non-GET operations without `GuardMutate`
 - scope pairs — the seeded share identities crossed with the foreign albums they must not reach
 
-The derivation is pure and unit-tested; run `python3 utils/schemathesis/test_auth_matrix.py`. The tests pin the derivations against the committed matrix, so a backend guard change fails them and forces a probe review instead of silent drift. A missing or malformed matrix file fails the run (override the location with `FUZZ_AUTH_MATRIX`). The destructive-operation disables in `campaign.toml`/`check.toml` stay hand-tuned, with a unit test keeping their operation ids in sync with the matrix.
+The derivation is pure and unit-tested; `just utils-test` runs the suite (or `python3 utils/schemathesis/test_auth_matrix.py` for the file alone), so CI and the precommit hook enforce it. The tests pin the derivations against the committed matrix, so a backend guard change fails them and forces a probe review instead of silent drift. A missing or malformed matrix file fails the run (override the location with `FUZZ_AUTH_MATRIX`). The destructive-operation disables in `campaign.toml`/`check.toml` stay hand-tuned, with a unit test keeping their operation ids in sync with the matrix.
 
 What A1-A5 assert (probe targets are generated from the matrix, not hand-picked):
 
