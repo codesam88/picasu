@@ -12,7 +12,7 @@ area: testing
 The contract is machine-readable, but nothing says which of its _elements_ a
 checker actually covers, or how strong that checker is. Two symptoms:
 
-- Coverage is uneven and invisible. `tokenTyp` is checked against HIR types
+- Coverage is uneven and invisible. `credentials` is checked against HIR types
   (dylint) while `guards` is compared to nothing (every static rule reads the
   handler signature, never the array), `admin` exists only as a behavioural
   expectation, `shareScope` is advisory, and `effects`/`invariants` have no
@@ -74,7 +74,7 @@ Two dimensions; coverage alone misleads.
 | `public` ⇔ `security: [{}]` + no guard            | S7                                   | —                           | static-exact, gate   |                                                               |
 | `guards` array ⇔ handler signature                | **none**                             | indirect (role rendering)   | **shape at best**    | no rule compares the array to the signature                   |
 | `admin` ⇔ `GuardAdmin`/`GuardUser`                | **none**                             | `matrix_negatives`          | behavioral, gate     | only B-side                                                   |
-| `tokenTyp` ⇔ decoded claims type                  | S3 dylint (HIR)                      | A3 probe                    | static-exact, gate   | strongest field                                               |
+| `credentials` ⇔ decoded claims type               | S3 dylint (HIR)                      | A3 probe                    | static-exact, gate   | strongest field                                               |
 | `shareScope` ⇔ enforced album binding             | none                                 | S4 probes                   | behavioral, advisory | does not block merges                                         |
 | `effects`                                         | none                                 | none                        | **none**             | all `[]`                                                      |
 | `invariants`                                      | none                                 | AUTH-10 in one probe        | **shape**            | not validated against `authz-model.md`; 11 of 16 unreferenced |

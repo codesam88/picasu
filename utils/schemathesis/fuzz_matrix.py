@@ -236,7 +236,7 @@ def main() -> int:
             headers["Authorization"] = f"Bearer {token_a}"
             params = {"asset_id": asset_b}
             headers["X-Check"] = check
-        elif check == auth_rules.TEST_WRONG_TYP:
+        elif check == auth_rules.TEST_WRONG_CREDENTIAL:
             headers["Authorization"] = f"Bearer {ADMIN_JWT}"
             headers["X-Check"] = check
         elif check == auth_rules.TEST_RENEW_MISMATCH:

@@ -57,7 +57,7 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAdmin", "GuardMutate"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,

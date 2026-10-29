@@ -182,7 +182,7 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::ClaimsSession) -> (S
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser", "GuardMutate", "GuardReauth"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
             "public": false,

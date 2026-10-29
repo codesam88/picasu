@@ -46,7 +46,7 @@ pub struct SelfProfileResponse {
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
             "public": false,

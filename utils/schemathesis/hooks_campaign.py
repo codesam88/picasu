@@ -47,9 +47,9 @@ MATRIX = auth_rules.load_matrix(MATRIX_PATH)
 SHARE_GUARDED = auth_rules.share_guarded_ops(MATRIX)
 CHECK_PLAN = auth_rules.test_plan(MATRIX)
 READONLY_EXEMPT = auth_rules.readonly_exempt_ops(MATRIX)
-# A3 targets are snapshot-typed (auth_rules.wrong_typ_targets), so the
+# A3 targets are snapshot-typed (auth_rules.wrong_credential_targets), so the
 # wrong token for them is the session-typed one.
-WRONG_TYP_FOR_SNAPSHOT = auth_rules.wrong_typ_token(("snapshot",))
+WRONG_CREDENTIAL_FOR_SNAPSHOT = auth_rules.wrong_credential_token(("snapshot",))
 
 BASE = os.environ.get("PICASU_BASE_URL", "http://127.0.0.1:8899")
 ADMIN_JWT = os.environ.get("PICASU_JWT", "")
@@ -166,14 +166,14 @@ def _album_asset(album_id):
     return _cache[key]
 
 
-def _token_for_typ(typ):
-    """Token sources by typ: the admin session or a share-A snapshot."""
-    if typ == "session":
+def _token_for_credential(kind):
+    """Token sources by credential kind: the admin session or a share-A snapshot."""
+    if kind == "session":
         return ADMIN_JWT
-    if typ == "snapshot":
+    if kind == "snapshot":
         (own_album, share), _ = SCOPE_MISMATCHES[0]
         return _share_snapshot(own_album, share)[0]
-    raise RuntimeError(f"no token source for typ {typ!r}")
+    raise RuntimeError(f"no token source for credential kind {kind!r}")
 
 
 def _demoted_token():
@@ -225,10 +225,10 @@ def _install_markers(case, headers):
             params[name] = asset
         case.path_parameters = params
 
-    elif probe == auth_rules.TEST_WRONG_TYP:
+    elif probe == auth_rules.TEST_WRONG_CREDENTIAL:
         _, ts = _share_snapshot(own_album, share)
         headers["X-Pilot"] = probe
-        headers["Authorization"] = f"Bearer {_token_for_typ(WRONG_TYP_FOR_SNAPSHOT)}"
+        headers["Authorization"] = f"Bearer {_token_for_credential(WRONG_CREDENTIAL_FOR_SNAPSHOT)}"
         case.query = _snapshot_query(case, ts)
 
     elif probe == auth_rules.TEST_DEMOTED:
@@ -315,10 +315,10 @@ def cross_scope_refused(ctx, response, case):
 
 
 @schemathesis.check
-def wrong_typ_rejected(ctx, response, case):
-    if _marker(case, auth_rules.TEST_WRONG_TYP) and response.status_code != 401:
+def wrong_credential_rejected(ctx, response, case):
+    if _marker(case, auth_rules.TEST_WRONG_CREDENTIAL) and response.status_code != 401:
         raise AssertionError(
-            f"wrong-typ token accepted: got {response.status_code} on {case.path}"
+            f"wrong-credential token accepted: got {response.status_code} on {case.path}"
         )
 
 

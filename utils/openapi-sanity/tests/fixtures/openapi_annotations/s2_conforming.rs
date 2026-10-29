@@ -27,7 +27,7 @@ type AppResult<T> = Result<T, AppError>;
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardPresenter", "GuardMutate"],
-        "tokenTyp": ["admin", "share"],
+        "credentials": ["admin", "share"],
         "admin": "any",
         "shareScope": "own-album",
         "readonly": true,

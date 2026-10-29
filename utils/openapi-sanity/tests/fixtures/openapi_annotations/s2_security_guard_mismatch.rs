@@ -8,7 +8,7 @@
     security(("bearer_token" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin"],
-        "tokenTyp": ["admin"],
+        "credentials": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
         "readonly": false,

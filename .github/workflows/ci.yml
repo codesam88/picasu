@@ -139,7 +139,7 @@ jobs:
         run: just fuzz-check
 
       # The fuzz matrix: matrix-derived auth checks executed deterministically
-      # against a throwaway seeded instance — cross-scope, wrong-typ, renewal
+      # against a throwaway seeded instance — cross-scope, wrong-credential, renewal
       # binding and demoted token. The check list is rebuilt from the auth
       # matrix on every run, so it cannot drift from the contract.
       - name: Fuzz matrix (auth-model checks)

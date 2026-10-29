@@ -1,6 +1,6 @@
 #![feature(register_tool)]
 #![register_tool(utoipa)]
-// FAIL: GuardUser -> admin but tokenTyp says asset.
+// FAIL: GuardUser -> admin but credentials empty.
 
 pub struct GuardResult<T>(pub T);
 pub struct GuardUser;
@@ -8,7 +8,7 @@ pub struct GuardUser;
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
-        "tokenTyp": ["asset"]
+        "credentials": []
     })))
 )]
 pub fn handler(auth: GuardResult<GuardUser>) {}

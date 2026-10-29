@@ -9,7 +9,7 @@ pub struct GuardMutate;
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser", "GuardMutate"],
-        "tokenTyp": ["session"]
+        "credentials": ["session"]
     })))
 )]
 pub fn handler(auth: GuardResult<GuardUser>, ro: GuardResult<GuardMutate>) {}

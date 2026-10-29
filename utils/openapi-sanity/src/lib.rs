@@ -7,8 +7,8 @@
 //! statuses — what the handler can answer versus what `responses(…)` claims.
 //! **Section S** keeps `x-picasu-auth` metadata honest. S1 pairs the extension
 //! with its `security(…)` declaration; S2 compares the declared scheme groups
-//! against the guards in the handler signature; S3 (dylint) compares the token
-//! typs against the decoded claims type; S5 and S6 pin the read-only and
+//! against the guards in the handler signature; S3 (dylint) compares the
+//! credentials against the decoded claims type; S5 and S6 pin the read-only and
 //! reauthentication behaviour; S7 enforces the public/explicit boundary; S8
 //! compares the declared guard array with the signature — the only rule that
 //! reads that field, which every other rule leaves untouched; S9 ties the role

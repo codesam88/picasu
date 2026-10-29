@@ -9,7 +9,7 @@
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin"],
-        "tokenTyp": ["admin"],
+        "credentials": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
         "readonly": false,
@@ -31,7 +31,7 @@ pub async fn widget(auth: GuardAdmin) -> AppResult<Json<Widget>> {
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardPresenter"],
-        "tokenTyp": ["admin", "share"],
+        "credentials": ["admin", "share"],
         "admin": "any",
         "shareScope": "own-album",
         "readonly": false,

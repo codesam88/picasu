@@ -27,7 +27,7 @@ type AppResult<T> = Result<T, AppError>;
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "any",
         "shareScope": "n/a",
         "public": false,
@@ -50,7 +50,7 @@ pub async fn write_widget(auth: GuardResult<GuardUser>) -> AppResult<Json<Widget
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser", "GuardMutate"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "any",
         "shareScope": "n/a",
         "public": false,

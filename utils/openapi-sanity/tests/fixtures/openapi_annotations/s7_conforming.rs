@@ -7,7 +7,7 @@
     security(()),
     extensions(("x-picasu-auth" = json!({
         "guards": [],
-        "tokenTyp": [],
+        "credentials": [],
         "admin": "none",
         "shareScope": "n-a",
         "readonly": false,
@@ -29,7 +29,7 @@ pub async fn public_widget() -> AppResult<Json<Widget>> {
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin"],
-        "tokenTyp": ["admin"],
+        "credentials": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
         "readonly": false,

@@ -23,12 +23,12 @@ const spec = JSON.parse(
 
 const AUTH_FIELDS = [
   "admin",
+  "credentials",
   "effects",
   "guards",
   "invariants",
   "public",
   "shareScope",
-  "tokenTyp",
   "waivers",
 ];
 
@@ -152,7 +152,7 @@ test("human table has name, role, tokens, and guards columns", (t) => {
   const md = readFileSync(join(repoRoot, "docs", "auth-matrix.md"), "utf8");
   const norm = md.replace(/ +/g, " ");
   assert.ok(
-    norm.includes("| Op | Name | Role | Tokens | Scope | Guards | Effects |"),
+    norm.includes("| Op | Name | Role | Credentials | Scope | Guards | Effects |"),
     "modeled table header",
   );
   assert.ok(!norm.includes("| Typ |"), "no abbreviated Typ header");
@@ -208,7 +208,7 @@ test("fixture: generator derives artifacts in a throwaway tree", (t) => {
             invariants: [],
             public: true,
             shareScope: "n-a",
-            tokenTyp: [],
+            credentials: [],
           },
         },
       },

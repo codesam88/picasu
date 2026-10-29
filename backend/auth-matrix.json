@@ -58,6 +58,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -70,9 +73,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -91,6 +91,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -104,9 +107,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -125,6 +125,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -138,9 +141,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -170,6 +170,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -181,9 +184,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -202,6 +202,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -213,9 +216,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -238,6 +238,10 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session",
+        "share"
+      ],
       "effects": [
         "read"
       ],
@@ -249,10 +253,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session",
-        "share"
-      ],
       "waivers": {}
     }
   },
@@ -271,6 +271,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -282,9 +285,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -303,6 +303,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -312,9 +315,6 @@
       "invariants": [],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -333,6 +333,9 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [
+        "snapshot"
+      ],
       "effects": [
         "read"
       ],
@@ -344,9 +347,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "snapshot"
-      ],
       "waivers": {}
     }
   },
@@ -365,6 +365,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -376,9 +379,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -397,6 +397,9 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [
+        "snapshot"
+      ],
       "effects": [
         "read"
       ],
@@ -408,9 +411,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "snapshot"
-      ],
       "waivers": {}
     }
   },
@@ -429,6 +429,9 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [
+        "snapshot"
+      ],
       "effects": [
         "read"
       ],
@@ -440,9 +443,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "snapshot"
-      ],
       "waivers": {}
     }
   },
@@ -461,6 +461,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -470,9 +473,6 @@
       "invariants": [],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -491,6 +491,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -502,9 +505,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -523,6 +523,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -534,9 +537,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -555,6 +555,9 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [
+        "snapshot"
+      ],
       "effects": [
         "read"
       ],
@@ -566,9 +569,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "snapshot"
-      ],
       "waivers": {}
     }
   },
@@ -587,6 +587,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -598,9 +601,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -623,6 +623,10 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session",
+        "share"
+      ],
       "effects": [
         "read"
       ],
@@ -635,10 +639,6 @@
       ],
       "public": false,
       "shareScope": "album",
-      "tokenTyp": [
-        "session",
-        "share"
-      ],
       "waivers": {}
     }
   },
@@ -657,6 +657,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -666,9 +669,6 @@
       "invariants": [],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -685,12 +685,12 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [],
       "effects": [],
       "guards": [],
       "invariants": [],
       "public": true,
       "shareScope": "n-a",
-      "tokenTyp": [],
       "waivers": {}
     }
   },
@@ -709,6 +709,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -720,9 +723,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -770,6 +770,11 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session",
+        "share",
+        "asset"
+      ],
       "effects": [
         "read"
       ],
@@ -783,11 +788,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session",
-        "share",
-        "asset"
-      ],
       "waivers": {}
     }
   },
@@ -813,6 +813,11 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session",
+        "share",
+        "asset"
+      ],
       "effects": [
         "read"
       ],
@@ -826,11 +831,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session",
-        "share",
-        "asset"
-      ],
       "waivers": {}
     }
   },
@@ -849,6 +849,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -863,9 +866,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {
         "AUTH-12": "the lift must stay callable while read-only mode is on"
       }
@@ -886,6 +886,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -899,9 +902,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -920,6 +920,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -932,9 +935,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -953,6 +953,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -966,9 +969,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -987,6 +987,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1000,9 +1003,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1021,6 +1021,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "read"
       ],
@@ -1032,9 +1035,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1053,6 +1053,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1066,9 +1069,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1085,12 +1085,12 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [],
       "effects": [],
       "guards": [],
       "invariants": [],
       "public": true,
       "shareScope": "n-a",
-      "tokenTyp": [],
       "waivers": {}
     }
   },
@@ -1109,6 +1109,9 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [
+        "snapshot"
+      ],
       "effects": [
         "read"
       ],
@@ -1121,9 +1124,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "snapshot"
-      ],
       "waivers": {}
     }
   },
@@ -1146,6 +1146,10 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session",
+        "share"
+      ],
       "effects": [
         "read"
       ],
@@ -1159,10 +1163,6 @@
       ],
       "public": false,
       "shareScope": "album",
-      "tokenTyp": [
-        "session",
-        "share"
-      ],
       "waivers": {}
     }
   },
@@ -1179,12 +1179,12 @@
     ],
     "x-picasu-auth": {
       "admin": "none",
+      "credentials": [],
       "effects": [],
       "guards": [],
       "invariants": [],
       "public": true,
       "shareScope": "n-a",
-      "tokenTyp": [],
       "waivers": {}
     }
   },
@@ -1203,6 +1203,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1216,9 +1219,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1237,6 +1237,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1250,9 +1253,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1271,6 +1271,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1284,9 +1287,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1305,6 +1305,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1317,9 +1320,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1338,6 +1338,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1351,9 +1354,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1372,6 +1372,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1384,9 +1387,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1405,6 +1405,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1417,9 +1420,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1438,6 +1438,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1451,9 +1454,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1472,6 +1472,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1484,9 +1487,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1505,6 +1505,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1517,9 +1520,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1538,6 +1538,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1550,9 +1553,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1571,6 +1571,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1583,9 +1586,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1604,6 +1604,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1616,9 +1619,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1637,6 +1637,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1649,9 +1652,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1670,6 +1670,9 @@
     ],
     "x-picasu-auth": {
       "admin": "admin",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "manage"
       ],
@@ -1683,9 +1686,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1704,6 +1704,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1718,9 +1721,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
@@ -1871,6 +1871,9 @@
     ],
     "x-picasu-auth": {
       "admin": "any",
+      "credentials": [
+        "session"
+      ],
       "effects": [
         "write"
       ],
@@ -1883,9 +1886,6 @@
       ],
       "public": false,
       "shareScope": "n-a",
-      "tokenTyp": [
-        "session"
-      ],
       "waivers": {}
     }
   },
