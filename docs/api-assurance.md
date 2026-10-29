@@ -87,11 +87,21 @@ behavioral tests. Each rule lives where its inputs live.
    the TOML configs, pinned to the matrix by a consistency test. The two
    campaign tiers remain advisory (`just fuzz-check`, `just fuzz-run`),
    compared against `utils/schemathesis/baseline.yaml`.
-3. **Generated negatives.** Token×guard cross-product with expected
-   401/403/404 per cell. Partly realized: the probe plan assigns one
-   cross-scope / wrong-typ / renewal-mismatch / demoted probe per matching
-   operation (28 operations today), but each operation still carries a
-   single probe rather than a full cross-product. _(Partial.)_
+3. **Generated negatives (implemented, role layer).** `backend/src/tests/matrix_negatives.rs`
+   reads the published document and asserts, per operation and principal,
+   that the model's exclusions hold: anonymous is refused on every
+   non-public operation, a non-admin session is refused on admin-only
+   operations, a session never satisfies a bearer-only operation, and a
+   viewer is admitted where the model says `any` with a session presenter.
+   Refusals are judged as any 4xx, because `GuardResult` defers the refusal
+   to the handler and a body guard can answer first; the run reports how
+   many refusals happened at the credential layer (401). Operations whose
+   guards or invariants can refuse beyond the role — reauthentication and
+   body-token renewal — carry no admission assertion. Public operations and
+   share credentials are out of scope: their verdicts depend on handler
+   logic and seeded albums, covered by the scenario suite. What is still
+   missing is the full token×guard cross-product: each operation carries one
+   principal check, not every cell. _(Partial.)_
 4. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
    until the annotation-based model can derive its docs back; at
    that point the model replaces the hand-maintained file. Shape to
