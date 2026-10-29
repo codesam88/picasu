@@ -38,6 +38,9 @@ mod seeds;
 mod torn_thumbnail;
 
 #[cfg(test)]
+mod matrix_negatives;
+
+#[cfg(test)]
 mod openapi_contract;
 
 #[cfg(test)]
