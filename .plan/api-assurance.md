@@ -121,7 +121,8 @@ generate from.
 | Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
 | Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
 | Consumers: hook derivation + S4 probes                                        | done (matrix-derived `utils/schemathesis/auth_matrix.py`, 28 probe-carrying ops)                 |
-| Consumers: generated negatives, effects/invariants backfill                   | open                                                                                             |
+| Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)              |
+| Consumers: effects/invariants backfill                                        | open                                                                                             |
 | `authz-model.md` derivation-back                                              | deferred until matrix proves itself                                                              |
 
 ## Steps (sketch — phases in order, details at build time)
@@ -498,3 +499,19 @@ security reviewers); this file stays the implementation roadmap.
   findings, all baseline-accepted, `baseline.yaml` untouched. Caveat:
   the time-budgeted phases make counts directionally comparable, not
   byte-reproducible.
+- Step 11 matrix-derived negatives done 2026-10-29:
+  `backend/src/tests/matrix_negatives.rs` reads the published document
+  and asserts the model's exclusions per operation and principal — 92
+  pairs across 51 modeled operations (48 anonymous-refused, 22
+  viewer-refused, 5 session-on-bearer-refused, 17 viewer-admitted).
+  71 of the 75 refusals land at the credential layer (401); the other
+  four are request-shape refusals (400) from ops whose body guard runs
+  first. Admission is asserted only where the guards decide identity
+  alone: `GuardReauth` and `AUTH-10` renewals are excluded because
+  they legitimately refuse a caller the role model admits. Request
+  bodies are generated from the required properties of the published
+  schema, required query parameters are filled so routes match (a miss
+  falls through to the SPA catch-all). RED proof: flipping the
+  admin-only expectation to admitted reports 21 violations. Public
+  operations and share credentials stay out of scope, as recorded in
+  `docs/api-assurance.md`.
