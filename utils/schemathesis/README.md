@@ -23,6 +23,30 @@ State lives in a temp dir removed on exit. Set `FUZZ_REPORT_OUT=<path>` to copy 
 
 Tier 1 gates CI (`ci.yml`, backend job): a finding outside `baseline.yaml` fails the build. It is deliberately absent from `just check`/precommit, where the seed-and-sweep runtime does not belong.
 
+## Auth probes — deterministic, gating
+
+    just fuzz-probes
+
+Executes `backend/probe-plan.json` against a throwaway seeded instance: one
+request per probe, with the status the probe asserts. The plan is generated
+from `backend/auth-matrix.json` (`just probe-gen`) and diffed by
+`openapi-check`, so guards and token types reach the probes through the
+contract instead of a hand list.
+
+| Probe            | Request                                                      | Assertion              |
+| ---------------- | ------------------------------------------------------------ | ---------------------- |
+| `cross-scope`    | share-A snapshot token against an album-B asset              | exactly `404`          |
+| `wrong-typ`      | admin session token as a bearer on a snapshot-only operation | exactly `401`          |
+| `renew-mismatch` | share-B credentials renewing share-A's snapshot              | exactly `401`          |
+| `demoted`        | a demoted user's still-live session on admin operations      | not admitted (any 4xx) |
+
+The demoted family asserts refusal rather than `401` because some admin
+operations also have a public path: registration refuses a non-admin with
+`403` (registration disabled) rather than rejecting the credential.
+
+`just fuzz-probes` runs in CI next to the tier-1 sweep. The campaign below
+keeps the generative role — sequences, random inputs — and stays advisory.
+
 ## Tier 2 — campaign
 
 Stateful run in two commands: one serves, one fuzzes.

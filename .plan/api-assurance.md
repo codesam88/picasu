@@ -119,9 +119,10 @@ generate from.
 | Step 9 env-var lint                                                           | done, gating; sequencing rule amended to dylint scope; further domains open                      |
 | Step 10 + S-rules                                                             | S1/S2/S5/S6/S7/S8 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done           |
 | Fuzz gate (tier 1)                                                            | done — `just fuzz-check` gates CI against the accepted-findings baseline; tier 2 advisory        |
+| Auth probe gate                                                               | done — `backend/probe-plan.json` (generated, diff-gated) executed by `just fuzz-probes` in CI    |
 | Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
 | Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
-| Consumers: hook derivation + S4 probes                                        | done (matrix-derived `utils/schemathesis/auth_matrix.py`, 28 probe-carrying ops)                 |
+| Consumers: hook derivation + S4 probes                                        | done; probes now gating via `backend/probe-plan.json` + `just fuzz-probes` (28 ops)              |
 | Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)              |
 | Consumers: effects/invariants backfill                                        | done (3-class vocabulary, S9/S10/S11 rules, invariant existence test)                            |
 | Contract checker coverage + strength                                          | open (`.plan/api-assurance-coverage.md`: registry, existence test, generated profile, floor)     |
@@ -483,7 +484,13 @@ security reviewers); this file stays the implementation roadmap.
   (`token_typ_agreement` dylint, gating in CI) done 2026-10-28 with UI
   fixtures and clean-tree/RED verification. S4 is now implemented (see
   the entry below); S3 is gated in CI.
-- Step 11 S4 + hook derivation done 2026-10-29: the hooks derive their
+- Step 11 S4 probe gate done 2026-10-29: `backend/probe-plan.json` is
+  generated from the matrix (`just probe-gen`) and diffed by
+  `openapi-check`; `just fuzz-probes` executes it deterministically
+  (28 probes: 1 cross-scope, 4 wrong-typ, 1 renewal, 22 demoted) and
+  gates CI. The demoted family asserts refusal rather than 401 because
+  registration also has a public path — a model-accuracy gap recorded
+  below. Earlier in the same step: the hooks derive their
   auth knowledge from `backend/auth-matrix.json` via
   `utils/schemathesis/auth_matrix.py` (share-header sets, probe
   assignment, wrong-typ selection, read-only exemptions, scope pairs),

@@ -137,9 +137,31 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
+# Regenerate the committed probe plan from the auth matrix
+[group('utils')]
+probe-gen:
+    python3 {{justfile_directory()}}/utils/schemathesis/emit_probe_plan.py {{justfile_directory()}}
+
+[private]
+probe-plan-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp/backend"
+    cp backend/openapi.json backend/auth-matrix.json "$tmp/backend/"
+    python3 utils/schemathesis/emit_probe_plan.py "$tmp" >/dev/null
+    if ! diff -u backend/probe-plan.json "$tmp/backend/probe-plan.json"; then
+        echo ""
+        echo "backend/probe-plan.json is out of date with the auth matrix."
+        echo "Run 'just probe-gen' and commit the result."
+        exit 1
+    fi
+    echo "probe-plan matches the auth matrix"
+
 # Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check
+openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check probe-plan-check
 
 # Run dylint auth lints on the backend (advisory)
 [group('utils')]
@@ -204,6 +226,11 @@ fuzz-check: frontend-build-maybe install-schemathesis
     utils/schemathesis/check.sh "{{ schemathesis_version }}"
 
 # Serve a seeded instance in the foreground (first run seeds; Ctrl-C stops)
+# Run the generated security probes against a throwaway seeded instance
+[group('utils')]
+fuzz-probes: frontend-build-maybe
+    utils/schemathesis/probes.sh
+
 fuzz-serve *args: frontend-build-maybe
     utils/schemathesis/serve.sh {{ args }}
 
