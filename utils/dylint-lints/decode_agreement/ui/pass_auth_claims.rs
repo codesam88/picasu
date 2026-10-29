@@ -9,11 +9,11 @@ pub mod request {
     }
 }
 
-pub struct Claims(pub String);
-pub struct ClaimsHash(pub String);
-pub struct ClaimsTimestamp(pub u64);
+pub struct ClaimsSession(pub String);
+pub struct ClaimsAsset(pub String);
+pub struct ClaimsSnapshot(pub u64);
 
-pub struct GuardAuth;
+pub struct GuardAdmin;
 pub struct GuardHash;
 
 pub fn decode_typed<T>(token: &str) -> Result<T, String> {
@@ -21,11 +21,11 @@ pub fn decode_typed<T>(token: &str) -> Result<T, String> {
     Err("stub".to_string())
 }
 
-// PASS: `GuardAuth` decodes its assigned `Claims`.
-impl request::FromRequest for GuardAuth {
+// PASS: `GuardAdmin` decodes its assigned `ClaimsSession`.
+impl request::FromRequest for GuardAdmin {
     fn from_request(token: &str) -> Self {
-        let _claims: Claims = decode_typed(token).unwrap();
-        GuardAuth
+        let _claims: ClaimsSession = decode_typed(token).unwrap();
+        GuardAdmin
     }
 }
 

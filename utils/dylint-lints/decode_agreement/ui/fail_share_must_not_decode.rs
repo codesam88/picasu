@@ -1,4 +1,4 @@
-// FAIL (fail closed): `GuardShare` has no assigned decode target —
+// FAIL (fail closed): `GuardPresenter` has no assigned decode target —
 // it resolves via the share table, so any direct `decode_typed` warns.
 
 pub mod request {
@@ -7,19 +7,19 @@ pub mod request {
     }
 }
 
-pub struct Claims(pub String);
+pub struct ClaimsSession(pub String);
 
-pub struct GuardShare;
+pub struct GuardPresenter;
 
 pub fn decode_typed<T>(token: &str) -> Result<T, String> {
     let _ = token;
     Err("stub".to_string())
 }
 
-impl request::FromRequest for GuardShare {
+impl request::FromRequest for GuardPresenter {
     fn from_request(token: &str) -> Self {
-        let _claims: Claims = decode_typed(token).unwrap();
-        GuardShare
+        let _claims: ClaimsSession = decode_typed(token).unwrap();
+        GuardPresenter
     }
 }
 

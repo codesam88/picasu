@@ -3,7 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::openapi_components::Unauthorized;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::index_to_asset_id;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::open_tree_snapshot_table;
@@ -50,7 +50,7 @@ pub struct EditFlagsData {
         request_body = EditFlagsData,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -73,11 +73,11 @@ pub struct EditFlagsData {
 #[put("/put/edit_flags", format = "json", data = "<json_data>")]
 pub async fn edit_flags(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<EditFlagsData>,
 ) -> AppResult<Json<()>> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     // The flag goes to disk as well as to the record, so the edit runs through
     // the shared write-then-store contract: every sidecar lands first, and only

@@ -13,8 +13,8 @@ name. Inside such an impl, a call counts iff its callee resolves to the
 
 The decode target `T` is read from the call's typeck type (`Result<T, E>` —
 first generic argument of the `Result` ADT), so turbofish
-(`decode_typed::<ClaimsHash>(..)`) and inferred
-(`let claims: ClaimsHash = decode_typed(..)`) spellings resolve identically.
+(`decode_typed::<ClaimsAsset>(..)`) and inferred
+(`let claims: ClaimsAsset = decode_typed(..)`) spellings resolve identically.
 Fail closed: an unresolvable target warns, and a direct `decode_typed` call
 inside a guard with no assigned target warns.
 
@@ -29,20 +29,20 @@ guard → claims assignment never drifts.
 Expected table (established empirically from `backend/src/router/auth.rs` —
 every `decode_typed` call site per guard impl, verified before pinning):
 
-| Guard impl               | Decode target                                                                                                      | Site                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
-| `GuardAuth`              | `Claims` (via `try_jwt_cookie_auth` → `decode_typed::<Claims>`) — no direct call in the impl                       | `try_jwt_cookie_auth`                  |
-| `GuardUser`              | `Claims` (inferred annotation)                                                                                     | `GuardUser::from_request`              |
-| `GuardHash`              | `ClaimsHash` (inferred annotation)                                                                                 | `GuardHash::from_request`              |
-| `GuardHashOriginal`      | `ClaimsHash` (inferred annotation)                                                                                 | `GuardHashOriginal::from_request`      |
-| `TimestampGuardModified` | `ClaimsTimestamp` (turbofish)                                                                                      | `TimestampGuardModified::from_request` |
-| `GuardTimestamp`         | `ClaimsTimestamp` (inferred annotation)                                                                            | `GuardTimestamp::from_request`         |
-| `GuardShare`             | none — resolves (share-table lookup minting `Claims::new_share`, falling back to `try_jwt_cookie_auth` → `Claims`) | —                                      |
-| `GuardReadOnlyMode`      | none — config flag, no token                                                                                       | —                                      |
+| Guard impl          | Decode target                                                                                                                    | Site                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `GuardAdmin`        | `ClaimsSession` (via `try_jwt_cookie_auth` → `decode_typed::<ClaimsSession>`) — no direct call in the impl                       | `try_jwt_cookie_auth`             |
+| `GuardUser`         | `ClaimsSession` (inferred annotation)                                                                                            | `GuardUser::from_request`         |
+| `GuardHash`         | `ClaimsAsset` (inferred annotation)                                                                                              | `GuardHash::from_request`         |
+| `GuardHashOriginal` | `ClaimsAsset` (inferred annotation)                                                                                              | `GuardHashOriginal::from_request` |
+| `GuardRenewHash`    | `ClaimsSnapshot` (turbofish)                                                                                                     | `GuardRenewHash::from_request`    |
+| `GuardSnapshot`     | `ClaimsSnapshot` (inferred annotation)                                                                                           | `GuardSnapshot::from_request`     |
+| `GuardPresenter`    | none — resolves (share-table lookup minting `ClaimsSession::new_share`, falling back to `try_jwt_cookie_auth` → `ClaimsSession`) | —                                 |
+| `GuardMutate`       | none — config flag, no token                                                                                                     | —                                 |
 
 Renewal handlers (not guard impls, out of the lint's scope) agree as well:
-`renew_hash_token` decodes `ClaimsHash` and `renew_timestamp_token` decodes
-`ClaimsTimestamp`, both with `VALIDATION_ALLOW_EXPIRED`. No disagreement was
+`renew_hash_token` decodes `ClaimsAsset` and `renew_timestamp_token` decodes
+`ClaimsSnapshot`, both with `VALIDATION_ALLOW_EXPIRED`. No disagreement was
 found — the lint is GREEN on day one.
 
 ## Example
@@ -54,8 +54,8 @@ impl<'r> FromRequest<'r> for GuardHash {
     type Error = GuardError;
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let token = extract_bearer_token(req)?;
-        // warning: `GuardHash` decodes `Claims` but the model assigns `ClaimsHash`
-        let claims: Claims = match decode_typed(token, &VALIDATION) {
+        // warning: `GuardHash` decodes `ClaimsSession` but the model assigns `ClaimsAsset`
+        let claims: ClaimsSession = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => return Outcome::Error((Status::Unauthorized, err.into())),
         };
@@ -67,7 +67,7 @@ impl<'r> FromRequest<'r> for GuardHash {
 Fixed code (silent):
 
 ```rust
-        let claims: ClaimsHash = match decode_typed(token, &VALIDATION) {
+        let claims: ClaimsAsset = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => return Outcome::Error((Status::Unauthorized, err.into())),
         };
@@ -77,7 +77,7 @@ Fixed code (silent):
 
 - Only direct `decode_typed` calls inside the `FromRequest` impl are
   checked; the transitive decode inside `try_jwt_cookie_auth` (used by
-  `GuardAuth`/`GuardShare`) is documented in the table, not
+  `GuardAdmin`/`GuardPresenter`) is documented in the table, not
   followed.
 - Handler-body decodes (the two `ALLOW_EXPIRED` renewal paths) are outside
   the lint's scope; they are covered by review against the table above.

@@ -3,7 +3,7 @@ use rocket::serde::json::Json;
 
 use crate::auth::invites::{self, InviteView};
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 
 /// List invite tokens' metadata.
@@ -22,7 +22,7 @@ use crate::router::{AppResult, GuardResult};
         tag = "auth",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -38,7 +38,7 @@ use crate::router::{AppResult, GuardResult};
     )
 ]
 #[get("/get/invites")]
-pub fn list_invites_handler(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<InviteView>>> {
+pub fn list_invites_handler(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Vec<InviteView>>> {
     let _ = auth?;
     Ok(Json(invites::list_invites()?))
 }

@@ -16,7 +16,7 @@ use crate::auth::user_store::UserStore;
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{Claims, Role, VALIDATION, decode_typed};
+use crate::router::auth::{ClaimsSession, Role, VALIDATION, decode_typed};
 use crate::router::{AppError, AppResult, ErrorKind};
 
 use super::users_register::UserSummary;
@@ -26,7 +26,7 @@ use super::users_register::UserSummary;
 pub const SESSION_COOKIE_NAME: &str = "jwt";
 
 /// Session lifetime in days. Matches the JWT `exp` minted in
-/// [`Claims::new_user`]; the cookie is a carrier, expiry is enforced by
+/// [`ClaimsSession::new_user`]; the cookie is a carrier, expiry is enforced by
 /// the signed claim, not by the cookie age.
 const SESSION_MAX_AGE_DAYS: i64 = 14;
 
@@ -310,7 +310,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
     let admin = record.admin;
     // The token is the session: it carries the role and the version it was
     // minted with. Nothing is written server-side.
-    let claims = Claims::new_user(user_id.to_string(), admin, record.ver);
+    let claims = ClaimsSession::new_user(user_id.to_string(), admin, record.ver);
     let token = claims.encode();
     let profile = UserSummary {
         user_id: user_id.to_string(),
@@ -519,7 +519,7 @@ pub fn logout(jar: &CookieJar<'_>) -> Status {
     let presented = jar
         .get(SESSION_COOKIE_NAME)
         .map(|cookie| cookie.value().to_string())
-        .and_then(|token| decode_typed::<Claims>(&token, &VALIDATION).ok());
+        .and_then(|token| decode_typed::<ClaimsSession>(&token, &VALIDATION).ok());
     if let Some(claims) = presented
         && let Role::User { .. } = &claims.role
     {
@@ -1450,9 +1450,12 @@ mod tests {
 
         // A token minted with a stale version is 401: the password or the
         // role changed, or the tokens were invalidated explicitly.
-        let stale =
-            crate::router::auth::Claims::new_user("s3c-live".to_string(), true, record.ver + 1)
-                .encode();
+        let stale = crate::router::auth::ClaimsSession::new_user(
+            "s3c-live".to_string(),
+            true,
+            record.ver + 1,
+        )
+        .encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", stale))
@@ -1485,7 +1488,7 @@ mod tests {
                     admin: true,
                 },
                 exp: 9_999_999_999,
-                typ: crate::router::auth::TokenType::Admin,
+                typ: crate::router::auth::TokenType::Session,
             };
             let legacy_token = jsonwebtoken::encode(
                 &jsonwebtoken::Header::default(),
@@ -1493,7 +1496,7 @@ mod tests {
                 &jsonwebtoken::EncodingKey::from_secret(&key),
             )
             .expect("encode legacy");
-            let res: anyhow::Result<crate::router::auth::Claims> =
+            let res: anyhow::Result<crate::router::auth::ClaimsSession> =
                 crate::router::auth::decode_typed(
                     &legacy_token,
                     &jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),

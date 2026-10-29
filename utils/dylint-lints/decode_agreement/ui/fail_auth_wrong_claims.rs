@@ -1,4 +1,4 @@
-// FAIL: `GuardAuth` decodes `ClaimsHash` but the model assigns `Claims`.
+// FAIL: `GuardAdmin` decodes `ClaimsAsset` but the model assigns `ClaimsSession`.
 
 pub mod request {
     pub trait FromRequest {
@@ -6,20 +6,20 @@ pub mod request {
     }
 }
 
-pub struct Claims(pub String);
-pub struct ClaimsHash(pub String);
+pub struct ClaimsSession(pub String);
+pub struct ClaimsAsset(pub String);
 
-pub struct GuardAuth;
+pub struct GuardAdmin;
 
 pub fn decode_typed<T>(token: &str) -> Result<T, String> {
     let _ = token;
     Err("stub".to_string())
 }
 
-impl request::FromRequest for GuardAuth {
+impl request::FromRequest for GuardAdmin {
     fn from_request(token: &str) -> Self {
-        let _claims: ClaimsHash = decode_typed(token).unwrap();
-        GuardAuth
+        let _claims: ClaimsAsset = decode_typed(token).unwrap();
+        GuardAdmin
     }
 }
 

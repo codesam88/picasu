@@ -7,7 +7,7 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::tasks::INDEX_COORDINATOR;
 use anyhow::Result;
@@ -50,7 +50,7 @@ pub struct RegenerateThumbnailForm<'r> {
         request_body(content_type = "multipart/form-data", content = Object),
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -72,11 +72,11 @@ pub struct RegenerateThumbnailForm<'r> {
 #[put("/put/regenerate-thumbnail-with-frame", data = "<form>")]
 pub async fn regenerate_thumbnail_with_frame(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     form: Result<Form<RegenerateThumbnailForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     let mut inner_form = match form {
         Ok(form) => form.into_inner(),
         Err(errors) => {

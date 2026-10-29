@@ -1,5 +1,5 @@
 use crate::openapi_components::Unauthorized;
-use crate::router::{AppError, AppResult, ErrorKind, GuardResult, auth::GuardAuth};
+use crate::router::{AppError, AppResult, ErrorKind, GuardResult, auth::GuardAdmin};
 use rocket::get;
 // use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -54,7 +54,7 @@ fn absolutize(p: &Path) -> PathBuf {
         ),
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -73,7 +73,7 @@ fn absolutize(p: &Path) -> PathBuf {
 ]
 #[get("/get/path-completion?<path>")]
 pub fn get_fs_completion(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
     path: Option<String>,
 ) -> AppResult<Json<FsCompletion>> {
     let _ = auth?;

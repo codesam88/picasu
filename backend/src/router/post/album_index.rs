@@ -4,8 +4,8 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album_index::{cancel_album_index, index_album, index_album_with_options};
 
@@ -38,7 +38,7 @@ pub struct IndexAlbumRequest {
         request_body = IndexAlbumRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -58,8 +58,8 @@ pub struct IndexAlbumRequest {
 ]
 #[post("/post/index/album", data = "<req>")]
 pub fn index_album_handler(
-    auth: GuardResult<GuardAuth>,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    read_only: GuardResult<GuardMutate>,
     req: Json<IndexAlbumRequest>,
 ) -> AppResult<Status> {
     let _ = auth?;
@@ -89,7 +89,7 @@ pub fn index_album_handler(
         tag = "index",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -106,7 +106,7 @@ pub fn index_album_handler(
     )
 ]
 #[post("/post/index/cancel")]
-pub fn cancel_album_index_handler(auth: GuardResult<GuardAuth>) -> AppResult<Status> {
+pub fn cancel_album_index_handler(auth: GuardResult<GuardAdmin>) -> AppResult<Status> {
     let _ = auth?;
     cancel_album_index()?;
     Ok(Status::Ok)

@@ -51,8 +51,8 @@ patterns:
   so a failed guard is caught and the handler propagates it with `?`; the guard
   list plus that propagation is the auditable authorization manifest of the
   API. A `GuardResult` binding whose rejection is not propagated leaves the
-  route enforcing nothing, which is why the propagation is machine-checked. Guards that carry a resolved share (`GuardShare`,
-  `GuardTimestamp`) are consumed as the witness: handlers derive the operation's
+  route enforcing nothing, which is why the propagation is machine-checked. Guards that carry a resolved share (`GuardPresenter`,
+  `GuardSnapshot`) are consumed as the witness: handlers derive the operation's
   target from the guard's claims rather than from the request body, so a share
   cannot act on another album.
 
@@ -84,7 +84,7 @@ attacks are excluded by construction.
 1. `POST /post/users/authenticate` takes `{ userId, password }`, trims the password,
    and verifies it against the user store (`<DATA_HOME>/auth/users.redb`) for
    that user id. A match mints a random `jti` (UUID v4) and sets a 14-day
-   `Claims { role: User { id, admin }, exp, jti, ver }` JWT in an HttpOnly
+   `ClaimsSession { role: User { id, admin }, exp, jti, ver }` JWT in an HttpOnly
    session cookie, returning the session profile `{ userId, admin }` in the
    body. **Nothing is written server-side**: the token is the session, and
    `ver` is the user's token version at mint time. Unknown users and wrong
@@ -98,7 +98,7 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    sees the token, so a future XSS cannot exfiltrate the session (R5). The
    client keeps only the `{ userId, admin }` profile from the login body in
    its session store for display.
-3. `GuardAuth` (and `GuardUser`) read the cookie, decode it with `VALIDATION`
+3. `GuardAdmin` (and `GuardUser`) read the cookie, decode it with `VALIDATION`
    (expiry enforced) and check it against the state the server keeps:
    the identity record (existence, role, token version) and the revocation
    list. A token whose `ver` is not the user's current version was
@@ -236,7 +236,7 @@ empty store — it never serves enrollment state.
 
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
 empty user store, `POST /post/users/authenticate` takes the unknown-user path
-(401) and guarded routes reject callers: `GuardAuth` routes answer 401 and
+(401) and guarded routes reject callers: `GuardAdmin` routes answer 401 and
 `GuardUser` routes answer 403 (a privilege condition, not a session
 failure — the SPA keeps its display state). No session exists
 pre-enrollment. Online enrollment of the first administrator opens only
@@ -261,11 +261,11 @@ do not decode.
 
 ### The three token types
 
-| Type              | Claims                                                               | TTL   | Minted by                        | Consumed by                                              |
-| ----------------- | -------------------------------------------------------------------- | ----- | -------------------------------- | -------------------------------------------------------- |
-| `Claims`          | `role` (User{id, admin} / Share(resolved)), `exp`, `typ: admin`      | 14 d  | login, share resolution          | `GuardAuth`, `GuardShare` (cookie fallback), `GuardUser` |
-| `ClaimsTimestamp` | `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`              | 300 s | `POST /get/prefetch`             | `GuardTimestamp`, `TimestampGuardModified`               |
-| `ClaimsHash`      | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                         |
+| Type             | ClaimsSession                                                        | TTL   | Minted by                        | Consumed by                                                   |
+| ---------------- | -------------------------------------------------------------------- | ----- | -------------------------------- | ------------------------------------------------------------- |
+| `ClaimsSession`  | `role` (User{id, admin} / Share(resolved)), `exp`, `typ: session`    | 14 d  | login, share resolution          | `GuardAdmin`, `GuardPresenter` (cookie fallback), `GuardUser` |
+| `ClaimsSnapshot` | `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`              | 300 s | `POST /get/prefetch`             | `GuardSnapshot`, `GuardRenewHash`                             |
+| `ClaimsAsset`    | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                              |
 
 All three are plain JWTs signed with the same `auth_key`. Each carries a `typ`
 claim and is decoded through a typed entry point that rejects a mismatched
@@ -277,7 +277,7 @@ What the server remembers about each of them — and why — is in
 
 ### Share resolution
 
-`GuardShare` tries three sources in order:
+`GuardPresenter` tries three sources in order:
 
 1. **Headers** `x-album-id` + `x-share-id` (both or neither; half-supplied is a
    400), plus `x-share-password` when the share has one.
@@ -287,7 +287,7 @@ What the server remembers about each of them — and why — is in
 
 `resolve_share_internal` looks up the album in `METADATA_TABLE`, pulls the share
 out of `shareList`, and calls `validate_share_access`: expiry (`exp > 0`) and
-password equality. On success it builds `Claims::new_share(resolved_share)` —
+password equality. On success it builds `ClaimsSession::new_share(resolved_share)` —
 the share record, including its policy flags, is **embedded in the token** for
 the rest of the request chain. The share record is re-read from the database on
 every request, so disabling a share takes effect immediately.
@@ -311,21 +311,21 @@ cannot destroy it.
 ### The media-serving chain
 
 ```
-GuardShare (identity: who)
-   └─ POST /get/prefetch ──────────────► ClaimsTimestamp (300 s, share policy embedded)
+GuardPresenter (identity: who)
+   └─ POST /get/prefetch ──────────────► ClaimsSnapshot (300 s, share policy embedded)
                                             │
-                                            ├─ GET /get/get-data ── rows + ClaimsHash per asset
+                                            ├─ GET /get/get-data ── rows + ClaimsAsset per asset
                                             │       (allowOriginal := showDownload)
                                             ├─ GET /get/metadata, get-rows, get-scroll-bar
                                             │
-                                            └─ renew-timestamp-token ─► fresh ClaimsTimestamp
+                                            └─ renew-timestamp-token ─► fresh ClaimsSnapshot
 
-ClaimsHash ─► GET /object/compressed/<hash>.jpg   (GuardShare + GuardHash:
+ClaimsAsset ─► GET /object/compressed/<hash>.jpg   (GuardPresenter + GuardHash:
                                                      path segment must equal `hash` claim)
-           ─► GET /object/imported/<assetId>.ext  (GuardShare + GuardHashOriginal:
+           ─► GET /object/imported/<assetId>.ext  (GuardPresenter + GuardHashOriginal:
                                                      `allowOriginal` + `assetId` claim)
-           ─► renew-hash-token ─► fresh ClaimsHash (presenter must hold a valid
-                                                     ClaimsTimestamp with matching timestamp)
+           ─► renew-hash-token ─► fresh ClaimsAsset (presenter must hold a valid
+                                                     ClaimsSnapshot with matching timestamp)
 ```
 
 The frontend service worker (`serviceWorker.ts`) injects the `Authorization:
@@ -337,13 +337,13 @@ expiry.
 
 | Guard               | Accepts                                                                                   | Used by                                                                                                                                                                    |
 | ------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role                                                      | config write/export, auth-key reset, user management (list/set-admin), invites, index jobs, shares, fs completion, album-index status, test probes                         |
+| `GuardAdmin`        | cookie of a user with the admin role                                                      | config write/export, auth-key reset, user management (list/set-admin), invites, index jobs, shares, fs completion, album-index status, test probes                         |
 | `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected                    | `PUT /put/users/password`, album/tag lists (`GET /get/get-tags`, `GET /get/get-albums`), content writes (upload, move, trash, delete, describe, cover, rotate, regenerate) |
-| `GuardShare`        | share headers/query, or cookie of any live authenticated user (admin or not)              | prefetch, get-config, image serving (with `GuardHash`); shares are read-only, so no mutating route takes it                                                                |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter               | get-data, get-metadata, get-scroll-bar                                                                                                                                     |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                               | `GET /object/compressed/...`                                                                                                                                               |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim                             | `GET /object/imported/...`                                                                                                                                                 |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                                | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
+| `GuardPresenter`    | share headers/query, or cookie of any live authenticated user (admin or not)              | prefetch, get-config, image serving (with `GuardHash`); shares are read-only, so no mutating route takes it                                                                |
+| `GuardSnapshot`     | `ClaimsSnapshot` bearer whose `timestamp` claim equals the query parameter                | get-data, get-metadata, get-scroll-bar                                                                                                                                     |
+| `GuardHash`         | `ClaimsAsset` whose `hash` claim equals the URL path segment                              | `GET /object/compressed/...`                                                                                                                                               |
+| `GuardHashOriginal` | `ClaimsAsset` with `allowOriginal` + matching `asset_id` claim                            | `GET /object/imported/...`                                                                                                                                                 |
+| `GuardMutate`       | rejects with 405 when `readOnlyMode` is on                                                | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
 | `GuardReauth`       | valid session plus the account password in the `X-Picasu-Password` header (403 otherwise) | `POST /post/admin/config/disable-read-only` (lift) and `PUT /put/users/password` (self-change) — re-authentication for privileged operations                               |
 
 The OpenAPI contract now declares its four security schemes — `cookie_jwt`,
@@ -360,10 +360,10 @@ why each row sits where it does.
 
 **Principle.** Separate resources by authority: every endpoint handles one
 resource, and admin resources are separate endpoints — never one endpoint
-with per-role branches inside it. `GuardAuth` stays admin-only and keeps
+with per-role branches inside it. `GuardAdmin` stays admin-only and keeps
 its shape; the split happens by routing each resource to the guard that
 matches its authority (`GuardUser` for own-identity and user-level reads,
-extended-`GuardShare` for share-scoped reads, `GuardAuth` for manage
+extended-`GuardPresenter` for share-scoped reads, `GuardAdmin` for manage
 acts), never by weakening a guard (AUTH-11). Manage acts are identity
 administration, global config and secrets, repository-wide jobs, public
 exposure (shares), and host-path disclosure. **Content CRUD is a user act:**
@@ -387,25 +387,25 @@ and stays as is — no user/self rework.
 **Demote to user-level (any live authenticated user).** Each row names the
 prerequisite that makes the demotion safe.
 
-| Routes                                                                   | New tier                                                                                                   | Why + prerequisite                                                                                                                                                                                                                                                                                                         |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /get/prefetch` (+ `renew-timestamp-token`, which shares the guard) | `GuardShare` with the cookie fallback extended from admin-only to any live `User`                          | Grid reads are not manage acts; without this no viewer loads anything (F1). Prereq: model §4 records viewer snapshots as policy-free (unscoped, like admin snapshots today); trashed exclusion stays in the query filter. `get-data`/`get-rows`/`get-scroll-bar`/`get-metadata` need no change — the bearer chain follows. |
-| `GET /object/compressed/*`, `GET /object/imported/*`                     | same fallback fix (asset bearer + viewer cookie must accept)                                               | Viewers present per-asset bearer tokens; the cookie leg must not 401 them. Share path unchanged.                                                                                                                                                                                                                           |
-| `GET /get/get-tags`                                                      | `GuardUser`                                                                                                | Payload is tag counts; the tag filter UI needs it for every signed-in user.                                                                                                                                                                                                                                                |
-| `GET /get/get-albums`                                                    | `GuardUser`, after share passwords stop leaving the backend                                                | Viewers need the album tree to navigate. `share_list` no longer carries `password` at any tier (presence stays visible as `hasPassword`); `edit_share` keeps the existing secret when the field is absent or `null` and sets it when a string is sent.                                                                     |
-| Config reads (`GET /get/config`)                                         | `GuardShare` with the cookie fallback extended from admin-only to any live `User` — no payload work needed | The response now carries zero admin-only fields (`imagePath` is host-only and unreadable via the API, `uploadFolder` is relative, `hasAuthKey`/`disableImg` are deleted, the rest are operational flags). Demotion is a pure gate change; share path unchanged.                                                            |
-| `PUT /put/edit_tag`, `PUT /put/edit_rating`                              | caller-can-read (authenticated user)                                                                       | User-authored metadata on visible assets; same tier as the `GuardUser`-gated title/description writes.                                                                                                                                                                                                                     |
-| `POST /post/upload`                                                      | `GuardUser` (any live authenticated user; the share path was removed when shares became read-only)         | Users upload to the ingress flow. The `showUpload` share flag is recorded but no longer consulted.                                                                                                                                                                                                                         |
-| `PUT /put/assign_album` (files and albums)                               | `GuardUser`                                                                                                | Moving files — and albums — between albums is an organizer act the design already grants users (`fs::rename` unit moves, never merges). Read-only mode still gates it.                                                                                                                                                     |
-| `DELETE /delete/delete-data` (files and albums)                          | `GuardUser`                                                                                                | Confirmation-gated deletes are user flows in the design (single delete, recursive album delete with descendant cleanup). Durable by nature — accepted under the trusted-family threat model; the trash-first UI flow stays the default path.                                                                               |
-| `PUT /put/edit_flags` (trash flag)                                       | `GuardUser`                                                                                                | Trash/untrash is the reversible half of the user delete flow. Caveat, recorded: the flag is shared gallery state, so one user's trash hides the asset from everyone — accepted as the shared-gallery semantic, same as delete.                                                                                             |
-| `POST /post/create_dir_album`, `PUT /put/set_album_cover`                | `GuardUser`                                                                                                | User organization: creating albums and setting covers (the design grants users pretty names and album images). Directory creation is cheap and non-destructive.                                                                                                                                                            |
-| `PUT /put/rotate-image`, `PUT /put/regenerate-thumbnail-with-frame`      | `GuardUser`                                                                                                | Content manipulation (rotation) and derived-cache rebuild; both read-only-gated. Rotation rewrites original bytes — user-gated, same durability class as delete.                                                                                                                                                           |
+| Routes                                                                   | New tier                                                                                                       | Why + prerequisite                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /get/prefetch` (+ `renew-timestamp-token`, which shares the guard) | `GuardPresenter` with the cookie fallback extended from admin-only to any live `User`                          | Grid reads are not manage acts; without this no viewer loads anything (F1). Prereq: model §4 records viewer snapshots as policy-free (unscoped, like admin snapshots today); trashed exclusion stays in the query filter. `get-data`/`get-rows`/`get-scroll-bar`/`get-metadata` need no change — the bearer chain follows. |
+| `GET /object/compressed/*`, `GET /object/imported/*`                     | same fallback fix (asset bearer + viewer cookie must accept)                                                   | Viewers present per-asset bearer tokens; the cookie leg must not 401 them. Share path unchanged.                                                                                                                                                                                                                           |
+| `GET /get/get-tags`                                                      | `GuardUser`                                                                                                    | Payload is tag counts; the tag filter UI needs it for every signed-in user.                                                                                                                                                                                                                                                |
+| `GET /get/get-albums`                                                    | `GuardUser`, after share passwords stop leaving the backend                                                    | Viewers need the album tree to navigate. `share_list` no longer carries `password` at any tier (presence stays visible as `hasPassword`); `edit_share` keeps the existing secret when the field is absent or `null` and sets it when a string is sent.                                                                     |
+| Config reads (`GET /get/config`)                                         | `GuardPresenter` with the cookie fallback extended from admin-only to any live `User` — no payload work needed | The response now carries zero admin-only fields (`imagePath` is host-only and unreadable via the API, `uploadFolder` is relative, `hasAuthKey`/`disableImg` are deleted, the rest are operational flags). Demotion is a pure gate change; share path unchanged.                                                            |
+| `PUT /put/edit_tag`, `PUT /put/edit_rating`                              | caller-can-read (authenticated user)                                                                           | User-authored metadata on visible assets; same tier as the `GuardUser`-gated title/description writes.                                                                                                                                                                                                                     |
+| `POST /post/upload`                                                      | `GuardUser` (any live authenticated user; the share path was removed when shares became read-only)             | Users upload to the ingress flow. The `showUpload` share flag is recorded but no longer consulted.                                                                                                                                                                                                                         |
+| `PUT /put/assign_album` (files and albums)                               | `GuardUser`                                                                                                    | Moving files — and albums — between albums is an organizer act the design already grants users (`fs::rename` unit moves, never merges). Read-only mode still gates it.                                                                                                                                                     |
+| `DELETE /delete/delete-data` (files and albums)                          | `GuardUser`                                                                                                    | Confirmation-gated deletes are user flows in the design (single delete, recursive album delete with descendant cleanup). Durable by nature — accepted under the trusted-family threat model; the trash-first UI flow stays the default path.                                                                               |
+| `PUT /put/edit_flags` (trash flag)                                       | `GuardUser`                                                                                                    | Trash/untrash is the reversible half of the user delete flow. Caveat, recorded: the flag is shared gallery state, so one user's trash hides the asset from everyone — accepted as the shared-gallery semantic, same as delete.                                                                                             |
+| `POST /post/create_dir_album`, `PUT /put/set_album_cover`                | `GuardUser`                                                                                                    | User organization: creating albums and setting covers (the design grants users pretty names and album images). Directory creation is cheap and non-destructive.                                                                                                                                                            |
+| `PUT /put/rotate-image`, `PUT /put/regenerate-thumbnail-with-frame`      | `GuardUser`                                                                                                    | Content manipulation (rotation) and derived-cache rebuild; both read-only-gated. Rotation rewrites original bytes — user-gated, same durability class as delete.                                                                                                                                                           |
 
 **Explicitly unchanged.** `register`/`bootstrap`/`authenticate`/`logout`/`server-info`/`self/profile`/`users/password` are already correctly tiered. Viewer reads and writes are gallery-scoped by identity; shares are read-only and album-scoped, and the two never mix (AUTH-6). Disk-fill/deletion by any authenticated user is accepted under the self-hosted trusted-family threat model (design); the UI keeps confirmation gates and the trash-first flow.
 
 **Status.** Landed: viewer reads (cookie fallback accepts any live user,
-`GuardUser` on tags/albums, `GuardShare`-gated reads with zero admin-only
+`GuardUser` on tags/albums, `GuardPresenter`-gated reads with zero admin-only
 payload), the content-write demotions (`upload`, `assign`, `delete-data`,
 `edit_flags`, `create_dir_album`, `set_album_cover`, `rotate-image`,
 `regenerate-thumbnail`, `edit_tag`, `edit_rating`), share passwords leaving
@@ -432,7 +432,7 @@ boundary; nothing else is outstanding.
   `picasu-cmd user list|add|mod|del|passwd|invalidate` administers it (see
   [Admin CLI](admin-cli.md)); hashes are never exported. Existence, role
   and token version are re-checked per request for
-  `GuardAuth`/`GuardShare`/`GuardUser`, so a removal, a demotion or an
+  `GuardAdmin`/`GuardPresenter`/`GuardUser`, so a removal, a demotion or an
   invalidated token takes effect before token expiry.
 - **Export** — `GET /get/config/export` returns the full serialized
   configuration to an admin, and `GET /get/admin/config/export` returns the
@@ -447,13 +447,13 @@ must.** A credential that the server keeps no state for can be checked on
 its own; a credential whose server-side record exists can be listed and
 revoked by id.
 
-| Credential                                        | Carries                                        | Server state about it                            |
-| ------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
-| identity token (`Claims` with `Role::User`, 14 d) | role, `exp`, `jti`, `ver`                      | the identity record + the revocation list        |
-| share token (`Claims` with `Role::Share`, 14 d)   | the share record and its album                 | the album's `shareList`                          |
-| snapshot token (`ClaimsTimestamp`, 300 s)         | the share policy, the timestamp, `exp`         | none                                             |
-| serving token (`ClaimsHash`, 300 s)               | the hash, the asset id, `allowOriginal`, `exp` | none                                             |
-| invite token (128-bit bearer, 7 d by default)     | nothing — it _is_ the credential               | the invite record (hash-keyed, until it expires) |
+| Credential                                               | Carries                                        | Server state about it                            |
+| -------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| identity token (`ClaimsSession` with `Role::User`, 14 d) | role, `exp`, `jti`, `ver`                      | the identity record + the revocation list        |
+| share token (`ClaimsSession` with `Role::Share`, 14 d)   | the share record and its album                 | the album's `shareList`                          |
+| snapshot token (`ClaimsSnapshot`, 300 s)                 | the share policy, the timestamp, `exp`         | none                                             |
+| serving token (`ClaimsAsset`, 300 s)                     | the hash, the asset id, `allowOriginal`, `exp` | none                                             |
+| invite token (128-bit bearer, 7 d by default)            | nothing — it _is_ the credential               | the invite record (hash-keyed, until it expires) |
 
 **The identity token is stateless.** The server keeps no session list: a
 token is accepted because it carries the role, the expiry and the user's
@@ -594,7 +594,7 @@ The architecture's core decisions verify well under attack:
 
 - **Algorithm pinning** — HS256-only validation with tests guarding it; no
   algorithm-confusion path (token types are distinguished by claim, not algorithm).
-- **Snapshot binding** — `GuardTimestamp` requires the query `timestamp` to
+- **Snapshot binding** — `GuardSnapshot` requires the query `timestamp` to
   equal the signed claim, so a token for one snapshot cannot read another;
   cross-snapshot access did not succeed in testing.
 - **Per-asset binding** — `GuardHash` compares the URL path segment against the
@@ -609,7 +609,7 @@ The architecture's core decisions verify well under attack:
   with SameSite=Strict this gives a credible CSRF/XSS-theft posture for the
   cookie.
 - **Rocket `Shield` defaults** are attached (`nosniff`, `X-Frame-Options:
-SAMEORIGIN`, `Permissions-Policy`), and `GuardReadOnlyMode` blocks mutations
+SAMEORIGIN`, `Permissions-Policy`), and `GuardMutate` blocks mutations
   while read-only mode is on. Read-only mode is lifted only through
   `POST /post/admin/config/disable-read-only` (admin-only, not read-only-
   gated) and requires the admin password again via the

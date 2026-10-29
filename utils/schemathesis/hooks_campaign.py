@@ -3,7 +3,7 @@
 One module serves several runs; modes are env-gated:
 
 - ``FUZZ_SHARE_HEADERS=1``  injects the seeded share headers on the six
-  GuardShare-guarded operations.
+  GuardPresenter-guarded operations.
 - ``FUZZ_MARKERS=1``        installs the per-operation probes below; the
   ``*_refused`` checks only assert when their marker header is present.
 - ``FUZZ_READONLY=1``       ``readonly_405`` asserts every mutating operation

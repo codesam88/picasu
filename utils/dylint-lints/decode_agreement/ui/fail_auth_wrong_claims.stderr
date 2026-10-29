@@ -1,8 +1,8 @@
-warning: `GuardAuth` decodes `ClaimsHash` but the model assigns `Claims`
-  --> $DIR/fail_auth_wrong_claims.rs:21:35
+warning: `GuardAdmin` decodes `ClaimsAsset` but the model assigns `ClaimsSession`
+  --> $DIR/fail_auth_wrong_claims.rs:21:36
    |
-LL |         let _claims: ClaimsHash = decode_typed(token).unwrap();
-   |                                   ^^^^^^^^^^^^^^^^^^^
+LL |         let _claims: ClaimsAsset = decode_typed(token).unwrap();
+   |                                    ^^^^^^^^^^^^^^^^^^^
    |
    = note: `#[warn(decode_agreement)]` on by default
 

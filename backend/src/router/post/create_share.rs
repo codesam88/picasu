@@ -4,8 +4,8 @@ use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
 use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::storage::db::TREE;
 use crate::{router::GuardResult, storage::db::METADATA_TABLE};
 
@@ -51,7 +51,7 @@ pub struct CreateShare {
         request_body = CreateShare,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -72,12 +72,12 @@ pub struct CreateShare {
 ]
 #[post("/post/create_share", data = "<create_share>")]
 pub async fn create_share(
-    auth: GuardResult<GuardAuth>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
     create_share: Json<CreateShare>,
 ) -> AppResult<String> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
         let txn = TREE

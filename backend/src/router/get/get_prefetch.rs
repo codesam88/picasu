@@ -7,8 +7,8 @@ use crate::model::response::ReducedData;
 use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
 use crate::router::GuardResult;
-use crate::router::auth::ClaimsTimestamp;
-use crate::router::auth::GuardShare;
+use crate::router::auth::ClaimsSnapshot;
+use crate::router::auth::GuardPresenter;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::cache::next_snapshot_id;
@@ -81,7 +81,7 @@ fn check_query_cache(
     if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
         let duration = format!("{:?}", find_cache_start_time.elapsed());
         debug!(duration = &*duration; "Query cache found");
-        let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
+        let claims = ClaimsSnapshot::new(mem::take(resolved_share_option), prefetch.timestamp);
         return Some(Json(PrefetchReturn::new(
             prefetch,
             claims.encode(),
@@ -215,7 +215,7 @@ fn create_json_response(
     BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
 
     // Build response
-    let claims = ClaimsTimestamp::new(resolved_share_option, timestamp_millis);
+    let claims = ClaimsSnapshot::new(resolved_share_option, timestamp_millis);
     let json = Json(PrefetchReturn::new(
         prefetch,
         claims.encode(),
@@ -303,7 +303,7 @@ fn execute_prefetch_logic(
         request_body = serde_json::Value,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardShare"],
+            "guards": ["GuardPresenter"],
             "tokenTyp": ["session", "share"],
             "admin": "any",
             "shareScope": "own-album",
@@ -323,7 +323,7 @@ fn execute_prefetch_logic(
 ]
 #[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
 pub async fn prefetch(
-    auth_guard: GuardResult<GuardShare>,
+    auth_guard: GuardResult<GuardPresenter>,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {

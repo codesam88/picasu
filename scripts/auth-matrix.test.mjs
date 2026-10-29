@@ -134,7 +134,7 @@ test('human table has name, role, tokens, and guards columns', (t) => {
   assert.ok(!norm.includes('| Typ |'), 'no abbreviated Typ header')
   assert.ok(
     norm.includes(
-      '`PUT /put/set_album_title` | `set_album_title` | any(admin, user) | session | — | GuardUser, GuardReadOnlyMode |'
+      '`PUT /put/set_album_title` | `set_album_title` | any(admin, user) | session | — | GuardUser, GuardMutate |'
     ),
     'share-scoped editor row'
   )

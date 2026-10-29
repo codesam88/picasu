@@ -5,7 +5,7 @@ use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_me
 use crate::storage::db::open_tree_snapshot_table;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::BATCH_COORDINATOR;
@@ -46,7 +46,7 @@ pub struct SetUserDefinedDescription {
         request_body = SetUserDefinedDescription,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -72,11 +72,11 @@ pub struct SetUserDefinedDescription {
 )]
 pub async fn set_user_defined_description(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     set_user_defined_description: Json<SetUserDefinedDescription>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;

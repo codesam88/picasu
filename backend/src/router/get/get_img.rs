@@ -2,7 +2,7 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::openapi_components::Unauthorized;
 use crate::router::{
     AppResult, GuardResult,
-    auth::{GuardHash, GuardHashOriginal, GuardShare},
+    auth::{GuardHash, GuardHashOriginal, GuardPresenter},
 };
 use crate::storage::files::get_data_path;
 use rocket::fs::NamedFile;
@@ -55,7 +55,7 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
         ),
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = []), ("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardShare", "GuardHash"],
+            "guards": ["GuardPresenter", "GuardHash"],
             "tokenTyp": ["session", "share", "asset"],
             "admin": "any",
             "shareScope": "own-album",
@@ -75,7 +75,7 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
 ]
 #[get("/object/compressed/<file_path..>")]
 pub async fn compressed_file(
-    auth_guard: GuardResult<GuardShare>,
+    auth_guard: GuardResult<GuardPresenter>,
     hash_guard: GuardResult<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
@@ -150,7 +150,7 @@ pub async fn compressed_file(
         ),
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = []), ("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardShare", "GuardHashOriginal"],
+            "guards": ["GuardPresenter", "GuardHashOriginal"],
             "tokenTyp": ["session", "share", "asset"],
             "admin": "any",
             "shareScope": "own-album",
@@ -170,7 +170,7 @@ pub async fn compressed_file(
 ]
 #[get("/object/imported/<file_path..>")]
 pub async fn imported_file(
-    auth: GuardResult<GuardShare>,
+    auth: GuardResult<GuardPresenter>,
     hash_guard: GuardResult<GuardHashOriginal>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {

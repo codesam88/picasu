@@ -30,12 +30,12 @@ pub struct UnauthorizedBody {
 /// The shared `401 Unauthorized` response, referenced from `#[utoipa::path]`
 /// annotations as `(status = 401, response = Unauthorized)`.
 ///
-/// Operations behind an authentication guard (`GuardAuth`, `GuardShare`,
-/// `GuardTimestamp`, `GuardHash`, `GuardHashOriginal`,
-/// `TimestampGuardModified`) or that reject invalid credentials in the handler
+/// Operations behind an authentication guard (`GuardAdmin`, `GuardPresenter`,
+/// `GuardSnapshot`, `GuardHash`, `GuardHashOriginal`,
+/// `GuardRenewHash`) or that reject invalid credentials in the handler
 /// body return this response.
 ///
-/// `GuardReadOnlyMode` is deliberately not covered: it answers `405`, not `401`.
+/// `GuardMutate` is deliberately not covered: it answers `405`, not `401`.
 pub struct Unauthorized;
 
 impl<'__r> utoipa::ToResponse<'__r> for Unauthorized {

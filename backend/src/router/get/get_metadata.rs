@@ -9,7 +9,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::clear_abstract_data_metadata;
 use crate::process::transitor::compose_by_asset_id;
-use crate::router::auth::GuardTimestamp;
+use crate::router::auth::GuardSnapshot;
 use crate::router::{AppResult, GuardResult};
 
 /// Serve the full metadata of a single asset.
@@ -38,7 +38,7 @@ use crate::router::{AppResult, GuardResult};
         ),
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardTimestamp"],
+            "guards": ["GuardSnapshot"],
             "tokenTyp": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
@@ -57,7 +57,7 @@ use crate::router::{AppResult, GuardResult};
 ]
 #[get("/get/metadata/<asset_id>?<timestamp>")]
 pub async fn get_metadata(
-    guard_timestamp: GuardResult<GuardTimestamp>,
+    guard_timestamp: GuardResult<GuardSnapshot>,
     asset_id: &str,
     #[allow(unused_variables)] timestamp: i64,
 ) -> AppResult<Json<AbstractData>> {

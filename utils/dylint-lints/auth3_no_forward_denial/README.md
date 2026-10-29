@@ -35,7 +35,7 @@ status with a wrong body. Two proven incidents on this tree (both in
   `allow_original` returned `Forward(Unauthorized)`. The denied request
   fell through to the rank-11 `spa_fallback` GET catch-all, which served
   the SPA shell (200) instead of the declared 401.
-- `TimestampGuardModified::from_request` (2 sites, one cause): a missing
+- `GuardRenewHash::from_request` (2 sites, one cause): a missing
   or undecodable bearer token returned `Forward(Unauthorized)`. The guard
   is consumed directly by `POST /post/renew-hash-token` (no ranked
   alternative route), so denial surfaced as 404 instead of the documented 401.
@@ -52,7 +52,7 @@ suppression lives in the lint.
 Violating code (warns on the `Outcome::Forward` expression):
 
 ```rust
-impl<'r> FromRequest<'r> for GuardReadOnlyMode {
+impl<'r> FromRequest<'r> for GuardMutate {
     type Error = GuardError;
     async fn from_request(_req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         if read_only {
@@ -60,7 +60,7 @@ impl<'r> FromRequest<'r> for GuardReadOnlyMode {
             // denial must be `Outcome::Error`, `Forward` only selects the next ranked route
             return Outcome::Forward(Status::MethodNotAllowed);
         }
-        Outcome::Success(GuardReadOnlyMode)
+        Outcome::Success(GuardMutate)
     }
 }
 ```

@@ -7,7 +7,7 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::tasks::INDEX_COORDINATOR;
 use anyhow::Result;
@@ -44,7 +44,7 @@ pub struct RotateImageRequest {
         request_body = RotateImageRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -67,11 +67,11 @@ pub struct RotateImageRequest {
 #[put("/put/rotate-image", data = "<request>")]
 pub async fn rotate_image(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     request: Json<RotateImageRequest>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     let _asset_id = ArrayString::<64>::from(&request.asset_id)
         .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid asset_id length or format"))?;

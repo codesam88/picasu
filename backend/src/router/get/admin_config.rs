@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::config::config_tier_table;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 
 /// One annotated configuration field as returned by `GET /get/admin/config`.
@@ -180,7 +180,7 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
     tag = "config",
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -195,7 +195,7 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
 )]
 #[get("/get/admin/config")]
 pub fn get_admin_config_handler(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
 ) -> AppResult<Json<Vec<ConfigFieldEntry>>> {
     let _ = auth?;
     let entries = crate::model::config::with_config(|config| {
@@ -236,7 +236,7 @@ pub fn get_admin_config_handler(
     tag = "config",
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -251,7 +251,7 @@ pub fn get_admin_config_handler(
 )]
 #[get("/get/admin/config/export")]
 pub fn get_admin_config_export_handler(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
 ) -> AppResult<Json<AdminConfigExportResponse>> {
     let _ = auth?;
     let config = crate::model::config::with_config(|c| RuntimeConfigDocument {

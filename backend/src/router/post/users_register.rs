@@ -7,7 +7,7 @@ use crate::auth::invites;
 use crate::auth::users::{self, validate_new_password, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{GuardAuth, GuardReadOnlyMode};
+use crate::router::auth::{GuardAdmin, GuardMutate};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// Summary of a user record. Password hashes are never exported.
@@ -59,7 +59,7 @@ pub struct RegisterRequest {
         request_body = RegisterRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -82,8 +82,8 @@ pub struct RegisterRequest {
 ]
 #[post("/post/users/register", data = "<body>")]
 pub async fn register_user_handler(
-    auth: GuardResult<GuardAuth>,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    read_only: GuardResult<GuardMutate>,
     body: Json<RegisterRequest>,
 ) -> AppResult<Json<UserSummary>> {
     let _ = read_only?;

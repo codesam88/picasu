@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{model::abstract_data::AbstractData, router::auth::ClaimsHash};
+use crate::{model::abstract_data::AbstractData, router::auth::ClaimsAsset};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,10 +61,10 @@ impl DataBaseTimestampReturn {
         let timestamp = abstract_data.compute_timestamp(priority_list);
         let token = match &abstract_data {
             AbstractData::Image(img) => {
-                ClaimsHash::new(img.object.id, asset_id, token_timestamp, allow_original).encode()
+                ClaimsAsset::new(img.object.id, asset_id, token_timestamp, allow_original).encode()
             }
             AbstractData::Video(vid) => {
-                ClaimsHash::new(vid.object.id, asset_id, token_timestamp, allow_original).encode()
+                ClaimsAsset::new(vid.object.id, asset_id, token_timestamp, allow_original).encode()
             }
             AbstractData::Album(album) => {
                 // Album cover compressed path uses the cover's content hash.
@@ -74,7 +74,7 @@ impl DataBaseTimestampReturn {
                 // media asset, so original access would resolve to nothing.
                 let token_hash =
                     cover_content_hash.unwrap_or(album.metadata.cover.unwrap_or(asset_id));
-                ClaimsHash::new(token_hash, asset_id, token_timestamp, false).encode()
+                ClaimsAsset::new(token_hash, asset_id, token_timestamp, false).encode()
             }
         };
         let cover_hash = cover_content_hash.map(|h| h.to_string());

@@ -81,7 +81,7 @@ pub fn create_share(
 }
 
 /// `POST /get/prefetch` authenticated as a share. Returns the snapshot id, the
-/// `ClaimsTimestamp` token, and the located row index (if any).
+/// `ClaimsSnapshot` token, and the located row index (if any).
 pub fn prefetch_as_share(
     client: &Client,
     album_id: &str,
@@ -122,7 +122,7 @@ pub fn get_data_rows(client: &Client, ts: i64, snapshot_token: &str, end: usize)
     resp.into_json().expect("get-data json")
 }
 
-/// The per-asset `ClaimsHash` token in the first `get-data` row.
+/// The per-asset `ClaimsAsset` token in the first `get-data` row.
 pub fn get_data_asset_token(client: &Client, ts: i64, snapshot_token: &str) -> String {
     get_data_rows(client, ts, snapshot_token, 1)[0]["token"]
         .as_str()

@@ -11,7 +11,7 @@ import { IsolationId, UnifiedData } from '@type/types'
  * (Phase 14 lean payload), so the sidebar, detail view, and edit-dialog prefill
  * fetch them on demand here. Auth mirrors get-data: the prefetch timestamp
  * token as a Bearer header, plus the matching `timestamp` query parameter
- * required by GuardTimestamp.
+ * required by GuardSnapshot.
  */
 export async function fetchAssetMetadata(
   assetId: string,

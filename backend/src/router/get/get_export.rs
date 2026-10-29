@@ -2,7 +2,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::model::asset::AssetRecord;
 use crate::model::metadata_record::compose_abstract_data;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
 use redb::{ReadableDatabase, ReadableTable};
@@ -32,7 +32,7 @@ pub struct ExportEntry {
         tag = "timeline",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -49,7 +49,7 @@ pub struct ExportEntry {
     )
 ]
 #[get("/get/get-export")]
-pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
+pub fn get_export(auth: GuardResult<GuardAdmin>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
     let Ok(read_txn) = TREE.in_disk.begin_read() else {
         return Err(crate::error::AppError::new(

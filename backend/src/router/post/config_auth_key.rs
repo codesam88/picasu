@@ -5,7 +5,7 @@ use rocket::serde::json::Json;
 use serde::Serialize;
 
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 
 /// Result of rotating the JWT signing key. Always true after a successful
@@ -31,7 +31,7 @@ pub struct AuthKeyResetResponse {
         tag = "config",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -48,7 +48,7 @@ pub struct AuthKeyResetResponse {
 ]
 #[post("/post/config/auth-key/reset")]
 pub fn reset_auth_key_handler(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
 ) -> AppResult<Json<AuthKeyResetResponse>> {
     use crate::auth::secret_key;
     use crate::model::config::{APP_CONFIG, generate_secret_key};

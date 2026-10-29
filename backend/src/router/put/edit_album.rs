@@ -5,7 +5,7 @@ use crate::model::asset::{AssetKind, AssetRecord};
 use crate::model::metadata_record::{compose_abstract_data, to_metadata_record};
 use crate::openapi_components::Unauthorized;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::ASSET_BY_ID;
@@ -120,7 +120,7 @@ pub struct SetAlbumCover {
         request_body = SetAlbumCover,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -143,11 +143,11 @@ pub struct SetAlbumCover {
 #[put("/put/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     set_album_cover: Json<SetAlbumCover>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let set_album_cover_inner = set_album_cover.into_inner();
@@ -251,7 +251,7 @@ pub struct SetAlbumTitle {
         request_body = SetAlbumTitle,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -274,11 +274,11 @@ pub struct SetAlbumTitle {
 #[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     let set_album_title_inner = set_album_title.into_inner();
     let album_id = set_album_title_inner.album_id;

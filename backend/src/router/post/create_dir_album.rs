@@ -3,7 +3,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::{
     get_dir_path_for_album, get_or_create_dir_album, mark_album_for_update,
 };
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::INDEX_COORDINATOR;
@@ -40,7 +40,7 @@ pub struct CreateDirAlbumData {
         request_body = CreateDirAlbumData,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -63,11 +63,11 @@ pub struct CreateDirAlbumData {
 #[post("/post/create_dir_album", format = "json", data = "<json_data>")]
 pub async fn create_dir_album(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<CreateDirAlbumData>,
 ) -> AppResult<String> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     let data = json_data.into_inner();
     let parent_album_id = data.parent_album_id;

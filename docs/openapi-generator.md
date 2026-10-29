@@ -547,12 +547,12 @@ comparison that has stopped comparing is detected at all. The tests are the
 self-checks; the flag is the gate. The asymmetry of the rule means the test build
 cannot be the gate — it serves a different table than the shipped one.
 
-### Why `disable-read-only` is the only `GuardReadOnlyMode` exception
+### Why `disable-read-only` is the only `GuardMutate` exception
 
-Every mutating route carries `GuardReadOnlyMode`, so the kill-switch refuses
+Every mutating route carries `GuardMutate`, so the kill-switch refuses
 writes while it is on. The lift operation
 (`POST /post/admin/config/disable-read-only`) is the sole exception: it must
-stay callable while the mode is on, and it is gated by `GuardAuth` plus
+stay callable while the mode is on, and it is gated by `GuardAdmin` plus
 `GuardReauth` (the `X-Picasu-Password` header) instead.
 
 ## Testing the gate

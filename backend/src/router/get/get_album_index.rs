@@ -2,7 +2,7 @@ use rocket::get;
 use rocket::serde::json::Json;
 
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
 
@@ -23,7 +23,7 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
         tag = "index",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -38,7 +38,7 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
     )
 ]
 #[get("/get/index/status")]
-pub fn get_album_index_status(auth: GuardResult<GuardAuth>) -> AppResult<Json<AlbumIndexStatus>> {
+pub fn get_album_index_status(auth: GuardResult<GuardAdmin>) -> AppResult<Json<AlbumIndexStatus>> {
     let _ = auth?;
     Ok(Json(album_index_status()))
 }

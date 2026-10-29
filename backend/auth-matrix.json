@@ -61,7 +61,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -88,8 +88,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -116,8 +116,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [
         "AUTH-16"
@@ -157,7 +157,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -184,7 +184,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -215,7 +215,7 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare"
+        "GuardPresenter"
       ],
       "invariants": [],
       "public": false,
@@ -243,7 +243,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -297,7 +297,7 @@
       "admin": "none",
       "effects": [],
       "guards": [
-        "GuardTimestamp"
+        "GuardSnapshot"
       ],
       "invariants": [
         "AUTH-7"
@@ -326,7 +326,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -353,7 +353,7 @@
       "admin": "none",
       "effects": [],
       "guards": [
-        "GuardTimestamp"
+        "GuardSnapshot"
       ],
       "invariants": [
         "AUTH-7"
@@ -382,7 +382,7 @@
       "admin": "none",
       "effects": [],
       "guards": [
-        "GuardTimestamp"
+        "GuardSnapshot"
       ],
       "invariants": [
         "AUTH-7"
@@ -438,7 +438,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -465,7 +465,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -492,7 +492,7 @@
       "admin": "none",
       "effects": [],
       "guards": [
-        "GuardTimestamp"
+        "GuardSnapshot"
       ],
       "invariants": [
         "AUTH-7"
@@ -521,7 +521,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -552,7 +552,7 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare"
+        "GuardPresenter"
       ],
       "invariants": [],
       "public": false,
@@ -628,7 +628,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -684,7 +684,7 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare",
+        "GuardPresenter",
         "GuardHash"
       ],
       "invariants": [
@@ -723,7 +723,7 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare",
+        "GuardPresenter",
         "GuardHashOriginal"
       ],
       "invariants": [
@@ -755,7 +755,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
+        "GuardAdmin",
         "GuardReauth"
       ],
       "invariants": [
@@ -785,7 +785,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -813,7 +813,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -840,8 +840,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -868,8 +868,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -896,7 +896,7 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth"
+        "GuardAdmin"
       ],
       "invariants": [],
       "public": false,
@@ -923,8 +923,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -972,7 +972,7 @@
       "admin": "none",
       "effects": [],
       "guards": [
-        "TimestampGuardModified"
+        "GuardRenewHash"
       ],
       "invariants": [
         "AUTH-10"
@@ -1005,7 +1005,7 @@
       "admin": "any",
       "effects": [],
       "guards": [
-        "GuardShare"
+        "GuardPresenter"
       ],
       "invariants": [
         "AUTH-10"
@@ -1056,8 +1056,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1084,8 +1084,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1112,8 +1112,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1141,7 +1141,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1168,8 +1168,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1197,7 +1197,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1225,7 +1225,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1252,8 +1252,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1281,7 +1281,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1309,7 +1309,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1337,7 +1337,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1365,7 +1365,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1393,7 +1393,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1421,7 +1421,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,
@@ -1448,8 +1448,8 @@
       "admin": "admin",
       "effects": [],
       "guards": [
-        "GuardAuth",
-        "GuardReadOnlyMode"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [
         "AUTH-16"
@@ -1479,7 +1479,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode",
+        "GuardMutate",
         "GuardReauth"
       ],
       "invariants": [
@@ -1642,7 +1642,7 @@
       "effects": [],
       "guards": [
         "GuardUser",
-        "GuardReadOnlyMode"
+        "GuardMutate"
       ],
       "invariants": [],
       "public": false,

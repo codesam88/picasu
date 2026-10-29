@@ -7,14 +7,14 @@ pub mod request {
     }
 }
 
-pub struct Claims(pub String);
+pub struct ClaimsSession(pub String);
 
 pub fn decode_typed<T>(token: &str) -> Result<T, String> {
     let _ = token;
     Err("stub".to_string())
 }
 
-pub fn helper(token: &str) -> Claims {
+pub fn helper(token: &str) -> ClaimsSession {
     decode_typed(token).unwrap()
 }
 

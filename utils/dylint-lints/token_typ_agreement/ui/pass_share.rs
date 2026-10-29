@@ -1,17 +1,17 @@
 #![feature(register_tool)]
 #![register_tool(utoipa)]
-// PASS: GuardShare + GuardHash -> share + asset.
+// PASS: GuardPresenter + GuardHash -> share + asset.
 
 pub struct GuardResult<T>(pub T);
-pub struct GuardShare;
+pub struct GuardPresenter;
 pub struct GuardHash;
 
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
-        "guards": ["GuardShare", "GuardHash"],
+        "guards": ["GuardPresenter", "GuardHash"],
         "tokenTyp": ["session", "share", "asset"]
     })))
 )]
-pub fn handler(share: GuardResult<GuardShare>, hash: GuardResult<GuardHash>) {}
+pub fn handler(share: GuardResult<GuardPresenter>, hash: GuardResult<GuardHash>) {}
 
 fn main() {}

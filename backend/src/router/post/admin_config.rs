@@ -7,13 +7,13 @@ use tokio::task::spawn_blocking;
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::AppConfig;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{GuardAuth, GuardReauth};
+use crate::router::auth::{GuardAdmin, GuardReauth};
 use crate::router::{AppResult, GuardResult};
 
 /// Lift the read-only kill-switch.
 ///
 /// Clears `readOnlyMode` and persists the change. Admin-only and deliberately
-/// NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable
+/// NOT gated by `GuardMutate`: lifting the kill-switch must be callable
 /// while it is on. Requires re-authentication via the `X-Picasu-Password`
 /// header (403 when it is missing or wrong).
 ///
@@ -23,7 +23,7 @@ use crate::router::{AppResult, GuardResult};
     tag = "config",
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReauth"],
+            "guards": ["GuardAdmin", "GuardReauth"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -40,7 +40,7 @@ use crate::router::{AppResult, GuardResult};
 )]
 #[post("/post/admin/config/disable-read-only")]
 pub async fn disable_read_only_handler(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
     reauth: GuardResult<GuardReauth>,
 ) -> AppResult<Status> {
     let _ = auth?;

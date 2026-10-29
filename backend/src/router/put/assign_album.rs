@@ -6,7 +6,7 @@ use crate::process::dir_album::{
     rewrite_dir_album_cache_prefix,
 };
 use crate::process::sanitize::find_unique_path;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
@@ -95,7 +95,7 @@ pub enum AssignOutcome {
         request_body = AssignAlbumData,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -118,11 +118,11 @@ pub enum AssignOutcome {
 #[put("/put/assign_album", format = "json", data = "<json_data>")]
 pub async fn assign_album(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<AssignAlbumData>,
 ) -> AppResult<Json<AssignResult>> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     let data = json_data.into_inner();
     let asset_id = data.asset_id;

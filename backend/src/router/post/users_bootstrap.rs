@@ -7,7 +7,7 @@ use tokio::task::spawn_blocking;
 use crate::auth::users;
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{GuardAuth, GuardReadOnlyMode, bootstrap_open};
+use crate::router::auth::{GuardAdmin, GuardMutate, bootstrap_open};
 use crate::router::post::users_register::UserSummary;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
@@ -81,7 +81,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
         request_body = BootstrapRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -102,8 +102,8 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
 ]
 #[post("/post/users/bootstrap", data = "<body>")]
 pub async fn bootstrap_admin_handler(
-    auth: GuardResult<GuardAuth>,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    read_only: GuardResult<GuardMutate>,
     body: Json<BootstrapRequest>,
 ) -> AppResult<Json<UserSummary>> {
     let _ = read_only?;

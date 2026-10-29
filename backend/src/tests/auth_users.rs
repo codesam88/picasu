@@ -5,21 +5,21 @@
 //!
 //! Hashing budget: PBKDF2 rounds are slow in debug builds, so each test
 //! seeds at most two users and batches many assertions per test. Helpers
-//! that need no hashing (cookie minting via [`Claims::encode`], token
+//! that need no hashing (cookie minting via [`ClaimsSession::encode`], token
 //! decoding) stay off the hashing path; only user creation, password
 //! writes, and login verifications pay a KDF round.
 
 use rocket::http::{ContentType, Cookie, Header, Status};
 use serde_json::{Value, json};
 
-use crate::router::auth::{Claims, Role};
+use crate::router::auth::{ClaimsSession, Role};
 use crate::tests::bootstrap::{cookie, decode, lock, login, seed, setup_image_home};
 use crate::tests::fixtures::authz::{
     create_album, create_share, get_data_asset_token, get_data_rows, prefetch_as_share,
 };
 use crate::tests::fixtures::test_password;
 
-fn role_of(claims: &Claims) -> (String, bool) {
+fn role_of(claims: &ClaimsSession) -> (String, bool) {
     match &claims.role {
         Role::User { id, admin } => (id.clone(), *admin),
         Role::Share(_) => panic!("expected user role"),
@@ -179,7 +179,7 @@ fn guest_share_prefetch_get_data_and_serving() {
     // exact path with share headers + the per-asset token.
     let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-    let asset_claims: crate::router::auth::ClaimsHash =
+    let asset_claims: crate::router::auth::ClaimsAsset =
         crate::router::auth::decode_typed(&asset_token, &validation).expect("decode asset token");
     let hash = asset_claims.hash.to_string();
     let resp = client

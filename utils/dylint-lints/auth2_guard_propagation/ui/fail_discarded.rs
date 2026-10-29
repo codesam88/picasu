@@ -6,9 +6,9 @@ pub mod router {
     pub type GuardResult<T> = Result<T, AppError>;
 }
 
-pub struct GuardAuth;
+pub struct GuardAdmin;
 
-pub fn get_tags(auth: router::GuardResult<GuardAuth>) -> String {
+pub fn get_tags(auth: router::GuardResult<GuardAdmin>) -> String {
     let _ = auth;
     String::from("tags")
 }
