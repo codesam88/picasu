@@ -110,9 +110,10 @@ behavioral tests. Each rule lives where its inputs live.
    (AUTH-12); the matrix test checks that every class is in the vocabulary,
    that exactly one is declared, and that every referenced invariant exists
    in `authz-model.md`. AUTH-12 is complete: `manage` requires the read-only
-   gate too, and the one operation that must stay available while read-only
-   is on — lifting the kill-switch — is classed `control` rather than
-   exempted by path.
+   gate too. The one operation that must stay available while read-only is on
+   — lifting the kill-switch — carries a typed `waivers` entry naming
+   AUTH-12 and the reason; a waiver that names a rule the operation does not
+   hold, states no reason, or suppresses nothing is itself a finding (S11).
 5. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
    until the annotation-based model can derive its docs back; at
    that point the model replaces the hand-maintained file. Shape to

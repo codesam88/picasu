@@ -3201,7 +3201,7 @@
         "x-picasu-auth": {
           "admin": "admin",
           "effects": [
-            "control"
+            "manage"
           ],
           "guards": [
             "GuardAdmin",
@@ -3209,13 +3209,17 @@
           ],
           "invariants": [
             "AUTH-11",
+            "AUTH-12",
             "AUTH-15"
           ],
           "public": false,
           "shareScope": "n-a",
           "tokenTyp": [
             "session"
-          ]
+          ],
+          "waivers": {
+            "AUTH-12": "the lift must stay callable while read-only mode is on"
+          }
         }
       }
     },

@@ -29,6 +29,7 @@ const AUTH_FIELDS = [
   "public",
   "shareScope",
   "tokenTyp",
+  "waivers",
 ];
 
 function countOps(s) {
@@ -279,18 +280,22 @@ test("every referenced invariant is declared in the authz model", (t) => {
   );
 });
 
-test('the header enumerates the effect vocabulary and its coupling', (t) => {
-  const md = readFileSync(join(repoRoot, 'docs', 'auth-matrix.md'), 'utf8')
-  const norm = md.replace(/\s+/g, ' ')
-  for (const effect of ['read', 'write', 'manage', 'control']) {
+test("the header enumerates the effect vocabulary and its coupling", (t) => {
+  const md = readFileSync(join(repoRoot, "docs", "auth-matrix.md"), "utf8");
+  const norm = md.replace(/\s+/g, " ");
+  for (const effect of ["read", "write", "manage"]) {
     assert.ok(
-      norm.includes('`' + effect + '`'),
-      `the Columns legend explains the ${effect} class`
-    )
+      norm.includes("`" + effect + "`"),
+      `the Columns legend explains the ${effect} class`,
+    );
   }
   assert.ok(
-    norm.includes('`write` and `manage` require `GuardMutate`'),
-    'the legend states the read-only coupling'
-  )
-  assert.ok(norm.includes('AUTH-11, AUTH-12'), 'the legend cites the invariants')
-})
+    norm.includes("`write` and `manage` require `GuardMutate`"),
+    "the legend states the read-only coupling",
+  );
+  assert.ok(
+    norm.includes("AUTH-11, AUTH-12"),
+    "the legend cites the invariants",
+  );
+  assert.ok(norm.includes("**Waivers**"), "the legend explains waivers");
+});

@@ -111,7 +111,7 @@ generate from.
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)  | done (see Progress)                                                                              |
 | Step 6 AUTH-3 lint + triage                                                   | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline)      |
-| Step 6 AUTH-11/12                                                             | done (S9 role, S10 effects incl. AUTH-12 manage half; `control` class models the lift)           |
+| Step 6 AUTH-11/12                                                             | done (S9 role, S10 effects incl. AUTH-12 manage half; typed waivers replace the exemption class) |
 | Step 6 decode agreement                                                       | done (`decode_agreement` crate)                                                                  |
 | Step 6 claims-consumption (F3)                                                | open, queued                                                                                     |
 | Step 7 UI fixtures                                                            | done (4 crates, UI suites run in the dylint CI job); allowlist/baseline open                     |
@@ -123,7 +123,7 @@ generate from.
 | Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
 | Consumers: hook derivation + S4 probes                                        | done (matrix-derived `utils/schemathesis/auth_matrix.py`, 28 probe-carrying ops)                 |
 | Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)              |
-| Consumers: effects/invariants backfill                                        | done (4-class vocabulary, S9/S10 rules, invariant existence test)                                |
+| Consumers: effects/invariants backfill                                        | done (3-class vocabulary, S9/S10/S11 rules, invariant existence test)                            |
 | Contract checker coverage + strength                                          | open (`.plan/api-assurance-coverage.md`: registry, existence test, generated profile, floor)     |
 | `authz-model.md` derivation-back                                              | deferred until matrix proves itself                                                              |
 
@@ -276,7 +276,7 @@ read-only completeness); background in `docs/briefs/dylint.md`.
 - Status: AUTH-3 lint and triage done (and the two sites fixed). The
   `effects` vocabulary is enforced by S9/S10: AUTH-11 (`manage` ⇒ admin) and
   AUTH-12 (`write`/`manage` ⇒ read-only gate), with the kill-switch lift
-  classed `control` because it must stay callable while read-only is on.
+  carrying a typed AUTH-12 waiver and its reason.
   `reset_auth_key_handler` gained the gate. Decode agreement done; F3 still
   queued.
 

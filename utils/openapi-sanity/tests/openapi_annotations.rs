@@ -1391,3 +1391,31 @@ fn s_effects_conforming_is_accepted() {
 
     assert_eq!(render(&findings), "", "supported effects must be silent");
 }
+
+// ── Section S11 — waivers ─────────────────────────────────────────────────
+
+const WAIVER_VIOLATIONS: &str =
+    include_str!("fixtures/openapi_annotations/s11_waiver_violations.rs");
+const WAIVER_CONFORMING: &str = include_str!("fixtures/openapi_annotations/s11_conforming.rs");
+
+/// S11: a waiver must name a held rule, carry a reason, and suppress something.
+#[test]
+fn s_waiver_violations_fail() {
+    let findings = check_source("s11_waiver_violations.rs", WAIVER_VIOLATIONS);
+
+    assert_eq!(
+        render(&findings),
+        "s11_waiver_violations.rs:31: waiver_not_declared: the extension waives `AUTH-12`, but the operation does not declare that invariant; a waiver can only exempt a rule the operation is held to\n\
+         s11_waiver_violations.rs:54: waiver_missing_reason: the extension waives `AUTH-12` without a reason\n\
+         s11_waiver_violations.rs:77: waiver_unused: the extension waives `AUTH-12`, but the handler carries GuardMutate, so there is nothing to waive",
+        "each malformed waiver is a finding at the extension line"
+    );
+}
+
+/// The conforming counterpart is a waiver with a reason.
+#[test]
+fn s_waiver_with_reason_is_accepted() {
+    let findings = check_source("s11_conforming.rs", WAIVER_CONFORMING);
+
+    assert_eq!(render(&findings), "", "a reasoned waiver must be silent");
+}

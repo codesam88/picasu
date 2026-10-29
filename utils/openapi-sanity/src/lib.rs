@@ -1,6 +1,6 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Twenty-three rules are implemented
+//! Twenty-six rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
@@ -11,8 +11,10 @@
 //! typs against the decoded claims type; S5 and S6 pin the read-only and
 //! reauthentication behaviour; S7 enforces the public/explicit boundary; S8
 //! compares the declared guard array with the signature — the only rule that
-//! reads that field, which every other rule leaves untouched. What remains
-//! open is listed under "Known gaps" in this crate's README.
+//! reads that field, which every other rule leaves untouched; S9 ties the role
+//! constraint to the guards; S10 ties the effect class to the guards; S11 keeps
+//! waivers honest. What remains open is listed under "Known gaps" in this
+//! crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -444,6 +446,9 @@ pub struct Annotation {
     /// The `invariants` array inside `x-picasu-auth`, with the extension's
     /// line.
     pub invariants: Option<Located<Vec<String>>>,
+    /// The `waivers` object inside `x-picasu-auth`: rule id → reason. A waiver
+    /// exempts the operation from one rule, and carries the reason it does.
+    pub waivers: Option<Located<Vec<(String, String)>>>,
     /// The media type the `request_body` names explicitly, either
     /// `request_body(content_type = "…")` or a `request_body(content(… = …))`
     /// group. `None` means the annotation names none and utoipa guesses one.
@@ -754,6 +759,8 @@ fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotatio
                     .map(|values| Located::new(values, line));
                 annotation.invariants = collect_string_array(&tuple.stream(), "invariants")
                     .map(|values| Located::new(values, line));
+                annotation.waivers = collect_string_map(&tuple.stream(), "waivers")
+                    .map(|entries| Located::new(entries, line));
             }
             annotation.auth_extensions.push(Located::new(key, line));
         } else {
@@ -824,6 +831,45 @@ fn collect_string_value(stream: &TokenStream, key: &str) -> Option<String> {
             _ => {}
         }
     }
+}
+
+/// The `"<key>": { "<rule>": "<reason>" }` object inside the extension's JSON
+/// value, as (rule, reason) pairs.
+fn collect_string_map(stream: &TokenStream, key: &str) -> Option<Vec<(String, String)>> {
+    let mut key_seen = false;
+    for tree in stream.clone() {
+        match tree {
+            TokenTree::Literal(literal) if literal_text(&literal) == key => {
+                key_seen = true;
+            }
+            TokenTree::Group(group) => {
+                if key_seen && group.delimiter() == Delimiter::Brace {
+                    let entries = split_entries(&group.stream())
+                        .into_iter()
+                        .filter_map(|entry| {
+                            let mut fields = entry.into_iter();
+                            let rule = match fields.next() {
+                                Some(TokenTree::Literal(literal)) => literal_text(&literal),
+                                _ => return None,
+                            };
+                            let reason = fields.find_map(|tree| match tree {
+                                TokenTree::Literal(literal) => Some(literal_text(&literal)),
+                                _ => None,
+                            })?;
+                            Some((rule, reason))
+                        })
+                        .collect();
+                    return Some(entries);
+                }
+                if !key_seen && let Some(entries) = collect_string_map(&group.stream(), key) {
+                    return Some(entries);
+                }
+                key_seen = false;
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Read `security(…)`: each top-level entry is one alternative requirement
@@ -2293,7 +2339,19 @@ fn effects_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
              GuardMutate, so read-only mode would not block it",
         ));
     }
-    if declared.contains("manage") && !guards.contains("GuardMutate") {
+    let waived: BTreeSet<&str> = annotation
+        .waivers
+        .as_ref()
+        .map(|waivers| {
+            waivers
+                .value
+                .iter()
+                .map(|(rule, _)| rule.as_str())
+                .collect()
+        })
+        .unwrap_or_default();
+    if declared.contains("manage") && !guards.contains("GuardMutate") && !waived.contains("AUTH-12")
+    {
         findings.push(Finding::at(
             &handler.file,
             effects.line,
@@ -2321,9 +2379,66 @@ fn effects_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
+/// S11 — a waiver must name a rule the operation is held to, say why, and
+/// actually suppress something.
+///
+/// A waiver is how an exemption is written down instead of read out of a path
+/// or a guard's absence. The three findings keep it honest: an unnamed rule is
+/// not a waiver, an empty reason is not a reason, and a waiver that suppresses
+/// nothing has outlived its cause.
+fn waiver_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    let Some(waivers) = &annotation.waivers else {
+        return Vec::new();
+    };
+    let invariants: BTreeSet<&str> = annotation
+        .invariants
+        .as_ref()
+        .map(|values| values.value.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    let guards: BTreeSet<&str> = guard_idents(handler)
+        .filter(|ident| guard_security_groups(ident).is_some())
+        .collect();
+
+    let mut findings = Vec::new();
+    for (rule, reason) in &waivers.value {
+        if !invariants.contains(rule.as_str()) {
+            findings.push(Finding::at(
+                &handler.file,
+                waivers.line,
+                "waiver_not_declared",
+                &format!(
+                    "the extension waives `{rule}`, but the operation does not declare that \
+                     invariant; a waiver can only exempt a rule the operation is held to"
+                ),
+            ));
+        }
+        if reason.trim().is_empty() {
+            findings.push(Finding::at(
+                &handler.file,
+                waivers.line,
+                "waiver_missing_reason",
+                &format!("the extension waives `{rule}` without a reason"),
+            ));
+        }
+        // Today AUTH-12 is the one invariant backed by a conditional rule; a
+        // waiver of it is stale once the read-only gate is present.
+        if rule == "AUTH-12" && guards.contains("GuardMutate") {
+            findings.push(Finding::at(
+                &handler.file,
+                waivers.line,
+                "waiver_unused",
+                "the extension waives `AUTH-12`, but the handler carries GuardMutate, so \
+                 there is nothing to waive",
+            ));
+        }
+    }
+    findings
+}
+
 /// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5, S6,
-/// S7, S8, S9 and S10 of section S: every rule over one handler, in a fixed
-/// order so a report reads the same way twice.
+/// S7, S8, S9, S10 and S11 of section S: every rule over one handler, in a
+/// fixed order so a report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -2354,6 +2469,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         guard_set_mismatch(handler),
         admin_role_mismatch(handler),
         effects_consistency(handler),
+        waiver_consistency(handler),
     ]
     .concat()
 }
