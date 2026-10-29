@@ -1,15 +1,18 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Twenty-two rules are implemented
+//! Twenty-three rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
 //! statuses — what the handler can answer versus what `responses(…)` claims.
-//! **Section S** pairs `x-picasu-auth` metadata with its `security(…)`
-//! declaration. S2 compares the declared scheme groups against the guards in
-//! the handler signature. S7 enforces the public/explicit boundary between a
-//! handler's contributing guards and its `security(…)` declaration. What
-//! remains open is listed under "Known gaps" in this crate's README.
+//! **Section S** keeps `x-picasu-auth` metadata honest. S1 pairs the extension
+//! with its `security(…)` declaration; S2 compares the declared scheme groups
+//! against the guards in the handler signature; S3 (dylint) compares the token
+//! typs against the decoded claims type; S5 and S6 pin the read-only and
+//! reauthentication behaviour; S7 enforces the public/explicit boundary; S8
+//! compares the declared guard array with the signature — the only rule that
+//! reads that field, which every other rule leaves untouched. What remains
+//! open is listed under "Known gaps" in this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -430,6 +433,10 @@ pub struct Annotation {
     /// is written on. A modeled extension reaches section S; any other
     /// extension key stays in `unsupported` so A9 keeps failing closed on it.
     pub auth_extensions: Vec<Located<String>>,
+    /// The `guards` array inside `x-picasu-auth`, with the extension's line.
+    /// `None` when the extension declares no readable array; S8 fails closed on
+    /// that, because nothing else compares the array with the signature.
+    pub guard_names: Option<Located<Vec<String>>>,
     /// The media type the `request_body` names explicitly, either
     /// `request_body(content_type = "…")` or a `request_body(content(… = …))`
     /// group. `None` means the annotation names none and utoipa guesses one.
@@ -731,11 +738,51 @@ fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotatio
             _ => continue,
         };
         if key.starts_with("x-picasu-") {
+            if key == "x-picasu-auth" {
+                annotation.guard_names =
+                    collect_guard_names(&tuple.stream()).map(|names| Located::new(names, line));
+            }
             annotation.auth_extensions.push(Located::new(key, line));
         } else {
             annotation.unsupported.push(Located::new(key, line));
         }
     }
+}
+
+/// The string entries of the `"guards": [...]` array inside the extension's
+/// JSON value, or `None` when the value carries no readable array.
+///
+/// The extension value is `json!({…})`, so the array is a bracket group in the
+/// token stream. Walking for it keeps this crate's parser dependency-free, at
+/// the cost of matching the key textually — the same trade-off the annotation
+/// reader makes everywhere else.
+fn collect_guard_names(stream: &TokenStream) -> Option<Vec<String>> {
+    let mut guards_key_seen = false;
+    for tree in stream.clone() {
+        match tree {
+            TokenTree::Literal(literal) if literal_text(&literal) == "guards" => {
+                guards_key_seen = true;
+            }
+            TokenTree::Group(group) => {
+                if guards_key_seen && group.delimiter() == Delimiter::Bracket {
+                    let names = split_entries(&group.stream())
+                        .into_iter()
+                        .filter_map(|entry| match entry.into_iter().next() {
+                            Some(TokenTree::Literal(literal)) => Some(literal_text(&literal)),
+                            _ => None,
+                        })
+                        .collect();
+                    return Some(names);
+                }
+                if !guards_key_seen && let Some(names) = collect_guard_names(&group.stream()) {
+                    return Some(names);
+                }
+                guards_key_seen = false;
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Read `security(…)`: each top-level entry is one alternative requirement
@@ -2065,9 +2112,62 @@ fn public_explicit_boundary(handler: &AnnotatedHandler) -> Vec<Finding> {
     Vec::new()
 }
 
-/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5, S6 and
-/// S7 of section S: every rule over one handler, in a fixed order so a report
-/// reads the same way twice.
+/// S8 — the declared guard set must be the handler's guard set.
+///
+/// Every other rule reads the handler signature (S2 schemes, S5 405, S6
+/// header, S7 public boundary) or a single field (S3 token typs), so the
+/// `guards` array itself is compared to nothing: a stale entry would render a
+/// role in the matrix and drive the derived probes while the code disagrees.
+fn guard_set_mismatch(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    if annotation.auth_extensions.is_empty() {
+        return Vec::new();
+    }
+    let Some(declared) = &annotation.guard_names else {
+        return vec![Finding::at(
+            &handler.file,
+            annotation
+                .auth_extensions
+                .first()
+                .map_or(0, |extension| extension.line),
+            "guard_metadata_unreadable",
+            "the extension declares no readable `guards` array, so nothing compares the \
+             declared guard set with the handler signature; declare `\"guards\": [...]`",
+        )];
+    };
+
+    let expected: BTreeSet<&str> = guard_idents(handler)
+        .filter(|ident| guard_security_groups(ident).is_some())
+        .collect();
+    let declared_set: BTreeSet<&str> = declared.value.iter().map(String::as_str).collect();
+    if expected == declared_set {
+        return Vec::new();
+    }
+
+    vec![Finding::at(
+        &handler.file,
+        declared.line,
+        "guard_set_mismatch",
+        &format!(
+            "the extension declares guards {}, but the handler signature carries {}; every \
+             other rule reads the signature, so only this one can catch a drifted array",
+            render_name_set(&declared_set),
+            render_name_set(&expected),
+        ),
+    )]
+}
+
+/// A set of guard names as `{A, B}`, sorted so the message is stable.
+fn render_name_set(names: &BTreeSet<&str>) -> String {
+    format!(
+        "{{{}}}",
+        names.iter().copied().collect::<Vec<_>>().join(", ")
+    )
+}
+
+/// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5, S6,
+/// S7 and S8 of section S: every rule over one handler, in a fixed order so a
+/// report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -2095,6 +2195,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         readonly_without_405(handler),
         reauth_without_header(handler),
         public_explicit_boundary(handler),
+        guard_set_mismatch(handler),
     ]
     .concat()
 }
