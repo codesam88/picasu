@@ -54,15 +54,15 @@ unannotated by design. `effects` has no controlled vocabulary yet;
 
 ## Correspondence rules
 
-| Rule | Claim checked                              | Enforced by                            | Status                    |
-| ---- | ------------------------------------------ | -------------------------------------- | ------------------------- |
-| S1   | metadata present ⇔ `security(...)` present | `openapi-sanity`                       | gating                    |
-| S2   | `security` schemes ⇔ guard types           | `openapi-sanity`                       | gating                    |
-| S3   | `tokenTyp` ⇔ decoded claims type           | dylint (`token_typ_agreement`, gating) | implemented; gating in CI |
-| S4   | `shareScope` ⇔ body binding check          | behavioral cross-scope probes          | open                      |
-| S5   | `readonly` ⇔ guard + 405 declared          | `openapi-sanity`                       | gating                    |
-| S6   | `reauth` ⇔ guard + documented header       | `openapi-sanity`                       | gating                    |
-| S7   | `public` ⇔ `security(())` + no guard       | `openapi-sanity`                       | gating                    |
+| Rule | Claim checked                               | Enforced by                                   | Status                                    |
+| ---- | ------------------------------------------- | --------------------------------------------- | ----------------------------------------- |
+| S1   | metadata present ⇔ `security(...)` present  | `openapi-sanity`                              | gating                                    |
+| S2   | `security` schemes ⇔ guard types            | `openapi-sanity`                              | gating                                    |
+| S3   | `tokenTyp` ⇔ decoded claims type            | dylint (`token_typ_agreement`, gating)        | implemented; gating in CI                 |
+| S4   | asset touched is bound to the share's album | behavioral cross-scope probes, matrix-derived | implemented; advisory via `just fuzz-run` |
+| S5   | `readonly` ⇔ guard + 405 declared           | `openapi-sanity`                              | gating                                    |
+| S6   | `reauth` ⇔ guard + documented header        | `openapi-sanity`                              | gating                                    |
+| S7   | `public` ⇔ `security(())` + no guard        | `openapi-sanity`                              | gating                                    |
 
 Split rationale: annotation/signature comparisons belong to the syn
 checker, type/call-graph questions to dylint, binding semantics to
@@ -77,11 +77,21 @@ behavioral tests. Each rule lives where its inputs live.
    diffs both in CI as an `openapi-check` phase. The reference still
    generates from `openapi.json` directly; the matrix stays a separate
    review artifact unless a future step merges them.
-2. **Schemathesis derivation.** Share-guarded sets, typ-aware token
-   selection, scope pairs, and destructive-op disables generated
-   from the matrix instead of hand lists. _(Placeholder.)_
+2. **Schemathesis derivation (implemented).** The campaign hooks derive
+   their auth knowledge from `backend/auth-matrix.json` through
+   `utils/schemathesis/auth_matrix.py`: the share-header injection set,
+   the probe each operation carries, wrong-typ token selection, read-only
+   exemptions, and the seeded scope pairs. The derivation is pure and
+   unit-tested; a matrix change that alters a probe fails the tests
+   instead of drifting. Destructive-operation disables stay hand-tuned in
+   the TOML configs, pinned to the matrix by a consistency test. The two
+   campaign tiers remain advisory (`just fuzz-check`, `just fuzz-run`),
+   compared against `utils/schemathesis/baseline.yaml`.
 3. **Generated negatives.** Token×guard cross-product with expected
-   401/403/404 per cell. _(Placeholder.)_
+   401/403/404 per cell. Partly realized: the probe plan assigns one
+   cross-scope / wrong-typ / renewal-mismatch / demoted probe per matching
+   operation (28 operations today), but each operation still carries a
+   single probe rather than a full cross-product. _(Partial.)_
 4. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
    until the annotation-based model can derive its docs back; at
    that point the model replaces the hand-maintained file. Shape to
