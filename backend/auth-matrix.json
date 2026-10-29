@@ -556,7 +556,7 @@
       ],
       "invariants": [],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "album",
       "tokenTyp": [
         "session",
         "share"
@@ -691,7 +691,7 @@
         "AUTH-8"
       ],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "n-a",
       "tokenTyp": [
         "session",
         "share",
@@ -730,7 +730,7 @@
         "AUTH-8"
       ],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "n-a",
       "tokenTyp": [
         "session",
         "share",
@@ -1011,7 +1011,7 @@
         "AUTH-10"
       ],
       "public": false,
-      "shareScope": "own-album",
+      "shareScope": "album",
       "tokenTyp": [
         "session",
         "share"

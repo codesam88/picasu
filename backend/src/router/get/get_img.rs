@@ -58,7 +58,7 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
             "guards": ["GuardPresenter", "GuardHash"],
             "tokenTyp": ["session", "share", "asset"],
             "admin": "any",
-            "shareScope": "own-album",
+            "shareScope": "n-a",
             "public": false,
             "effects": [],
             "invariants": ["AUTH-8"]
@@ -153,7 +153,7 @@ pub async fn compressed_file(
             "guards": ["GuardPresenter", "GuardHashOriginal"],
             "tokenTyp": ["session", "share", "asset"],
             "admin": "any",
-            "shareScope": "own-album",
+            "shareScope": "n-a",
             "public": false,
             "effects": [],
             "invariants": ["AUTH-8"]

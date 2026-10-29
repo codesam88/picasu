@@ -306,7 +306,7 @@ fn execute_prefetch_logic(
             "guards": ["GuardPresenter"],
             "tokenTyp": ["session", "share"],
             "admin": "any",
-            "shareScope": "own-album",
+            "shareScope": "album",
             "public": false,
             "effects": [],
             "invariants": []
