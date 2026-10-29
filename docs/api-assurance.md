@@ -54,15 +54,15 @@ unannotated by design. `effects` has no controlled vocabulary yet;
 
 ## Correspondence rules
 
-| Rule | Claim checked                               | Enforced by                                   | Status                                    |
-| ---- | ------------------------------------------- | --------------------------------------------- | ----------------------------------------- |
-| S1   | metadata present ⇔ `security(...)` present  | `openapi-sanity`                              | gating                                    |
-| S2   | `security` schemes ⇔ guard types            | `openapi-sanity`                              | gating                                    |
-| S3   | `tokenTyp` ⇔ decoded claims type            | dylint (`token_typ_agreement`, gating)        | implemented; gating in CI                 |
-| S4   | asset touched is bound to the share's album | behavioral cross-scope probes, matrix-derived | implemented; advisory via `just fuzz-run` |
-| S5   | `readonly` ⇔ guard + 405 declared           | `openapi-sanity`                              | gating                                    |
-| S6   | `reauth` ⇔ guard + documented header        | `openapi-sanity`                              | gating                                    |
-| S7   | `public` ⇔ `security(())` + no guard        | `openapi-sanity`                              | gating                                    |
+| Rule | Claim checked                               | Enforced by                                   | Status                      |
+| ---- | ------------------------------------------- | --------------------------------------------- | --------------------------- |
+| S1   | metadata present ⇔ `security(...)` present  | `openapi-sanity`                              | gating                      |
+| S2   | `security` schemes ⇔ guard types            | `openapi-sanity`                              | gating                      |
+| S3   | `tokenTyp` ⇔ decoded claims type            | dylint (`token_typ_agreement`, gating)        | implemented; gating in CI   |
+| S4   | asset touched is bound to the share's album | behavioral cross-scope probes, matrix-derived | gating (`just fuzz-probes`) |
+| S5   | `readonly` ⇔ guard + 405 declared           | `openapi-sanity`                              | gating                      |
+| S6   | `reauth` ⇔ guard + documented header        | `openapi-sanity`                              | gating                      |
+| S7   | `public` ⇔ `security(())` + no guard        | `openapi-sanity`                              | gating                      |
 
 Split rationale: annotation/signature comparisons belong to the syn
 checker, type/call-graph questions to dylint, binding semantics to
@@ -85,9 +85,11 @@ behavioral tests. Each rule lives where its inputs live.
    unit-tested; a matrix change that alters a probe fails the tests
    instead of drifting. Destructive-operation disables stay hand-tuned in
    the TOML configs, pinned to the matrix by a consistency test. Tier 1
-   (`just fuzz-check`) gates CI against `utils/schemathesis/baseline.yaml`;
-   the stateful campaign (`just fuzz-run`) stays advisory because its phases
-   are time-budgeted and need a served instance.
+   (`just fuzz-check`) gates CI against `utils/schemathesis/baseline.yaml`,
+   and the probe plan (`backend/probe-plan.json`, generated from the matrix
+   and diffed by `openapi-check`) is executed deterministically by
+   `just fuzz-probes`; the stateful campaign (`just fuzz-run`) stays advisory
+   because its phases are time-budgeted.
 3. **Generated negatives (implemented, role layer).** `backend/src/tests/matrix_negatives.rs`
    reads the published document and asserts, per operation and principal,
    that the model's exclusions hold: anonymous is refused on every

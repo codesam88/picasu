@@ -197,6 +197,10 @@ from the contract.
 - **Gating:** `just fuzz-check` — tier 1 single-operation sweep against a
   throwaway seeded instance, compared to `utils/schemathesis/baseline.yaml`;
   a finding outside the accepted set fails the job.
+- **Gating:** `just fuzz-probes` — the generated auth probes (cross-scope,
+  wrong-typ, renewal binding, demoted token) executed deterministically from
+  `backend/probe-plan.json`, which is generated from the auth matrix and
+  diffed by `openapi-check`.
 - **Runners (advisory)** — the stateful campaign stays advisory because its
   phases are time-budgeted and it needs a served instance:
   - `just fuzz-run` — tier 2 stateful campaign against a served seeded instance.

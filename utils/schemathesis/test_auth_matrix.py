@@ -250,5 +250,32 @@ class DestructiveDisableConsistency(unittest.TestCase):
             self.assertEqual(disabled - matrix_ids, set(), toml_path)
 
 
+
+class ProbePlan(unittest.TestCase):
+    """The committed plan is the executable form of the probe assignment."""
+
+    def test_plan_matches_the_matrix_and_the_document(self):
+        import emit_probe_plan
+
+        plan = emit_probe_plan.build(REPO)
+        spec = json.loads((REPO / "backend" / "openapi.json").read_text())
+        self.assertEqual(len(plan), len(auth_matrix.probe_plan(MATRIX)))
+        for entry in plan:
+            operation = spec["paths"][entry["path"]][entry["method"].lower()]
+            self.assertEqual(operation["operationId"], entry["operationId"])
+            self.assertIn("expect", entry)
+
+    def test_expectations_distinguish_exact_status_from_refusal(self):
+        import emit_probe_plan
+
+        plan = {entry["probe"]: entry["expect"] for entry in emit_probe_plan.build(REPO)}
+        self.assertEqual(plan[auth_matrix.PROBE_CROSS_SCOPE], {"statuses": [404]})
+        self.assertEqual(plan[auth_matrix.PROBE_WRONG_TYP], {"statuses": [401]})
+        self.assertEqual(plan[auth_matrix.PROBE_RENEW_MISMATCH], {"statuses": [401]})
+        # Registration also has a public path, so a demoted caller is refused
+        # with 403 rather than 401; the claim is "not admitted".
+        self.assertEqual(plan[auth_matrix.PROBE_DEMOTED], {"refusal": True})
+
+
 if __name__ == "__main__":
     unittest.main()
