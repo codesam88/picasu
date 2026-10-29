@@ -2,7 +2,7 @@
 
 One module serves several runs; modes are env-gated:
 
-- ``FUZZ_SHARE_HEADERS=1``  injects the seeded share headers on the six
+- ``FUZZ_SHARE_HEADERS=1``  injects the seeded share headers on the
   GuardPresenter-guarded operations.
 - ``FUZZ_MARKERS=1``        installs the per-operation probes below; the
   ``*_refused`` checks only assert when their marker header is present.
@@ -17,15 +17,39 @@ probes stay off, so the campaign still runs unauthenticated instead of
 crashing.
 Poison guards prevent config writes, admin demotion, share/data deletion,
 logout and password rotation from wrecking a running instance.
+
+Which operation carries which probe, the share-header injection set and the
+read-only exemptions are derived from ``backend/auth-matrix.json`` by the
+pure functions in ``auth_matrix.py`` (unit-tested in
+``test_auth_matrix.py``); the destructive-operation disables stay hand-tuned
+in ``campaign.toml``.
 """
 
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
 
 import schemathesis
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import auth_matrix
+
+MATRIX_PATH = os.environ.get(
+    "FUZZ_AUTH_MATRIX",
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "backend", "auth-matrix.json"
+    ),
+)
+MATRIX = auth_matrix.load_matrix(MATRIX_PATH)
+SHARE_GUARDED = auth_matrix.share_guarded_ops(MATRIX)
+PROBE_PLAN = auth_matrix.probe_plan(MATRIX)
+READONLY_EXEMPT = auth_matrix.readonly_exempt_ops(MATRIX)
+# A3 targets are snapshot-typed (auth_matrix.wrong_typ_targets), so the
+# wrong token for them is the session-typed one.
+WRONG_TYP_FOR_SNAPSHOT = auth_matrix.wrong_typ_token(("snapshot",))
 
 BASE = os.environ.get("PICASU_BASE_URL", "http://127.0.0.1:8899")
 ADMIN_JWT = os.environ.get("PICASU_JWT", "")
@@ -45,23 +69,11 @@ FIXTURES_READY = bool(
     and ALBUM_B["share"]
 )
 
-SHARE_GUARDED = {
-    ("POST", "/get/prefetch"),
-    ("GET", "/get/config"),
-    ("PUT", "/put/set_album_title"),
-    ("PUT", "/put/set_user_defined_description"),
-    ("GET", "/object/compressed/{file_path}"),
-    ("GET", "/object/imported/{file_path}"),
-}
-
-READONLY_EXEMPT = {
-    "/post/users/authenticate",
-    "/post/admin/config/disable-read-only",
-    "/post/renew-hash-token",
-    "/post/renew-timestamp-token",
-    "/post/index/cancel",
-    "/get/prefetch",
-}
+# S4 scope pairs: every seeded share identity crossed with the album it must
+# not reach. Probes take the first mismatch (share A vs album B).
+SCOPE_MISMATCHES = auth_matrix.scope_mismatch_pairs(
+    [(ALBUM_A["album"], ALBUM_A["share"]), (ALBUM_B["album"], ALBUM_B["share"])]
+)
 
 _cache = {}
 
@@ -112,24 +124,27 @@ def _refresh_admin_token():
         ADMIN_COOKIE = "jwt=" + token
 
 
-def _share_snapshot(which):
-    key = ("snapshot", which)
+def _share_snapshot(album_id, share_id):
+    """Mint a share-scoped snapshot token for the given scope pair member."""
+    key = ("snapshot", album_id)
     if key not in _cache:
-        album = ALBUM_B if which == "B" else ALBUM_A
         code, resp = _api(
             "POST",
             "/get/prefetch",
-            headers={"x-album-id": album["album"], "x-share-id": album["share"]},
+            headers={"x-album-id": album_id, "x-share-id": share_id},
             body={},
         )
         if not isinstance(resp, dict) or "token" not in resp:
-            raise RuntimeError(f"share snapshot failed: status={code} body={resp!r} album={album}")
+            raise RuntimeError(
+                f"share snapshot failed: status={code} body={resp!r} album={album_id}"
+            )
         _cache[key] = (resp["token"], resp["prefetch"]["timestamp"])
     return _cache[key]
 
 
-def _album_asset(which):
-    key = ("asset", which)
+def _album_asset(album_id):
+    """First indexed asset id of the given album (admin view)."""
+    key = ("asset", album_id)
     if key not in _cache:
         code, resp = _api("POST", "/get/prefetch", headers={"Cookie": ADMIN_COOKIE}, body={})
         if not isinstance(resp, dict) or "token" not in resp:
@@ -142,14 +157,23 @@ def _album_asset(which):
         )
         if not isinstance(rows, list):
             raise RuntimeError(f"admin data failed: status={rcode} body={rows!r}")
-        target = ALBUM_B["album"] if which == "B" else ALBUM_A["album"]
         _cache[key] = next(
             r["abstractData"]["id"]
             for r in rows
             if r["abstractData"].get("type") != "album"
-            and r["abstractData"].get("album") == target
+            and r["abstractData"].get("album") == album_id
         )
     return _cache[key]
+
+
+def _token_for_typ(typ):
+    """Token sources by typ: the admin session or a share-A snapshot."""
+    if typ == "session":
+        return ADMIN_JWT
+    if typ == "snapshot":
+        (own_album, share), _ = SCOPE_MISMATCHES[0]
+        return _share_snapshot(own_album, share)[0]
+    raise RuntimeError(f"no token source for typ {typ!r}")
 
 
 def _demoted_token():
@@ -171,31 +195,51 @@ def _demoted_token():
     return _cache["demoted"]
 
 
+def _snapshot_query(case, timestamp):
+    """Pin the snapshot timestamp (must equal the token's claim) and bound
+    timeline ranges so probes stay cheap; other generated params survive."""
+    query = dict(case.query or {})
+    query["timestamp"] = str(timestamp)
+    if "start" in query:
+        query["start"] = "0"
+    if "end" in query:
+        query["end"] = "5"
+    return query
+
+
 def _install_markers(case, headers):
-    key = (case.method, case.path)
+    """Attach the probe the auth matrix assigns to this operation."""
+    probe = PROBE_PLAN.get((case.method.upper(), case.path))
+    if probe is None:
+        return
+    (own_album, share), (foreign_album, foreign_share) = SCOPE_MISMATCHES[0]
 
-    if key == ("GET", "/get/metadata/{asset_id}"):
-        token, ts = _share_snapshot("A")
-        headers["X-Pilot"] = "cross-scope"
+    if probe == auth_matrix.PROBE_CROSS_SCOPE:
+        token, ts = _share_snapshot(own_album, share)
+        headers["X-Pilot"] = probe
         headers["Authorization"] = f"Bearer {token}"
-        case.query = {"timestamp": str(ts)}
-        case.path_parameters = {"asset_id": _album_asset("B")}
+        case.query = _snapshot_query(case, ts)
+        asset = _album_asset(foreign_album)
+        params = dict(case.path_parameters or {})
+        for name in re.findall(r"{([^{}]+)}", case.path):
+            params[name] = asset
+        case.path_parameters = params
 
-    elif key == ("GET", "/get/get-data"):
-        token, ts = _share_snapshot("A")
-        headers["X-Pilot"] = "wrong-typ"
-        headers["Authorization"] = f"Bearer {ADMIN_JWT}"
-        case.query = {"timestamp": str(ts), "start": "0", "end": "5"}
+    elif probe == auth_matrix.PROBE_WRONG_TYP:
+        _, ts = _share_snapshot(own_album, share)
+        headers["X-Pilot"] = probe
+        headers["Authorization"] = f"Bearer {_token_for_typ(WRONG_TYP_FOR_SNAPSHOT)}"
+        case.query = _snapshot_query(case, ts)
 
-    elif key == ("GET", "/get/users"):
-        headers["X-Pilot"] = "demoted"
+    elif probe == auth_matrix.PROBE_DEMOTED:
+        headers["X-Pilot"] = probe
         headers["Cookie"] = "jwt=" + _demoted_token()
 
-    elif key == ("POST", "/post/renew-timestamp-token"):
-        token, _ = _share_snapshot("A")
-        headers["X-Pilot"] = "renew-mismatch"
-        headers["x-album-id"] = ALBUM_B["album"]
-        headers["x-share-id"] = ALBUM_B["share"]
+    elif probe == auth_matrix.PROBE_RENEW_MISMATCH:
+        token, _ = _share_snapshot(own_album, share)
+        headers["X-Pilot"] = probe
+        headers["x-album-id"] = foreign_album
+        headers["x-share-id"] = foreign_share
         case.body = {"token": token}
 
 
@@ -206,7 +250,7 @@ def before_call(ctx, case, kwargs):
         _refresh_admin_token()
         headers["Cookie"] = ADMIN_COOKIE
     if FIXTURES_READY and os.environ.get("FUZZ_SHARE_HEADERS") == "1" and (
-        case.method,
+        case.method.upper(),
         case.path,
     ) in SHARE_GUARDED:
         headers["x-album-id"] = ALBUM_A["album"]
@@ -260,16 +304,19 @@ def _marker(case, name):
 
 @schemathesis.check
 def cross_scope_refused(ctx, response, case):
-    if _marker(case, "cross-scope") and response.status_code not in (401, 403, 404):
+    if _marker(case, auth_matrix.PROBE_CROSS_SCOPE) and (
+        response.status_code not in auth_matrix.CROSS_SCOPE_EXPECTED_STATUSES
+    ):
         raise AssertionError(
-            f"cross-scope read not refused: got {response.status_code} for "
-            f"{case.formatted_path}"
+            f"cross-scope read not refused: expected "
+            f"{auth_matrix.CROSS_SCOPE_EXPECTED_STATUSES} for {case.formatted_path}, "
+            f"got {response.status_code}"
         )
 
 
 @schemathesis.check
 def wrong_typ_rejected(ctx, response, case):
-    if _marker(case, "wrong-typ") and response.status_code != 401:
+    if _marker(case, auth_matrix.PROBE_WRONG_TYP) and response.status_code != 401:
         raise AssertionError(
             f"wrong-typ token accepted: got {response.status_code} on {case.path}"
         )
@@ -277,7 +324,7 @@ def wrong_typ_rejected(ctx, response, case):
 
 @schemathesis.check
 def demoted_token_rejected(ctx, response, case):
-    if _marker(case, "demoted") and response.status_code != 401:
+    if _marker(case, auth_matrix.PROBE_DEMOTED) and response.status_code != 401:
         raise AssertionError(
             f"demoted token still accepted: got {response.status_code} on {case.path}"
         )
@@ -285,7 +332,7 @@ def demoted_token_rejected(ctx, response, case):
 
 @schemathesis.check
 def cross_share_renewal_refused(ctx, response, case):
-    if _marker(case, "renew-mismatch") and response.status_code != 401:
+    if _marker(case, auth_matrix.PROBE_RENEW_MISMATCH) and response.status_code != 401:
         raise AssertionError(
             f"cross-share renewal not refused: got {response.status_code}"
         )
@@ -295,7 +342,8 @@ def cross_share_renewal_refused(ctx, response, case):
 def readonly_405(ctx, response, case):
     if os.environ.get("FUZZ_READONLY") != "1":
         return
-    if case.method == "GET" or case.path in READONLY_EXEMPT:
+    key = ((case.method or "").upper(), case.path)
+    if key[0] == "GET" or key in READONLY_EXEMPT:
         return
     if response.status_code != 405:
         raise AssertionError(

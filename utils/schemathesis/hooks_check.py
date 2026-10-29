@@ -5,7 +5,8 @@ the login exchange, so the harness still injects the cookie itself):
 - admin session: static Cookie header supplied via schemathesis config from
   ${PICASU_JWT}.
 - share identity: x-album-id / x-share-id headers on the GuardPresenter-guarded
-  operations, so those routes exercise the guest path.
+  operations (derived from backend/auth-matrix.json, see auth_matrix.py), so
+  those routes exercise the guest path.
 - Run-poisoning guards: prevent the fuzzer from rotating authKey, flipping
   readOnlyMode/port/address, demoting the admin, or deleting seeded
   shares/data mid-run.
@@ -13,9 +14,13 @@ the login exchange, so the harness still injects the cookie itself):
 
 import json
 import os
+import sys
 import urllib.request
 
 import schemathesis
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import auth_matrix
 
 BASE_URL = os.environ.get("PICASU_BASE_URL", "http://127.0.0.1:8899")
 JWT = os.environ.get("PICASU_JWT", "")
@@ -36,14 +41,13 @@ def _current_config():
             _EXPORT = None
     return _EXPORT
 
-SHARE_GUARDED = {
-    ("POST", "/get/prefetch"),
-    ("GET", "/get/config"),
-    ("PUT", "/put/set_album_title"),
-    ("PUT", "/put/set_user_defined_description"),
-    ("GET", "/object/compressed/{file_path}"),
-    ("GET", "/object/imported/{file_path}"),
-}
+MATRIX_PATH = os.environ.get(
+    "FUZZ_AUTH_MATRIX",
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "backend", "auth-matrix.json"
+    ),
+)
+SHARE_GUARDED = auth_matrix.share_guarded_ops(auth_matrix.load_matrix(MATRIX_PATH))
 
 
 @schemathesis.hook
