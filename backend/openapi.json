@@ -3201,7 +3201,7 @@
         "x-picasu-auth": {
           "admin": "admin",
           "effects": [
-            "manage"
+            "control"
           ],
           "guards": [
             "GuardAdmin",
@@ -3221,7 +3221,7 @@
     },
     "/post/config/auth-key/reset": {
       "post": {
-        "description": "Generates a new strong random key, persists it to the owner-only\nsecrets file, and installs it in memory. All previously issued tokens\nstop verifying, so every session is invalidated by construction.\nOverrides from `PICASU_AUTH_KEY` still win at the next boot (they are\nnever persisted).\n\nErrors: 401 missing or invalid admin credentials — 500 the new key\ncould not be stored.",
+        "description": "Generates a new strong random key, persists it to the owner-only\nsecrets file, and installs it in memory. All previously issued tokens\nstop verifying, so every session is invalidated by construction.\nOverrides from `PICASU_AUTH_KEY` still win at the next boot (they are\nnever persisted).\n\nErrors: 401 missing or invalid admin credentials — 405 read-only mode —\n500 the new key could not be stored.",
         "operationId": "reset_auth_key_handler",
         "responses": {
           "200": {
@@ -3236,6 +3236,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
           },
           "500": {
             "description": "Internal error"
@@ -3256,10 +3259,12 @@
             "manage"
           ],
           "guards": [
-            "GuardAdmin"
+            "GuardAdmin",
+            "GuardMutate"
           ],
           "invariants": [
-            "AUTH-11"
+            "AUTH-11",
+            "AUTH-12"
           ],
           "public": false,
           "shareScope": "n-a",

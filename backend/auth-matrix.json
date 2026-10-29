@@ -827,7 +827,7 @@
     "x-picasu-auth": {
       "admin": "admin",
       "effects": [
-        "manage"
+        "control"
       ],
       "guards": [
         "GuardAdmin",
@@ -863,10 +863,12 @@
         "manage"
       ],
       "guards": [
-        "GuardAdmin"
+        "GuardAdmin",
+        "GuardMutate"
       ],
       "invariants": [
-        "AUTH-11"
+        "AUTH-11",
+        "AUTH-12"
       ],
       "public": false,
       "shareScope": "n-a",

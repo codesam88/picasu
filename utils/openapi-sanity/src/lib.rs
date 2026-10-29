@@ -2242,7 +2242,7 @@ fn admin_role_mismatch(handler: &AnnotatedHandler) -> Vec<Finding> {
 }
 
 /// Effect classes the model recognises.
-const EFFECT_VOCAB: [&str; 3] = ["read", "write", "manage"];
+const EFFECT_VOCAB: [&str; 4] = ["read", "write", "manage", "control"];
 
 /// S10 — the declared effect class must be one the guards can support.
 ///
@@ -2291,6 +2291,16 @@ fn effects_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
             "write_requires_mutate",
             "the extension declares the `write` effect, but the handler carries no \
              GuardMutate, so read-only mode would not block it",
+        ));
+    }
+    if declared.contains("manage") && !guards.contains("GuardMutate") {
+        findings.push(Finding::at(
+            &handler.file,
+            effects.line,
+            "manage_requires_mutate",
+            "the extension declares the `manage` effect, but the handler carries no \
+             GuardMutate, so read-only mode would not block it; an operation that must stay \
+             available under read-only is classed `control` instead",
         ));
     }
     if declared.contains("manage")

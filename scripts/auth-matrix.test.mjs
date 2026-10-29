@@ -229,7 +229,7 @@ test("every effect is one class and only public operations are unclassified", (t
   const records = JSON.parse(
     readFileSync(join(repoRoot, "backend", "auth-matrix.json"), "utf8"),
   );
-  const vocabulary = new Set(["read", "write", "manage"]);
+  const vocabulary = new Set(["read", "write", "manage", "control"]);
   for (const record of records) {
     if (!record.modeled) continue;
     const auth = record["x-picasu-auth"];

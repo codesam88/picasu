@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::router::{AppResult, GuardResult};
 
 /// Result of rotating the JWT signing key. Always true after a successful
@@ -25,23 +26,24 @@ pub struct AuthKeyResetResponse {
 /// Overrides from `PICASU_AUTH_KEY` still win at the next boot (they are
 /// never persisted).
 ///
-/// Errors: 401 missing or invalid admin credentials — 500 the new key
-/// could not be stored.
+/// Errors: 401 missing or invalid admin credentials — 405 read-only mode —
+/// 500 the new key could not be stored.
 #[utoipa::path(
         tag = "config",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAdmin"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
             "effects": ["manage"],
-            "invariants": ["AUTH-11"]
+            "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
             (status = 200, description = "Signing key rotated", body = AuthKeyResetResponse),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
     )
@@ -49,12 +51,14 @@ pub struct AuthKeyResetResponse {
 #[post("/post/config/auth-key/reset")]
 pub fn reset_auth_key_handler(
     auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
 ) -> AppResult<Json<AuthKeyResetResponse>> {
     use crate::auth::secret_key;
     use crate::model::config::{APP_CONFIG, generate_secret_key};
     use crate::router::{AppError, ErrorKind};
 
     let _ = auth?;
+    let _ = mutation?;
     let key = generate_secret_key();
     secret_key::store_secret_key(&key).map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
     APP_CONFIG

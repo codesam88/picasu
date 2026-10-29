@@ -109,9 +109,10 @@ behavioral tests. Each rule lives where its inputs live.
    the admin role (AUTH-11) and `write` requires the read-only gate
    (AUTH-12); the matrix test checks that every class is in the vocabulary,
    that exactly one is declared, and that every referenced invariant exists
-   in `authz-model.md`. Known remainder: admin operations that are `manage`
-   but carry no read-only gate — `reset_auth_key_handler` today — are not
-   covered by AUTH-12's mutation half and remain an open decision.
+   in `authz-model.md`. AUTH-12 is complete: `manage` requires the read-only
+   gate too, and the one operation that must stay available while read-only
+   is on — lifting the kill-switch — is classed `control` rather than
+   exempted by path.
 5. **`authz-model.md`.** Stays the prose authority for AUTH-1..16
    until the annotation-based model can derive its docs back; at
    that point the model replaces the hand-maintained file. Shape to
