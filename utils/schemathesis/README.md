@@ -21,6 +21,8 @@ Updating the baseline when a bug is fixed: remove the corresponding entry from `
 
 State lives in a temp dir removed on exit. Set `FUZZ_REPORT_OUT=<path>` to copy the JSON report out before teardown (used by CI for SARIF conversion).
 
+Tier 1 gates CI (`ci.yml`, backend job): a finding outside `baseline.yaml` fails the build. It is deliberately absent from `just check`/precommit, where the seed-and-sweep runtime does not belong.
+
 ## Tier 2 — campaign
 
 Stateful run in two commands: one serves, one fuzzes.
