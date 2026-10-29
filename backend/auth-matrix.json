@@ -64,6 +64,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -97,6 +98,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -131,6 +133,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -176,6 +179,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -208,6 +212,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -245,6 +250,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardPresenter"
       ],
@@ -277,6 +283,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -309,6 +316,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser"
       ],
@@ -339,6 +347,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardSnapshot"
       ],
@@ -371,6 +380,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -403,6 +413,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardSnapshot"
       ],
@@ -435,6 +446,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardSnapshot"
       ],
@@ -467,6 +479,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser"
       ],
@@ -497,6 +510,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -529,6 +543,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -561,6 +576,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardSnapshot"
       ],
@@ -593,6 +609,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -630,6 +647,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardPresenter"
       ],
@@ -663,6 +681,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser"
       ],
@@ -687,6 +706,7 @@
       "admin": "none",
       "credentials": [],
       "effects": [],
+      "fallback": [],
       "guards": [],
       "invariants": [],
       "public": true,
@@ -715,6 +735,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -778,6 +799,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardPresenter",
         "GuardHash"
@@ -821,6 +843,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardPresenter",
         "GuardHashOriginal"
@@ -855,6 +878,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardReauth"
@@ -892,6 +916,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -926,6 +951,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -959,6 +985,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -993,6 +1020,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1027,6 +1055,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin"
       ],
@@ -1059,6 +1088,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1087,6 +1117,7 @@
       "admin": "none",
       "credentials": [],
       "effects": [],
+      "fallback": [],
       "guards": [],
       "invariants": [],
       "public": true,
@@ -1115,6 +1146,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardRenewHash"
       ],
@@ -1153,6 +1185,7 @@
       "effects": [
         "read"
       ],
+      "fallback": [],
       "guards": [
         "GuardPresenter"
       ],
@@ -1181,6 +1214,7 @@
       "admin": "none",
       "credentials": [],
       "effects": [],
+      "fallback": [],
       "guards": [],
       "invariants": [],
       "public": true,
@@ -1208,6 +1242,9 @@
       ],
       "effects": [
         "manage"
+      ],
+      "fallback": [
+        "bootstrap-window"
       ],
       "guards": [
         "GuardAdmin",
@@ -1243,6 +1280,10 @@
       "effects": [
         "manage"
       ],
+      "fallback": [
+        "registration-invite",
+        "allow-registration"
+      ],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1277,6 +1318,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1311,6 +1353,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1344,6 +1387,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1378,6 +1422,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1411,6 +1456,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1444,6 +1490,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1478,6 +1525,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1511,6 +1559,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1544,6 +1593,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1577,6 +1627,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1610,6 +1661,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1643,6 +1695,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"
@@ -1676,6 +1729,7 @@
       "effects": [
         "manage"
       ],
+      "fallback": [],
       "guards": [
         "GuardAdmin",
         "GuardMutate"
@@ -1710,6 +1764,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate",
@@ -1877,6 +1932,7 @@
       "effects": [
         "write"
       ],
+      "fallback": [],
       "guards": [
         "GuardUser",
         "GuardMutate"

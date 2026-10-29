@@ -184,7 +184,6 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),
@@ -240,7 +239,6 @@ pub fn get_admin_config_handler(
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),

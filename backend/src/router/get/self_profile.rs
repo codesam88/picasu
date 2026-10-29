@@ -49,7 +49,6 @@ pub struct SelfProfileResponse {
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": []
         }))),

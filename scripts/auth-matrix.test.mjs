@@ -25,6 +25,7 @@ const AUTH_FIELDS = [
   "admin",
   "credentials",
   "effects",
+  "fallback",
   "guards",
   "invariants",
   "public",
@@ -81,7 +82,7 @@ test("every record has sorted keys", (t) => {
   }
 });
 
-test("every annotated op has a row with all 7 x-picasu-auth fields", (t) => {
+test("every annotated op has a row with the full x-picasu-auth field set", (t) => {
   const records = JSON.parse(
     readFileSync(join(repoRoot, "backend", "auth-matrix.json"), "utf8"),
   );
@@ -95,6 +96,7 @@ test("every annotated op has a row with all 7 x-picasu-auth fields", (t) => {
       assert.ok(r["x-picasu-auth"], op.operationId);
       const fields = Object.keys(r["x-picasu-auth"]).sort();
       assert.deepEqual(fields, [...AUTH_FIELDS].sort(), op.operationId);
+      assert.equal(fields.length, 9, op.operationId);
     }
   }
 });
@@ -152,13 +154,13 @@ test("human table has name, role, tokens, and guards columns", (t) => {
   const md = readFileSync(join(repoRoot, "docs", "auth-matrix.md"), "utf8");
   const norm = md.replace(/ +/g, " ");
   assert.ok(
-    norm.includes("| Op | Name | Role | Credentials | Scope | Guards | Effects |"),
+    norm.includes("| Op | Name | Role | Credentials | Scope | Fallback | Guards | Effects |"),
     "modeled table header",
   );
   assert.ok(!norm.includes("| Typ |"), "no abbreviated Typ header");
   assert.ok(
     norm.includes(
-      "`PUT /put/set_album_title` | `set_album_title` | any(admin, user) | session | — | GuardUser, GuardMutate |",
+      "`PUT /put/set_album_title` | `set_album_title` | any(admin, user) | session | — | — | GuardUser, GuardMutate |",
     ),
     "share-scoped editor row",
   );
@@ -182,7 +184,7 @@ test("human table has name, role, tokens, and guards columns", (t) => {
   );
   assert.ok(
     norm.includes(
-      "`GET /object/compressed/{file_path}` | `compressed_file` | any(admin, user, share) | session, share, asset | — |",
+      "`GET /object/compressed/{file_path}` | `compressed_file` | any(admin, user, share) | session, share, asset | — | — |",
     ),
     "serving row carries no enforced album scope (bearer authorizes the asset)",
   );
@@ -206,7 +208,7 @@ test("fixture: generator derives artifacts in a throwaway tree", (t) => {
             effects: [],
             guards: [],
             invariants: [],
-            public: true,
+            public: false,
             shareScope: "n-a",
             credentials: [],
           },
@@ -224,6 +226,9 @@ test("fixture: generator derives artifacts in a throwaway tree", (t) => {
   assert.equal(records.length, 2);
   assert.equal(records.filter((x) => x.modeled).length, 1);
   assert.equal(records.filter((x) => !x.modeled).length, 1);
+  const derived = records.find((x) => x.operationId === "get_x");
+  assert.equal(derived["x-picasu-auth"].public, true, "public is derived from the guards");
+  assert.deepEqual(derived["x-picasu-auth"].fallback, [], "fallback has a stable shape");
 });
 
 test("every effect is one class and only public operations are unclassified", (t) => {

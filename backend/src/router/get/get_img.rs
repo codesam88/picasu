@@ -59,7 +59,6 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
             "credentials": ["session", "share", "asset"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-8", "AUTH-9"]
         }))),
@@ -154,7 +153,6 @@ pub async fn compressed_file(
             "credentials": ["session", "share", "asset"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-8", "AUTH-9"]
         }))),

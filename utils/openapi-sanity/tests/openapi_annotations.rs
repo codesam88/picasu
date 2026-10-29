@@ -1379,7 +1379,7 @@ fn s_effects_violations_fail() {
     assert_eq!(
         render(&findings),
         "s10_effects_violations.rs:28: write_requires_mutate: the extension declares the `write` effect, but the handler carries no GuardMutate, so read-only mode would not block it\n\
-         s10_effects_violations.rs:51: manage_requires_admin: the extension declares the `manage` effect, but the handler is not admin-guarded, so a non-admin or share caller could manage the server",
+         s10_effects_violations.rs:50: manage_requires_admin: the extension declares the `manage` effect, but the handler is not admin-guarded, so a non-admin or share caller could manage the server",
         "each unsupported effect is a finding at the effects line"
     );
 }
@@ -1406,8 +1406,8 @@ fn s_waiver_violations_fail() {
     assert_eq!(
         render(&findings),
         "s11_waiver_violations.rs:31: waiver_not_declared: the extension waives `AUTH-12`, but the operation does not declare that invariant; a waiver can only exempt a rule the operation is held to\n\
-         s11_waiver_violations.rs:54: waiver_missing_reason: the extension waives `AUTH-12` without a reason\n\
-         s11_waiver_violations.rs:77: waiver_unused: the extension waives `AUTH-12`, but the handler carries GuardMutate, so there is nothing to waive",
+         s11_waiver_violations.rs:53: waiver_missing_reason: the extension waives `AUTH-12` without a reason\n\
+         s11_waiver_violations.rs:75: waiver_unused: the extension waives `AUTH-12`, but the handler carries GuardMutate, so there is nothing to waive",
         "each malformed waiver is a finding at the extension line"
     );
 }
@@ -1418,4 +1418,35 @@ fn s_waiver_with_reason_is_accepted() {
     let findings = check_source("s11_conforming.rs", WAIVER_CONFORMING);
 
     assert_eq!(render(&findings), "", "a reasoned waiver must be silent");
+}
+
+// ── Section S12 — admission fallback ──────────────────────────────────────
+
+const ADMISSION_VIOLATIONS: &str =
+    include_str!("fixtures/openapi_annotations/s12_admission_violations.rs");
+const ADMISSION_CONFORMING: &str = include_str!("fixtures/openapi_annotations/s12_conforming.rs");
+
+/// S12: the field set is closed, the fallback vocabulary is fixed, an empty
+/// fallback is not a declaration, and a fallback needs a guard path.
+#[test]
+fn s_admission_fallback_violations_fail() {
+    let findings = check_source("s12_admission_violations.rs", ADMISSION_VIOLATIONS);
+
+    assert_eq!(
+        render(&findings),
+        "s12_admission_violations.rs:33: unknown_auth_field: `x-picasu-auth` carries `control`, which no rule reads; remove it or model it in the extension's field set\n\
+         s12_admission_violations.rs:59: unknown_fallback: `invite` is not an admission mechanism; the vocabulary is `registration-invite`, `allow-registration`, `bootstrap-window`\n\
+         s12_admission_violations.rs:85: empty_fallback: the extension declares an empty `fallback`; omit the field when the guard path is the only admission\n\
+         s12_admission_violations.rs:111: fallback_without_guards: the extension declares a `fallback`, but the handler has no contributing guard to fall back from; a public operation admits everyone already",
+        "each malformed admission claim is a finding at the extension line"
+    );
+}
+
+/// The conforming case declares a fallback on a guard-backed handler and
+/// leaves the field out when the guard path is the only admission.
+#[test]
+fn s_admission_fallback_is_accepted() {
+    let findings = check_source("s12_conforming.rs", ADMISSION_CONFORMING);
+
+    assert_eq!(render(&findings), "", "a valid fallback must be silent");
 }

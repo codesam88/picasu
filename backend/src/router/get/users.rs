@@ -22,7 +22,6 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),

@@ -185,7 +185,6 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::ClaimsSession) -> (S
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12", "AUTH-15"]
         }))),

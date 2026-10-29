@@ -58,7 +58,6 @@ fn absolutize(p: &Path) -> PathBuf {
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),

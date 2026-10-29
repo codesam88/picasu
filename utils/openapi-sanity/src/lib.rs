@@ -1,6 +1,6 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Twenty-six rules are implemented
+//! Twenty-seven rules are implemented
 //! here: **section A**, the eight rules about the annotation's own shape;
 //! **section B**, the five rules about what the annotation declares against what
 //! the route already says; and **section P**, the four rules about response
@@ -13,8 +13,9 @@
 //! compares the declared guard array with the signature — the only rule that
 //! reads that field, which every other rule leaves untouched; S9 ties the role
 //! constraint to the guards; S10 ties the effect class to the guards; S11 keeps
-//! waivers honest. What remains open is listed under "Known gaps" in this
-//! crate's README.
+//! waivers honest; S12 closes the extension's field set and validates the
+//! non-guard admission paths declared in `fallback`. What remains open is
+//! listed under "Known gaps" in this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -449,6 +450,13 @@ pub struct Annotation {
     /// The `waivers` object inside `x-picasu-auth`: rule id → reason. A waiver
     /// exempts the operation from one rule, and carries the reason it does.
     pub waivers: Option<Located<Vec<(String, String)>>>,
+    /// The `fallback` array inside `x-picasu-auth`: non-guard admission paths
+    /// the handler falls back to when its guards do not admit the caller.
+    pub fallback: Option<Located<Vec<String>>>,
+    /// The top-level keys `x-picasu-auth` declares, with the extension's line.
+    /// S12 rejects a key no rule reads, so a renamed or retired field cannot
+    /// linger as dead data in the annotation.
+    pub auth_fields: Option<Located<Vec<String>>>,
     /// The media type the `request_body` names explicitly, either
     /// `request_body(content_type = "…")` or a `request_body(content(… = …))`
     /// group. `None` means the annotation names none and utoipa guesses one.
@@ -761,6 +769,10 @@ fn read_extensions(stream: &TokenStream, line: usize, annotation: &mut Annotatio
                     .map(|values| Located::new(values, line));
                 annotation.waivers = collect_string_map(&tuple.stream(), "waivers")
                     .map(|entries| Located::new(entries, line));
+                annotation.fallback = collect_string_array(&tuple.stream(), "fallback")
+                    .map(|values| Located::new(values, line));
+                annotation.auth_fields =
+                    first_object_keys(&tuple.stream()).map(|fields| Located::new(fields, line));
             }
             annotation.auth_extensions.push(Located::new(key, line));
         } else {
@@ -912,6 +924,34 @@ fn first_literal(stream: &TokenStream) -> Option<String> {
         TokenTree::Group(group) => first_literal(&group.stream()),
         _ => None,
     })
+}
+
+/// The top-level keys of the first `{…}` object inside the extension value.
+///
+/// The extension is `json!({…})`, so the object is a brace group nested in the
+/// macro call. Reading the key set rather than the values keeps S12's field
+/// vocabulary in one place: a key the other readers do not know stays visible
+/// instead of becoming dead data.
+fn first_object_keys(stream: &TokenStream) -> Option<Vec<String>> {
+    for tree in stream.clone() {
+        match tree {
+            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
+                return Some(
+                    split_entries(&group.stream())
+                        .into_iter()
+                        .filter_map(|entry| first_literal(&entry))
+                        .collect(),
+                );
+            }
+            TokenTree::Group(group) => {
+                if let Some(keys) = first_object_keys(&group.stream()) {
+                    return Some(keys);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Split a group into its comma-separated entries, the way utoipa parses
@@ -2357,8 +2397,8 @@ fn effects_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
             effects.line,
             "manage_requires_mutate",
             "the extension declares the `manage` effect, but the handler carries no \
-             GuardMutate, so read-only mode would not block it; an operation that must stay \
-             available under read-only is classed `control` instead",
+             GuardMutate, so read-only mode would not block it; guard it or waive AUTH-12 \
+             with the reason it must stay available",
         ));
     }
     if declared.contains("manage")
@@ -2436,8 +2476,95 @@ fn waiver_consistency(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
+/// S12 — the extension's field set is closed and `fallback` names known
+/// admission paths on a guard-backed handler.
+///
+/// `fallback` records the non-guard ways a handler may still admit the caller:
+/// a registration invite in the body, the `allow_registration` knob, or the
+/// empty-store bootstrap window. None of them is statically verifiable, so the
+/// rule checks only what the annotation claims — the vocabulary, that a
+/// declared fallback is not empty, and that it refines a guard path rather than
+/// standing in for one. The closed field set keeps a renamed or retired field
+/// from lingering as data no rule reads.
+fn admission_fallback(handler: &AnnotatedHandler) -> Vec<Finding> {
+    const FIELDS: &[&str] = &[
+        "guards",
+        "credentials",
+        "admin",
+        "shareScope",
+        "effects",
+        "invariants",
+        "waivers",
+        "fallback",
+    ];
+    const MECHANISMS: &[&str] = &[
+        "registration-invite",
+        "allow-registration",
+        "bootstrap-window",
+    ];
+
+    let annotation = &handler.annotation;
+    let mut findings = Vec::new();
+
+    if let Some(fields) = &annotation.auth_fields {
+        for field in &fields.value {
+            if !FIELDS.contains(&field.as_str()) {
+                findings.push(Finding::at(
+                    &handler.file,
+                    fields.line,
+                    "unknown_auth_field",
+                    &format!(
+                        "`x-picasu-auth` carries `{field}`, which no rule reads; remove it or \
+                         model it in the extension's field set"
+                    ),
+                ));
+            }
+        }
+    }
+
+    let Some(fallback) = &annotation.fallback else {
+        return findings;
+    };
+    if fallback.value.is_empty() {
+        findings.push(Finding::at(
+            &handler.file,
+            fallback.line,
+            "empty_fallback",
+            "the extension declares an empty `fallback`; omit the field when the guard path is \
+             the only admission",
+        ));
+    }
+    for value in &fallback.value {
+        if !MECHANISMS.contains(&value.as_str()) {
+            findings.push(Finding::at(
+                &handler.file,
+                fallback.line,
+                "unknown_fallback",
+                &format!(
+                    "`{value}` is not an admission mechanism; the vocabulary is \
+                     `registration-invite`, `allow-registration`, `bootstrap-window`"
+                ),
+            ));
+        }
+    }
+    if annotation
+        .guard_names
+        .as_ref()
+        .is_some_and(|guards| guards.value.is_empty())
+    {
+        findings.push(Finding::at(
+            &handler.file,
+            fallback.line,
+            "fallback_without_guards",
+            "the extension declares a `fallback`, but the handler has no contributing guard to \
+             fall back from; a public operation admits everyone already",
+        ));
+    }
+    findings
+}
+
 /// A1 to A7 and A9 of section A, B1 to B5 of section B, and S1, S2, S5, S6,
-/// S7, S8, S9, S10 and S11 of section S: every rule over one handler, in a
+/// S7, S8, S9, S10, S11 and S12 of section S: every rule over one handler, in a
 /// fixed order so a report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
@@ -2470,6 +2597,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         admin_role_mismatch(handler),
         effects_consistency(handler),
         waiver_consistency(handler),
+        admission_fallback(handler),
     ]
     .concat()
 }

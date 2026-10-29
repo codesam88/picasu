@@ -307,7 +307,6 @@ fn execute_prefetch_logic(
             "credentials": ["session", "share"],
             "admin": "any",
             "shareScope": "album",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-6", "AUTH-9"]
         }))),

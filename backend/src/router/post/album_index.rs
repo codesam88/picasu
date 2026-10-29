@@ -42,7 +42,6 @@ pub struct IndexAlbumRequest {
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),
@@ -93,7 +92,6 @@ pub fn index_album_handler(
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),

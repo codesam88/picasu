@@ -32,7 +32,6 @@ type AppResult<T> = Result<T, AppError>;
         "credentials": ["session", "share"],
         "admin": "any",
         "shareScope": "album",
-        "public": false,
         "effects": [],
         "invariants": []
     }))),

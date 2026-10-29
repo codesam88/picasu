@@ -31,7 +31,6 @@ use std::path::Path;
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": []
         }))),
@@ -122,7 +121,6 @@ impl From<&Share> for ShareInfo {
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": []
         }))),

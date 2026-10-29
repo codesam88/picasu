@@ -58,11 +58,21 @@ fn stderr(output: &Output) -> String {
 /// `openapi_annotations.rs`. This test is about the CLI reporting the number, not
 /// about the number.
 fn annotated_handlers_in_the_router_tree() -> usize {
+    annotated_handlers_in(&router_tree())
+}
+
+/// The fixture tree's count, read the same way, so adding a fixture does not
+/// silently make a count assertion describe the old tree.
+fn annotated_handlers_in_fixture_tree() -> usize {
+    annotated_handlers_in(&fixture_tree())
+}
+
+fn annotated_handlers_in(root: &Path) -> usize {
     openapi_sanity::scan_source_root(
-        &router_tree(),
+        root,
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/src/error.rs"),
     )
-    .expect("the router tree must be readable")
+    .expect("the tree must be readable")
     .annotated_handlers()
 }
 
@@ -123,12 +133,13 @@ fn a_tree_below_the_floor_fails() {
 /// they only describe the part of the tree that was reached.
 #[test]
 fn a_short_scan_reports_coverage_rather_than_findings() {
-    let output = run(&fixture_tree(), &["--expect-at-least", "95"]);
+    let floor = annotated_handlers_in_fixture_tree() + 1;
+    let output = run(&fixture_tree(), &["--expect-at-least", &floor.to_string()]);
 
     assert!(!output.status.success());
     let reported = stderr(&output);
     assert!(
-        reported.contains("fewer than the expected minimum of 95"),
+        reported.contains(&format!("fewer than the expected minimum of {floor}")),
         "{reported}"
     );
     assert!(
@@ -149,11 +160,12 @@ fn findings_still_report_the_observed_count() {
         reported.contains("no_responses"),
         "the findings themselves still reach the console: {reported}"
     );
+    let handlers = annotated_handlers_in_fixture_tree();
     assert!(
-        reported.contains(
-            "finding(s) across 94 annotated handler(s) under \
-             utils/openapi-sanity/tests/fixtures/openapi_annotations",
-        ),
+        reported.contains(&format!(
+            "finding(s) across {handlers} annotated handler(s) under \
+             utils/openapi-sanity/tests/fixtures/openapi_annotations"
+        )),
         "the summary keeps the observed count: {reported}"
     );
 }

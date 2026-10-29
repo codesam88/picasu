@@ -30,7 +30,6 @@ type AppResult<T> = Result<T, AppError>;
         "credentials": ["session"],
         "admin": "any",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["write"],
         "invariants": []
     }))),
@@ -56,7 +55,6 @@ pub async fn write_widget(
         "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["manage"],
         "invariants": []
     }))),
@@ -82,7 +80,6 @@ pub async fn manage_widget(
         "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["control"],
         "invariants": []
     }))),

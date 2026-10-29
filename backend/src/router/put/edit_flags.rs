@@ -54,7 +54,6 @@ pub struct EditFlagsData {
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12"]
         }))),

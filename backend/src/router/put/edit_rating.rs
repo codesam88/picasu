@@ -47,7 +47,6 @@ pub struct EditRatingData {
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12"]
         }))),

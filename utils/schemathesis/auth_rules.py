@@ -2,7 +2,7 @@
 
 ``backend/auth-matrix.json`` is the committed machine contract of the
 per-operation auth model (``x-picasu-auth``: guards, shareScope, credentials,
-admin, invariants, public), generated from the annotated spec and gated by
+admin, fallback, invariants, public), generated from the annotated spec and gated by
 ``openapi-check``. The hooks in this directory consume it through the pure
 functions below instead of hand-maintained operation lists, so a guard or
 credential change in the backend flows into the checks on the next matrix
@@ -132,8 +132,8 @@ def admin_session_ops(rows):
 
 # What each check asserts. A status check is exact; a refusal check accepts
 # any 4xx, because "the demoted token no longer holds the privilege" is the
-# claim — routes with an additional public path (registration) refuse with 403
-# rather than 401.
+# claim — routes with a non-guard admission path (registration, bootstrap)
+# refuse in ways other than 401 while those paths are unavailable.
 EXPECTED = {
     TEST_CROSS_SCOPE: {"statuses": list(CROSS_SCOPE_EXPECTED_STATUSES)},
     TEST_WRONG_CREDENTIAL: {"statuses": [401]},

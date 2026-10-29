@@ -63,7 +63,6 @@ impl<'r> rocket::response::Responder<'r, 'static> for NoStoreJson {
             "credentials": [],
             "admin": "none",
             "shareScope": "n-a",
-            "public": true,
             "effects": [],
             "invariants": []
         }))),

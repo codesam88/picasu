@@ -10,9 +10,6 @@
         "credentials": [],
         "admin": "none",
         "shareScope": "n-a",
-        "readonly": false,
-        "reauth": false,
-        "public": true,
         "effects": [],
         "invariants": []
     }))),
@@ -32,9 +29,6 @@ pub async fn public_widget() -> AppResult<Json<Widget>> {
         "credentials": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
-        "readonly": false,
-        "reauth": false,
-        "public": false,
         "effects": [],
         "invariants": []
     }))),
