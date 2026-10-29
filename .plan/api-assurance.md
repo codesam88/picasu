@@ -116,7 +116,7 @@ generate from.
 | Step 6 claims-consumption (F3)                                                | open, queued                                                                                     |
 | Step 7 UI fixtures                                                            | done (4 crates, UI suites run in the dylint CI job); allowlist/baseline open                     |
 | Step 8 expiry/decode ratchets                                                 | open                                                                                             |
-| Step 9 env-var lint                                                           | done, gating; sequencing sentence needs amendment (open decision); further domains open          |
+| Step 9 env-var lint                                                           | done, gating; sequencing rule amended to dylint scope; further domains open                      |
 | Step 10 + S-rules                                                             | S1/S2/S5/S6/S7/S8 gating, S1 paired both ways, S3 gating (`token_typ_agreement`); done           |
 | Fuzz gate (tier 1)                                                            | done — `just fuzz-check` gates CI against the accepted-findings baseline; tier 2 advisory        |
 | Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
@@ -322,11 +322,13 @@ table is generated, with the lint checking lookups against the
 array instead of prose. Both kill the same drift class the
 `openapi.json` parity gate kills for routes. Further domains follow
 the same recipe: pick a property with a machine-readable declaration
-source, write the lint, pin GREEN/RED. No new lint starts until the
-auth set above is gating. Status: the env-var lint shipped as a node
-gate ahead of that sequence — the sentence needs amendment to
-dylint-scope (or a recorded supersession) before it can be trusted
-as the decision record; further domains stay open.
+source, write the lint, pin GREEN/RED. No new **dylint** lint starts
+until the auth set above is gating; a check that does not need HIR
+(like the env-var node gate that shipped) is not bound by that
+sequence, because it runs on the stable toolchain and gates from its
+first commit. Status: the env-var lint shipped as a node gate and is
+part of `just check`; the dylint auth set gates in CI; further
+domains stay open.
 
 ### 10. Machine-readable auth metadata (spike: `x-picasu-auth` extension)
 
