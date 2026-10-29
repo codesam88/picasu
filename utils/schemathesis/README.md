@@ -12,7 +12,9 @@ What it does:
 
 - builds the backend and snapfab fixtures
 - seeds a disposable instance (fresh dirs, index, shares)
-- runs schemathesis with the fixed 5-check oracle
+- runs schemathesis with the fixed 5-check oracle (the hooks inject the share
+  headers on the `GuardPresenter`-guarded operations, derived from
+  `backend/auth-matrix.json` — see "Auth knowledge derivation")
 - compares the JSON report to the accepted-findings baseline
 
 Updating the baseline when a bug is fixed: remove the corresponding entry from `baseline.yaml` and re-run; a fixed bug must make that finding disappear.
@@ -77,17 +79,29 @@ The exit status is the baseline comparison — known findings pass, new ones fai
 
 Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`, `FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, `FUZZ_PASSWORD`, `PICASU_BASE_URL` (all provided by `seed.env`, which also points the recipe at the seeded port). The campaign targets a running instance, so destructive operations are disabled in `campaign.toml` (`update_admin_config_handler`, `reset_auth_key_handler`, `disable_read_only_handler`, index rebuild, logout, user password/admin mutations) and the hooks' poison guards null config fields, protect the admin, and redirect share/delete operations to nonexistent fixtures.
 
-What A1-A5 assert:
+### Auth knowledge derivation (`backend/auth-matrix.json`)
 
-- A1 `cross_scope_refused` — a share-A snapshot token cannot read an album-B asset.
-- A2 `demoted_token_rejected` — a demoted user's still-live token loses admin access immediately.
-- A3 `wrong_typ_rejected` — an identity token does not satisfy a snapshot-token guard.
-- A4 `readonly_405` — every mutating operation answers 405 under read-only mode (env-gated via `FUZZ_READONLY=1`).
-- A5 `cross_share_renewal_refused` — share B cannot renew a snapshot minted for share A.
+The hooks do not carry hand lists of auth knowledge. `auth_matrix.py` derives it from `backend/auth-matrix.json` (the committed machine contract of the per-operation `x-picasu-auth` annotation, regenerated and diffed by `openapi-check`):
+
+- share-header injection set — the `GuardPresenter`-guarded operations (both tiers)
+- probe assignment — which operation carries which of the cross-scope / wrong-typ / renewal-mismatch / demoted probes (`probe_plan`, one probe per operation by priority)
+- wrong-typ token selection — a token typ outside the operation's `tokenTyp`
+- read-only exemptions — non-GET operations without `GuardMutate`
+- scope pairs — the seeded share identities crossed with the foreign albums they must not reach
+
+The derivation is pure and unit-tested; run `python3 utils/schemathesis/test_auth_matrix.py`. The tests pin the derivations against the committed matrix, so a backend guard change fails them and forces a probe review instead of silent drift. A missing or malformed matrix file fails the run (override the location with `FUZZ_AUTH_MATRIX`). The destructive-operation disables in `campaign.toml`/`check.toml` stay hand-tuned, with a unit test keeping their operation ids in sync with the matrix.
+
+What A1-A5 assert (probe targets are generated from the matrix, not hand-picked):
+
+- A1 `cross_scope_refused` — a share-A snapshot token cannot read an album-B asset: every snapshot-typed operation whose path binds an asset id answers 404 on the mismatch (S4 binding semantics — not 403, so the route does not reveal that the id exists).
+- A2 `demoted_token_rejected` — a demoted user's still-live token loses admin access immediately: every admin-guarded session operation answers 401.
+- A3 `wrong_typ_rejected` — a session-typed token does not satisfy a snapshot-token guard: every snapshot-typed bearer operation answers 401.
+- A4 `readonly_405` — every mutating (`GuardMutate`) operation answers 405 under read-only mode (env-gated via `FUZZ_READONLY=1`; requires read-only mode enabled on the target instance).
+- A5 `cross_share_renewal_refused` — share B cannot renew a snapshot minted for share A: the album-scoped renewal operations (AUTH-10) answer 401.
 
 Budget: default `--max-time 900s`, overridable via pass-through args. Stateful phase uses up to 8 steps per sequence.
 
-The campaign runs in three env-gated modes controlled by `FUZZ_SHARE_HEADERS`, `FUZZ_MARKERS`, `FUZZ_READONLY` (default-on, set by `campaign.sh`).
+The campaign runs in three env-gated modes controlled by `FUZZ_SHARE_HEADERS`, `FUZZ_MARKERS`, `FUZZ_READONLY`. The first two default on (set by `campaign.sh`); `FUZZ_READONLY` stays off unless exported and the target instance has read-only mode enabled.
 
 ### Fundamental commands
 
