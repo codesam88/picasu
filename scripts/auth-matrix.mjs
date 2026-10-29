@@ -141,7 +141,21 @@ lines.push(
   "- **Guards**: request guards verbatim from the handler signature (`GuardMutate` marks read-only-gated mutating routes, `GuardReauth` the password-confirmed ones).",
 );
 lines.push(
-  "- **Effects**: reserved for a future manage/effect vocabulary (all `—` today).",
+  "- **Effects**: what the operation does to persistent state, exactly one class:",
+);
+lines.push("  - `read`: observes state, no persistent change (token renewal included).");
+lines.push(
+  "  - `write`: changes gallery content — assets, albums, uploads, metadata, derived thumbnails/rotation.",
+);
+lines.push(
+  "  - `manage`: changes administrative state — identities, config and secrets, index jobs, shares.",
+);
+lines.push(
+  "  - `control`: administrative action that must stay callable while read-only mode is on (lifting the kill-switch); exempt from the read-only requirement by class, not by route.",
+);
+lines.push("  - `—`: public operation, nothing to classify.");
+lines.push(
+  "  - Coupling: `write` and `manage` require `GuardMutate` (read-only gate); `manage` also requires the admin role (AUTH-11, AUTH-12).",
 );
 lines.push("");
 lines.push("## Modeled operations");
