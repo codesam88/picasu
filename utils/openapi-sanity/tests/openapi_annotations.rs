@@ -1052,22 +1052,22 @@ fn app_error_map() -> PathBuf {
 /// The guards whose outcome status is computed rather than written as a
 /// `Status` constant, pinned so a new one fails here instead of silently
 /// requiring nothing.
-const DYNAMIC_GUARDS: [&str; 1] = ["GuardShare"];
+const DYNAMIC_GUARDS: [&str; 1] = ["GuardPresenter"];
 
 /// Every guard the scan resolves — each `impl FromRequest for G` under the
 /// source root — in the scan's sorted order, pinned so a guard whose impl moves
 /// out of the tree fails here instead of silently dropping out of P2 and P4
 /// (which both look the guard up by name and skip what they do not find).
 const RESOLVED_GUARDS: [&str; 9] = [
-    "GuardAuth",
+    "GuardAdmin",
     "GuardHash",
     "GuardHashOriginal",
-    "GuardReadOnlyMode",
+    "GuardMutate",
+    "GuardPresenter",
     "GuardReauth",
-    "GuardShare",
-    "GuardTimestamp",
+    "GuardRenewHash",
+    "GuardSnapshot",
     "GuardUser",
-    "TimestampGuardModified",
 ];
 
 /// Every rule over the real router tree, which has to be silent.
@@ -1197,8 +1197,8 @@ fn s_security_guard_mismatch_fails() {
     );
 }
 
-/// The conforming counterpart: GuardShare's two-group declaration, with
-/// GuardReadOnlyMode present but excluded.
+/// The conforming counterpart: GuardPresenter's two-group declaration, with
+/// GuardMutate present but excluded.
 #[test]
 fn s_security_guard_match_is_accepted() {
     let findings = check_source("s2_conforming.rs", SECURITY_GUARD_CONFORMING);
@@ -1212,14 +1212,14 @@ fn s_security_guard_match_is_accepted() {
 
 // ── Section S5 — readonly guard vs 405 declared ─────────────────────────────
 
-/// S5: a signature carrying `GuardReadOnlyMode` without a declared 405 fails.
+/// S5: a signature carrying `GuardMutate` without a declared 405 fails.
 #[test]
 fn s_readonly_without_405_fails() {
     let findings = check_source("s5_readonly_without_405.rs", READONLY_WITHOUT_405);
 
     assert_eq!(
         render(&findings),
-        "s5_readonly_without_405.rs:7: readonly_without_405: GuardReadOnlyMode can answer 405, but responses() does not declare it",
+        "s5_readonly_without_405.rs:7: readonly_without_405: GuardMutate can answer 405, but responses() does not declare it",
         "a missing 405 is a finding at the responses line"
     );
 }

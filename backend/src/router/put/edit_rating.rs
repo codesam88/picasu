@@ -3,7 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::openapi_components::Unauthorized;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::open_tree_snapshot_table;
@@ -43,7 +43,7 @@ pub struct EditRatingData {
         request_body = EditRatingData,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -66,11 +66,11 @@ pub struct EditRatingData {
 #[put("/put/edit_rating", format = "json", data = "<json_data>")]
 pub async fn edit_rating(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<EditRatingData>,
 ) -> AppResult<Json<()>> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     if let Some(r) = json_data.rating
         && r > 5

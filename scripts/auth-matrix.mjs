@@ -74,16 +74,15 @@ function nameCell(r) {
 // admit no role. A bare `admin` is the admin-only guard; anything wider
 // renders as any(...) or none(...).
 function roleOf(a) {
-  if (a.guards.includes('GuardAuth')) return 'admin'
+  if (a.guards.includes('GuardAdmin')) return 'admin'
   const members = []
   if (
     a.guards.includes('GuardUser') ||
-    a.guards.includes('GuardShare') ||
-    a.guards.includes('GuardUpload')
+    a.guards.includes('GuardPresenter')
   ) {
     members.push('admin', 'user')
   }
-  if (a.guards.includes('GuardShare') || a.guards.includes('GuardUpload')) {
+  if (a.guards.includes('GuardPresenter')) {
     members.push('share')
   }
   if (members.length === 1) return members[0]
@@ -99,7 +98,7 @@ function scopeCell(a) {
 }
 
 // Readonly and reauth are derived from the guard list, not stored:
-// GuardReadOnlyMode answers 405, GuardReauth demands the password header.
+// GuardMutate answers 405, GuardReauth demands the password header.
 function hasGuard(a, name) {
   return (a.guards || []).includes(name)
 }
@@ -124,15 +123,16 @@ lines.push('- **Op**: `METHOD /path` as mounted.')
 lines.push('  - The path is the Rocket route; `{name}` segments are path parameters.')
 lines.push('- **Name**: the operationId (handler-derived, stable across renames of the path).')
 lines.push('- **Role**: who may call.')
-lines.push('  - `admin`: admins only (`GuardAuth`).')
+lines.push('  - `admin`: admins only (`GuardAdmin`).')
 lines.push('  - `any(admin, user)`: any authenticated user (`GuardUser`).')
-lines.push('  - `any(admin, share)` / `any(admin, user, share)`: share presenters plus any authenticated user (`GuardShare` falls back to the session cookie).')
+lines.push('  - `any(admin, user, share)`: share presenters plus any authenticated user (`GuardPresenter` falls back to the session cookie).')
 lines.push('  - `none(public)`: no credential required.')
 lines.push('  - `none(snapshot)` / `none(asset)`: token-gated, no user role.')
-lines.push('- **Tokens**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public).')
+lines.push('- **Tokens**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public). `session` and `share` are alternative presenter credentials (whichever the presenter holds); `snapshot` / `asset` are bearer tokens that are additionally required whenever listed.');
+lines.push('- **Reading a row**: Role says whose identity may present; Tokens says which credentials must validate — one presenter credential plus every listed bearer token.');
 lines.push('- **Scope**: share binding (`own album` or `—` when not share-scoped).')
 lines.push('- **Guards**: request guards verbatim from the handler signature.')
-lines.push('- **Readonly** / **Reauth**: derived from the guard list (`GuardReadOnlyMode` answers 405, `GuardReauth` demands the password header).')
+lines.push('- **Readonly** / **Reauth**: derived from the guard list (`GuardMutate` answers 405, `GuardReauth` demands the password header).')
 lines.push('- **Effects**: reserved for a future manage/effect vocabulary (all `—` today).')
 lines.push('')
 lines.push('## Modeled operations')
@@ -142,7 +142,7 @@ lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |')
 for (const r of modeled) {
   const a = r['x-picasu-auth']
   lines.push(
-    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${hasGuard(a, 'GuardReadOnlyMode') ? 'yes' : 'no'} | ${hasGuard(a, 'GuardReauth') ? 'yes' : 'no'} | ${cell(a.effects)} |`
+    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${hasGuard(a, 'GuardMutate') ? 'yes' : 'no'} | ${hasGuard(a, 'GuardReauth') ? 'yes' : 'no'} | ${cell(a.effects)} |`
   )
 }
 lines.push('')

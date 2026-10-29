@@ -4,8 +4,8 @@ use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
 use crate::openapi_components::Unauthorized;
 use crate::router::GuardResult;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -43,7 +43,7 @@ pub struct EditShare {
         request_body = EditShare,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -64,12 +64,12 @@ pub struct EditShare {
 ]
 #[put("/put/edit_share", format = "json", data = "<json_data>")]
 pub async fn edit_share(
-    auth: GuardResult<GuardAuth>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<EditShare>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let txn = TREE
             .in_disk
@@ -154,7 +154,7 @@ pub struct DeleteShare {
         request_body = DeleteShare,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -175,12 +175,12 @@ pub struct DeleteShare {
 ]
 #[put("/put/delete_share", format = "json", data = "<json_data>")]
 pub async fn delete_share(
-    auth: GuardResult<GuardAuth>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<DeleteShare>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let txn = TREE
             .in_disk

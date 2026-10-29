@@ -88,7 +88,7 @@ fn create_share(
 }
 
 /// `POST /get/prefetch` authenticated as a share, returning the snapshot id,
-/// the `ClaimsTimestamp` bearer token, and the located row index (if any).
+/// the `ClaimsSnapshot` bearer token, and the located row index (if any).
 fn prefetch_as_share(
     client: &Client,
     album_id: &str,
@@ -116,7 +116,7 @@ fn prefetch_as_share(
     )
 }
 
-/// The per-asset `ClaimsHash` token carried in a `get-data` row.
+/// The per-asset `ClaimsAsset` token carried in a `get-data` row.
 fn get_data_asset_token(client: &Client, ts: i64, snapshot_token: &str) -> String {
     let resp = client
         .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
@@ -146,8 +146,8 @@ fn album_title(client: &Client, album_id: &str) -> Option<String> {
 
 // ── JWT token-type confusion ────────────────────────────────────────────
 
-/// A `ClaimsHash` asset token must not be accepted where a
-/// `ClaimsTimestamp` snapshot token is required (metadata, get-data, renewal).
+/// A `ClaimsAsset` asset token must not be accepted where a
+/// `ClaimsSnapshot` snapshot token is required (metadata, get-data, renewal).
 #[test]
 fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     let _g = lock();
@@ -157,7 +157,7 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
     let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
 
-    // Metadata: the confused token must not satisfy GuardTimestamp.
+    // Metadata: the confused token must not satisfy GuardSnapshot.
     let resp = client
         .get(format!("/get/metadata/{asset}?timestamp={ts}"))
         .header(Header::new(
@@ -168,7 +168,7 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     assert_eq!(
         resp.status(),
         Status::Unauthorized,
-        "a ClaimsHash must not satisfy GuardTimestamp on get-metadata"
+        "a ClaimsAsset must not satisfy GuardSnapshot on get-metadata"
     );
 
     // get-data: the confused token must not mint fresh allow-original tokens.
@@ -182,10 +182,10 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     assert_eq!(
         resp.status(),
         Status::Unauthorized,
-        "a ClaimsHash must not satisfy GuardTimestamp on get-data"
+        "a ClaimsAsset must not satisfy GuardSnapshot on get-data"
     );
 
-    // Renewal: a ClaimsHash must not be renewable as a snapshot token.
+    // Renewal: a ClaimsAsset must not be renewable as a snapshot token.
     let resp = client
         .post("/post/renew-timestamp-token")
         .header(Header::new("x-album-id", album.clone()))
@@ -196,13 +196,13 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     assert_eq!(
         resp.status(),
         Status::Unauthorized,
-        "a ClaimsHash must not be renewable as a ClaimsTimestamp"
+        "a ClaimsAsset must not be renewable as a ClaimsSnapshot"
     );
 }
 
-/// A `ClaimsTimestamp` snapshot token must not be accepted where a
-/// `ClaimsHash` asset token is required. This direction already fails closed
-/// (`ClaimsHash`'s required fields are absent), so it is a regression pin rather
+/// A `ClaimsSnapshot` snapshot token must not be accepted where a
+/// `ClaimsAsset` asset token is required. This direction already fails closed
+/// (`ClaimsAsset`'s required fields are absent), so it is a regression pin rather
 /// than a reproduction.
 #[test]
 fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
@@ -224,7 +224,7 @@ fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
     assert_eq!(
         resp.status(),
         Status::Unauthorized,
-        "a ClaimsTimestamp must not satisfy GuardHash"
+        "a ClaimsSnapshot must not satisfy GuardHash"
     );
 }
 
@@ -280,7 +280,7 @@ fn media_responses_are_not_shared_cacheable() {
     let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
 
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-    let claims: crate::router::auth::ClaimsHash =
+    let claims: crate::router::auth::ClaimsAsset =
         crate::router::auth::decode_typed(&asset_token, &validation).expect("decode asset token");
     let hash = claims.hash.to_string();
     let resp = client
@@ -315,7 +315,7 @@ fn original_serving_without_allow_original_is_401() {
     let client = setup_image_home();
     let asset: arrayvec::ArrayString<64> = "a".repeat(64).parse().expect("asset id");
     let hash: arrayvec::ArrayString<64> = "b".repeat(64).parse().expect("hash");
-    let token = crate::router::auth::ClaimsHash::new(
+    let token = crate::router::auth::ClaimsAsset::new(
         hash,
         asset,
         chrono::Utc::now().timestamp_millis(),

@@ -10,6 +10,6 @@
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]
-pub async fn widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
+pub async fn widget(auth: GuardAdmin) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }

@@ -7,8 +7,8 @@ use tokio::task::spawn_blocking;
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::AppConfig;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::router::get::admin_config::RuntimeConfigDocument;
 use crate::router::{AppResult, GuardResult};
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ pub struct AdminConfigUpdateResponse {
     request_body = PartialUpdateConfigRequest,
     security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -56,8 +56,8 @@ pub struct AdminConfigUpdateResponse {
 )]
 #[put("/put/admin/config", data = "<req>")]
 pub async fn update_admin_config_handler(
-    auth: GuardResult<GuardAuth>,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    read_only: GuardResult<GuardMutate>,
     req: Json<PartialUpdateConfigRequest>,
 ) -> AppResult<Json<AdminConfigUpdateResponse>> {
     let _ = auth?;

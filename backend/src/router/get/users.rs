@@ -3,7 +3,7 @@ use rocket::serde::json::Json;
 
 use crate::auth::users;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::post::users_register::UserSummary;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
@@ -18,7 +18,7 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
         tag = "auth",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -34,7 +34,7 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
     )
 ]
 #[get("/get/users")]
-pub fn list_users_handler(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<UserSummary>>> {
+pub fn list_users_handler(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Vec<UserSummary>>> {
     let _ = auth?;
     // An empty store has no admins, so an admin-only route refuses in all
     // states; enrollment state is served by GET /get/server-info.

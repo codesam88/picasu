@@ -1334,7 +1334,7 @@ fn is_utoipa_path(attribute: &Attribute) -> bool {
 
 /// The last path segment of a type, when the type is written as a path.
 ///
-/// `Option<GuardAuth>` is not a path type and yields `None`; `GuardResult<X>` is
+/// `Option<GuardAdmin>` is not a path type and yields `None`; `GuardResult<X>` is
 /// read from its head segment, which is all the rules need.
 fn type_head_segment(ty: &Type) -> Option<&syn::Ident> {
     match ty {
@@ -1344,7 +1344,7 @@ fn type_head_segment(ty: &Type) -> Option<&syn::Ident> {
 }
 
 /// Render a type as written, so a finding names the guard rather than a
-/// position in a signature: `GuardResult<GuardAuth>`, `GuardAuth`.
+/// position in a signature: `GuardResult<GuardAdmin>`, `GuardAdmin`.
 fn type_text(ty: &Type) -> String {
     if let Type::Tuple(tuple) = ty
         && tuple.elems.is_empty()
@@ -1882,19 +1882,19 @@ fn security_without_metadata(handler: &AnnotatedHandler) -> Vec<Finding> {
 
 /// The security-requirement groups a guard's `FromRequest` impl accepts, as a
 /// list of alternatives. An empty list means the guard contributes no scheme
-/// (for example `GuardReadOnlyMode` and `GuardReauth`) and is excluded from
+/// (for example `GuardMutate` and `GuardReauth`) and is excluded from
 /// derivation.
 fn guard_security_groups(guard: &str) -> Option<Vec<BTreeSet<String>>> {
     match guard {
-        "GuardAuth" | "GuardUser" => Some(vec![BTreeSet::from(["cookie_jwt".to_owned()])]),
-        "GuardShare" => Some(vec![
+        "GuardAdmin" | "GuardUser" => Some(vec![BTreeSet::from(["cookie_jwt".to_owned()])]),
+        "GuardPresenter" => Some(vec![
             BTreeSet::from(["album_id".to_owned(), "share_id".to_owned()]),
             BTreeSet::from(["cookie_jwt".to_owned()]),
         ]),
-        "GuardTimestamp" | "GuardHash" | "GuardHashOriginal" | "TimestampGuardModified" => {
+        "GuardSnapshot" | "GuardHash" | "GuardHashOriginal" | "GuardRenewHash" => {
             Some(vec![BTreeSet::from(["bearer_token".to_owned()])])
         }
-        "GuardReadOnlyMode" | "GuardReauth" => Some(Vec::new()),
+        "GuardMutate" | "GuardReauth" => Some(Vec::new()),
         _ => None,
     }
 }
@@ -1964,13 +1964,13 @@ fn security_guard_mismatch(handler: &AnnotatedHandler) -> Vec<Finding> {
     )]
 }
 
-/// S5 — `GuardReadOnlyMode` in the signature requires a declared 405.
+/// S5 — `GuardMutate` in the signature requires a declared 405.
 ///
 /// The guard answers 405 on a locked server, so an operation that carries it
 /// must document the rejection. The rule keys off the signature alone, so it
 /// fires even when the guard's `FromRequest` impl is not in the scanned tree.
 fn readonly_without_405(handler: &AnnotatedHandler) -> Vec<Finding> {
-    if !guard_idents(handler).any(|ident| ident == "GuardReadOnlyMode") {
+    if !guard_idents(handler).any(|ident| ident == "GuardMutate") {
         return Vec::new();
     }
     if handler.annotation.statuses.is_empty() {
@@ -1984,7 +1984,7 @@ fn readonly_without_405(handler: &AnnotatedHandler) -> Vec<Finding> {
         &handler.file,
         responses_line(handler),
         "readonly_without_405",
-        "GuardReadOnlyMode can answer 405, but responses() does not declare it",
+        "GuardMutate can answer 405, but responses() does not declare it",
     )]
 }
 
@@ -2855,8 +2855,8 @@ fn success_statuses_declared(
     )]
 }
 
-/// The identifiers of every argument type — `GuardResult<GuardAuth>` gives
-/// `GuardResult` and `GuardAuth`, looked up in the guard table exactly.
+/// The identifiers of every argument type — `GuardResult<GuardAdmin>` gives
+/// `GuardResult` and `GuardAdmin`, looked up in the guard table exactly.
 fn guard_idents(handler: &AnnotatedHandler) -> impl Iterator<Item = &str> {
     handler
         .arguments

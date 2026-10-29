@@ -10,13 +10,13 @@ extension declares a `tokenTyp` list and a set of guards (resolved from the
 handler's parameters, unwrapping `GuardResult<T>`). The lint derives the
 expected typ set from the guards:
 
-| Guard                                      | Derived typ        |
-| ------------------------------------------ | ------------------ |
-| `GuardAuth`, `GuardUser`                   | `session`          |
-| `GuardHash`, `GuardHashOriginal`           | `asset`            |
-| `TimestampGuardModified`, `GuardTimestamp` | `snapshot`         |
-| `GuardShare`                               | `session`, `share` |
-| `GuardReadOnlyMode`, `GuardReauth`         | (none)             |
+| Guard                             | Derived typ        |
+| --------------------------------- | ------------------ |
+| `GuardAdmin`, `GuardUser`         | `session`          |
+| `GuardHash`, `GuardHashOriginal`  | `asset`            |
+| `GuardRenewHash`, `GuardSnapshot` | `snapshot`         |
+| `GuardPresenter`                  | `session`, `share` |
+| `GuardMutate`, `GuardReauth`      | (none)             |
 
 The two sets must be equal in both directions: every guard-derived typ must
 appear in `tokenTyp`, and every `tokenTyp` entry must be backed by a guard.

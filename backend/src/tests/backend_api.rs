@@ -12,7 +12,7 @@ use snapfab::selection::{FixturePlan, RandomizableFormat, select};
 use snapfab::{PhotoSpec, generate_batch};
 
 use crate::DATA_PATH;
-use crate::router::auth::ClaimsTimestamp;
+use crate::router::auth::ClaimsSnapshot;
 use crate::tests::bootstrap::*;
 use crate::tests::fixtures::*;
 use crate::tests::seeds::{DEFAULT_SET, active_seeds, env_override, seed_manifest};
@@ -393,7 +393,7 @@ fn dupe_group_asset_id(client: &Client, hash: &str) -> String {
 ///
 /// "Serving" is the route the frontend fetches:
 /// `GET /object/compressed/<hash[0..2]>/<hash>.jpg`, authorized by the admin
-/// cookie (`GuardShare`) and by a `ClaimsHash` bearer token whose `hash` claim
+/// cookie (`GuardPresenter`) and by a `ClaimsAsset` bearer token whose `hash` claim
 /// has to equal the hash in the path (`GuardHash`). The harness mints that
 /// token instead of walking prefetch/get-data for it, because a scenario
 /// binding a bare `id_as` has a hash and no asset id to look the asset up by,
@@ -419,7 +419,7 @@ fn assert_serves_image(client: &Client, photo_var: &str, vars: &HashMap<String, 
         .parse()
         .expect("serve_image_ok: asset_id must fit an ArrayString<64>");
     let hash_claim: arrayvec::ArrayString<64> = hash.parse().expect("content hash");
-    let token = crate::router::auth::ClaimsHash::new(
+    let token = crate::router::auth::ClaimsAsset::new(
         hash_claim,
         asset_id,
         chrono::Utc::now().timestamp_millis(),
@@ -1316,9 +1316,9 @@ fn process_calc(call: &Value, vars: &mut HashMap<String, String>) {
 
 /// Handle a `mint_timestamp_token` item in a multi-step `when:` block.
 ///
-/// Binds a signed `ClaimsTimestamp` JWT to the variable named by `as`, using
+/// Binds a signed `ClaimsSnapshot` JWT to the variable named by `as`, using
 /// the same secret the server validates with. `exp_offset` (seconds relative
-/// to now, default `300` to mirror `ClaimsTimestamp::new`) lets a scenario
+/// to now, default `300` to mirror `ClaimsSnapshot::new`) lets a scenario
 /// mint an already-expired token — the DSL cannot otherwise produce one,
 /// because `exp` is signed server-side and no endpoint returns an expired
 /// token. `timestamp` must equal the snapshot the request targets, so the
@@ -1353,7 +1353,7 @@ fn process_mint_timestamp_token(call: &Value, vars: &mut HashMap<String, String>
 
     let exp = u64::try_from(chrono::Utc::now().timestamp() + exp_offset)
         .unwrap_or_else(|e| panic!("mint_timestamp_token.exp_offset out of range: {e}"));
-    let claims = ClaimsTimestamp {
+    let claims = ClaimsSnapshot {
         resolved_share_opt: None,
         timestamp,
         exp,

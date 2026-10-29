@@ -23,8 +23,8 @@ pub enum Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TokenType {
-    /// Identity token: the admin session cookie.
-    Admin,
+    /// Session identity token: the signed-in user's session cookie.
+    Session,
     /// Snapshot token: prefetch's short-lived query token.
     Snapshot,
     /// Asset token: a per-file serving token.
@@ -40,10 +40,10 @@ pub trait TokenKind {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct Claims {
+pub struct ClaimsSession {
     pub role: Role,
     pub exp: u64, // seconds since epoch
-    /// Type marker; always [`TokenType::Admin`] for identity tokens.
+    /// Type marker; always [`TokenType::Session`] for identity tokens.
     #[serde(rename = "typ")]
     pub typ: TokenType,
     pub jti: String,
@@ -58,7 +58,7 @@ pub struct Claims {
     pub ver: u64,
 }
 
-impl Claims {
+impl ClaimsSession {
     /// Mint an identity token for `id` with the given admin flag and token
     /// version.
     #[must_use]
@@ -69,7 +69,7 @@ impl Claims {
         Self {
             role: Role::User { id, admin },
             exp,
-            typ: TokenType::Admin,
+            typ: TokenType::Session,
             jti: Uuid::new_v4().to_string(),
             ver,
         }
@@ -82,7 +82,7 @@ impl Claims {
         Self {
             role: Role::Share(Box::new(resolved_share)),
             exp,
-            typ: TokenType::Admin,
+            typ: TokenType::Session,
             jti: Uuid::new_v4().to_string(),
             ver: 0,
         }
@@ -109,8 +109,8 @@ impl Claims {
     }
 }
 
-impl TokenKind for Claims {
-    const EXPECTED: TokenType = TokenType::Admin;
+impl TokenKind for ClaimsSession {
+    const EXPECTED: TokenType = TokenType::Session;
     fn token_type(&self) -> TokenType {
         self.typ
     }
@@ -129,7 +129,7 @@ use arrayvec::ArrayString;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct ClaimsHash {
+pub struct ClaimsAsset {
     pub allow_original: bool,
     pub hash: ArrayString<64>,
     /// Path-primary asset ID. Tokens and serving resolve by `asset_id`.
@@ -141,7 +141,7 @@ pub struct ClaimsHash {
     pub typ: TokenType,
 }
 
-impl ClaimsHash {
+impl ClaimsAsset {
     pub fn new(
         hash: ArrayString<64>,
         asset_id: ArrayString<64>,
@@ -173,7 +173,7 @@ impl ClaimsHash {
     }
 }
 
-impl TokenKind for ClaimsHash {
+impl TokenKind for ClaimsAsset {
     const EXPECTED: TokenType = TokenType::Asset;
     fn token_type(&self) -> TokenType {
         self.typ
@@ -185,7 +185,7 @@ impl TokenKind for ClaimsHash {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct ClaimsTimestamp {
+pub struct ClaimsSnapshot {
     pub resolved_share_opt: Option<ResolvedShare>,
     pub timestamp: i64,
     pub exp: u64,
@@ -194,7 +194,7 @@ pub struct ClaimsTimestamp {
     pub typ: TokenType,
 }
 
-impl ClaimsTimestamp {
+impl ClaimsSnapshot {
     pub fn new(resolved_share_opt: Option<ResolvedShare>, timestamp: i64) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
@@ -219,7 +219,7 @@ impl ClaimsTimestamp {
     }
 }
 
-impl TokenKind for ClaimsTimestamp {
+impl TokenKind for ClaimsSnapshot {
     const EXPECTED: TokenType = TokenType::Snapshot;
     fn token_type(&self) -> TokenType {
         self.typ
@@ -267,13 +267,13 @@ mod tests {
 
     #[test]
     fn claims_new_user_round_trip_preserves_identity() {
-        use super::{Claims, decode_typed};
+        use super::{ClaimsSession, decode_typed};
         let _ = &*crate::tests::bootstrap::TEST_ENV;
-        let claims = Claims::new_user("alice".to_string(), true, 0);
+        let claims = ClaimsSession::new_user("alice".to_string(), true, 0);
         let token = claims.encode();
-        let decoded: Claims = decode_typed(&token, &VALIDATION).expect("decode round-trip");
+        let decoded: ClaimsSession = decode_typed(&token, &VALIDATION).expect("decode round-trip");
         assert!(decoded.is_admin());
-        assert_eq!(decoded.typ, super::TokenType::Admin);
+        assert_eq!(decoded.typ, super::TokenType::Session);
         match decoded.role {
             super::Role::User { id, admin } => {
                 assert_eq!(id, "alice");
@@ -281,17 +281,17 @@ mod tests {
             }
             super::Role::Share(_) => panic!("expected user role"),
         }
-        let non_admin = Claims::new_user("bob".to_string(), false, 0);
+        let non_admin = ClaimsSession::new_user("bob".to_string(), false, 0);
         assert!(!non_admin.is_admin());
         let token = non_admin.encode();
-        let decoded: Claims = decode_typed(&token, &VALIDATION).expect("decode round-trip");
+        let decoded: ClaimsSession = decode_typed(&token, &VALIDATION).expect("decode round-trip");
         assert!(!decoded.is_admin());
     }
 
     #[test]
     fn legacy_admin_token_rejected_by_typed_decode() {
         // A token minted with the old `{"admin": ...}` role shape must fail
-        // to decode as the new `Claims` (deny_unknown_fields).
+        // to decode as the new `ClaimsSession` (deny_unknown_fields).
         use super::decode_typed;
         use crate::model::config::APP_CONFIG;
         use jsonwebtoken::{EncodingKey, Header, encode};
@@ -319,11 +319,11 @@ mod tests {
         let legacy = LegacyClaims {
             role: LegacyRole::Admin,
             exp: 9_999_999_999,
-            typ: super::TokenType::Admin,
+            typ: super::TokenType::Session,
         };
         let token = encode(&Header::default(), &legacy, &EncodingKey::from_secret(&key))
             .expect("encode legacy token");
-        let result: anyhow::Result<super::Claims> = decode_typed(&token, &VALIDATION);
+        let result: anyhow::Result<super::ClaimsSession> = decode_typed(&token, &VALIDATION);
         assert!(result.is_err(), "legacy Role::Admin token must be rejected");
     }
 
@@ -400,7 +400,7 @@ mod tests {
         let _g = s3b_lock();
         let client = s3b_client();
         crate::auth::users::create_user("s3b-admin-user", true).expect("create user");
-        let claims = super::Claims::new_user("s3b-admin-user".to_string(), true, 0);
+        let claims = super::ClaimsSession::new_user("s3b-admin-user".to_string(), true, 0);
         let token = claims.encode();
         let resp = client
             .get("/get/index/status")
@@ -415,7 +415,7 @@ mod tests {
         let client = s3b_client();
         crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
         crate::auth::users::create_user("s3b-other-admin", true).expect("create other admin");
-        let claims = super::Claims::new_user("s3b-demoted-user".to_string(), true, 0);
+        let claims = super::ClaimsSession::new_user("s3b-demoted-user".to_string(), true, 0);
         let token = claims.encode();
         crate::auth::users::set_admin("s3b-demoted-user", false).expect("demote user");
         let resp = client
@@ -431,14 +431,14 @@ mod tests {
         let client = s3b_client();
         crate::auth::users::create_user("s3b-other-user", false).expect("create user");
         // Unknown user: store is non-empty but the id has no record.
-        let ghost = super::Claims::new_user("s3b-ghost-user".to_string(), true, 0).encode();
+        let ghost = super::ClaimsSession::new_user("s3b-ghost-user".to_string(), true, 0).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", ghost))
             .dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
         // Non-admin user with a non-admin token.
-        let plain = super::Claims::new_user("s3b-other-user".to_string(), false, 0).encode();
+        let plain = super::ClaimsSession::new_user("s3b-other-user".to_string(), false, 0).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", plain))
@@ -476,11 +476,12 @@ mod tests {
                 admin: true,
             },
             exp: 9_999_999_999,
-            typ: super::TokenType::Admin,
+            typ: super::TokenType::Session,
         };
         let token = encode(&Header::default(), &legacy, &EncodingKey::from_secret(&key))
             .expect("encode legacy token without jti");
-        let result: anyhow::Result<super::Claims> = super::decode_typed(&token, &super::VALIDATION);
+        let result: anyhow::Result<super::ClaimsSession> =
+            super::decode_typed(&token, &super::VALIDATION);
         assert!(
             result.is_err(),
             "token without jti must be rejected after hard cut"
@@ -495,7 +496,7 @@ mod tests {
         // change, a role change or an explicit invalidation bumped it, so
         // the token is stale and must be refused.
         crate::auth::users::create_user("s3b-jti-user", true).expect("create user");
-        let token = super::Claims::new_user("s3b-jti-user".to_string(), true, 1).encode();
+        let token = super::ClaimsSession::new_user("s3b-jti-user".to_string(), true, 1).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", token))
@@ -518,7 +519,7 @@ mod tests {
             .expect("get")
             .expect("the user must exist")
             .ver;
-        let token = super::Claims::new_user("s3b-ver-user".to_string(), true, ver).encode();
+        let token = super::ClaimsSession::new_user("s3b-ver-user".to_string(), true, ver).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", token))
@@ -632,7 +633,7 @@ pub(crate) fn not_enrolled_error() -> anyhow::Error {
 /// `admin: true`, and the identity record is re-read from the user store on
 /// every call, so a demotion, a removal or an invalidated token takes
 /// effect before the token expires.
-pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
+pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<ClaimsSession> {
     let store_non_empty =
         !crate::auth::user_store::is_empty(&crate::auth::users::user_store_path());
     if !store_non_empty {
@@ -641,7 +642,7 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
 
     if let Some(jwt_cookie) = req.cookies().get("jwt") {
         let token = jwt_cookie.value();
-        let claims = decode_typed::<Claims>(token, validation)?;
+        let claims = decode_typed::<ClaimsSession>(token, validation)?;
         if !claims.is_admin() {
             return Err(anyhow!("User is not an admin"));
         }
@@ -678,7 +679,7 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
 /// the user store on every call — so a stale token version, a removal or a
 /// revoked `jti` takes effect before the token expires, and the admin flag is
 /// taken from the record rather than the token.
-pub fn try_jwt_cookie_user(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
+pub fn try_jwt_cookie_user(req: &Request<'_>, validation: &Validation) -> Result<ClaimsSession> {
     let store_non_empty =
         !crate::auth::user_store::is_empty(&crate::auth::users::user_store_path());
     if !store_non_empty {
@@ -688,7 +689,7 @@ pub fn try_jwt_cookie_user(req: &Request<'_>, validation: &Validation) -> Result
     let Some(jwt_cookie) = req.cookies().get("jwt") else {
         return Err(anyhow!("JWT not found in cookies"));
     };
-    let mut claims = decode_typed::<Claims>(jwt_cookie.value(), validation)?;
+    let mut claims = decode_typed::<ClaimsSession>(jwt_cookie.value(), validation)?;
     let Role::User { id, .. } = &claims.role else {
         return Err(anyhow!("Share token not accepted"));
     };
@@ -769,7 +770,7 @@ fn validate_share_access(share: &Share, req: &Request<'_>) -> Result<(), AppErro
 /// not expired. Used at token renewal so a share that has since been disabled
 /// or expired stops yielding refreshed capabilities.
 ///
-/// The password is not re-checked here: the presenter's own `GuardShare`
+/// The password is not re-checked here: the presenter's own `GuardPresenter`
 /// already validated it for the share being renewed, and an admin presenter is
 /// trusted. This is the DB-state half of re-validation.
 fn revalidate_share_record(album_id: &str, share_id: &str) -> Result<(), AppError> {
@@ -801,7 +802,7 @@ fn resolve_share_internal(
     album_id: &str,
     share_id: &str,
     req: &Request<'_>,
-) -> Result<Option<Claims>, AppError> {
+) -> Result<Option<ClaimsSession>, AppError> {
     let read_txn = TREE.in_disk.begin_read().map_err(|e| {
         AppError::from_err(ErrorKind::Database, e.into())
             .context("Failed to begin read transaction")
@@ -862,12 +863,14 @@ fn resolve_share_internal(
         album.title,
         share,
     );
-    let claims = Claims::new_share(resolved_share);
+    let claims = ClaimsSession::new_share(resolved_share);
     Ok(Some(claims))
 }
 
 /// Try to resolve album and share from headers
-pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims>, AppError> {
+pub fn try_resolve_share_from_headers(
+    req: &Request<'_>,
+) -> Result<Option<ClaimsSession>, AppError> {
     let album_id = req.headers().get_one("x-album-id");
     let share_id = req.headers().get_one("x-share-id");
 
@@ -884,7 +887,7 @@ pub fn try_resolve_share_from_headers(req: &Request<'_>) -> Result<Option<Claims
 }
 
 /// Try to resolve album and share from query parameters
-pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>, AppError> {
+pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<ClaimsSession>, AppError> {
     let album_id = req.query_value::<&str>("albumId").and_then(Result::ok);
     let share_id = req.query_value::<&str>("shareId").and_then(Result::ok);
 
@@ -904,17 +907,17 @@ pub fn try_resolve_share_from_query(req: &Request<'_>) -> Result<Option<Claims>,
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 
-pub struct GuardAuth {
-    pub claims: Claims,
+pub struct GuardAdmin {
+    pub claims: ClaimsSession,
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for GuardAuth {
+impl<'r> FromRequest<'r> for GuardAdmin {
     type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         match try_jwt_cookie_auth(req, &VALIDATION) {
-            Ok(claims) => Outcome::Success(GuardAuth { claims }),
+            Ok(claims) => Outcome::Success(GuardAdmin { claims }),
             Err(err) => Outcome::Error((
                 Status::Unauthorized,
                 AppError::from_err(ErrorKind::Auth, err).context("Authentication error"),
@@ -927,10 +930,10 @@ impl<'r> FromRequest<'r> for GuardAuth {
 /// caller's claims with the admin flag re-read from the DB, so demotion
 /// takes effect before token expiry.
 ///
-/// Unlike [`GuardAuth`] (admin-only), this admits non-admin users, for the
+/// Unlike [`GuardAdmin`] (admin-only), this admits non-admin users, for the
 /// self-service password routes. Share-role tokens are rejected.
 pub struct GuardUser {
-    pub claims: Claims,
+    pub claims: ClaimsSession,
 }
 
 #[rocket::async_trait]
@@ -973,7 +976,7 @@ impl<'r> FromRequest<'r> for GuardUser {
         let Some(jwt_cookie) = req.cookies().get("jwt") else {
             return denied("JWT not found in cookies");
         };
-        let claims: Claims = match decode_typed(jwt_cookie.value(), &VALIDATION) {
+        let claims: ClaimsSession = match decode_typed(jwt_cookie.value(), &VALIDATION) {
             Ok(claims) => claims,
             Err(_) => return denied("Invalid token"),
         };
@@ -1027,7 +1030,7 @@ impl<'r> FromRequest<'r> for GuardUser {
 /// Session failures surface as 401; a missing or wrong password as 403.
 pub struct GuardReauth {
     #[allow(dead_code)]
-    pub claims: Claims,
+    pub claims: ClaimsSession,
 }
 
 #[rocket::async_trait]
@@ -1184,7 +1187,7 @@ impl<'r> FromRequest<'r> for GuardHash {
             }
         };
 
-        let claims: ClaimsHash = match decode_typed(token, &VALIDATION) {
+        let claims: ClaimsAsset = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -1240,7 +1243,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             }
         };
 
-        let claims: ClaimsHash = match decode_typed(token, &VALIDATION) {
+        let claims: ClaimsAsset = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -1319,7 +1322,7 @@ pub struct RenewHashTokenReturn {
         request_body = RenewHashToken,
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["TimestampGuardModified"],
+            "guards": ["GuardRenewHash"],
             "tokenTyp": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
@@ -1339,13 +1342,13 @@ pub struct RenewHashTokenReturn {
 ]
 #[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
 pub async fn renew_hash_token(
-    auth: TimestampGuardModified,
+    auth: GuardRenewHash,
     token_request: Json<RenewHashToken>,
 ) -> AppResult<Json<RenewHashTokenReturn>> {
     tokio::task::spawn_blocking(move || {
         let expired_hash_token = token_request.into_inner().expired_hash_token;
-        let claims: ClaimsHash =
-            match decode_typed::<ClaimsHash>(&expired_hash_token, &VALIDATION_ALLOW_EXPIRED) {
+        let claims: ClaimsAsset =
+            match decode_typed::<ClaimsAsset>(&expired_hash_token, &VALIDATION_ALLOW_EXPIRED) {
                 Ok(claims) => claims,
                 Err(err) => {
                     warn!("Token renewal failed: unable to decode token. Error: {err:#?}");
@@ -1373,7 +1376,7 @@ pub async fn renew_hash_token(
             revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
         }
 
-        let new_hash_claims = ClaimsHash::new(
+        let new_hash_claims = ClaimsAsset::new(
             claims.hash,
             claims.asset_id,
             claims.timestamp,
@@ -1389,15 +1392,15 @@ pub async fn renew_hash_token(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
-/// Presenter guard for hash-token renewal: a valid `ClaimsTimestamp` bearer.
+/// Presenter guard for hash-token renewal: a valid `ClaimsSnapshot` bearer.
 /// Carries the full claims so the handler can re-validate the presenter's
 /// share before re-issuing an asset token.
-pub struct TimestampGuardModified {
-    pub claims: ClaimsTimestamp,
+pub struct GuardRenewHash {
+    pub claims: ClaimsSnapshot,
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for TimestampGuardModified {
+impl<'r> FromRequest<'r> for GuardRenewHash {
     type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
@@ -1412,7 +1415,7 @@ impl<'r> FromRequest<'r> for TimestampGuardModified {
             }
         };
 
-        let claims: ClaimsTimestamp = match decode_typed(token, &VALIDATION) {
+        let claims: ClaimsSnapshot = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -1421,15 +1424,15 @@ impl<'r> FromRequest<'r> for TimestampGuardModified {
                 ));
             }
         };
-        Outcome::Success(TimestampGuardModified { claims })
+        Outcome::Success(GuardRenewHash { claims })
     }
 }
 
-// src/router/fairing/guard_read_only_mode.rs
+// Guards that gate on server state live here with the auth guards.
 
-pub struct GuardReadOnlyMode;
+pub struct GuardMutate;
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for GuardReadOnlyMode {
+impl<'r> FromRequest<'r> for GuardMutate {
     type Error = GuardError;
     async fn from_request(_req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         if crate::model::config::with_config(|c| c.read_only_mode) {
@@ -1439,22 +1442,22 @@ impl<'r> FromRequest<'r> for GuardReadOnlyMode {
             ));
         }
 
-        Outcome::Success(GuardReadOnlyMode)
+        Outcome::Success(GuardMutate)
     }
 }
 
-pub struct GuardShare {
-    pub claims: Claims,
+pub struct GuardPresenter {
+    pub claims: ClaimsSession,
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for GuardShare {
+impl<'r> FromRequest<'r> for GuardPresenter {
     type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         // headers
         match try_resolve_share_from_headers(req) {
-            Ok(Some(claims)) => return Outcome::Success(GuardShare { claims }),
+            Ok(Some(claims)) => return Outcome::Success(GuardPresenter { claims }),
             Ok(None) => {} // No share headers, continue
             Err(err) => {
                 let status = err.http_status();
@@ -1464,7 +1467,7 @@ impl<'r> FromRequest<'r> for GuardShare {
 
         // query
         match try_resolve_share_from_query(req) {
-            Ok(Some(claims)) => return Outcome::Success(GuardShare { claims }),
+            Ok(Some(claims)) => return Outcome::Success(GuardPresenter { claims }),
             Ok(None) => {}
             Err(err) => {
                 let status = err.http_status();
@@ -1474,7 +1477,7 @@ impl<'r> FromRequest<'r> for GuardShare {
 
         // Fall back to JWT cookie authentication (any live user, admin or not)
         match try_jwt_cookie_user(req, &VALIDATION) {
-            Ok(claims) => return Outcome::Success(GuardShare { claims }),
+            Ok(claims) => return Outcome::Success(GuardPresenter { claims }),
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
@@ -1485,12 +1488,12 @@ impl<'r> FromRequest<'r> for GuardShare {
     }
 }
 
-pub struct GuardTimestamp {
-    pub claims: ClaimsTimestamp,
+pub struct GuardSnapshot {
+    pub claims: ClaimsSnapshot,
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for GuardTimestamp {
+impl<'r> FromRequest<'r> for GuardSnapshot {
     type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
@@ -1504,7 +1507,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             }
         };
 
-        let claims: ClaimsTimestamp = match decode_typed(token, &VALIDATION) {
+        let claims: ClaimsSnapshot = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -1542,7 +1545,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             ));
         }
 
-        Outcome::Success(GuardTimestamp { claims })
+        Outcome::Success(GuardSnapshot { claims })
     }
 }
 
@@ -1586,7 +1589,7 @@ pub struct RenewTimestampTokenReturn {
         request_body = RenewTimestampToken,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardShare"],
+            "guards": ["GuardPresenter"],
             "tokenTyp": ["session", "share"],
             "admin": "any",
             "shareScope": "own-album",
@@ -1610,15 +1613,15 @@ pub struct RenewTimestampTokenReturn {
     data = "<token_request>"
 )]
 pub async fn renew_timestamp_token(
-    auth: GuardResult<GuardShare>,
+    auth: GuardResult<GuardPresenter>,
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
     let presenter = auth?;
     let presenter_share = presenter.claims.get_share();
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
-        let claims: ClaimsTimestamp =
-            match decode_typed::<ClaimsTimestamp>(&token, &VALIDATION_ALLOW_EXPIRED) {
+        let claims: ClaimsSnapshot =
+            match decode_typed::<ClaimsSnapshot>(&token, &VALIDATION_ALLOW_EXPIRED) {
                 Ok(claims) => claims,
                 Err(err) => {
                     warn!("Token renewal failed: unable to decode token, error: {err:#?}");
@@ -1651,7 +1654,7 @@ pub async fn renew_timestamp_token(
             revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
         }
 
-        let new_claims = ClaimsTimestamp::new(claims.resolved_share_opt, claims.timestamp);
+        let new_claims = ClaimsSnapshot::new(claims.resolved_share_opt, claims.timestamp);
         let new_token = new_claims.encode();
 
         Ok(Json(RenewTimestampTokenReturn { token: new_token }))

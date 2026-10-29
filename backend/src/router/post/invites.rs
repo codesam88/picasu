@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::auth::invites::{self, InviteView};
 use crate::auth::users;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::router::put::users_password::caller_identity;
 use crate::router::{AppResult, GuardResult};
 
@@ -56,7 +56,7 @@ pub struct CreateInviteResponse {
         request_body = CreateInviteRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -76,8 +76,8 @@ pub struct CreateInviteResponse {
 ]
 #[post("/post/invites", data = "<body>")]
 pub fn create_invite_handler(
-    auth: GuardResult<GuardAuth>,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    read_only: GuardResult<GuardMutate>,
     body: Json<CreateInviteRequest>,
 ) -> AppResult<Json<CreateInviteResponse>> {
     let auth = auth?;

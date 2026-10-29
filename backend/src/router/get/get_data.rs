@@ -11,7 +11,7 @@ use crate::storage::cache::{SnapshotReadError, TREE_SNAPSHOT};
 use crate::storage::db::{ASSET_BY_ID, TREE, open_metadata_table, open_tree_snapshot_table};
 
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::router::auth::GuardTimestamp;
+use crate::router::auth::GuardSnapshot;
 use crate::router::{AppResult, GuardResult};
 use anyhow::Result;
 use log::debug;
@@ -63,7 +63,7 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
         ),
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardTimestamp"],
+            "guards": ["GuardSnapshot"],
             "tokenTyp": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
@@ -81,7 +81,7 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
 ]
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
-    guard_timestamp: GuardResult<GuardTimestamp>,
+    guard_timestamp: GuardResult<GuardSnapshot>,
     timestamp: i64,
     start: usize,
     mut end: usize,
@@ -222,7 +222,7 @@ pub async fn get_data(
         ),
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardTimestamp"],
+            "guards": ["GuardSnapshot"],
             "tokenTyp": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
@@ -240,7 +240,7 @@ pub async fn get_data(
 ]
 #[get("/get/get-rows?<index>&<timestamp>")]
 pub async fn get_rows(
-    auth: GuardResult<GuardTimestamp>,
+    auth: GuardResult<GuardSnapshot>,
     index: usize,
     timestamp: i64,
 ) -> AppResult<Json<Row>> {
@@ -273,7 +273,7 @@ pub async fn get_rows(
         ),
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardTimestamp"],
+            "guards": ["GuardSnapshot"],
             "tokenTyp": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
@@ -290,7 +290,7 @@ pub async fn get_rows(
 ]
 #[get("/get/get-scroll-bar?<timestamp>")]
 pub fn get_scroll_bar(
-    auth: GuardResult<GuardTimestamp>,
+    auth: GuardResult<GuardSnapshot>,
     timestamp: i64,
 ) -> AppResult<Json<Vec<ScrollBarData>>> {
     let _ = auth?;

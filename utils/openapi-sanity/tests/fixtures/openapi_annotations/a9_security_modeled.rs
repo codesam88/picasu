@@ -8,7 +8,7 @@
     tag = "assets",
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
-        "guards": ["GuardAuth"],
+        "guards": ["GuardAdmin"],
         "tokenTyp": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
@@ -21,7 +21,7 @@
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget")]
-pub async fn widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
+pub async fn widget(auth: GuardAdmin) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }
 
@@ -30,7 +30,7 @@ pub async fn widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
     tag = "assets",
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
-        "guards": ["GuardShare"],
+        "guards": ["GuardPresenter"],
         "tokenTyp": ["admin", "share"],
         "admin": "either",
         "shareScope": "own-album",
@@ -43,6 +43,6 @@ pub async fn widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/other-widget")]
-pub async fn other_widget(share: GuardShare) -> AppResult<Json<Widget>> {
+pub async fn other_widget(share: GuardPresenter) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }

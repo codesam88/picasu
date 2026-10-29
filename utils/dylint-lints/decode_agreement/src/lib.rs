@@ -4,21 +4,21 @@
 //! Detection is type-resolved, not textual:
 //! - the enclosing impl is confirmed as a `FromRequest` impl by resolved
 //!   trait (same check as `auth3_no_forward_denial`), and the guard identity
-//!   is the impl's `Self` type name (`GuardAuth`, `GuardHash`, ...);
+//!   is the impl's `Self` type name (`GuardAdmin`, `GuardHash`, ...);
 //! - each `decode_typed` call inside such an impl is matched by resolved
 //!   function (def path ends in `decode_typed`);
 //! - the decode target `T` is read from the call's typeck type
 //!   (`Result<T, E>` — first generic argument of the `Result` ADT), so both
-//!   turbofish (`decode_typed::<ClaimsHash>(..)`) and inferred
-//!   (`let claims: ClaimsHash = decode_typed(..)`) spellings resolve to the
+//!   turbofish (`decode_typed::<ClaimsAsset>(..)`) and inferred
+//!   (`let claims: ClaimsAsset = decode_typed(..)`) spellings resolve to the
 //!   same type. Fail closed: if `T` cannot be resolved, the site warns.
 //!
 //! Expected table (established empirically from `backend/src/router/auth.rs`):
-//! `GuardAuth`/`GuardUser` → `Claims`, `GuardHash`/`GuardHashOriginal` →
-//! `ClaimsHash`, `TimestampGuardModified`/`GuardTimestamp` → `ClaimsTimestamp`.
-//! `GuardShare` resolves (share-table lookup, possibly via
-//! `try_jwt_cookie_auth` which decodes `Claims`) rather than decoding
-//! directly; `GuardReadOnlyMode` decodes nothing. A direct `decode_typed`
+//! `GuardAdmin`/`GuardUser` → `ClaimsSession`, `GuardHash`/`GuardHashOriginal` →
+//! `ClaimsAsset`, `GuardRenewHash`/`GuardSnapshot` → `ClaimsSnapshot`.
+//! `GuardPresenter` resolves (share-table lookup, possibly via
+//! `try_jwt_cookie_auth` which decodes `ClaimsSession`) rather than decoding
+//! directly; `GuardMutate` decodes nothing. A direct `decode_typed`
 //! call inside any of those impls warns.
 
 #![feature(rustc_private)]
@@ -104,13 +104,13 @@ fn enclosing_guard_name(tcx: TyCtxt<'_>, hir_id: HirId) -> Option<String> {
 }
 
 /// The model-assigned claims type for a guard, or `None` for guards that
-/// must not decode directly (`GuardShare` resolves rather than decoding);
-/// `GuardReadOnlyMode`).
+/// must not decode directly (`GuardPresenter` resolves rather than decoding);
+/// `GuardMutate`).
 fn expected_claims(guard: &str) -> Option<&'static str> {
     match guard {
-        "GuardAuth" | "GuardUser" => Some("Claims"),
-        "GuardHash" | "GuardHashOriginal" => Some("ClaimsHash"),
-        "TimestampGuardModified" | "GuardTimestamp" => Some("ClaimsTimestamp"),
+        "GuardAdmin" | "GuardUser" => Some("ClaimsSession"),
+        "GuardHash" | "GuardHashOriginal" => Some("ClaimsAsset"),
+        "GuardRenewHash" | "GuardSnapshot" => Some("ClaimsSnapshot"),
         _ => None,
     }
 }
@@ -128,7 +128,7 @@ fn is_decode_typed_call(res: Res, tcx: TyCtxt<'_>) -> bool {
 
 /// Decode target `T` of a `decode_typed(..)` call from typeck: the call's
 /// type is `Result<T, E>`, so `T` is the first generic argument of the
-/// `Result` ADT. Returns the ADT's def-path last name (e.g. `ClaimsHash`).
+/// `Result` ADT. Returns the ADT's def-path last name (e.g. `ClaimsAsset`).
 fn decode_target_name<'tcx>(cx: &LateContext<'tcx>, call: &'tcx Expr<'tcx>) -> Option<String> {
     let typeck = cx.maybe_typeck_results()?;
     let ty = typeck.expr_ty(call);

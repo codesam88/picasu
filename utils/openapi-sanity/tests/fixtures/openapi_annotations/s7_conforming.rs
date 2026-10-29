@@ -28,7 +28,7 @@ pub async fn public_widget() -> AppResult<Json<Widget>> {
     tag = "assets",
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
-        "guards": ["GuardAuth"],
+        "guards": ["GuardAdmin"],
         "tokenTyp": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
@@ -41,6 +41,6 @@ pub async fn public_widget() -> AppResult<Json<Widget>> {
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/widget2")]
-pub async fn guarded_widget(auth: GuardAuth) -> AppResult<Json<Widget>> {
+pub async fn guarded_widget(auth: GuardAdmin) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }

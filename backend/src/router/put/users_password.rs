@@ -10,7 +10,7 @@ use crate::auth::login_throttle::LoginThrottle;
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{GuardReadOnlyMode, GuardReauth, GuardUser};
+use crate::router::auth::{GuardMutate, GuardReauth, GuardUser};
 use crate::router::post::users_authenticate::ThrottleClientIp;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
@@ -147,7 +147,7 @@ pub(crate) fn set_password_sync(
     Ok(())
 }
 
-pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, bool) {
+pub(crate) fn caller_identity(claims: &crate::router::auth::ClaimsSession) -> (String, bool) {
     match &claims.role {
         crate::router::auth::Role::User { id, admin } => (id.clone(), *admin),
         crate::router::auth::Role::Share(_) => (String::new(), false),
@@ -181,7 +181,7 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
         request_body = SetUserPasswordRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode", "GuardReauth"],
+            "guards": ["GuardUser", "GuardMutate", "GuardReauth"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -208,7 +208,7 @@ pub async fn set_user_password_handler(
     // and only the status reaches the catchers: the no-admin-enrolled 403
     // would lose its enrollment hint.
     user: GuardResult<GuardUser>,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    read_only: GuardResult<GuardMutate>,
     reauth: GuardResult<GuardReauth>,
     ip: ThrottleClientIp,
     body: Json<SetUserPasswordRequest>,

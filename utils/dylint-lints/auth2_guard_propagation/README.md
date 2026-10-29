@@ -39,7 +39,7 @@ ratchet against regressions of the AUTH-2 discipline.
 Violating code (warns on the `auth` binding):
 
 ```rust
-pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInfo>>> {
+pub async fn get_tags(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth; // warning: a `GuardResult` guard binding is discarded without propagation
     // ...
 }
@@ -48,7 +48,7 @@ pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInf
 Fixed code (silent — `?` enforces the guard, `_` drops only the success value):
 
 ```rust
-pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInfo>>> {
+pub async fn get_tags(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
     // ...
 }

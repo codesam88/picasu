@@ -4,7 +4,7 @@ Auth wiring (securitySchemes are declared now, but Schemathesis cannot perform
 the login exchange, so the harness still injects the cookie itself):
 - admin session: static Cookie header supplied via schemathesis config from
   ${PICASU_JWT}.
-- share identity: x-album-id / x-share-id headers on the GuardShare-guarded
+- share identity: x-album-id / x-share-id headers on the GuardPresenter-guarded
   operations, so those routes exercise the guest path.
 - Run-poisoning guards: prevent the fuzzer from rotating authKey, flipping
   readOnlyMode/port/address, demoting the admin, or deleting seeded

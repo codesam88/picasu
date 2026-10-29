@@ -26,7 +26,7 @@ use snapfab::{PhotoSpec, generate_batch};
 
 use crate::DATA_PATH;
 use crate::process::hash::blake3_hasher;
-use crate::router::auth::ClaimsHash;
+use crate::router::auth::ClaimsAsset;
 use crate::tests::bootstrap::{
     TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, test_image_home,
 };
@@ -232,11 +232,11 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
 
     let hash =
         blake3_hasher(std::fs::File::open(&photo_abs).expect("open photo")).expect("hash photo");
-    let token = ClaimsHash::new(hash, hash, 0, false).encode();
+    let token = ClaimsAsset::new(hash, hash, 0, false).encode();
     let url = format!("/object/compressed/{}/{}.jpg", &hash[..2], hash);
 
     // ── Sanity: the endpoint must serve a complete JPEG before we race it ──
-    // The fixture admin cookie satisfies GuardShare; the Bearer token
+    // The fixture admin cookie satisfies GuardPresenter; the Bearer token
     // exercises GuardHash.
     let cookie = auth_cookie(&client);
     let resp = client

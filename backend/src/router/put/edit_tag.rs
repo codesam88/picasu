@@ -4,7 +4,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::sanitize::sanitize_tag;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TagInfo;
@@ -46,7 +46,7 @@ pub struct EditTagsData {
         request_body = EditTagsData,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -69,11 +69,11 @@ pub struct EditTagsData {
 #[put("/put/edit_tag", format = "json", data = "<json_data>")]
 pub async fn edit_tag(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<EditTagsData>,
 ) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>, AppError> {
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)

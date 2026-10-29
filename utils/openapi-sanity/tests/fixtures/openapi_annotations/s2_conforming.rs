@@ -1,10 +1,10 @@
-// S2 conforming counterpart: `GuardShare` implies the two-group declaration,
-// and `GuardReadOnlyMode` contributes no scheme, so it stays excluded.
+// S2 conforming counterpart: `GuardPresenter` implies the two-group declaration,
+// and `GuardMutate` contributes no scheme, so it stays excluded.
 
-pub struct GuardReadOnlyMode;
+pub struct GuardMutate;
 
 #[rocket::async_trait]
-impl<'r> rocket::request::FromRequest<'r> for GuardReadOnlyMode {
+impl<'r> rocket::request::FromRequest<'r> for GuardMutate {
     type Error = GuardError;
 
     async fn from_request(_req: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
@@ -15,7 +15,7 @@ impl<'r> rocket::request::FromRequest<'r> for GuardReadOnlyMode {
             ));
         }
 
-        Outcome::Success(GuardReadOnlyMode)
+        Outcome::Success(GuardMutate)
     }
 }
 
@@ -26,7 +26,7 @@ type AppResult<T> = Result<T, AppError>;
     tag = "assets",
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
-        "guards": ["GuardShare", "GuardReadOnlyMode"],
+        "guards": ["GuardPresenter", "GuardMutate"],
         "tokenTyp": ["admin", "share"],
         "admin": "either",
         "shareScope": "own-album",
@@ -43,8 +43,8 @@ type AppResult<T> = Result<T, AppError>;
 )]
 #[get("/get/widget")]
 pub async fn widget(
-    share: GuardShare,
-    _read_only: GuardReadOnlyMode,
+    share: GuardPresenter,
+    _read_only: GuardMutate,
 ) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }

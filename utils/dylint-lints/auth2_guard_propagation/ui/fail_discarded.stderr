@@ -1,8 +1,8 @@
 warning: a `GuardResult` guard binding is discarded without propagation
   --> $DIR/fail_discarded.rs:11:17
    |
-LL | pub fn get_tags(auth: router::GuardResult<GuardAuth>) -> String {
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | pub fn get_tags(auth: router::GuardResult<GuardAdmin>) -> String {
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: `#[warn(auth2_guard_propagation)]` on by default
 

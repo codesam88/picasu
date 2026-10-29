@@ -1,8 +1,8 @@
 warning: `GuardShare` has no assigned decode target but calls `decode_typed`
-  --> $DIR/fail_share_must_not_decode.rs:21:31
+  --> $DIR/fail_share_must_not_decode.rs:21:38
    |
-LL |         let _claims: Claims = decode_typed(token).unwrap();
-   |                               ^^^^^^^^^^^^^^^^^^^
+LL |         let _claims: ClaimsSession = decode_typed(token).unwrap();
+   |                                      ^^^^^^^^^^^^^^^^^^^
    |
    = note: `#[warn(decode_agreement)]` on by default
 

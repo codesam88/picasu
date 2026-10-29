@@ -1,10 +1,10 @@
-// S5 conforming counterpart: `GuardReadOnlyMode` is in the signature and 405 is
+// S5 conforming counterpart: `GuardMutate` is in the signature and 405 is
 // declared, so the read-only rejection is documented.
 
-pub struct GuardReadOnlyMode;
+pub struct GuardMutate;
 
 #[rocket::async_trait]
-impl<'r> rocket::request::FromRequest<'r> for GuardReadOnlyMode {
+impl<'r> rocket::request::FromRequest<'r> for GuardMutate {
     type Error = GuardError;
 
     async fn from_request(_req: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
@@ -15,7 +15,7 @@ impl<'r> rocket::request::FromRequest<'r> for GuardReadOnlyMode {
             ));
         }
 
-        Outcome::Success(GuardReadOnlyMode)
+        Outcome::Success(GuardMutate)
     }
 }
 
@@ -30,6 +30,6 @@ type AppResult<T> = Result<T, AppError>;
     )
 )]
 #[put("/put/widget")]
-pub fn update_widget(_read_only: GuardReadOnlyMode) -> AppResult<()> {
+pub fn update_widget(_read_only: GuardMutate) -> AppResult<()> {
     Ok(())
 }

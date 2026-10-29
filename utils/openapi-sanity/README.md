@@ -197,7 +197,7 @@ Every `impl FromRequest for G` under the source root contributes the literal
 guard named in a handler's signature must have those codes declared. An arm
 whose status is computed (`err.http_status()`) makes the guard _dynamic_: the
 computed code requires nothing, its literal codes still do, and the tree test
-pins the dynamic set (currently `GuardShare`) so a new one is a decision, not a
+pins the dynamic set (currently `GuardPresenter`) so a new one is a decision, not a
 silent skip. A signature ident with no entry in the guard table is skipped
 without a finding — see the limits below.
 

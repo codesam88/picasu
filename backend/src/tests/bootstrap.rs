@@ -349,7 +349,7 @@ pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
         .flatten()
         .map(|record| record.ver)
         .unwrap_or_default();
-    let claims = crate::router::auth::Claims::new_user(id.to_string(), admin, ver);
+    let claims = crate::router::auth::ClaimsSession::new_user(id.to_string(), admin, ver);
     rocket::http::Cookie::new("jwt", claims.encode())
 }
 
@@ -416,7 +416,7 @@ pub fn login_status(client: &Client, user_id: &str, password: &str) -> rocket::h
 }
 
 /// Decode a session cookie token back into claims (no hashing).
-pub fn decode(token: &str) -> crate::router::auth::Claims {
+pub fn decode(token: &str) -> crate::router::auth::ClaimsSession {
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     crate::router::auth::decode_typed(token, &validation).expect("decode token")
 }

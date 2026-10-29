@@ -39,13 +39,13 @@ enum GuardKind {
 
 fn classify_guard(name: &str) -> GuardKind {
     match name {
-        "GuardAuth" | "GuardUser" => GuardKind::Typs(vec!["session"]),
+        "GuardAdmin" | "GuardUser" => GuardKind::Typs(vec!["session"]),
         "GuardHash" | "GuardHashOriginal" => GuardKind::Typs(vec!["asset"]),
-        "TimestampGuardModified" | "GuardTimestamp" => GuardKind::Typs(vec!["snapshot"]),
-        // GuardShare resolves via the share table and falls back to
+        "GuardRenewHash" | "GuardSnapshot" => GuardKind::Typs(vec!["snapshot"]),
+        // GuardPresenter resolves via the share table and falls back to
         // try_jwt_cookie_auth, so it accepts session tokens too.
-        "GuardShare" => GuardKind::Typs(vec!["session", "share"]),
-        "GuardReadOnlyMode" | "GuardReauth" => GuardKind::None,
+        "GuardPresenter" => GuardKind::Typs(vec!["session", "share"]),
+        "GuardMutate" | "GuardReauth" => GuardKind::None,
         _ => GuardKind::Unknown,
     }
 }

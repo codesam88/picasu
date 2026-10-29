@@ -11,7 +11,7 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::asset::AssetKind;
 use crate::model::response::FileEntry;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
+use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{ASSET_BY_ID, DUPE_INDEX, TREE};
 
@@ -99,7 +99,7 @@ fn probe_enabled() -> bool {
 ]
 #[get("/get/test/record/<asset_id>")]
 pub fn probe_record(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
     asset_id: &str,
 ) -> AppResult<Json<TestRecordProbe>> {
     let _ = auth?;
@@ -178,7 +178,7 @@ pub fn probe_record(
 ]
 #[get("/get/test/dupe-group/<hash>")]
 pub fn probe_dupe_group(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardAdmin>,
     hash: &str,
 ) -> AppResult<Json<Vec<DupeGroupMember>>> {
     let _ = auth?;

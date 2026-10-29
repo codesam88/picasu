@@ -261,10 +261,10 @@ read-only completeness); background in `docs/briefs/dylint.md`.
   AUTH-3 lint lands.
 - **Decode agreement (AUTH-1/F1 ratchet):** each guard decodes exactly
   the claims type the model assigns it (verified by hand: user guards
-  → `Claims`, hash guards → `ClaimsHash`, timestamp guards →
-  `ClaimsTimestamp`). Directly decidable, GREEN on day one — pins the
+  → `ClaimsSession`, hash guards → `ClaimsAsset`, timestamp guards →
+  `ClaimsSnapshot`). Directly decidable, GREEN on day one — pins the
   F1 incident class.
-- **Claims consumption (F3, queued after):** 23 handlers do
+- **ClaimsSession consumption (F3, queued after):** 23 handlers do
   `let _ = auth?` — rejection propagated but claims never read.
   Extends AUTH-2's use analysis with the target-source question
   (claims-derived target vs body/query-derived on a share-guarded
@@ -332,7 +332,7 @@ extension next to the native `security(...)` clause:
 ```rust
 security(("cookie_jwt" = [])),
 extensions(("x-picasu-auth" = json!({
-    "guards": ["GuardAuth"],
+    "guards": ["GuardAdmin"],
     "tokenTyp": ["session"],
     "admin": "admin",
     "shareScope": "n-a",
@@ -351,15 +351,15 @@ credentials); `admin` records the role constraint (`admin`,
 `security: []`; `effects` the manage/effect classification AUTH-11/12
 needs; `invariants` the `authz-model.md` IDs for traceability.
 Readonly and reauth behavior are derived from `guards`
-(`GuardReadOnlyMode`, `GuardReauth`), not stored.
+(`GuardMutate`, `GuardReauth`), not stored.
 Background: `docs/briefs/openapi-auth-metadata.md`,
 `docs/briefs/auth-policy-engines.md`,
 `docs/briefs/schemathesis-modeling.md`.
 
 Interfaces: `openapi-sanity` parses the extension (A9 no longer
 fires), validates shape against one schema, and cross-checks
-extension against guard signature (`GuardShare` present ⇒ share
-schemes in `security`; `GuardReadOnlyMode` ⇒ 405 declared;
+extension against guard signature (`GuardPresenter` present ⇒ share
+schemes in `security`; `GuardMutate` ⇒ 405 declared;
 `public: true` ⇔ `security: []`); a generated per-operation auth
 matrix (op × principals × typ × scope × readonly × reauth × effects)
 is diffed in CI next to the spec for security review; the
@@ -385,15 +385,15 @@ rules gate.
 The S1..S7 correspondence rules split by what each tool can see, so
 each rule lives where its inputs live and nowhere else:
 
-| Rule | Problem / purpose                                | Enforcement                                                                                     |
-| ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| S1   | metadata without a published declaration         | openapi-sanity (done, gating; paired both ways, internal probes exempt)                         |
-| S2   | `security` schemes vs guard types in signature   | openapi-sanity (done, gating)                                                                   |
-| S3   | `tokenTyp` vs guard-decoded claims types         | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI))                 |
-| S4   | `shareScope` vs body/database binding check      | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
-| S5   | `readonly` vs `GuardReadOnlyMode` + 405 declared | openapi-sanity: P1/P2 shape                                                                     |
-| S6   | `reauth` vs `GuardReauth` + documented header    | openapi-sanity: signature + annotation text                                                     |
-| S7   | `public` vs `security(())` + no guard            | openapi-sanity: signature + annotation form                                                     |
+| Rule | Problem / purpose                              | Enforcement                                                                                     |
+| ---- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| S1   | metadata without a published declaration       | openapi-sanity (done, gating; paired both ways, internal probes exempt)                         |
+| S2   | `security` schemes vs guard types in signature | openapi-sanity (done, gating)                                                                   |
+| S3   | `tokenTyp` vs guard-decoded claims types       | dylint: `token_typ_agreement` crate (done, gating via `just dylint-check` (CI))                 |
+| S4   | `shareScope` vs body/database binding check    | behavioral: generated cross-scope probes (A1-style); dylint heuristic later as defense-in-depth |
+| S5   | `readonly` vs `GuardMutate` + 405 declared     | openapi-sanity: P1/P2 shape                                                                     |
+| S6   | `reauth` vs `GuardReauth` + documented header  | openapi-sanity: signature + annotation text                                                     |
+| S7   | `public` vs `security(())` + no guard          | openapi-sanity: signature + annotation form                                                     |
 
 Split justification: annotation/signature comparisons are syn's home
 turf; type/call-graph questions are dylint's; binding semantics are

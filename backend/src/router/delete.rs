@@ -10,8 +10,8 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::evict_dir_album;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
@@ -60,7 +60,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
         request_body = DeleteList,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -83,11 +83,11 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 #[delete("/delete/delete-data", format = "json", data = "<json_data>")]
 pub async fn delete_data(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     json_data: Json<DeleteList>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     if json_data.asset_ids.is_empty() {
         return Err(AppError::new(
@@ -332,7 +332,7 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
         ),
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -351,12 +351,12 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
 ]
 #[delete("/delete/invites/<invite_id>")]
 pub fn delete_invite(
-    auth: GuardResult<GuardAuth>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
     invite_id: &str,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     if !crate::auth::invites::revoke_invite(invite_id)? {
         return Err(AppError::new(
             ErrorKind::NotFound,
@@ -388,7 +388,7 @@ pub fn delete_invite(
         ),
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth", "GuardReadOnlyMode"],
+            "guards": ["GuardAdmin", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -409,12 +409,12 @@ pub fn delete_invite(
 ]
 #[delete("/delete/users/<user_id>")]
 pub fn delete_user_handler(
-    auth: GuardResult<GuardAuth>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
     user_id: &str,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
     crate::auth::users::delete_user(user_id)?;
     Ok(())
 }

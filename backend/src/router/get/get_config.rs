@@ -3,8 +3,8 @@ use rocket::http::ContentType;
 use rocket::serde::json::Json;
 
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::GuardAuth;
-use crate::router::auth::GuardShare;
+use crate::router::auth::GuardAdmin;
+use crate::router::auth::GuardPresenter;
 use serde::Serialize;
 
 use crate::router::{AppResult, GuardResult};
@@ -43,7 +43,7 @@ pub struct ConfigResponse {
         tag = "config",
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardShare"],
+            "guards": ["GuardPresenter"],
             "tokenTyp": ["session", "share"],
             "admin": "any",
             "shareScope": "n-a",
@@ -60,7 +60,7 @@ pub struct ConfigResponse {
     )
 ]
 #[get("/get/config")]
-pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
+pub fn get_config_handler(auth: GuardResult<GuardPresenter>) -> AppResult<Json<ConfigResponse>> {
     let _ = auth?;
     let response = crate::model::config::with_config(|config| ConfigResponse {
         upload_folder: config.upload_folder.clone(),
@@ -86,7 +86,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         tag = "config",
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAuth"],
+            "guards": ["GuardAdmin"],
             "tokenTyp": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -102,7 +102,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
     )
 ]
 #[get("/get/config/export")]
-pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(ContentType, String)> {
+pub fn export_config_handler(auth: GuardResult<GuardAdmin>) -> AppResult<(ContentType, String)> {
     let _ = auth?;
     let value = crate::model::config::with_config(|config| {
         let mut value = serde_json::to_value(config).expect("configuration serializes to JSON");

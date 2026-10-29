@@ -3,7 +3,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_dir_path_for_album;
 use crate::process::format::{self, Detection, kind_for_extension};
 use crate::process::sanitize::{FilenameSanitize, find_unique_path, sanitize_filename};
-use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
@@ -173,7 +173,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         ),
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardUser", "GuardReadOnlyMode"],
+            "guards": ["GuardUser", "GuardMutate"],
             "tokenTyp": ["session"],
             "admin": "any",
             "shareScope": "n-a",
@@ -197,14 +197,14 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 )]
 pub async fn upload(
     auth: GuardResult<GuardUser>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    mutation: GuardResult<GuardMutate>,
     presigned_album_id_opt: Option<String>,
     on_conflict: Option<String>,
     auto_rename: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
-    let _ = read_only_mode?;
+    let _ = mutation?;
 
     let mut inner_form = match form {
         Ok(f) => f.into_inner(),
