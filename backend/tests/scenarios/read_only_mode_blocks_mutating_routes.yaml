@@ -3,8 +3,13 @@ given:
   - config:
       read_only_mode: true
 when:
-  call: POST /post/index/album
-  body:
-    album: "/"
+  - call: POST /post/index/album
+    body:
+      album: "/"
+    then:
+      - response.status: 405
+  # Rotating the signing key invalidates every session, so it is a mutation
+  # like any other: the kill-switch must refuse it while read-only is on.
+  - call: POST /post/config/auth-key/reset
 then:
   - response.status: 405

@@ -52,7 +52,7 @@ pub async fn write_widget(
     tag = "config",
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
-        "guards": ["GuardAdmin"],
+        "guards": ["GuardAdmin", "GuardMutate"],
         "tokenTyp": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
@@ -60,9 +60,35 @@ pub async fn write_widget(
         "effects": ["manage"],
         "invariants": []
     }))),
-    responses((status = 200, description = "Ok"))
+    responses(
+        (status = 200, description = "Ok"),
+        (status = 405, description = "Read-only mode"),
+    )
 )]
 #[put("/put/manage-widget")]
-pub async fn manage_widget(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Widget>> {
+pub async fn manage_widget(
+    auth: GuardResult<GuardAdmin>,
+    mutation: GuardResult<GuardMutate>,
+) -> AppResult<Json<Widget>> {
+    Ok(Json(Widget))
+}
+
+/// Operational control that must stay available under read-only mode.
+#[utoipa::path(
+    tag = "config",
+    security(("cookie_jwt" = [])),
+    extensions(("x-picasu-auth" = json!({
+        "guards": ["GuardAdmin"],
+        "tokenTyp": ["session"],
+        "admin": "admin",
+        "shareScope": "n/a",
+        "public": false,
+        "effects": ["control"],
+        "invariants": []
+    }))),
+    responses((status = 200, description = "Ok"))
+)]
+#[post("/post/control-widget")]
+pub async fn control_widget(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }

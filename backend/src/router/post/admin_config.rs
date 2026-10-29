@@ -28,7 +28,7 @@ use crate::router::{AppResult, GuardResult};
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,
-            "effects": ["manage"],
+            "effects": ["control"],
             "invariants": ["AUTH-11", "AUTH-15"]
         }))),
     responses(
