@@ -33,7 +33,6 @@ type AppResult<T> = Result<T, AppError>;
         "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["manage"],
         "invariants": ["AUTH-11"],
         "waivers": {
@@ -56,7 +55,6 @@ pub async fn undeclared_waiver(auth: GuardResult<GuardAdmin>) -> AppResult<Json<
         "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["manage"],
         "invariants": ["AUTH-11", "AUTH-12"],
         "waivers": {
@@ -79,7 +77,6 @@ pub async fn unreasoned_waiver(auth: GuardResult<GuardAdmin>) -> AppResult<Json<
         "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["manage"],
         "invariants": ["AUTH-11", "AUTH-12"],
         "waivers": {

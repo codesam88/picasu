@@ -42,7 +42,6 @@ use crate::router::{AppResult, GuardResult};
             "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-7"]
         }))),

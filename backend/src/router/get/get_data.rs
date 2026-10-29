@@ -67,7 +67,6 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
             "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-7"]
         }))),
@@ -226,7 +225,6 @@ pub async fn get_data(
             "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-7"]
         }))),
@@ -277,7 +275,6 @@ pub async fn get_rows(
             "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-7"]
         }))),

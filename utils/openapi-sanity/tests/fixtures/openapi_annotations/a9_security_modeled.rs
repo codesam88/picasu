@@ -12,9 +12,6 @@
         "credentials": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
-        "readonly": false,
-        "reauth": false,
-        "public": false,
         "effects": [],
         "invariants": []
     }))),
@@ -34,9 +31,6 @@ pub async fn widget(auth: GuardAdmin) -> AppResult<Json<Widget>> {
         "credentials": ["admin", "share"],
         "admin": "any",
         "shareScope": "own-album",
-        "readonly": false,
-        "reauth": false,
-        "public": false,
         "effects": [],
         "invariants": []
     }))),

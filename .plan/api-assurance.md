@@ -334,8 +334,8 @@ domains stay open.
 ### 10. Machine-readable auth metadata (spike: `x-picasu-auth` extension)
 
 Per-operation authorization semantics that OpenAPI `security` cannot
-express (token types, inline admin role, share scope/binding,
-explicit-public) ride in the annotation as a vendor
+express (credential kinds, inline admin role, share scope/binding,
+non-guard admission paths) ride in the annotation as a vendor
 extension next to the native `security(...)` clause:
 
 ```rust
@@ -345,7 +345,6 @@ extensions(("x-picasu-auth" = json!({
     "credentials": ["session"],
     "admin": "admin",
     "shareScope": "n-a",
-    "public": false,
     "effects": [],
     "invariants": ["AUTH-2"]
 }))),
@@ -358,9 +357,12 @@ credentials); `admin` records the role constraint (`admin`,
 `any`, `none`); `shareScope` the enforced album binding (`album`,
 or `n-a` when the operation binds nothing by album — always derived
 from the presented token or identity, never from a request parameter);
-`public: true` pairs with
-`security: []`; `effects` the manage/effect classification AUTH-11/12
-needs; `invariants` the `authz-model.md` IDs for traceability.
+publicness is derived from the guards (no contributing guard) and pinned
+to `security(())` by S7, never authored; `fallback` lists non-guard
+admission paths (`registration-invite`, `allow-registration`,
+`bootstrap-window`) on the two operations that have them; `effects` the
+manage/effect classification AUTH-11/12 needs; `invariants` the
+`authz-model.md` IDs for traceability.
 Readonly and reauth behavior are derived from `guards`
 (`GuardMutate`, `GuardReauth`), not stored.
 Background: `docs/briefs/openapi-auth-metadata.md`,
@@ -404,7 +406,12 @@ each rule lives where its inputs live and nowhere else:
 | S4   | asset touched is bound to the share's album (prefetch filter, renewal binding, 404-on-mismatch; serving drops out — bearer authorizes the asset) | behavioral: matrix-derived cross-scope checks, executed by `fuzz-matrix` (done)   |
 | S5   | `readonly` vs `GuardMutate` + 405 declared                                                                                                       | openapi-sanity: P1/P2 shape                                                       |
 | S6   | `reauth` vs `GuardReauth` + documented header                                                                                                    | openapi-sanity: signature + annotation text                                       |
-| S7   | `public` vs `security(())` + no guard                                                                                                            | openapi-sanity: signature + annotation form                                       |
+| S7   | publicness (no contributing guard) vs `security(())`                                                                                             | openapi-sanity: signature + annotation form                                       |
+| S8   | declared `guards` vs signature guards                                                                                                            | openapi-sanity (done, gating)                                                     |
+| S9   | `admin` role constraint vs `GuardAdmin`                                                                                                          | openapi-sanity (done, gating)                                                     |
+| S10  | `effects` class vs guards                                                                                                                        | openapi-sanity (done, gating)                                                     |
+| S11  | waivers name a held rule, state a reason, suppress something                                                                                     | openapi-sanity (done, gating)                                                     |
+| S12  | extension field set closed; `fallback` vocabulary and placement                                                                                  | openapi-sanity (done, gating)                                                     |
 
 Split justification: annotation/signature comparisons are syn's home
 turf; type/call-graph questions are dylint's; binding semantics are

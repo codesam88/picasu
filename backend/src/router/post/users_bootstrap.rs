@@ -85,7 +85,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
+            "fallback": ["bootstrap-window"],
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),

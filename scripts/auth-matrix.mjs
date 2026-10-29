@@ -30,8 +30,19 @@ for (const path of Object.keys(spec.paths).sort()) {
   for (const method of Object.keys(spec.paths[path])) {
     const op = spec.paths[path][method];
     const rawAuth = op["x-picasu-auth"] ?? null;
-    // Stable shape for consumers: the waiver map is always present.
-    const auth = rawAuth === null ? null : { ...rawAuth, waivers: rawAuth.waivers ?? {} };
+    // Stable shape for consumers: the waiver map and the fallback list are
+    // always present. `public` is derived, never authored: a handler whose
+    // guards enforce no credential is public, and S7 pins that pairing to
+    // `security(())` in the document.
+    const auth =
+      rawAuth === null
+        ? null
+        : {
+            ...rawAuth,
+            public: (rawAuth.guards ?? []).length === 0,
+            fallback: rawAuth.fallback ?? [],
+            waivers: rawAuth.waivers ?? {},
+          };
     const security = op.security === undefined ? null : op.security;
     const record = sortedObject({
       method: method.toUpperCase(),
@@ -140,6 +151,8 @@ lines.push(
   "- **Scope**: album scope enforced on the target (`album`), or `—` when the operation binds nothing by album. The scope always comes from the presented token or identity, never from a request parameter.",
 );
 lines.push(
+  "- **Fallback**: non-guard admission paths the handler falls back to when the guard path does not admit: `registration-invite` (single-use invite token in the request body), `allow-registration` (the `allow_registration` config knob), `bootstrap-window` (the first-admin window, open while the store is empty). `—` when the guard path is the only admission.");
+lines.push(
   "- **Guards**: request guards verbatim from the handler signature (`GuardMutate` marks read-only-gated mutating routes, `GuardReauth` the password-confirmed ones).",
 );
 lines.push(
@@ -162,12 +175,12 @@ lines.push(
 lines.push("");
 lines.push("## Modeled operations");
 lines.push("");
-lines.push("| Op | Name | Role | Credentials | Scope | Guards | Effects |");
-lines.push("| --- | --- | --- | --- | --- | --- | --- |");
+lines.push("| Op | Name | Role | Credentials | Scope | Fallback | Guards | Effects |");
+lines.push("| --- | --- | --- | --- | --- | --- | --- | --- |");
 for (const r of modeled) {
   const a = r["x-picasu-auth"];
   lines.push(
-    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.credentials)} | ${scopeCell(a)} | ${cell(a.guards)} | ${cell(a.effects)} |`,
+    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.credentials)} | ${scopeCell(a)} | ${cell(a.fallback)} | ${cell(a.guards)} | ${cell(a.effects)} |`,
   );
 }
 lines.push("");

@@ -10,9 +10,6 @@
         "credentials": [],
         "admin": "none",
         "shareScope": "n-a",
-        "readonly": false,
-        "reauth": false,
-        "public": true,
         "effects": [],
         "invariants": []
     }))),

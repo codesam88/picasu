@@ -1782,7 +1782,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -1844,7 +1843,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -1912,7 +1910,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -1983,7 +1980,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2030,7 +2026,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2088,7 +2083,6 @@
           "invariants": [
             "AUTH-9"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2138,7 +2132,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2192,7 +2185,6 @@
             "GuardUser"
           ],
           "invariants": [],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2280,7 +2272,6 @@
           "invariants": [
             "AUTH-7"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2326,7 +2317,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2401,7 +2391,6 @@
           "invariants": [
             "AUTH-7"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2466,7 +2455,6 @@
           "invariants": [
             "AUTH-7"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2523,7 +2511,6 @@
             "GuardUser"
           ],
           "invariants": [],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2570,7 +2557,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2623,7 +2609,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2693,7 +2678,6 @@
           "invariants": [
             "AUTH-7"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2760,7 +2744,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2844,7 +2827,6 @@
             "AUTH-6",
             "AUTH-9"
           ],
-          "public": false,
           "shareScope": "album"
         }
       }
@@ -2898,7 +2880,6 @@
             "GuardUser"
           ],
           "invariants": [],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -2935,7 +2916,6 @@
           "effects": [],
           "guards": [],
           "invariants": [],
-          "public": true,
           "shareScope": "n-a"
         }
       }
@@ -2988,7 +2968,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3092,7 +3071,6 @@
             "AUTH-8",
             "AUTH-9"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3166,7 +3144,6 @@
             "AUTH-8",
             "AUTH-9"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3215,7 +3192,6 @@
             "AUTH-12",
             "AUTH-15"
           ],
-          "public": false,
           "shareScope": "n-a",
           "waivers": {
             "AUTH-12": "the lift must stay callable while read-only mode is on"
@@ -3273,7 +3249,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3349,7 +3324,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3423,7 +3397,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3487,7 +3460,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3533,7 +3505,6 @@
           "invariants": [
             "AUTH-11"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3604,7 +3575,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3631,7 +3601,6 @@
           "effects": [],
           "guards": [],
           "invariants": [],
-          "public": true,
           "shareScope": "n-a"
         }
       }
@@ -3701,7 +3670,6 @@
             "AUTH-7",
             "AUTH-10"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3777,7 +3745,6 @@
             "AUTH-9",
             "AUTH-10"
           ],
-          "public": false,
           "shareScope": "album"
         }
       }
@@ -3836,7 +3803,6 @@
           "effects": [],
           "guards": [],
           "invariants": [],
-          "public": true,
           "shareScope": "n-a"
         }
       }
@@ -3902,6 +3868,9 @@
           "effects": [
             "manage"
           ],
+          "fallback": [
+            "bootstrap-window"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
@@ -3910,7 +3879,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -3982,6 +3950,10 @@
           "effects": [
             "manage"
           ],
+          "fallback": [
+            "registration-invite",
+            "allow-registration"
+          ],
           "guards": [
             "GuardAdmin",
             "GuardMutate"
@@ -3990,7 +3962,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4061,7 +4032,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4137,7 +4107,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4204,7 +4173,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4273,7 +4241,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4342,7 +4309,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4409,7 +4375,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4488,7 +4453,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4554,7 +4518,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4623,7 +4586,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4692,7 +4654,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4761,7 +4722,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4830,7 +4790,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4900,7 +4859,6 @@
             "AUTH-11",
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -4971,7 +4929,6 @@
             "AUTH-12",
             "AUTH-15"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }
@@ -5297,7 +5254,6 @@
           "invariants": [
             "AUTH-12"
           ],
-          "public": false,
           "shareScope": "n-a"
         }
       }

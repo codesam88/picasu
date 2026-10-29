@@ -11,9 +11,6 @@
         "credentials": ["admin"],
         "admin": "admin",
         "shareScope": "n-a",
-        "readonly": false,
-        "reauth": false,
-        "public": false,
         "effects": [],
         "invariants": []
     }))),

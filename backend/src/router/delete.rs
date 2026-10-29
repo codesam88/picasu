@@ -64,7 +64,6 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12"]
         }))),
@@ -336,7 +335,6 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),
@@ -392,7 +390,6 @@ pub fn delete_invite(
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),

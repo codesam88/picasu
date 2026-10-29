@@ -63,7 +63,7 @@ pub struct RegisterRequest {
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
+            "fallback": ["registration-invite", "allow-registration"],
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),

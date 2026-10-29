@@ -13,7 +13,6 @@
         "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
-        "public": false,
         "effects": [],
         "invariants": []
     }))),

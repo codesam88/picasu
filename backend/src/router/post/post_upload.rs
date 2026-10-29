@@ -177,7 +177,6 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12"]
         }))),

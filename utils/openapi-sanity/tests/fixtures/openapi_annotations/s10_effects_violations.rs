@@ -30,7 +30,6 @@ type AppResult<T> = Result<T, AppError>;
         "credentials": ["session"],
         "admin": "any",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["write"],
         "invariants": []
     }))),
@@ -53,7 +52,6 @@ pub async fn write_widget(auth: GuardResult<GuardUser>) -> AppResult<Json<Widget
         "credentials": ["session"],
         "admin": "any",
         "shareScope": "n/a",
-        "public": false,
         "effects": ["manage"],
         "invariants": []
     }))),

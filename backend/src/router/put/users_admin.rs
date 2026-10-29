@@ -60,7 +60,6 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),

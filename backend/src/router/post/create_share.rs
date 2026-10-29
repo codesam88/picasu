@@ -55,7 +55,6 @@ pub struct CreateShare {
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["manage"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),

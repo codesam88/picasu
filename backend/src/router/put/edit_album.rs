@@ -124,7 +124,6 @@ pub struct SetAlbumCover {
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12"]
         }))),
@@ -255,7 +254,6 @@ pub struct SetAlbumTitle {
             "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["write"],
             "invariants": ["AUTH-12"]
         }))),

@@ -44,9 +44,11 @@ tier-1 sweep.
 | `renew-mismatch`   | share-B credentials renewing share-A's snapshot              | exactly `401`          |
 | `demoted`          | a demoted user's still-live session on admin operations      | not admitted (any 4xx) |
 
-The demoted family asserts refusal rather than `401` because some admin
-operations also have a public path: registration refuses a non-admin with
-`403` (registration disabled) rather than rejecting the credential.
+The demoted family asserts refusal rather than `401` because two admin
+operations declare a non-guard admission path in `fallback`: registration
+answers `403` (knob off, no invite presented) rather than rejecting the
+credential, and the bootstrap window is a runtime condition the seeded state
+does not open.
 
 `just fuzz-matrix` runs in CI next to the tier-1 sweep, and `just test`
 includes it. The campaign below keeps the generative role — sequences, random

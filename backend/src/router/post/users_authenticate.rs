@@ -355,7 +355,6 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             "credentials": [],
             "admin": "none",
             "shareScope": "n-a",
-            "public": true,
             "effects": [],
             "invariants": []
         }))),
@@ -502,7 +501,6 @@ pub async fn authenticate(
             "credentials": [],
             "admin": "none",
             "shareScope": "n-a",
-            "public": true,
             "effects": [],
             "invariants": []
         }))),

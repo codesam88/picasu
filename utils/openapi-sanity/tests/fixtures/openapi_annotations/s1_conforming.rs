@@ -9,8 +9,7 @@
     tag = "assets",
     security(()),
     extensions(("x-picasu-auth" = json!({
-        "guards": [],
-        "public": true
+        "guards": []
     }))),
     responses((status = 200, description = "Ok"))
 )]

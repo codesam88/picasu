@@ -1326,7 +1326,6 @@ pub struct RenewHashTokenReturn {
             "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-7", "AUTH-10"]
         }))),
@@ -1593,7 +1592,6 @@ pub struct RenewTimestampTokenReturn {
             "credentials": ["session", "share"],
             "admin": "any",
             "shareScope": "album",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-6", "AUTH-9", "AUTH-10"]
         }))),

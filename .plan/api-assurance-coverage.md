@@ -71,7 +71,7 @@ Two dimensions; coverage alone misleads.
 | tag vocabulary                                    | A3 + `tags.json` mirrors             | —                           | static-exact, gate   |                                                               |
 | `security` schemes ⇔ guard types                  | S2                                   | A1/A3/A5 probes             | static-exact, gate   |                                                               |
 | `security` present ⇔ extension present            | S1 (both ways)                       | —                           | shape, gate          |                                                               |
-| `public` ⇔ `security: [{}]` + no guard            | S7                                   | —                           | static-exact, gate   |                                                               |
+| publicness (no guard) ⇔ `security: [{}]`          | S7                                   | —                           | static-exact, gate   |                                                               |
 | `guards` array ⇔ handler signature                | **none**                             | indirect (role rendering)   | **shape at best**    | no rule compares the array to the signature                   |
 | `admin` ⇔ `GuardAdmin`/`GuardUser`                | **none**                             | `matrix_negatives`          | behavioral, gate     | only B-side                                                   |
 | `credentials` ⇔ decoded claims type               | S3 dylint (HIR)                      | A3 probe                    | static-exact, gate   | strongest field                                               |

@@ -67,12 +67,11 @@ const ROLE_GUARDS: [&str; 4] = ["GuardAdmin", "GuardUser", "GuardPresenter", "Gu
 /// says nothing about the handler's own verdict (a login endpoint answers 401
 /// for wrong credentials), and the source rules already pin the public/
 /// guarded boundary.
-fn expectation_for(operation: &Value, principal: Principal) -> Option<Expect> {
-    let auth = operation.get("x-picasu-auth")?.as_object()?;
-    let public = auth.get("public").and_then(Value::as_bool).unwrap_or(false);
+fn expectation_for(operation: &Value, principal: Principal, public: bool) -> Option<Expect> {
     if public {
         return None;
     }
+    let auth = operation.get("x-picasu-auth")?.as_object()?;
     let admin = auth.get("admin").and_then(Value::as_str).unwrap_or("none");
     let credentials: Vec<&str> = auth
         .get("credentials")
@@ -153,6 +152,34 @@ fn modeled_operations(spec: &Value) -> Vec<(String, String, Value)> {
     }
     operations.sort_by(|left, right| (&left.1, &left.0).cmp(&(&right.1, &right.0)));
     operations
+}
+
+/// Public operations, read from the committed machine matrix.
+///
+/// Publicness is derived from the guards by the matrix generator rather than
+/// authored in the annotation, so the artifact is where the derived fact
+/// lives.
+fn public_operations() -> std::collections::BTreeSet<(String, String)> {
+    let matrix: Value = serde_json::from_str(include_str!("../../auth-matrix.json"))
+        .expect("the committed auth matrix must be valid JSON");
+    matrix
+        .as_array()
+        .expect("the auth matrix is a list of operations")
+        .iter()
+        .filter(|record| {
+            record
+                .get("x-picasu-auth")
+                .and_then(|auth| auth.get("public"))
+                .and_then(Value::as_bool)
+                == Some(true)
+        })
+        .filter_map(|record| {
+            Some((
+                record.get("method")?.as_str()?.to_owned(),
+                record.get("path")?.as_str()?.to_owned(),
+            ))
+        })
+        .collect()
 }
 
 /// Query parameters the route binds and requires, as `(name, value)`. Rocket
@@ -338,12 +365,14 @@ fn every_operation_refuses_the_principals_its_model_excludes() {
         operations.len()
     );
 
+    let public_ops = public_operations();
     let mut failures = Vec::new();
     let mut counts = std::collections::BTreeMap::new();
     let mut credential_refusals = 0usize;
     let mut shape_refusals = Vec::new();
     for (method, path, operation) in &operations {
         let name = format!("{method} {path}");
+        let public = public_ops.contains(&(method.clone(), path.clone()));
         let query = required_query(operation);
         let body = request_body(&spec, operation);
         for principal in [
@@ -351,7 +380,7 @@ fn every_operation_refuses_the_principals_its_model_excludes() {
             Principal::ViewerSession,
             Principal::AdminSession,
         ] {
-            let Some(expect) = expectation_for(operation, principal) else {
+            let Some(expect) = expectation_for(operation, principal, public) else {
                 continue;
             };
             *counts
@@ -471,28 +500,33 @@ fn the_policy_reads_the_model() {
 
     // Public operations carry no runtime assertion: the handler's own verdict
     // (invalid credentials, for one) is not a credential-layer refusal.
-    let public = row(serde_json::json!({ "public": true, "admin": "none", "credentials": [] }));
-    assert_eq!(expectation_for(&public, Principal::Anonymous), None);
+    let public = row(serde_json::json!({ "admin": "none", "credentials": [] }));
+    assert_eq!(expectation_for(&public, Principal::Anonymous, true), None);
+    assert_eq!(
+        expectation_for(&public, Principal::Anonymous, false),
+        Some(Expect::Refused),
+        "the same row with the derived flag off is a refusal"
+    );
 
     let admin_only = row(serde_json::json!({
-        "public": false, "admin": "admin", "credentials": ["session"],
+        "admin": "admin", "credentials": ["session"],
         "guards": ["GuardAdmin"]
     }));
     assert_eq!(
-        expectation_for(&admin_only, Principal::Anonymous),
+        expectation_for(&admin_only, Principal::Anonymous, false),
         Some(Expect::Refused)
     );
     assert_eq!(
-        expectation_for(&admin_only, Principal::ViewerSession),
+        expectation_for(&admin_only, Principal::ViewerSession, false),
         Some(Expect::Refused)
     );
 
     let mut any_session = serde_json::json!({
-        "public": false, "admin": "any", "credentials": ["session"],
+        "admin": "any", "credentials": ["session"],
         "guards": ["GuardUser"], "invariants": []
     });
     assert_eq!(
-        expectation_for(&row(any_session.clone()), Principal::ViewerSession),
+        expectation_for(&row(any_session.clone()), Principal::ViewerSession, false),
         Some(Expect::Admitted)
     );
 
@@ -500,7 +534,7 @@ fn the_policy_reads_the_model() {
     // the admitted assertion does not apply.
     any_session["guards"] = serde_json::json!(["GuardUser", "GuardReauth"]);
     assert_eq!(
-        expectation_for(&row(any_session.clone()), Principal::ViewerSession),
+        expectation_for(&row(any_session.clone()), Principal::ViewerSession, false),
         None
     );
 
@@ -509,20 +543,20 @@ fn the_policy_reads_the_model() {
     any_session["guards"] = serde_json::json!(["GuardUser"]);
     any_session["invariants"] = serde_json::json!(["AUTH-10"]);
     assert_eq!(
-        expectation_for(&row(any_session.clone()), Principal::ViewerSession),
+        expectation_for(&row(any_session.clone()), Principal::ViewerSession, false),
         None
     );
 
     let bearer_only = row(serde_json::json!({
-        "public": false, "admin": "none", "credentials": ["snapshot"],
+        "admin": "none", "credentials": ["snapshot"],
         "guards": ["GuardSnapshot"]
     }));
     assert_eq!(
-        expectation_for(&bearer_only, Principal::AdminSession),
+        expectation_for(&bearer_only, Principal::AdminSession, false),
         Some(Expect::Refused)
     );
     assert_eq!(
-        expectation_for(&bearer_only, Principal::ViewerSession),
+        expectation_for(&bearer_only, Principal::ViewerSession, false),
         None
     );
 
@@ -532,10 +566,13 @@ fn the_policy_reads_the_model() {
         "public": false, "admin": "any", "credentials": ["session", "asset"],
         "guards": ["GuardPresenter", "GuardHash"]
     }));
-    assert_eq!(expectation_for(&mixed, Principal::ViewerSession), None);
+    assert_eq!(
+        expectation_for(&mixed, Principal::ViewerSession, false),
+        None
+    );
 
     assert_eq!(
-        expectation_for(&serde_json::json!({}), Principal::Anonymous),
+        expectation_for(&serde_json::json!({}), Principal::Anonymous, false),
         None
     );
 }

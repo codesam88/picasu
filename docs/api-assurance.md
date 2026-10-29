@@ -38,31 +38,42 @@ Per-operation authorization semantics that OpenAPI `security`
 cannot express live in an `x-picasu-auth` extension next to the
 native `security(...)` clause:
 
-| Field         | Meaning                                                                                                                    |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `guards`      | handler signature guard types, verbatim                                                                                    |
-| `credentials` | credential types accepted (`session`, `snapshot`, `asset`, `share`)                                                        |
-| `admin`       | `admin` (admin-only), `any`, `none`                                                                                        |
-| `shareScope`  | `album` (target confined to the share's album), `n-a` (no album binding) — always token-derived, never a request parameter |
-| `public`      | no credential required (pairs with `security(())`)                                                                         |
-| `effects`     | mutation class, exactly one: `read`, `write` (content), `manage` (administrative); empty for public operations             |
-| `invariants`  | `authz-model.md` IDs the operation is held to, checked for existence and against the guards                                |
+| Field         | Meaning                                                                                                                                                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guards`      | handler signature guard types, verbatim                                                                                                                                                                         |
+| `credentials` | credential types accepted (`session`, `snapshot`, `asset`, `share`)                                                                                                                                             |
+| `admin`       | `admin` (admin-only), `any`, `none`                                                                                                                                                                             |
+| `shareScope`  | `album` (target confined to the share's album), `n-a` (no album binding) — always token-derived, never a request parameter                                                                                      |
+| `fallback`    | non-guard admission paths the handler falls back to: `registration-invite` (invite token in the body), `allow-registration` (the config knob), `bootstrap-window` (first-admin window while the store is empty) |
+| `effects`     | mutation class, exactly one: `read`, `write` (content), `manage` (administrative); empty for public operations                                                                                                  |
+| `invariants`  | `authz-model.md` IDs the operation is held to, checked for existence and against the guards                                                                                                                     |
+
+Publicness is derived, not authored: an operation whose handlers carry no
+contributing guard is public, and S7 pins that to the document's
+`security(())`. The matrix generator writes the derived `public` boolean into
+the machine artifact so consumers read one shape.
 
 All 51 annotated handlers carry the key; the 23 SPA page shells are
-unannotated by design. `effects` has no controlled vocabulary yet;
-`invariants` backfill waits on the manage/effect classification.
+unannotated by design. `effects` uses the `read`/`write`/`manage` vocabulary;
+`invariants` reference a source-verified subset of `authz-model.md` and are
+backfilled as the classification is reviewed.
 
 ## Correspondence rules
 
-| Rule | Claim checked                               | Enforced by                                   | Status                      |
-| ---- | ------------------------------------------- | --------------------------------------------- | --------------------------- |
-| S1   | metadata present ⇔ `security(...)` present  | `openapi-sanity`                              | gating                      |
-| S2   | `security` schemes ⇔ guard types            | `openapi-sanity`                              | gating                      |
-| S3   | `credentials` ⇔ decoded claims type         | dylint (`credentials_agreement`, gating)      | implemented; gating in CI   |
-| S4   | asset touched is bound to the share's album | behavioral cross-scope checks, matrix-derived | gating (`just fuzz-matrix`) |
-| S5   | `readonly` ⇔ guard + 405 declared           | `openapi-sanity`                              | gating                      |
-| S6   | `reauth` ⇔ guard + documented header        | `openapi-sanity`                              | gating                      |
-| S7   | `public` ⇔ `security(())` + no guard        | `openapi-sanity`                              | gating                      |
+| Rule | Claim checked                                             | Enforced by                                   | Status                      |
+| ---- | --------------------------------------------------------- | --------------------------------------------- | --------------------------- |
+| S1   | metadata present ⇔ `security(...)` present                | `openapi-sanity`                              | gating                      |
+| S2   | `security` schemes ⇔ guard types                          | `openapi-sanity`                              | gating                      |
+| S3   | `credentials` ⇔ decoded claims type                       | dylint (`credentials_agreement`, gating)      | implemented; gating in CI   |
+| S4   | asset touched is bound to the share's album               | behavioral cross-scope checks, matrix-derived | gating (`just fuzz-matrix`) |
+| S5   | read-only gate ⇔ `GuardMutate` + 405 declared             | `openapi-sanity`                              | gating                      |
+| S6   | password confirmation ⇔ `GuardReauth` + documented header | `openapi-sanity`                              | gating                      |
+| S7   | no contributing guard ⇔ `security(())`                    | `openapi-sanity`                              | gating                      |
+| S8   | declared `guards` ⇔ signature guards                      | `openapi-sanity`                              | gating                      |
+| S9   | `admin` constraint ⇔ `GuardAdmin`                         | `openapi-sanity`                              | gating                      |
+| S10  | `effects` class ⇔ guards                                  | `openapi-sanity`                              | gating                      |
+| S11  | waivers name a held rule and a reason                     | `openapi-sanity`                              | gating                      |
+| S12  | field set closed; `fallback` vocabulary and placement     | `openapi-sanity`                              | gating                      |
 
 Split rationale: annotation/signature comparisons belong to the syn
 checker, type/call-graph questions to dylint, binding semantics to
@@ -134,8 +145,8 @@ and the other pinned tools. Research digests live in `docs/briefs/`.
 
 ## Open gaps
 
-- `effects` controlled vocabulary and manage/effect classification
-  (AUTH-11/12).
+- `fallback` records that a non-guard admission path exists, not whether a
+  given invite or knob state satisfies it; that stays with the scenario suite.
 - `invariants` backfill beyond the source-verified set.
 - Query-param share fallback is invisible to the published schemes.
 - Single `bearer_token` scheme covers three token types; `credentials`

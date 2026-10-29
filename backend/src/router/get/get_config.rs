@@ -47,7 +47,6 @@ pub struct ConfigResponse {
             "credentials": ["session", "share"],
             "admin": "any",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-9"]
         }))),
@@ -90,7 +89,6 @@ pub fn get_config_handler(auth: GuardResult<GuardPresenter>) -> AppResult<Json<C
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),

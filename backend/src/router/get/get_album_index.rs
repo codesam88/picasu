@@ -27,7 +27,6 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
-            "public": false,
             "effects": ["read"],
             "invariants": ["AUTH-11"]
         }))),
