@@ -33,7 +33,7 @@ pub struct AuthKeyResetResponse {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAdmin", "GuardMutate"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,

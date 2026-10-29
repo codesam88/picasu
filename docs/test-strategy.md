@@ -198,7 +198,7 @@ from the contract.
   throwaway seeded instance, compared to `utils/schemathesis/baseline.yaml`;
   a finding outside the accepted set fails the job.
 - **Gating:** `just fuzz-matrix` — the auth-model checks (cross-scope,
-  wrong-typ, renewal binding, demoted token) executed deterministically from a
+  wrong-credential, renewal binding, demoted token) executed deterministically from a
   check list rebuilt from the auth matrix on every run; part of `just test`.
 - **Runners (advisory)** — the stateful campaign stays advisory because its
   phases are time-budgeted and it needs a served instance:

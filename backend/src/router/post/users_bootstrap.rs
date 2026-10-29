@@ -82,7 +82,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAdmin", "GuardMutate"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,

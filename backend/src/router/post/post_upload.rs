@@ -174,7 +174,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser", "GuardMutate"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
             "public": false,

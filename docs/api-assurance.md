@@ -38,15 +38,15 @@ Per-operation authorization semantics that OpenAPI `security`
 cannot express live in an `x-picasu-auth` extension next to the
 native `security(...)` clause:
 
-| Field        | Meaning                                                                                                                    |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `guards`     | handler signature guard types, verbatim                                                                                    |
-| `tokenTyp`   | credential types accepted (`session`, `snapshot`, `asset`, `share`)                                                        |
-| `admin`      | `admin` (admin-only), `any`, `none`                                                                                        |
-| `shareScope` | `album` (target confined to the share's album), `n-a` (no album binding) — always token-derived, never a request parameter |
-| `public`     | no credential required (pairs with `security(())`)                                                                         |
-| `effects`    | mutation class, exactly one: `read`, `write` (content), `manage` (administrative); empty for public operations             |
-| `invariants` | `authz-model.md` IDs the operation is held to, checked for existence and against the guards                                |
+| Field         | Meaning                                                                                                                    |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `guards`      | handler signature guard types, verbatim                                                                                    |
+| `credentials` | credential types accepted (`session`, `snapshot`, `asset`, `share`)                                                        |
+| `admin`       | `admin` (admin-only), `any`, `none`                                                                                        |
+| `shareScope`  | `album` (target confined to the share's album), `n-a` (no album binding) — always token-derived, never a request parameter |
+| `public`      | no credential required (pairs with `security(())`)                                                                         |
+| `effects`     | mutation class, exactly one: `read`, `write` (content), `manage` (administrative); empty for public operations             |
+| `invariants`  | `authz-model.md` IDs the operation is held to, checked for existence and against the guards                                |
 
 All 51 annotated handlers carry the key; the 23 SPA page shells are
 unannotated by design. `effects` has no controlled vocabulary yet;
@@ -58,7 +58,7 @@ unannotated by design. `effects` has no controlled vocabulary yet;
 | ---- | ------------------------------------------- | --------------------------------------------- | --------------------------- |
 | S1   | metadata present ⇔ `security(...)` present  | `openapi-sanity`                              | gating                      |
 | S2   | `security` schemes ⇔ guard types            | `openapi-sanity`                              | gating                      |
-| S3   | `tokenTyp` ⇔ decoded claims type            | dylint (`token_typ_agreement`, gating)        | implemented; gating in CI   |
+| S3   | `credentials` ⇔ decoded claims type         | dylint (`credentials_agreement`, gating)      | implemented; gating in CI   |
 | S4   | asset touched is bound to the share's album | behavioral cross-scope checks, matrix-derived | gating (`just fuzz-matrix`) |
 | S5   | `readonly` ⇔ guard + 405 declared           | `openapi-sanity`                              | gating                      |
 | S6   | `reauth` ⇔ guard + documented header        | `openapi-sanity`                              | gating                      |
@@ -80,7 +80,7 @@ behavioral tests. Each rule lives where its inputs live.
 2. **Schemathesis derivation (implemented).** The campaign hooks derive
    their auth knowledge from `backend/auth-matrix.json` through
    `utils/schemathesis/auth_rules.py`: the share-header injection set,
-   the probe each operation carries, wrong-typ token selection, read-only
+   the probe each operation carries, wrong-credential token selection, read-only
    exemptions, and the seeded scope pairs. The derivation is pure and
    unit-tested; a matrix change that alters a probe fails the tests
    instead of drifting. Destructive-operation disables stay hand-tuned in
@@ -138,5 +138,5 @@ and the other pinned tools. Research digests live in `docs/briefs/`.
   (AUTH-11/12).
 - `invariants` backfill beyond the source-verified set.
 - Query-param share fallback is invisible to the published schemes.
-- Single `bearer_token` scheme covers three token types; `tokenTyp`
+- Single `bearer_token` scheme covers three token types; `credentials`
   is authoritative until schemes split.

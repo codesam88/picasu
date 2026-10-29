@@ -64,7 +64,7 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardSnapshot"],
-            "tokenTyp": ["snapshot"],
+            "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
             "public": false,
@@ -223,7 +223,7 @@ pub async fn get_data(
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardSnapshot"],
-            "tokenTyp": ["snapshot"],
+            "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
             "public": false,
@@ -274,7 +274,7 @@ pub async fn get_rows(
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardSnapshot"],
-            "tokenTyp": ["snapshot"],
+            "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
             "public": false,

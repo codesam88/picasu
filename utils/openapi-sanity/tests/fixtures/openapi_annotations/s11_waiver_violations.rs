@@ -30,7 +30,7 @@ type AppResult<T> = Result<T, AppError>;
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
         "public": false,
@@ -53,7 +53,7 @@ pub async fn undeclared_waiver(auth: GuardResult<GuardAdmin>) -> AppResult<Json<
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
         "public": false,
@@ -76,7 +76,7 @@ pub async fn unreasoned_waiver(auth: GuardResult<GuardAdmin>) -> AppResult<Json<
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin", "GuardMutate"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
         "public": false,

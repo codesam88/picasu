@@ -27,7 +27,7 @@ type AppResult<T> = Result<T, AppError>;
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser", "GuardMutate"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "any",
         "shareScope": "n/a",
         "public": false,
@@ -53,7 +53,7 @@ pub async fn write_widget(
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin", "GuardMutate"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
         "public": false,
@@ -79,7 +79,7 @@ pub async fn manage_widget(
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardAdmin"],
-        "tokenTyp": ["session"],
+        "credentials": ["session"],
         "admin": "admin",
         "shareScope": "n/a",
         "public": false,

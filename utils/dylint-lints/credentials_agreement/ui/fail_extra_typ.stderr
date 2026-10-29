@@ -1,0 +1,10 @@
+warning: handler credentials ["session"] do not match guard-derived claim types []
+  --> $DIR/fail_extra_typ.rs:13:1
+   |
+LL | pub fn handler() {}
+   | ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(credentials_agreement)]` on by default
+
+warning: 1 warning emitted
+

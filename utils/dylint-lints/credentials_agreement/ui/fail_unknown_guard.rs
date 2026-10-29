@@ -1,15 +1,16 @@
 #![feature(register_tool)]
 #![register_tool(utoipa)]
-// PASS: no guards -> empty tokenTyp.
+// FAIL (fail closed): unknown guard.
 
 pub struct GuardResult<T>(pub T);
+pub struct GuardFoo;
 
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
-        "guards": [],
-        "tokenTyp": []
+        "guards": ["GuardFoo"],
+        "credentials": []
     })))
 )]
-pub fn handler() {}
+pub fn handler(auth: GuardResult<GuardFoo>) {}
 
 fn main() {}

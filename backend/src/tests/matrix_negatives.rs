@@ -74,8 +74,8 @@ fn expectation_for(operation: &Value, principal: Principal) -> Option<Expect> {
         return None;
     }
     let admin = auth.get("admin").and_then(Value::as_str).unwrap_or("none");
-    let typs: Vec<&str> = auth
-        .get("tokenTyp")
+    let credentials: Vec<&str> = auth
+        .get("credentials")
         .and_then(Value::as_array)
         .map(|list| list.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
@@ -89,8 +89,10 @@ fn expectation_for(operation: &Value, principal: Principal) -> Option<Expect> {
         .and_then(Value::as_array)
         .map(|list| list.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
-    let has_session = typs.contains(&"session");
-    let has_bearer = typs.iter().any(|typ| *typ == "snapshot" || *typ == "asset");
+    let has_session = credentials.contains(&"session");
+    let has_bearer = credentials
+        .iter()
+        .any(|kind| *kind == "snapshot" || *kind == "asset");
     let role_only = guards.iter().all(|guard| ROLE_GUARDS.contains(guard));
     let renews_presented_token = invariants.contains(&"AUTH-10");
 
@@ -105,7 +107,8 @@ fn expectation_for(operation: &Value, principal: Principal) -> Option<Expect> {
         }
         Principal::AdminSession => {
             // No session cookie satisfies a bearer guard.
-            (has_bearer && !has_session && !typs.contains(&"share")).then_some(Expect::Refused)
+            (has_bearer && !has_session && !credentials.contains(&"share"))
+                .then_some(Expect::Refused)
         }
     }
 }
@@ -468,11 +471,11 @@ fn the_policy_reads_the_model() {
 
     // Public operations carry no runtime assertion: the handler's own verdict
     // (invalid credentials, for one) is not a credential-layer refusal.
-    let public = row(serde_json::json!({ "public": true, "admin": "none", "tokenTyp": [] }));
+    let public = row(serde_json::json!({ "public": true, "admin": "none", "credentials": [] }));
     assert_eq!(expectation_for(&public, Principal::Anonymous), None);
 
     let admin_only = row(serde_json::json!({
-        "public": false, "admin": "admin", "tokenTyp": ["session"],
+        "public": false, "admin": "admin", "credentials": ["session"],
         "guards": ["GuardAdmin"]
     }));
     assert_eq!(
@@ -485,7 +488,7 @@ fn the_policy_reads_the_model() {
     );
 
     let mut any_session = serde_json::json!({
-        "public": false, "admin": "any", "tokenTyp": ["session"],
+        "public": false, "admin": "any", "credentials": ["session"],
         "guards": ["GuardUser"], "invariants": []
     });
     assert_eq!(
@@ -511,7 +514,7 @@ fn the_policy_reads_the_model() {
     );
 
     let bearer_only = row(serde_json::json!({
-        "public": false, "admin": "none", "tokenTyp": ["snapshot"],
+        "public": false, "admin": "none", "credentials": ["snapshot"],
         "guards": ["GuardSnapshot"]
     }));
     assert_eq!(
@@ -526,7 +529,7 @@ fn the_policy_reads_the_model() {
     // A session plus a bearer is not "session-only": the viewer does not
     // present the bearer, so the model says nothing about that pairing.
     let mixed = row(serde_json::json!({
-        "public": false, "admin": "any", "tokenTyp": ["session", "asset"],
+        "public": false, "admin": "any", "credentials": ["session", "asset"],
         "guards": ["GuardPresenter", "GuardHash"]
     }));
     assert_eq!(expectation_for(&mixed, Principal::ViewerSession), None);

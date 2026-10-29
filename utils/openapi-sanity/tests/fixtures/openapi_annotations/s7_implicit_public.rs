@@ -7,7 +7,7 @@
     security(("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": [],
-        "tokenTyp": [],
+        "credentials": [],
         "admin": "none",
         "shareScope": "n-a",
         "readonly": false,

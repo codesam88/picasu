@@ -44,7 +44,7 @@ pub struct ConfigResponse {
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardPresenter"],
-            "tokenTyp": ["session", "share"],
+            "credentials": ["session", "share"],
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
@@ -87,7 +87,7 @@ pub fn get_config_handler(auth: GuardResult<GuardPresenter>) -> AppResult<Json<C
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAdmin"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,

@@ -1,10 +1,10 @@
-warning: handler tokenTyp [] does not match guard-derived typs ["session"]
+warning: handler credentials [] do not match guard-derived claim types ["session"]
   --> $DIR/fail_missing_typ.rs:14:1
    |
 LL | pub fn handler(auth: GuardResult<GuardUser>) {}
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = note: `#[warn(token_typ_agreement)]` on by default
+   = note: `#[warn(credentials_agreement)]` on by default
 
 warning: 1 warning emitted
 

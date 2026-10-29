@@ -304,7 +304,7 @@ fn execute_prefetch_logic(
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardPresenter"],
-            "tokenTyp": ["session", "share"],
+            "credentials": ["session", "share"],
             "admin": "any",
             "shareScope": "album",
             "public": false,

@@ -1,11 +1,11 @@
 """Derive the fuzz harness's auth knowledge from ``backend/auth-matrix.json``.
 
 ``backend/auth-matrix.json`` is the committed machine contract of the
-per-operation auth model (``x-picasu-auth``: guards, shareScope, tokenTyp,
+per-operation auth model (``x-picasu-auth``: guards, shareScope, credentials,
 admin, invariants, public), generated from the annotated spec and gated by
 ``openapi-check``. The hooks in this directory consume it through the pure
 functions below instead of hand-maintained operation lists, so a guard or
-token-typ change in the backend flows into the checks on the next matrix
+credential change in the backend flows into the checks on the next matrix
 regeneration. ``load_matrix`` is the only I/O; every derivation function is
 pure and unit-tested in ``test_auth_rules.py``.
 """
@@ -17,9 +17,9 @@ import json
 GUARD_PRESENTER = "GuardPresenter"
 GUARD_MUTATE = "GuardMutate"
 
-# Token typs the backend mints; used to pick a deliberately wrong-typ token
+# Credential kinds the backend mints; used to pick a deliberately wrong-credential token
 # for a guard.
-TOKEN_TYP_VOCAB = ("session", "share", "snapshot", "asset")
+CREDENTIAL_VOCAB = ("session", "share", "snapshot", "asset")
 
 # AUTH-10: renewal operations re-mint a token bound to the identity that
 # owns it.
@@ -31,7 +31,7 @@ RENEWAL_INVARIANT = "AUTH-10"
 CROSS_SCOPE_EXPECTED_STATUSES = (404,)
 
 TEST_CROSS_SCOPE = "cross-scope"
-TEST_WRONG_TYP = "wrong-typ"
+TEST_WRONG_CREDENTIAL = "wrong-credential"
 TEST_RENEW_MISMATCH = "renew-mismatch"
 TEST_DEMOTED = "demoted"
 
@@ -60,8 +60,8 @@ def _auth(row):
     return row["x-picasu-auth"]
 
 
-def _token_typ(row):
-    return tuple(_auth(row).get("tokenTyp") or ())
+def _credentials(row):
+    return tuple(_auth(row).get("credentials") or ())
 
 
 def share_guarded_ops(rows):
@@ -89,7 +89,7 @@ def readonly_exempt_ops(rows):
 
 def snapshot_typed_ops(rows):
     """Bearer operations whose guard decodes a snapshot-typed token."""
-    return [row for row in modeled_ops(rows) if "snapshot" in _token_typ(row)]
+    return [row for row in modeled_ops(rows) if "snapshot" in _credentials(row)]
 
 
 def cross_scope_targets(rows):
@@ -101,9 +101,10 @@ def cross_scope_targets(rows):
     )
 
 
-def wrong_typ_targets(rows):
+def wrong_credential_targets(rows):
     """Snapshot-typed operations without an asset-bound path: probing them
-    with a token of another typ exercises the typ check alone."""
+    with a credential the operation does not accept exercises the
+    credential check alone."""
     return frozenset(op_key(row) for row in snapshot_typed_ops(rows) if "{" not in row["path"])
 
 
@@ -125,7 +126,7 @@ def admin_session_ops(rows):
     return frozenset(
         op_key(row)
         for row in modeled_ops(rows)
-        if _auth(row).get("admin") == "admin" and "session" in _token_typ(row)
+        if _auth(row).get("admin") == "admin" and "session" in _credentials(row)
     )
 
 
@@ -135,7 +136,7 @@ def admin_session_ops(rows):
 # rather than 401.
 EXPECTED = {
     TEST_CROSS_SCOPE: {"statuses": list(CROSS_SCOPE_EXPECTED_STATUSES)},
-    TEST_WRONG_TYP: {"statuses": [401]},
+    TEST_WRONG_CREDENTIAL: {"statuses": [401]},
     TEST_RENEW_MISMATCH: {"statuses": [401]},
     TEST_DEMOTED: {"refusal": True},
 }
@@ -143,13 +144,13 @@ EXPECTED = {
 
 def test_plan(rows):
     """Map ``(method, path)`` to the check that operation carries. One check
-    per operation, priority: cross-scope > renewal-mismatch > wrong-typ >
+    per operation, priority: cross-scope > renewal-mismatch > wrong-credential >
     demoted."""
     plan = {}
     for name, keys in (
         (TEST_CROSS_SCOPE, cross_scope_targets(rows)),
         (TEST_RENEW_MISMATCH, renewal_binding_ops(rows)),
-        (TEST_WRONG_TYP, wrong_typ_targets(rows)),
+        (TEST_WRONG_CREDENTIAL, wrong_credential_targets(rows)),
         (TEST_DEMOTED, admin_session_ops(rows)),
     ):
         for key in keys:
@@ -157,10 +158,10 @@ def test_plan(rows):
     return plan
 
 
-def wrong_typ_token(required_typs, vocab=TOKEN_TYP_VOCAB):
-    """First typ in ``vocab`` the operation does not accept, else None."""
+def wrong_credential_token(required_typs, vocab=CREDENTIAL_VOCAB):
+    """First kind in ``vocab`` the operation does not accept, else None."""
     required = set(required_typs or ())
-    return next((typ for typ in vocab if typ not in required), None)
+    return next((kind for kind in vocab if kind not in required), None)
 
 
 def scope_mismatch_pairs(pairs):

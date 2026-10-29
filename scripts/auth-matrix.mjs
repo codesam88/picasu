@@ -90,7 +90,7 @@ function roleOf(a) {
   if (members.length === 1) return members[0];
   if (members.length > 1) return `any(${members.join(", ")})`;
   if (a.public === true) return "none(public)";
-  const t = (a.tokenTyp || []).join(", ");
+  const t = (a.credentials || []).join(", ");
   return t ? `none(${t})` : "none";
 }
 
@@ -131,10 +131,10 @@ lines.push(
 lines.push("  - `none(public)`: no credential required.");
 lines.push("  - `none(snapshot)` / `none(asset)`: token-gated, no user role.");
 lines.push(
-  "- **Tokens**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public). `session` and `share` are alternative presenter credentials (whichever the presenter holds); `snapshot` / `asset` are bearer tokens that are additionally required whenever listed.",
+  "- **Credentials**: credential types the guards decode (`session` cookie JWT, `snapshot` / `asset` bearer, share headers); `—` when none (public). `session` and `share` are alternative presenter credentials (whichever the presenter holds); `snapshot` / `asset` are bearer tokens that are additionally required whenever listed.",
 );
 lines.push(
-  "- **Reading a row**: Role says whose identity may present; Tokens says which credentials must validate — one presenter credential plus every listed bearer token.",
+  "- **Reading a row**: Role says whose identity may present; Credentials says which must validate — one presenter credential plus every listed bearer token.",
 );
 lines.push(
   "- **Scope**: album scope enforced on the target (`album`), or `—` when the operation binds nothing by album. The scope always comes from the presented token or identity, never from a request parameter.",
@@ -162,12 +162,12 @@ lines.push(
 lines.push("");
 lines.push("## Modeled operations");
 lines.push("");
-lines.push("| Op | Name | Role | Tokens | Scope | Guards | Effects |");
+lines.push("| Op | Name | Role | Credentials | Scope | Guards | Effects |");
 lines.push("| --- | --- | --- | --- | --- | --- | --- |");
 for (const r of modeled) {
   const a = r["x-picasu-auth"];
   lines.push(
-    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.tokenTyp)} | ${scopeCell(a)} | ${cell(a.guards)} | ${cell(a.effects)} |`,
+    `| ${opCell(r)} | ${nameCell(r)} | ${roleOf(a)} | ${cell(a.credentials)} | ${scopeCell(a)} | ${cell(a.guards)} | ${cell(a.effects)} |`,
   );
 }
 lines.push("");

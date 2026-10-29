@@ -39,7 +39,7 @@ use crate::router::{AppResult, GuardResult};
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardSnapshot"],
-            "tokenTyp": ["snapshot"],
+            "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
             "public": false,

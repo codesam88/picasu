@@ -29,7 +29,7 @@ type AppResult<T> = Result<T, AppError>;
     security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardPresenter", "GuardMutate"],
-        "tokenTyp": ["session", "share"],
+        "credentials": ["session", "share"],
         "admin": "any",
         "shareScope": "album",
         "public": false,

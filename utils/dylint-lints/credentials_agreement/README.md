@@ -1,12 +1,12 @@
-# token_typ_agreement
+# credentials_agreement
 
 Dylint lint `TOKEN_TYP_AGREEMENT` (Warn): a handler's `x-picasu-auth`
-`tokenTyp` must agree with the claims types its guards decode (AUTH-1/S3).
+`credentials` must agree with the claims types its guards decode (AUTH-1/S3).
 
 ## What it catches
 
 A handler annotated with `#[utoipa::path(...)]` carrying an `x-picasu-auth`
-extension declares a `tokenTyp` list and a set of guards (resolved from the
+extension declares a `credentials` list and a set of guards (resolved from the
 handler's parameters, unwrapping `GuardResult<T>`). The lint derives the
 expected typ set from the guards:
 
@@ -19,8 +19,8 @@ expected typ set from the guards:
 | `GuardMutate`, `GuardReauth`      | (none)             |
 
 The two sets must be equal in both directions: every guard-derived typ must
-appear in `tokenTyp`, and every `tokenTyp` entry must be backed by a guard.
-No guards requires an empty `tokenTyp` (public ops). Unknown guard types fail
+appear in `credentials`, and every `credentials` entry must be backed by a guard.
+No guards requires an empty `credentials` (public ops). Unknown guard types fail
 closed (warn).
 
 ## Why it matters
@@ -38,7 +38,7 @@ Violating code (warns on the handler):
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
-        "tokenTyp": ["asset"]
+        "credentials": ["asset"]
     })))
 )]
 pub async fn handler(auth: GuardResult<GuardUser>) {}
@@ -50,7 +50,7 @@ Fixed code (silent):
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
-        "tokenTyp": ["session"]
+        "credentials": ["session"]
     })))
 )]
 pub async fn handler(auth: GuardResult<GuardUser>) {}
@@ -66,7 +66,7 @@ pub async fn handler(auth: GuardResult<GuardUser>) {}
   silently skips the handler instead of warning.
 - Guard types are taken from the handler's parameter list (unwrapping
   `GuardResult<T>`); guards obtained indirectly are not detected.
-- `tokenTyp` and guard sets are compared as sets (order-insensitive); duplicates
+- `credentials` and guard sets are compared as sets (order-insensitive); duplicates
   are ignored.
 - Unknown guard types fail closed (warn) rather than being silently ignored.
 

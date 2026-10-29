@@ -121,7 +121,7 @@ pub struct SetAlbumCover {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser", "GuardMutate"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
             "public": false,
@@ -252,7 +252,7 @@ pub struct SetAlbumTitle {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardUser", "GuardMutate"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "any",
             "shareScope": "n-a",
             "public": false,

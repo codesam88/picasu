@@ -1,5 +1,5 @@
 //! Token-typ-agreement lint (AUTH-1/S3): a handler's `x-picasu-auth`
-//! `tokenTyp` must agree with the claims types its guards decode.
+//! `credentials` must agree with the claims types its guards decode.
 
 #![feature(rustc_private)]
 
@@ -19,17 +19,17 @@ extern crate rustc_session;
 #[unsafe(no_mangle)]
 pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint::LintStore) {
     dylint_linting::init_config(sess);
-    lint_store.register_lints(&[TOKEN_TYP_AGREEMENT]);
-    lint_store.register_late_lint_pass(Box::new(|_| Box::new(TokenTypAgreement)));
+    lint_store.register_lints(&[CREDENTIALS_AGREEMENT]);
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(CredentialsAgreement)));
 }
 
 rustc_session::declare_lint! {
-    pub TOKEN_TYP_AGREEMENT,
+    pub CREDENTIALS_AGREEMENT,
     Warn,
-    "a handler's tokenTyp does not match the typs its guards decode"
+    "a handler's credentials do not match the claim types its guards decode"
 }
 
-rustc_session::declare_lint_pass!(TokenTypAgreement => [TOKEN_TYP_AGREEMENT]);
+rustc_session::declare_lint_pass!(CredentialsAgreement => [CREDENTIALS_AGREEMENT]);
 
 enum GuardKind {
     Typs(Vec<&'static str>),
@@ -77,9 +77,9 @@ fn unwrap_guard_ty<U>(ty: &Ty<'_, U>) -> Option<String> {
     }
 }
 
-fn parse_token_typ(tokens: &str) -> Vec<String> {
+fn parse_credentials(tokens: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let Some(idx) = tokens.find("tokenTyp") else {
+    let Some(idx) = tokens.find("credentials") else {
         return out;
     };
     let rest = &tokens[idx..];
@@ -107,7 +107,7 @@ fn parse_token_typ(tokens: &str) -> Vec<String> {
     out
 }
 
-impl<'tcx> LateLintPass<'tcx> for TokenTypAgreement {
+impl<'tcx> LateLintPass<'tcx> for CredentialsAgreement {
     fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx Item<'tcx>) {
         let ItemKind::Fn { sig, .. } = &item.kind else {
             return;
@@ -159,12 +159,12 @@ impl<'tcx> LateLintPass<'tcx> for TokenTypAgreement {
             }
         }
 
-        let token_typ = parse_token_typ(tokens);
+        let credentials = parse_credentials(tokens);
 
         let mut gset = guard_typs.clone();
         gset.sort();
         gset.dedup();
-        let mut tset = token_typ.clone();
+        let mut tset = credentials.clone();
         tset.sort();
         tset.dedup();
 
@@ -180,18 +180,18 @@ impl<'tcx> LateLintPass<'tcx> for TokenTypAgreement {
 
         let msg = if !unknown.is_empty() {
             format!(
-                "unknown guard type(s) {:?}: cannot verify tokenTyp agreement",
+                "unknown guard type(s) {:?}: cannot verify credentials agreement",
                 unknown
             )
         } else {
             format!(
-                "handler tokenTyp {:?} does not match guard-derived typs {:?}",
+                "handler credentials {:?} do not match guard-derived claim types {:?}",
                 tset, gset
             )
         };
 
         cx.emit_span_lint(
-            TOKEN_TYP_AGREEMENT,
+            CREDENTIALS_AGREEMENT,
             item.span,
             DiagDecorator(|diag| {
                 diag.primary_message(msg);

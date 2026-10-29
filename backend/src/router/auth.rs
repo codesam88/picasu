@@ -1323,7 +1323,7 @@ pub struct RenewHashTokenReturn {
         security(("bearer_token" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardRenewHash"],
-            "tokenTyp": ["snapshot"],
+            "credentials": ["snapshot"],
             "admin": "none",
             "shareScope": "n-a",
             "public": false,
@@ -1590,7 +1590,7 @@ pub struct RenewTimestampTokenReturn {
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardPresenter"],
-            "tokenTyp": ["session", "share"],
+            "credentials": ["session", "share"],
             "admin": "any",
             "shareScope": "album",
             "public": false,

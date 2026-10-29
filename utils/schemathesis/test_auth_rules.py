@@ -3,7 +3,7 @@
 Run: python3 utils/schemathesis/test_auth_rules.py
 
 The golden expectations pin the derivations against the committed
-``backend/auth-matrix.json``: when a backend guard or token-typ changes, the
+``backend/auth-matrix.json``: when a backend guard or credential changes, the
 matrix regeneration makes these tests fail, which prompts a review of the
 affected probe instead of letting it drift silently.
 """
@@ -46,11 +46,11 @@ class RealMatrixDerivations(unittest.TestCase):
         plan = auth_rules.test_plan(MATRIX)
         cross_scope = {k for k, v in plan.items() if v == auth_rules.TEST_CROSS_SCOPE}
         renewal = {k for k, v in plan.items() if v == auth_rules.TEST_RENEW_MISMATCH}
-        wrong_typ = {k for k, v in plan.items() if v == auth_rules.TEST_WRONG_TYP}
+        wrong_credential = {k for k, v in plan.items() if v == auth_rules.TEST_WRONG_CREDENTIAL}
         self.assertEqual(cross_scope, {("GET", "/get/metadata/{asset_id}")})
         self.assertEqual(renewal, {("POST", "/post/renew-timestamp-token")})
         self.assertEqual(
-            wrong_typ,
+            wrong_credential,
             {
                 ("GET", "/get/get-data"),
                 ("GET", "/get/get-rows"),
@@ -73,7 +73,7 @@ class RealMatrixDerivations(unittest.TestCase):
         classes = [
             auth_rules.cross_scope_targets(MATRIX),
             auth_rules.renewal_binding_ops(MATRIX),
-            auth_rules.wrong_typ_targets(MATRIX),
+            auth_rules.wrong_credential_targets(MATRIX),
             auth_rules.admin_session_ops(MATRIX),
         ]
         seen = set()
@@ -108,13 +108,13 @@ class RealMatrixDerivations(unittest.TestCase):
 
 class SyntheticRows(unittest.TestCase):
     @staticmethod
-    def row(method, path, guards=(), token_typ=(), admin="none", share_scope="n-a", invariants=()):
+    def row(method, path, guards=(), credentials=(), admin="none", share_scope="n-a", invariants=()):
         return {
             "method": method,
             "path": path,
             "x-picasu-auth": {
                 "guards": list(guards),
-                "tokenTyp": list(token_typ),
+                "credentials": list(credentials),
                 "admin": admin,
                 "shareScope": share_scope,
                 "invariants": list(invariants),
@@ -136,7 +136,7 @@ class SyntheticRows(unittest.TestCase):
                 "GET",
                 "/get/thing/{asset_id}",
                 guards=["GuardPresenter", "GuardSnapshot"],
-                token_typ=["snapshot", "share", "session"],
+                credentials=["snapshot", "share", "session"],
                 admin="admin",
                 share_scope="album",
                 invariants=["AUTH-10"],
@@ -145,13 +145,13 @@ class SyntheticRows(unittest.TestCase):
         plan = auth_rules.test_plan(rows)
         self.assertEqual(plan[("GET", "/get/thing/{asset_id}")], auth_rules.TEST_CROSS_SCOPE)
 
-    def test_probe_priority_renewal_over_wrong_typ(self):
+    def test_probe_priority_renewal_over_wrong_credential(self):
         rows = [
             self.row(
                 "POST",
                 "/post/renew",
                 guards=["GuardPresenter"],
-                token_typ=["snapshot", "share"],
+                credentials=["snapshot", "share"],
                 share_scope="album",
                 invariants=["AUTH-10"],
             )
@@ -165,14 +165,14 @@ class SyntheticRows(unittest.TestCase):
                 "POST",
                 "/post/renew-share",
                 guards=["GuardPresenter"],
-                token_typ=["session", "share"],
+                credentials=["session", "share"],
                 share_scope="album",
             ),
             self.row(
                 "POST",
                 "/post/renew-other",
                 guards=["GuardPresenter"],
-                token_typ=["session", "share"],
+                credentials=["session", "share"],
                 share_scope="album",
                 invariants=["AUTH-10"],
             ),
@@ -181,29 +181,29 @@ class SyntheticRows(unittest.TestCase):
             auth_rules.renewal_binding_ops(rows), {("POST", "/post/renew-other")}
         )
 
-    def test_admin_session_ops_require_admin_and_session_typ(self):
+    def test_admin_session_ops_require_admin_and_session_credential(self):
         rows = [
-            self.row("GET", "/a", guards=["GuardAdmin"], token_typ=["session"], admin="admin"),
-            self.row("GET", "/b", guards=["GuardUser"], token_typ=["session"], admin="any"),
-            self.row("GET", "/c", guards=["GuardAdmin"], token_typ=["session"], admin="none"),
+            self.row("GET", "/a", guards=["GuardAdmin"], credentials=["session"], admin="admin"),
+            self.row("GET", "/b", guards=["GuardUser"], credentials=["session"], admin="any"),
+            self.row("GET", "/c", guards=["GuardAdmin"], credentials=["session"], admin="none"),
         ]
         self.assertEqual(auth_rules.admin_session_ops(rows), {("GET", "/a")})
 
 
 class WrongTypToken(unittest.TestCase):
     def test_prefers_session_for_snapshot_guards(self):
-        self.assertEqual(auth_rules.wrong_typ_token(("snapshot",)), "session")
+        self.assertEqual(auth_rules.wrong_credential_token(("snapshot",)), "session")
 
     def test_any_typ_outside_required(self):
-        self.assertEqual(auth_rules.wrong_typ_token(("session",)), "share")
-        self.assertEqual(auth_rules.wrong_typ_token(("session", "share", "asset")), "snapshot")
+        self.assertEqual(auth_rules.wrong_credential_token(("session",)), "share")
+        self.assertEqual(auth_rules.wrong_credential_token(("session", "share", "asset")), "snapshot")
 
-    def test_no_requirement_takes_first_vocab_typ(self):
-        # Nothing required: any typ works, so the preference order answers.
-        self.assertEqual(auth_rules.wrong_typ_token(()), "session")
+    def test_no_requirement_takes_first_vocab_kind(self):
+        # Nothing required: any kind works, so the preference order answers.
+        self.assertEqual(auth_rules.wrong_credential_token(()), "session")
 
     def test_none_when_all_typs_required(self):
-        self.assertIsNone(auth_rules.wrong_typ_token(auth_rules.TOKEN_TYP_VOCAB))
+        self.assertIsNone(auth_rules.wrong_credential_token(auth_rules.CREDENTIAL_VOCAB))
 
 
 class ScopeMismatchPairs(unittest.TestCase):
@@ -270,7 +270,7 @@ class ProbePlan(unittest.TestCase):
 
         plan = {entry["check"]: entry["expect"] for entry in fuzz_matrix.build_checks(REPO)}
         self.assertEqual(plan[auth_rules.TEST_CROSS_SCOPE], {"statuses": [404]})
-        self.assertEqual(plan[auth_rules.TEST_WRONG_TYP], {"statuses": [401]})
+        self.assertEqual(plan[auth_rules.TEST_WRONG_CREDENTIAL], {"statuses": [401]})
         self.assertEqual(plan[auth_rules.TEST_RENEW_MISMATCH], {"statuses": [401]})
         # Registration also has a public path, so a demoted caller is refused
         # with 403 rather than 401; the claim is "not admitted".

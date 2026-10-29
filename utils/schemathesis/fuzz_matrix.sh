@@ -3,7 +3,7 @@
 #
 # Distinct from check.sh: that sweep asserts schema conformance and no 5xx,
 # this one asserts the auth-model invariants per operation (cross-scope,
-# wrong-typ, renewal binding, demoted token) that the campaign used to exercise
+# wrong-credential, renewal binding, demoted token) that the campaign used to exercise
 # only under a time budget. Both read the committed artifacts; neither carries
 # a hand list.
 set -euo pipefail

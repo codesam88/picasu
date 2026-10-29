@@ -1,6 +1,6 @@
 #![feature(register_tool)]
 #![register_tool(utoipa)]
-// PASS: GuardUser -> session matches tokenTyp.
+// PASS: GuardUser -> session matches credentials.
 
 pub mod request {
     pub trait FromRequest {}
@@ -12,7 +12,7 @@ pub struct GuardUser;
 #[utoipa::path(
     extensions(("x-picasu-auth" = json!({
         "guards": ["GuardUser"],
-        "tokenTyp": ["session"]
+        "credentials": ["session"]
     })))
 )]
 pub fn handler(auth: GuardResult<GuardUser>) {}

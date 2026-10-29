@@ -33,7 +33,7 @@ pub struct ExportEntry {
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAdmin"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,

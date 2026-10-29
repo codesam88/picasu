@@ -24,7 +24,7 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
             "guards": ["GuardAdmin"],
-            "tokenTyp": ["session"],
+            "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
             "public": false,

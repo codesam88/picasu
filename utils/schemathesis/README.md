@@ -37,12 +37,12 @@ committed copy to go stale.
 It runs unconditionally: `just test` includes it, and CI runs it next to the
 tier-1 sweep.
 
-| Check            | Request                                                      | Assertion              |
-| ---------------- | ------------------------------------------------------------ | ---------------------- |
-| `cross-scope`    | share-A snapshot token against an album-B asset              | exactly `404`          |
-| `wrong-typ`      | admin session token as a bearer on a snapshot-only operation | exactly `401`          |
-| `renew-mismatch` | share-B credentials renewing share-A's snapshot              | exactly `401`          |
-| `demoted`        | a demoted user's still-live session on admin operations      | not admitted (any 4xx) |
+| Check              | Request                                                      | Assertion              |
+| ------------------ | ------------------------------------------------------------ | ---------------------- |
+| `cross-scope`      | share-A snapshot token against an album-B asset              | exactly `404`          |
+| `wrong-credential` | admin session token as a bearer on a snapshot-only operation | exactly `401`          |
+| `renew-mismatch`   | share-B credentials renewing share-A's snapshot              | exactly `401`          |
+| `demoted`          | a demoted user's still-live session on admin operations      | not admitted (any 4xx) |
 
 The demoted family asserts refusal rather than `401` because some admin
 operations also have a public path: registration refuses a non-admin with
@@ -115,8 +115,8 @@ Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`, `FUZZ_AL
 The hooks do not carry hand lists of auth knowledge. `auth_rules.py` derives it from `backend/auth-matrix.json` (the committed machine contract of the per-operation `x-picasu-auth` annotation, regenerated and diffed by `openapi-check`):
 
 - share-header injection set — the `GuardPresenter`-guarded operations (both tiers)
-- check assignment — which operation carries which of the cross-scope / wrong-typ / renewal-mismatch / demoted checks (`test_plan`, one check per operation by priority)
-- wrong-typ token selection — a token typ outside the operation's `tokenTyp`
+- check assignment — which operation carries which of the cross-scope / wrong-credential / renewal-mismatch / demoted checks (`test_plan`, one check per operation by priority)
+- wrong-credential token selection — a token outside the operation's `credentials`
 - read-only exemptions — non-GET operations without `GuardMutate`
 - scope pairs — the seeded share identities crossed with the foreign albums they must not reach
 
@@ -126,7 +126,7 @@ What A1-A5 assert (probe targets are generated from the matrix, not hand-picked)
 
 - A1 `cross_scope_refused` — a share-A snapshot token cannot read an album-B asset: every snapshot-typed operation whose path binds an asset id answers 404 on the mismatch (S4 binding semantics — not 403, so the route does not reveal that the id exists).
 - A2 `demoted_token_rejected` — a demoted user's still-live token loses admin access immediately: every admin-guarded session operation answers 401.
-- A3 `wrong_typ_rejected` — a session-typed token does not satisfy a snapshot-token guard: every snapshot-typed bearer operation answers 401.
+- A3 `wrong_credential_rejected` — a session-typed token does not satisfy a snapshot-token guard: every snapshot-typed bearer operation answers 401.
 - A4 `readonly_405` — every mutating (`GuardMutate`) operation answers 405 under read-only mode (env-gated via `FUZZ_READONLY=1`; requires read-only mode enabled on the target instance).
 - A5 `cross_share_renewal_refused` — share B cannot renew a snapshot minted for share A: the album-scoped renewal operations (AUTH-10) answer 401.
 
