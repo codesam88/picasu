@@ -5,14 +5,15 @@ import 'vue-router'
 
 import LinksPage from '@/components/Page/LinksPage.vue'
 
-export const linksRoute: RouteRecordRaw = {
-  path: '/links',
+export const sharesRoute: RouteRecordRaw = {
+  path: '/shares',
   component: LinksPage,
-  name: 'links',
+  name: 'shares',
+
   meta: {
     basicString: null,
     level: 1,
-    baseName: 'links',
+    baseName: 'shares',
     getParentPage: (route) => {
       return {
         name: 'timeline',
@@ -22,7 +23,7 @@ export const linksRoute: RouteRecordRaw = {
     },
     getChildPage: (route) => {
       return {
-        name: 'links',
+        name: 'shares',
         params: {},
         query: route.query
       }

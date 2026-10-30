@@ -5,25 +5,35 @@
         <v-list-item slim prepend-icon="mdi-home" title="Home" :to="{ name: 'timeline' }" />
         <v-list-item slim prepend-icon="mdi-image-album" title="Albums" to="/albums" />
         <v-list-item slim prepend-icon="mdi-tag-multiple" title="Tags" to="/tags" />
+        <v-list-item slim prepend-icon="mdi-share-variant" title="Shares" to="/shares" />
       </v-list>
 
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized" class="mt-auto">
         <v-divider />
+        <v-list-item
+          v-if="isAdmin"
+          slim
+          prepend-icon="mdi-shield-crown"
+          title="Admin"
+          to="/config"
+        />
         <v-list-item slim prepend-icon="mdi-trash-can" title="Trashed" to="/trashed" />
-        <v-list-item slim prepend-icon="mdi-tune" title="Config" to="/config" />
       </v-list>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
-import { inject, type Ref } from 'vue'
+import { computed, inject, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useInitializedStore } from '@/store/initializedStore'
+import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 
 const showNavPanel = inject<Ref<boolean>>('showNavPanel')
 const route = useRoute()
 const initializedStore = useInitializedStore('mainId')
+const currentUser = useCurrentUser()
+const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 </script>
 
 <style scoped>

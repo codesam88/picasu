@@ -9,7 +9,9 @@
       <div class="config-stack">
         <v-tabs v-model="activeTab" color="primary" class="mb-2">
           <v-tab value="server">Server</v-tab>
-          <v-tab v-if="isAdmin" value="admin">Administration</v-tab>
+          <v-tab v-if="isAdmin" value="users">Users</v-tab>
+          <v-tab v-if="isAdmin" value="invites">Invites</v-tab>
+          <v-tab v-if="isAdmin" value="shares">Shares</v-tab>
         </v-tabs>
 
         <v-tabs-window v-model="activeTab">
@@ -27,42 +29,24 @@
 
             <div class="config-block">
               <v-row class="ma-0">
-                <AdvancedConfig v-model:read-only-mode="localSettings.readOnlyMode" />
-              </v-row>
-            </div>
-          </v-tabs-window-item>
-
-          <v-tabs-window-item v-if="isAdmin" value="admin">
-            <div class="config-block">
-              <v-row class="ma-0">
-                <UserManagement />
+                <AdvancedConfig
+                  v-model:read-only-mode="localSettings.readOnlyMode"
+                  v-model:allow-registration="allowRegistration"
+                  :allow-registration-saving="allowRegistrationSaving"
+                  @update:allow-registration="onAllowRegistrationChange"
+                />
               </v-row>
             </div>
 
-            <div class="config-block">
-              <v-row class="ma-0">
-                <InviteManagement />
-              </v-row>
-            </div>
-
-            <div class="config-block">
+            <div v-if="isAdmin" class="config-block">
               <v-row class="ma-0">
                 <v-col cols="12">
                   <v-card border flat>
-                    <v-card-title class="font-weight-bold">Registration</v-card-title>
+                    <v-card-title class="font-weight-bold">Export</v-card-title>
                     <v-divider thickness="4" variant="double"></v-divider>
-                    <v-list-item title="Allow Registration" subtitle="Permit new users to register">
-                      <template #append>
-                        <v-switch
-                          :model-value="allowRegistration"
-                          color="primary"
-                          hide-details
-                          inset
-                          :disabled="allowRegistrationSaving"
-                          @update:model-value="onAllowRegistrationChange"
-                        ></v-switch>
-                      </template>
-                    </v-list-item>
+                    <v-card-text class="text-medium-emphasis">
+                      Download the current server configuration as JSON.
+                    </v-card-text>
                     <v-card-actions class="justify-end px-4 pb-4">
                       <v-btn
                         color="primary"
@@ -76,6 +60,30 @@
                     </v-card-actions>
                   </v-card>
                 </v-col>
+              </v-row>
+            </div>
+          </v-tabs-window-item>
+
+          <v-tabs-window-item v-if="isAdmin" value="users">
+            <div class="config-block">
+              <v-row class="ma-0">
+                <UserManagement />
+              </v-row>
+            </div>
+          </v-tabs-window-item>
+
+          <v-tabs-window-item v-if="isAdmin" value="invites">
+            <div class="config-block">
+              <v-row class="ma-0">
+                <InviteManagement />
+              </v-row>
+            </div>
+          </v-tabs-window-item>
+
+          <v-tabs-window-item v-if="isAdmin" value="shares">
+            <div class="config-block">
+              <v-row class="ma-0">
+                <ShareManagement />
               </v-row>
             </div>
           </v-tabs-window-item>
@@ -97,6 +105,7 @@ import StorageAndSync from './Config/StorageAndSync.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
 import UserManagement from './Config/UserManagement.vue'
 import InviteManagement from './Config/InviteManagement.vue'
+import ShareManagement from './Config/ShareManagement.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 
