@@ -1,5 +1,5 @@
 use crate::model::album::AlbumCombined;
-use crate::storage::cache::{MyCow, TREE_SNAPSHOT};
+use crate::storage::cache::{MyCow, SnapshotReadError, TREE_SNAPSHOT};
 use crate::storage::files::get_data_path;
 use anyhow::Context;
 use dashmap::DashMap;
@@ -194,10 +194,8 @@ pub fn open_metadata_table() -> ReadOnlyTable<&'static str, MetadataRecord> {
         .expect("failed to open data table")
 }
 
-pub fn open_tree_snapshot_table(timestamp: i64) -> Result<MyCow> {
-    TREE_SNAPSHOT.read_tree_snapshot(timestamp).context(format!(
-        "Failed to read tree snapshot for timestamp {timestamp}"
-    ))
+pub fn open_tree_snapshot_table(timestamp: i64) -> Result<MyCow, SnapshotReadError> {
+    TREE_SNAPSHOT.read_tree_snapshot(timestamp)
 }
 
 /// Drop and recreate all four asset tables without decoding any row values.

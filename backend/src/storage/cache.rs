@@ -1,4 +1,5 @@
 use crate::constant::ROW_BATCH_NUMBER;
+use crate::error::{AppError, ErrorKind};
 use crate::model::response::DisplayElement;
 use crate::model::response::Row;
 use rayon::prelude::*;
@@ -116,6 +117,26 @@ impl Error for SnapshotReadError {
         match self {
             SnapshotReadError::NotFound { .. } => None,
             SnapshotReadError::Storage(err) => Some(err.as_ref()),
+        }
+    }
+}
+
+impl SnapshotReadError {
+    /// Maps a tree-snapshot read failure onto the HTTP error model, shared
+    /// by every snapshot-taking op.
+    ///
+    /// A snapshot id absent from both the in-memory map and the on-disk
+    /// store was never minted or has been dropped by the ~1h expire check,
+    /// which makes it client input: `ErrorKind::InvalidInput` (400).
+    /// Everything the snapshot store reports as `Storage` is a genuine
+    /// server-side fault and stays `ErrorKind::Database` (500).
+    pub fn into_app_error(self) -> AppError {
+        match self {
+            SnapshotReadError::NotFound { timestamp } => AppError::new(
+                ErrorKind::InvalidInput,
+                format!("Unknown snapshot id: {timestamp}"),
+            ),
+            SnapshotReadError::Storage(source) => AppError::from_err(ErrorKind::Database, source),
         }
     }
 }
