@@ -37,6 +37,18 @@ export const listInvites = async (): Promise<InviteView[]> => {
   return z.array(InviteViewSchema).parse(response.data)
 }
 
+/// Creation limits the admin console enforces when building the invite
+/// panel: the client-side expiry parser validates against the same bound
+/// the server enforces, instead of hard-coding policy.
+export const inviteLimitsSchema = z.object({ maxExpiryHours: z.number() })
+
+export type InviteLimits = z.infer<typeof inviteLimitsSchema>
+
+export const getInviteLimits = async (): Promise<InviteLimits> => {
+  const response = await axios.get('/get/invites/limits')
+  return inviteLimitsSchema.parse(response.data)
+}
+
 export const revokeInvite = async (inviteId: string): Promise<void> => {
   await axios.delete(`/delete/invites/${encodeURIComponent(inviteId)}`)
 }

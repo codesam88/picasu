@@ -9,12 +9,12 @@
           <v-col cols="12" sm="4">
             <v-text-field
               v-model="expiryInput"
-              label="Expires in (hours)"
-              placeholder="168"
+              label="Expires in"
+              placeholder="7d"
+              :hint="expiryHint"
+              persistent-hint
               variant="outlined"
               density="comfortable"
-              type="number"
-              hide-details
             ></v-text-field>
           </v-col>
           <v-col cols="12" sm="5">
@@ -88,9 +88,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { listInvites, createInvite, revokeInvite, buildInviteLink } from '@/api/invites'
+import {
+  listInvites,
+  createInvite,
+  revokeInvite,
+  buildInviteLink,
+  getInviteLimits
+} from '@/api/invites'
 import type { InviteView } from '@/api/invites'
 import { inviteStatus } from '@/script/utils/inviteStatus'
+import { MAX_EXPIRY_HOURS, parseExpiryInput } from '@/script/utils/expiryInput'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { errorDisplay } from '@/script/utils/errorDisplay'
@@ -105,12 +112,14 @@ const revoking = ref<string | null>(null)
 const createdLink = ref<string | null>(null)
 const revokedIds = ref<Set<string>>(new Set())
 
-const expiresInHours = computed(() => {
-  const trimmed = expiryInput.value.trim()
-  if (trimmed === '') return 168
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : 168
-})
+// Bound the server enforces on `expiresInHours`, fetched when the panel
+// builds; the mirrored const stands in until the fetch lands (and if it
+// fails, the server's 400 is the backstop).
+const maxExpiryHours = ref(MAX_EXPIRY_HOURS)
+
+const expiryHint = computed(
+  () => `Up to ${maxExpiryHours.value}h · units h/d/m · 0h = never expires`
+)
 
 const refreshInvites = async () => {
   await tryWithMessageStore('mainId', async () => {
@@ -119,11 +128,23 @@ const refreshInvites = async () => {
   })
 }
 
+const refreshLimits = async () => {
+  await tryWithMessageStore('mainId', async () => {
+    maxExpiryHours.value = (await getInviteLimits()).maxExpiryHours
+    return true
+  })
+}
+
 const create = async () => {
+  const parsed = parseExpiryInput(expiryInput.value, maxExpiryHours.value)
+  if (!parsed.ok) {
+    messageStore.error(parsed.error)
+    return
+  }
   creating.value = true
   try {
     await tryWithMessageStore('mainId', async () => {
-      const result = await createInvite(expiresInHours.value, usernameInput.value)
+      const result = await createInvite(parsed.hours, usernameInput.value)
       createdLink.value = buildInviteLink(
         window.location.origin,
         result.token,
@@ -179,5 +200,8 @@ const formatExpiry = (expiresAt: number): string => {
 const status = (invite: InviteView): string =>
   inviteStatus(invite, Date.now() / 1000, revokedIds.value.has(invite.id))
 
-onMounted(refreshInvites)
+onMounted(() => {
+  void refreshInvites()
+  void refreshLimits()
+})
 </script>

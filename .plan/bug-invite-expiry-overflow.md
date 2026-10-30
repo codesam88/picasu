@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: medium
 area: backend
@@ -35,3 +35,16 @@ the chosen behavior.
    entry from `utils/schemathesis/baseline.yaml` and confirm
    `just fuzz-check` stays green (finding must be gone, not just
    tolerated).
+
+## Resolution (2026-10-30)
+
+Rejected-as-400, not clamped: `resolve_expiry` enforces
+`MAX_EXPIRY_HOURS = 8760` (one year) with `InvalidInput`, and the
+multiplication/addition is checked so no input can panic or wrap in any
+build profile. Pinned by `resolve_expiry_rejects_beyond_one_year`,
+`resolve_expiry_rejects_i64_max_without_panic`, and handler tests
+`extreme_expiry_is_400_not_500` / `max_expiry_is_accepted`.
+`GET /get/invites/limits` exposes the bound for the admin console, whose
+expiry field now parses `<integer><unit>` (`h`/`d`/`m` = 30-day month)
+against the fetched bound. Spec (`openapi.json`, auth-matrix) regenerated;
+baseline entry removed.

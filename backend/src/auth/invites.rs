@@ -24,6 +24,10 @@ use crate::storage::db::{INVITES, TREE};
 
 /// Default token lifetime when the creation request names none: 7 days.
 pub const DEFAULT_EXPIRY_HOURS: i64 = 7 * 24;
+/// Longest token lifetime the creation request may name: one year. Beyond
+/// this `resolve_expiry` answers [`ErrorKind::InvalidInput`] instead of
+/// overflowing the deadline arithmetic.
+pub const MAX_EXPIRY_HOURS: i64 = 365 * 24;
 /// Entropy of a fresh token: 128 bits.
 const TOKEN_BYTES: usize = 16;
 /// Characters of the token kept as a display hint in listings.
@@ -94,21 +98,41 @@ fn now_secs() -> Result<u64, AppError> {
 }
 
 /// Map the creation request's `expires_in_hours` onto a stored deadline:
-/// `0` means the invite never expires, positive hours land on that
-/// deadline. Negative values are rejected rather than wrapped. The
-/// parameter is required — there is no absent-means-default; callers
-/// that want the conventional lifetime pass [`DEFAULT_EXPIRY_HOURS`]
-/// explicitly.
+/// `0` means the invite never expires, positive hours up to
+/// [`MAX_EXPIRY_HOURS`] land on that deadline. Negative values and values
+/// past the bound are rejected rather than wrapped or overflowed: the
+/// multiplication uses checked arithmetic so no input can panic or wrap,
+/// in either build profile. The parameter is required — there is no
+/// absent-means-default; callers that want the conventional lifetime pass
+/// [`DEFAULT_EXPIRY_HOURS`] explicitly.
 ///
 /// # Errors
-/// Returns [`ErrorKind::InvalidInput`] for negative hours and
-/// [`ErrorKind::Internal`] when the clock is unavailable.
+/// Returns [`ErrorKind::InvalidInput`] for negative hours, hours past
+/// [`MAX_EXPIRY_HOURS`], or arithmetic overflow, and [`ErrorKind::Internal`]
+/// when the clock is unavailable.
 pub fn resolve_expiry(expires_in_hours: i64) -> Result<Option<u64>, AppError> {
     match expires_in_hours {
         0 => Ok(None),
-        hours if hours > 0 => Ok(Some(
-            now_secs()?.saturating_add(hours.unsigned_abs() * 3600),
-        )),
+        hours if hours > 0 => {
+            if hours > MAX_EXPIRY_HOURS {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    format!("expiresInHours must not exceed {MAX_EXPIRY_HOURS} hours (one year)"),
+                ));
+            }
+            let now = now_secs()?;
+            let seconds = hours
+                .unsigned_abs()
+                .checked_mul(3600)
+                .and_then(|s| now.checked_add(s))
+                .ok_or_else(|| {
+                    AppError::new(
+                        ErrorKind::InvalidInput,
+                        "expiresInHours overflows the deadline",
+                    )
+                })?;
+            Ok(Some(seconds))
+        }
         _ => Err(AppError::new(
             ErrorKind::InvalidInput,
             "expiresInHours must not be negative (0 means never expires)",
@@ -701,6 +725,29 @@ mod tests {
         );
         // Negative hours are rejected, not wrapped.
         let err = super::resolve_expiry(-1).expect_err("negative must fail");
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+        reset_backend_state();
+    }
+
+    #[test]
+    fn resolve_expiry_rejects_beyond_one_year() {
+        let _g = setup();
+        assert!(
+            super::resolve_expiry(super::MAX_EXPIRY_HOURS).is_ok(),
+            "the bound itself resolves"
+        );
+        let err =
+            super::resolve_expiry(super::MAX_EXPIRY_HOURS + 1).expect_err("over max must fail");
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+        reset_backend_state();
+    }
+
+    #[test]
+    fn resolve_expiry_rejects_i64_max_without_panic() {
+        let _g = setup();
+        // Regression: hours.unsigned_abs() * 3600 overflowed u64 and panicked
+        // the debug build (500). Any extreme value must be a 400 instead.
+        let err = super::resolve_expiry(i64::MAX).expect_err("i64::MAX must fail, not panic");
         assert_eq!(err.kind, ErrorKind::InvalidInput);
         reset_backend_state();
     }

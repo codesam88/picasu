@@ -484,7 +484,7 @@
         "description": "Body for `POST /post/invites`.",
         "properties": {
           "expiresInHours": {
-            "description": "Lifetime of the invite in hours, required: `0` means the invite\nnever expires. Negative values are rejected. Pass 168 for the\nconventional 7-day lifetime.",
+            "description": "Lifetime of the invite in hours, required: `0` means the invite\nnever expires, `1`–`8760` (one year) lands on that deadline.\nNegative values and values past one year are rejected. Pass 168 for\nthe conventional 7-day lifetime.",
             "format": "int64",
             "type": "integer"
           },
@@ -784,6 +784,20 @@
         },
         "required": [
           "album"
+        ],
+        "type": "object"
+      },
+      "InviteLimits": {
+        "description": "Invite creation limits for the admin console.",
+        "properties": {
+          "maxExpiryHours": {
+            "description": "Longest `expiresInHours` `POST /post/invites` accepts (one year).\nLarger values are 400; `0` still means never expires.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxExpiryHours"
         ],
         "type": "object"
       },
@@ -2613,6 +2627,52 @@
         }
       }
     },
+    "/get/invites/limits": {
+      "get": {
+        "description": "Admin-only. The console fetches this when building the invite panel so\nthe client-side expiry parser validates against the same bound the\nserver enforces, instead of hard-coding policy.\n\nErrors: 401 missing or invalid admin credentials.",
+        "operationId": "invite_limits_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteLimits"
+                }
+              }
+            },
+            "description": "Invite creation limits"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
+        "summary": "Report the invite creation limits the admin console enforces.",
+        "tags": [
+          "auth"
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "credentials": [
+            "session"
+          ],
+          "effects": [
+            "read"
+          ],
+          "guards": [
+            "GuardAdmin"
+          ],
+          "invariants": [
+            "AUTH-11"
+          ],
+          "shareScope": "n-a"
+        }
+      }
+    },
     "/get/metadata/{asset_id}": {
       "get": {
         "description": "List rows carry only lean identity fields, so the detail view, sidebar and\nedit prefill fetch the complete asset here. The wire shape is unchanged:\nidentity fields come from the asset's identity record, metadata fields from\nits stored payload.\n\nCorner cases: `timestamp` is required and must equal the prefetch token's\n`timestamp` claim. When the token resolves to a share with\n`show_metadata: false`, the metadata fields — including the stored path —\nare cleared before responding, so a share that hides metadata cannot leak it\nhere. A share token may only read assets that belong to its own album; any\nother `asset_id` answers 404, so the route does not reveal that the id\nexists.\n\nErrors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched\nprefetch token — 404 unknown `asset_id` — 500 the asset record could not be\ncomposed.",
@@ -3511,7 +3571,7 @@
     },
     "/post/invites": {
       "post": {
-        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Expiry is required, in hours\n(`0` never expires — pass 168 for the conventional 7-day lifetime);\nthe invite redeems once, for a single registration.\n\nCorner cases: Creating an invite requires a live admin session, so on\nan empty store invites are created only after the first bootstrap.\nListing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional\n`username` binds the invite to that user id (403 on mismatch at redeem).\n\nErrors: 400 negative `expiresInHours` or invalid `username` — 401 missing or invalid admin\ncredentials — 405 read-only mode — 500 storage failure.",
+        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Expiry is required, in hours\n(`0` never expires — pass 168 for the conventional 7-day lifetime);\nthe invite redeems once, for a single registration.\n\nCorner cases: Creating an invite requires a live admin session, so on\nan empty store invites are created only after the first bootstrap.\nListing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional\n`username` binds the invite to that user id (403 on mismatch at redeem).\n\nErrors: 400 negative or over-limit `expiresInHours` (max one year) or\ninvalid `username` — 401 missing or invalid admin credentials — 405\nread-only mode — 500 storage failure.",
         "operationId": "create_invite_handler",
         "requestBody": {
           "content": {
@@ -4179,7 +4239,7 @@
     },
     "/put/edit_flags": {
       "put": {
-        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\na sent `isTrashed` value lands on each asset's own record *and* on its XMP\nsidecar as the `picasu:Trashed` marker: the record is a cache, so without\nthe marker a rebuild from the filesystem would bring trashed files back as\nnormal assets. A restore removes the marker. The sidecar is written before\nthe record, and a write that cannot land fails the request without storing\nanything. Every album that lost or regained a member is refreshed in the\nbackground, so its counts may still be catching up when the call returns.\n\nCorner cases: the removed `isFavorite` and `isArchived` keys are still\naccepted and ignored rather than rejected, and an absent `isTrashed` leaves\nevery flag as it was. An index whose asset record no longer exists is\nskipped and still answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid credentials; share\ntokens are not accepted — 405 read-only mode — 500 unknown snapshot,\nout-of-range index, or storage failure.",
+        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\na sent `isTrashed` value lands on each asset's own record *and* on its XMP\nsidecar as the `picasu:Trashed` marker: the record is a cache, so without\nthe marker a rebuild from the filesystem would bring trashed files back as\nnormal assets. A restore removes the marker. The sidecar is written before\nthe record, and a write that cannot land fails the request without storing\nanything. Every album that lost or regained a member is refreshed in the\nbackground, so its counts may still be catching up when the call returns.\n\nCorner cases: the removed `isFavorite` and `isArchived` keys are still\naccepted and ignored rather than rejected, and an absent `isTrashed` leaves\nevery flag as it was. An index whose asset record no longer exists is\nskipped and still answers 200.\n\nErrors: 400 malformed body or unknown snapshot id — 401 missing or invalid\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nout-of-range index or storage failure.",
         "operationId": "edit_flags",
         "requestBody": {
           "content": {
@@ -4247,7 +4307,7 @@
     },
     "/put/edit_rating": {
       "put": {
-        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\n`rating` carries 0–5 or `null` to clear. Each rating is written to the\nasset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the\nin-memory tree is rebuilt before the call returns.\n\nCorner cases: a rating above 5 is rejected before any asset is touched, so\none bad value fails the whole batch. An index whose asset record no longer\nexists is skipped and still answers 200, and a failed sidecar write is\nlogged rather than failing the request.\n\nErrors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing\nor invalid credentials; share tokens are not accepted — 405 read-only\nmode — 500 unknown snapshot, out-of-range index, or storage failure.",
+        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\n`rating` carries 0–5 or `null` to clear. Each rating is written to the\nasset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the\nin-memory tree is rebuilt before the call returns.\n\nCorner cases: a rating above 5 is rejected before any asset is touched, so\none bad value fails the whole batch. An index whose asset record no longer\nexists is skipped and still answers 200, and a failed sidecar write is\nlogged rather than failing the request.\n\nErrors: 400 `rating` above 5, malformed body, or unknown snapshot id —\n401 missing or invalid credentials; share tokens are not accepted —\n405 read-only mode — 500 out-of-range index or storage failure.",
         "operationId": "edit_rating",
         "requestBody": {
           "content": {
@@ -4381,7 +4441,7 @@
     },
     "/put/edit_tag": {
       "put": {
-        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\nadditions and removals are applied per asset in list order after\nNFC-normalization and filtering to valid XML characters. Each asset's\n`.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the\nreturned list counts every tag over the whole metadata table, not only the\nedited assets.\n\nCorner cases: a tag that sanitizes to empty is skipped on add but still\nserves as the removal key, and an index whose asset record no longer exists\nis skipped and still answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid credentials; share\ntokens are not accepted — 405 read-only mode — 500 unknown snapshot,\nout-of-range index, or storage failure.",
+        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\nadditions and removals are applied per asset in list order after\nNFC-normalization and filtering to valid XML characters. Each asset's\n`.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the\nreturned list counts every tag over the whole metadata table, not only the\nedited assets.\n\nCorner cases: a tag that sanitizes to empty is skipped on add but still\nserves as the removal key, and an index whose asset record no longer exists\nis skipped and still answers 200.\n\nErrors: 400 malformed body or unknown snapshot id — 401 missing or invalid\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nout-of-range index or storage failure.",
         "operationId": "edit_tag",
         "requestBody": {
           "content": {
@@ -4728,7 +4788,7 @@
     },
     "/put/set_user_defined_description": {
       "put": {
-        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: an index whose asset record no longer exists is skipped\nand still answers 200, and a failed sidecar write is logged rather than\nfailing the request.\n\nErrors: 400 malformed body — 401 missing or invalid session —\n403 no enrolled user — 405 read-only mode — 500 unknown snapshot,\nout-of-range index, or storage failure.",
+        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: an index whose asset record no longer exists is skipped\nand still answers 200, and a failed sidecar write is logged rather than\nfailing the request.\n\nErrors: 400 malformed body or unknown snapshot id — 401 missing or invalid\nsession — 403 no enrolled user — 405 read-only mode — 500 out-of-range\nindex or storage failure.",
         "operationId": "set_user_defined_description",
         "requestBody": {
           "content": {
