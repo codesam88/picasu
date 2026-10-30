@@ -33,7 +33,7 @@ steps:
       - ui.route: /timeline
   - when:
       - navigate: /config
-      - click: tab/Administration
+      - click: tab/Invites
     assert:
       - ui.text_visible: Revoke # invite row renders with its Revoke control
       # a fresh invite shows no redeemer

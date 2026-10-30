@@ -171,7 +171,7 @@ const save = async () => {
   const success = await configStore.updateConfig(payload)
 
   if (success === true) {
-    messageStore.success('Danger zone settings saved successfully')
+    messageStore.success('Advanced settings saved successfully')
   }
   loading.value = false
 }
