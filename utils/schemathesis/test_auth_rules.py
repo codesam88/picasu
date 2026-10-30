@@ -63,7 +63,7 @@ class RealMatrixDerivations(unittest.TestCase):
         plan = auth_rules.test_plan(MATRIX)
         admin_ops = auth_rules.admin_session_ops(MATRIX)
         self.assertIn(("GET", "/get/users"), admin_ops)
-        self.assertEqual(len(admin_ops), 22)
+        self.assertEqual(len(admin_ops), 23)
         for key in admin_ops:
             self.assertEqual(plan.get(key), auth_rules.TEST_DEMOTED, key)
 
