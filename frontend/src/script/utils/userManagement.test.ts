@@ -55,6 +55,19 @@ describe('UserManagement row-action labels', () => {
   })
 })
 
+describe('UserManagement grouped display', () => {
+  test('renders role groups with a divider only between lists', () => {
+    expect(source).toMatch(/groupUsersByRole\(/)
+    expect(source).toMatch(/v-for="\(group, gi\) in userGroups"/)
+    expect(source).toMatch(/<v-divider v-if="gi > 0"/)
+  })
+
+  test('role is conveyed by grouping, not a per-row subtitle', () => {
+    expect(source).not.toMatch(/Standard user/)
+    expect(source).toMatch(/Promote someone else first/)
+  })
+})
+
 describe('UserManagement single-owner display', () => {
   test('no duplicate navigation to login (interceptor owns the redirect)', () => {
     expect(source).not.toMatch(/router\.push/)

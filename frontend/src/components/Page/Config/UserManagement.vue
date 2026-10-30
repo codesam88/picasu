@@ -39,60 +39,59 @@
         </v-row>
       </v-card-text>
 
-      <v-list-item v-for="user in users" :key="user.userId" :title="user.userId">
-        <template #append>
-          <v-tooltip v-if="isAdmin" location="top" text="Set password">
-            <template #activator="{ props }">
-              <v-btn
-                v-bind="props"
-                icon="mdi-key-variant"
-                variant="text"
-                color="primary"
-                size="small"
-                aria-label="Set password"
-                :disabled="saving"
-                @click="askSetPassword(user)"
-              ></v-btn>
-            </template>
-          </v-tooltip>
-          <v-tooltip location="top" :text="user.admin ? 'Demote admin' : 'Make admin'">
-            <template #activator="{ props }">
-              <v-btn
-                v-bind="props"
-                :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
-                variant="text"
-                size="small"
-                :color="user.admin ? 'primary' : undefined"
-                :aria-label="user.admin ? 'Demote admin' : 'Make admin'"
-                :aria-pressed="user.admin"
-                :disabled="isRowLocked(user) || saving"
-                @click="onToggle(user, !user.admin)"
-              ></v-btn>
-            </template>
-          </v-tooltip>
-          <v-tooltip v-if="!isRowLocked(user)" location="top" text="Delete user">
-            <template #activator="{ props }">
-              <v-btn
-                v-bind="props"
-                icon="mdi-delete-outline"
-                variant="text"
-                color="error"
-                size="small"
-                aria-label="Delete user"
-                :disabled="saving"
-                @click="askDelete(user)"
-              ></v-btn>
-            </template>
-          </v-tooltip>
-        </template>
-        <template #subtitle>
-          <span v-if="isRowLocked(user)"
-            >Promote someone else first to demote your own account</span
-          >
-          <span v-else-if="user.admin">Admin</span>
-          <span v-else>Standard user</span>
-        </template>
-      </v-list-item>
+      <template v-for="(group, gi) in userGroups" :key="group.key">
+        <v-divider v-if="gi > 0"></v-divider>
+        <v-list-item v-for="user in group.users" :key="user.userId" :title="user.userId">
+          <template #append>
+            <v-tooltip v-if="isAdmin" location="top" text="Set password">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-key-variant"
+                  variant="text"
+                  color="primary"
+                  size="small"
+                  aria-label="Set password"
+                  :disabled="saving"
+                  @click="askSetPassword(user)"
+                ></v-btn>
+              </template>
+            </v-tooltip>
+            <v-tooltip location="top" :text="user.admin ? 'Demote admin' : 'Make admin'">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
+                  variant="text"
+                  size="small"
+                  :color="user.admin ? 'primary' : undefined"
+                  :aria-label="user.admin ? 'Demote admin' : 'Make admin'"
+                  :aria-pressed="user.admin"
+                  :disabled="isRowLocked(user) || saving"
+                  @click="onToggle(user, !user.admin)"
+                ></v-btn>
+              </template>
+            </v-tooltip>
+            <v-tooltip v-if="!isRowLocked(user)" location="top" text="Delete user">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-delete-outline"
+                  variant="text"
+                  color="error"
+                  size="small"
+                  aria-label="Delete user"
+                  :disabled="saving"
+                  @click="askDelete(user)"
+                ></v-btn>
+              </template>
+            </v-tooltip>
+          </template>
+          <template v-if="isRowLocked(user)" #subtitle>
+            <span>Promote someone else first to demote your own account</span>
+          </template>
+        </v-list-item>
+      </template>
 
       <v-dialog v-model="confirmOpen" max-width="480">
         <v-card>
@@ -172,6 +171,7 @@ import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { errorDisplay } from '@/script/utils/errorDisplay'
 import { useCurrentUser, selfRowState, canSeeUserPanel } from '@/script/utils/currentUser'
+import { groupUsersByRole } from '@/script/utils/userGroups'
 
 const messageStore = useMessageStore('mainId')
 const me = useCurrentUser()
@@ -195,6 +195,7 @@ const settingPassword = ref(false)
 
 // --- Computed ---
 const adminCount = computed(() => users.value.filter((u) => u.admin).length)
+const userGroups = computed(() => groupUsersByRole(users.value))
 
 const isRowLocked = (user: UserSummary): boolean =>
   selfRowState(me.value, user.userId, adminCount.value) === 'sole-admin'
