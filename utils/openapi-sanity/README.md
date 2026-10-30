@@ -170,9 +170,11 @@ at the route attribute.
 (`b5_bound_parameter_is_undescribed.rs`) covers both anchors in one fixture.
 `every_bound_parameter_carries_a_description` (`b5_conforming.rs`) covers
 described bindings, including one bound by a `<name..>` partial segment. The run
-over `backend/src/router` must stay silent, and `DECLARATION_INVENTORY` pins
-that tree's 24 declared parameters so a `params(…)` reader that stops finding
-entries fails a test instead of reporting a clean tree.
+over `backend/src/router` must stay silent; the fixed fixture tree in
+`tests/fixtures/router_tree/` (asserted by
+`scan_finds_every_annotation_in_a_fixed_tree`) proves the walk and the
+`params(…)` reader find every file and entry, so no live count is needed to
+catch a reader that stops finding entries.
 
 ### P1 — The declared success statuses are the handler's
 
@@ -298,7 +300,7 @@ reads the `ErrorKind` → `http_status` mapping from (default
 `backend/src/error.rs`); an unreadable or unrecognizable map exits 2 rather than
 guessing. `--expect-at-least` sets a minimum number of annotated handlers; the
 checker fails below that floor rather than reporting a potentially partial scan
-as clean. The gate sets the floor to 60 for a tree currently containing 63
+as clean. The gate sets the floor to 60 for a tree currently containing 76
 handlers.
 
 Findings are written as `file:line: handler: message`. For example:
@@ -317,9 +319,11 @@ with `include_str!`. Every implemented rule has a failing case; checks with a
 valid counterpart also test that conforming source is accepted. The app-error
 map for the fixture tests is `tests/fixtures/app_error_map.rs`, shaped like
 `backend/src/error.rs`. The `the_router_tree_is_clean` test runs all checks
-over `backend/src/router`, pins 63 handlers, the B1–B5 inventory, the
-compared-body count, and the dynamic- and resolved-guard sets, and requires
-zero findings.
+over `backend/src/router` and requires zero findings; scanner coverage itself
+— every file walked, every annotation found and counted — is asserted on the
+fixed tree in `tests/fixtures/router_tree/` instead of the live tree's size.
+The dynamic- and resolved-guard sets stay pinned, since the rules skip guards
+they cannot resolve by name.
 
 Run the tool's tests with:
 
