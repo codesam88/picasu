@@ -96,17 +96,23 @@
 
       <v-dialog v-model="confirmOpen" max-width="480">
         <v-card>
-          <v-card-title class="font-weight-bold">Demote admin?</v-card-title>
+          <v-card-title class="font-weight-bold">{{
+            pendingAdmin ? 'Make admin?' : 'Demote admin?'
+          }}</v-card-title>
           <v-card-text>
-            <span v-if="pendingTarget?.userId === me?.id">
+            <span v-if="pendingAdmin">
+              Grant admin rights to {{ pendingTarget?.userId }}? They will gain full access to this
+              panel.
+            </span>
+            <span v-else-if="pendingTarget?.userId === me?.id">
               You are demoting your own account. You will lose access to this panel. Continue?
             </span>
             <span v-else> Remove admin rights from {{ pendingTarget?.userId }}? </span>
           </v-card-text>
           <v-card-actions class="justify-end">
-            <v-btn variant="text" @click="cancelDemote">Cancel</v-btn>
-            <v-btn color="primary" variant="flat" :loading="saving" @click="confirmDemote">
-              Demote
+            <v-btn variant="text" @click="cancelRoleChange">Cancel</v-btn>
+            <v-btn color="primary" variant="flat" :loading="saving" @click="confirmRoleChange">
+              {{ pendingAdmin ? 'Promote' : 'Demote' }}
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -183,6 +189,7 @@ const users = ref<UserSummary[]>([])
 const saving = ref(false)
 const confirmOpen = ref(false)
 const pendingTarget = ref<UserSummary | null>(null)
+const pendingAdmin = ref<boolean | null>(null)
 const deleteConfirmOpen = ref(false)
 const pendingDelete = ref<UserSummary | null>(null)
 const newUsername = ref('')
@@ -249,31 +256,28 @@ const applyRoleChange = async (target: UserSummary, admin: boolean) => {
 }
 
 const onToggle = (user: UserSummary, admin: boolean) => {
-  if (!admin) {
-    // Demotion always requires confirmation. The shield button passes the
-    // flipped flag explicitly, so nothing has mutated yet: just stage the
-    // confirm.
-    pendingTarget.value = user
-    confirmOpen.value = true
-    return
-  }
-  // Optimistic flip; applyRoleChange reverts to false and reloads on failure.
-  user.admin = true
-  void applyRoleChange(user, true)
+  // Both directions stage the confirm dialog: granting admin hands over
+  // full access, so it is never applied optimistically.
+  pendingTarget.value = user
+  pendingAdmin.value = admin
+  confirmOpen.value = true
 }
 
-const cancelDemote = () => {
+const cancelRoleChange = () => {
   confirmOpen.value = false
   pendingTarget.value = null
+  pendingAdmin.value = null
 }
 
-const confirmDemote = async () => {
+const confirmRoleChange = async () => {
   const target = pendingTarget.value
+  const admin = pendingAdmin.value
   confirmOpen.value = false
   pendingTarget.value = null
-  if (target === null) return
-  target.admin = false
-  await applyRoleChange(target, false)
+  pendingAdmin.value = null
+  if (target === null || admin === null) return
+  target.admin = admin
+  await applyRoleChange(target, admin)
 }
 
 const askDelete = (user: UserSummary) => {

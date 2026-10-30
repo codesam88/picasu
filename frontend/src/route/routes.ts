@@ -13,7 +13,7 @@ import ViewPage from '@/components/View/ViewPage.vue'
 import { decideBootRoute } from './bootGuard'
 import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
-import { linksRoute } from './linksRoute'
+import { sharesRoute } from './sharesRoute'
 import { loginRoute } from './loginRoute'
 import { registerRoute } from './registerRoute'
 import { shareRoute } from './shareRoute'
@@ -28,7 +28,7 @@ import { useSessionStore } from '@/store/sessionStore'
 const simpleRoutes: RouteRecordRaw[] = [
   { path: '/', redirect: '/timeline' },
   tagsRoute,
-  linksRoute,
+  sharesRoute,
   loginRoute,
   registerRoute,
   shareRoute,
@@ -154,11 +154,11 @@ router.afterEach((to) => {
     videos: 'Videos',
     album: 'Album',
     tags: 'Tags',
-    links: 'Links',
+    shares: 'Shares',
     login: 'Login',
     register: 'Register',
     share: 'Share',
-    config: 'Configuration'
+    config: 'Admin'
   }
 
   let baseTitle: string
