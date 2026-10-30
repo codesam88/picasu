@@ -143,11 +143,43 @@ behavioral tests. Each rule lives where its inputs live.
 Quarterly re-pin cadence applies to Schemathesis, dylint nightlies,
 and the other pinned tools. Research digests live in `docs/briefs/`.
 
-## Open gaps
+## Limits and open gaps
 
-- `fallback` records that a non-guard admission path exists, not whether a
-  given invite or knob state satisfies it; that stays with the scenario suite.
-- `invariants` backfill beyond the source-verified set.
-- Query-param share fallback is invisible to the published schemes.
-- Single `bearer_token` scheme covers three token types; `credentials`
-  is authoritative until schemes split.
+The static rules compare the annotation with the handler signature and the
+document; they do not inspect handler bodies. A guard that admits more than its
+name claims is invisible to them, and behaviour that depends on runtime state is
+covered only by the probes below.
+
+- **Behavioural cells not yet pinned.** The generated negative matrix covers
+  anonymous, viewer and admin principals. Share credentials need a seeded album
+  and share, so those cells stay with the scenario suite. Expired shares on
+  ordinary reads (`403`), share-flag effects (`show_metadata=false` redacts
+  metadata; `show_download=false` mints asset tokens without original access)
+  and share-password refusals (`401`) have no scenario cell yet.
+- **`shareScope` has no static agreement rule.** The S4 cross-scope probe pins
+  one operation; the remaining album-bound routes rely on behavioural scenarios.
+- **Claims are discarded after rejection.** 38 sites do `let _ = auth?`: the
+  refusal propagates but the claims are never read. The AUTH-4 triage —
+  claims-derived target versus guard-as-gate — is open.
+- **No expiry or decode ratchets yet.** `VALIDATION_ALLOW_EXPIRED` inside a
+  guard impl, and a JWT decode outside `decode_typed`, are hand-verified facts
+  rather than checks.
+- **`fallback` is a mechanism marker.** It records that registration accepts an
+  invite or the open-registration knob, and that bootstrap accepts while the
+  store is empty; it cannot say whether a particular invite or knob state is
+  valid.
+- **`invariants` are partial.** Operations reference a source-verified subset of
+  `authz-model.md`; the file stays hand-maintained until the model can derive it
+  back.
+- **Share query fallback.** `albumId`/`shareId` query parameters resolve a share
+  in `GuardPresenter` but appear in no published security scheme.
+- **One bearer scheme covers three credential kinds.** `snapshot`, `asset` and
+  share-credential tokens all ride `bearer_token`; the extension's `credentials`
+  is authoritative until the schemes split.
+- **Coverage strength is unmeasured.** Which contract element a checker covers,
+  and whether its expectation is independent of the artifact it checks, is
+  tracked in `.plan/api-assurance-coverage.md`; the registry and strength floor
+  are open.
+- **The stateful campaign is advisory.** Tier 1 (`just fuzz-check`) gates
+  against an accepted-findings baseline; `just fuzz-run` is time-budgeted and
+  not byte-reproducible.

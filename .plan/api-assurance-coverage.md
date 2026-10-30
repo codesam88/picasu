@@ -58,6 +58,11 @@ Two dimensions; coverage alone misleads.
 
 ## Preliminary findings (verified against the tree, 2026-10-29)
 
+The table below is the survey that opened this task. Rows for `guards`
+(S8), publicness (now derived from the guards under S7), `effects` (S10) and
+`invariants` (existence test plus S11) have since gained checkers; refresh
+those rows as step 1 rather than reading them as current gaps.
+
 | Contract element                                  | A-side (static)                      | B-side (behavioral)         | Strength             | Note                                                          |
 | ------------------------------------------------- | ------------------------------------ | --------------------------- | -------------------- | ------------------------------------------------------------- |
 | mounted route ⇔ documented operation              | `--check-openapi`                    | —                           | static-exact, gate   |                                                               |
