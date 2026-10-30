@@ -9,7 +9,9 @@ covers:
   ui:
     - route:/timeline
     - tab/Server
-    - tab/Administration
+    - tab/Users
+    - tab/Invites
+    - tab/Shares
     - button/Scan Now
     - .desktop-small-image
 server:
@@ -177,7 +179,9 @@ steps:
       - navigate: /config
     assert:
       - ui.visible: tab/Server
-      - ui.hidden: tab/Administration
+      - ui.hidden: tab/Users
+      - ui.hidden: tab/Invites
+      - ui.hidden: tab/Shares
       - ui.hidden: button/Scan Now
 
   - when:
