@@ -60,12 +60,12 @@
             @click="askDelete(user)"
           ></v-btn>
           <v-switch
-            v-model="user.admin"
+            :model-value="user.admin"
             color="primary"
             hide-details
             inset
             :disabled="isRowLocked(user) || saving"
-            @change="onToggle(user, $event)"
+            @update:model-value="onToggle(user, $event)"
           ></v-switch>
         </template>
         <template #subtitle>
@@ -216,12 +216,14 @@ const applyRoleChange = async (target: UserSummary, admin: boolean) => {
 const onToggle = (user: UserSummary, value: unknown) => {
   const admin = value === true
   if (!admin) {
-    // Demotion always requires confirmation; revert until confirmed.
-    user.admin = true
+    // Demotion always requires confirmation. The switch is controlled
+    // (:model-value), so nothing has mutated yet: just stage the confirm.
     pendingTarget.value = user
     confirmOpen.value = true
     return
   }
+  // Optimistic flip; applyRoleChange reverts to false and reloads on failure.
+  user.admin = true
   void applyRoleChange(user, true)
 }
 
