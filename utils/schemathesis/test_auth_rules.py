@@ -63,7 +63,10 @@ class RealMatrixDerivations(unittest.TestCase):
         plan = auth_rules.test_plan(MATRIX)
         admin_ops = auth_rules.admin_session_ops(MATRIX)
         self.assertIn(("GET", "/get/users"), admin_ops)
-        self.assertEqual(len(admin_ops), 23)
+        # New admin operations join the demoted check by derivation; the anchors
+        # below pin the guard on specific routes instead of the set's size, so
+        # growing the matrix never trips a count.
+        self.assertIn(("GET", "/get/invites/limits"), admin_ops)
         for key in admin_ops:
             self.assertEqual(plan.get(key), auth_rules.TEST_DEMOTED, key)
 

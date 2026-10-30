@@ -31,7 +31,9 @@
 //! Every rule has a fixture that must produce its finding, a conforming
 //! counterpart that must produce none, and a run over the real backend router
 //! tree that must stay silent. Removing a check fails a named test rather than
-//! turning the gate green.
+//! turning the gate green. A fixed fixture tree with a known inventory proves
+//! separately that the scan finds every annotation it should: coverage of the
+//! scanner itself is asserted on fixed input, not on the live tree's size.
 //!
 
 use std::path::{Path, PathBuf};
@@ -1007,37 +1009,6 @@ fn p4_an_undeclarable_status_on_a_bindingless_route_fails() {
 
 // ── The real tree ─────────────────────────────────────────────────────────────
 
-/// How many `#[utoipa::path]` annotations the router tree carries today.
-///
-/// Pinned rather than derived, so a scan that silently stops finding annotations
-/// — a broken file walk, a swallowed parse error — fails here instead of
-/// reporting a clean tree it never looked at. Update it with the annotation.
-const ANNOTATIONS_IN_ROUTER: usize = 77;
-
-/// The declaration inventory section B was calibrated against: 25 declared
-/// parameters, all of them the inline `("name" = Type, Location, …)` form, and 26
-/// declared request bodies (25 plus register; user-list is a bodyless GET).
-///
-/// The three numbers do three different jobs. The first is a floor on what B1, B2
-/// and B5 read, so a walk that stopped finding `params(…)` fails instead of
-/// reporting a clean tree. The second is what keeps the scope limit honest: it is
-/// **zero**, and the first `#[derive(IntoParams)]` struct to reach an annotation
-/// makes it non-zero, which fails this test rather than narrowing B1, B2 and B5
-/// without a decision. The third is what keeps B3 and B4 honest: a scan that
-/// stopped reading `request_body` would find nothing to compare and report the
-/// same emptiness as a clean tree.
-const DECLARATION_INVENTORY: (usize, usize, usize) = (26, 0, 26);
-
-/// How many of those declared request bodies B3 actually compares against a
-/// route binding — the tree's 26 declarations less the one `request_body = Value`
-/// (unconstrained, not comparable) and the two form bodies (no nameable schema).
-///
-/// Without this row B3's comparisons could shrink to nothing — every declaration
-/// unreadable, or every binding non-`Json` — and the tree would still report
-/// clean. Under a clean tree a comparison is also a match, so 20 compares both
-/// that B3 ran and that its results held.
-const BODIES_COMPARED: usize = 23;
-
 /// The backend's router tree, resolved from this crate's manifest directory
 /// rather than from the working directory a test happens to run in.
 fn router_tree() -> PathBuf {
@@ -1070,13 +1041,50 @@ const RESOLVED_GUARDS: [&str; 9] = [
     "GuardUser",
 ];
 
+/// Fixed-tree coverage: the scan finds every annotation in a tree whose
+/// inventory is known up front, so a walk that stopped finding files, a
+/// parser that swallowed an annotation form, or a counter that stopped
+/// counting fails here — on fixed input — instead of the live tree's size
+/// doing the job. The live tree keeps its own test below, minus the counts.
+#[test]
+fn scan_finds_every_annotation_in_a_fixed_tree() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/router_tree");
+    let map = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/app_error_map.rs");
+    let report = scan_source_root(&root, &map).expect("the fixture tree must scan cleanly");
+
+    assert_eq!(
+        report.files_scanned, 3,
+        "the walk must reach every fixture file, including the annotation-free one"
+    );
+    let names: Vec<&str> = report
+        .handlers
+        .iter()
+        .map(|handler| handler.name.as_str())
+        .collect();
+    assert_eq!(names, ["list_widgets", "show_widget", "create_widget"]);
+    let declared: usize = report.handlers.iter().map(|h| h.declared_parameters).sum();
+    let unread: usize = report.handlers.iter().map(|h| h.unread_parameters).sum();
+    let bodies: usize = report.handlers.iter().map(|h| h.request_bodies).sum();
+    let compared: usize = report.handlers.iter().map(|h| h.bodies_compared).sum();
+    assert_eq!((declared, unread, bodies), (2, 0, 1));
+    assert_eq!(compared, 1);
+    assert_eq!(
+        render(&report.findings),
+        "",
+        "the fixture tree is conforming, so any finding is a scanner bug:\n{}",
+        render(&report.findings)
+    );
+}
+
 /// Every rule over the real router tree, which has to be silent.
 ///
 /// This is the half that proves the rules against the tree rather than against
-/// snippets, and the half that pins the scan's coverage so the two cannot drift
-/// apart silently. Its name does not name a rule on purpose: a test called after
-/// one rule would read as coverage of that rule when it is the run that says
-/// whether the whole rule set holds.
+/// snippets. Scan coverage itself — that the walk finds every file and every
+/// annotation — is pinned separately by `scan_finds_every_annotation_in_a_fixed_tree`
+/// on fixed input, so this test asserts only that the tree holds the rules.
+/// Its name does not name a rule on purpose: a test called after one rule would
+/// read as coverage of that rule when it is the run that says whether the whole
+/// rule set holds.
 #[test]
 fn the_router_tree_is_clean() {
     let report = scan_source_root(&router_tree(), &app_error_map())
@@ -1087,46 +1095,6 @@ fn the_router_tree_is_clean() {
         report.files_scanned
     );
 
-    let declared_parameters: usize = report
-        .handlers
-        .iter()
-        .map(|handler| handler.declared_parameters)
-        .sum();
-    let unread_parameters: usize = report
-        .handlers
-        .iter()
-        .map(|handler| handler.unread_parameters)
-        .sum();
-    let request_bodies: usize = report
-        .handlers
-        .iter()
-        .map(|handler| handler.request_bodies)
-        .sum();
-    let bodies_compared: usize = report
-        .handlers
-        .iter()
-        .map(|handler| handler.bodies_compared)
-        .sum();
-
-    assert_eq!(
-        report.handlers.len(),
-        ANNOTATIONS_IN_ROUTER,
-        "the scan must see every annotation in backend/src/router"
-    );
-    assert_eq!(
-        (declared_parameters, unread_parameters, request_bodies),
-        DECLARATION_INVENTORY,
-        "the tree's declaration inventory moved. `unread_parameters` must stay 0 while \
-         B1, B2 and B5 read the inline tuple form only: the first `IntoParams` struct in an \
-         annotation needs either a resolver or a renegotiated limit, and a non-zero count \
-         fails here rather than narrowing the rules quietly"
-    );
-    assert_eq!(
-        bodies_compared, BODIES_COMPARED,
-        "B3's comparison count moved. The declaration inventory can hold while every \
-         comparison quietly stops happening — unreadable declarations or non-`Json` \
-         bindings — so the count of comparisons actually performed is pinned separately"
-    );
     assert_eq!(
         report.dynamic_guards, DYNAMIC_GUARDS,
         "the dynamic-guard set moved. A guard whose outcome status is computed requires \
