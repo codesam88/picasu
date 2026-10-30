@@ -29,3 +29,12 @@ GET /get/config/export removed the media type `text/plain` for the response with
 # wrong and failed response-schema validation, so the loosening is the fix
 # rather than a capability removal.
 GET /get/admin/config the `items/value` response's property `type` changed from `object` to `any` for status `200`
+
+# 2026-10-30 (share write removal, decided): `PUT /put/set_album_title`,
+# `PUT /put/set_user_defined_description` and `POST /upload` no longer
+# accept share credentials; shares are read-only and these writes require
+# a session. The `album_id AND share_id` scheme removal is the intended
+# capability drop, not an annotation slip.
+PUT /put/set_album_title the endpoint scheme security `album_id AND share_id` was removed from the API
+PUT /put/set_user_defined_description the endpoint scheme security `album_id AND share_id` was removed from the API
+POST /upload the endpoint scheme security `album_id AND share_id` was removed from the API
