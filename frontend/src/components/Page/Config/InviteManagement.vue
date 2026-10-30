@@ -50,36 +50,38 @@
         </v-alert>
       </v-card-text>
 
-      <v-list>
-        <v-list-item v-for="invite in invites" :key="invite.id" :title="invite.prefix + '…'">
-          <template #subtitle>
-            <span>
-              status: {{ status(invite) }} · by {{ invite.createdBy }}
-              <span v-if="invite.username"> · for {{ invite.username }}</span>
-              <span v-else> · open</span>
-              <span v-if="invite.usedBy"> · used by {{ invite.usedBy }}</span>
-              <span v-else-if="invite.expiresAt !== null">
-                · expires {{ formatExpiry(invite.expiresAt) }}
+      <v-sheet border rounded="lg" class="mx-4 mb-4 overflow-hidden">
+        <v-list>
+          <v-list-item v-for="invite in invites" :key="invite.id" :title="invite.prefix + '…'">
+            <template #subtitle>
+              <span>
+                status: {{ status(invite) }} · by {{ invite.createdBy }}
+                <span v-if="invite.username"> · for {{ invite.username }}</span>
+                <span v-else> · open</span>
+                <span v-if="invite.usedBy"> · used by {{ invite.usedBy }}</span>
+                <span v-else-if="invite.expiresAt !== null">
+                  · expires {{ formatExpiry(invite.expiresAt) }}
+                </span>
+                <span v-else> · never expires</span>
               </span>
-              <span v-else> · never expires</span>
-            </span>
-          </template>
-          <template #append>
-            <v-btn
-              variant="text"
-              color="error"
-              size="small"
-              :disabled="revoking === invite.id"
-              @click="revoke(invite.id)"
-            >
-              Revoke
-            </v-btn>
-          </template>
-        </v-list-item>
-        <v-list-item v-if="invites.length === 0">
-          <v-list-item-title class="text-medium-emphasis">No invites yet</v-list-item-title>
-        </v-list-item>
-      </v-list>
+            </template>
+            <template #append>
+              <v-btn
+                variant="text"
+                color="error"
+                size="small"
+                :disabled="revoking === invite.id"
+                @click="revoke(invite.id)"
+              >
+                Revoke
+              </v-btn>
+            </template>
+          </v-list-item>
+          <v-list-item v-if="invites.length === 0">
+            <v-list-item-title class="text-medium-emphasis">No invites yet</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-sheet>
     </v-card>
   </v-col>
 </template>

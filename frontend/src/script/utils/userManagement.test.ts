@@ -54,6 +54,15 @@ describe('UserManagement row-action labels', () => {
   })
 })
 
+describe('UserManagement list framing', () => {
+  test('rows sit in an inset sub-table, never full-bleed', () => {
+    // The create form lives in v-card-text; bare rows as direct card
+    // children bleed edge to edge and read as outside the frame.
+    expect(source).toMatch(/<v-sheet[\s\S]*?border/)
+    expect(source).toMatch(/v-if="userGroups\.length > 0"/)
+  })
+})
+
 describe('UserManagement grouped display', () => {
   test('renders role groups with a divider only between lists', () => {
     expect(source).toMatch(/groupUsersByRole\(/)
