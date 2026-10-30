@@ -67,6 +67,12 @@ describe('FEAT6 invite management panel', () => {
     expect(inviteMgmt).toMatch(/refreshInvites\(\)/)
   })
 
+  test('invite rows sit in an inset sub-table, aligned with the form', () => {
+    // The create form lives in v-card-text; a bare v-list as a direct card
+    // child bleeds edge to edge and reads as outside the frame.
+    expect(inviteMgmt).toMatch(/<v-sheet[\s\S]*?border/)
+  })
+
   test('status derivation is used for display', () => {
     expect(inviteMgmt).toMatch(/inviteStatus\(/)
   })

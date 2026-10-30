@@ -39,58 +39,60 @@
         </v-row>
       </v-card-text>
 
-      <template v-for="(group, gi) in userGroups" :key="group.key">
-        <v-divider v-if="gi > 0"></v-divider>
-        <v-list-item v-for="user in group.users" :key="user.userId" :title="user.userId">
-          <template #append>
-            <v-tooltip v-if="isAdmin" location="top" text="Set password">
-              <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  icon="mdi-key-variant"
-                  variant="text"
-                  color="primary"
-                  size="small"
-                  aria-label="Set password"
-                  :disabled="saving"
-                  @click="askSetPassword(user)"
-                ></v-btn>
-              </template>
-            </v-tooltip>
-            <v-tooltip location="top" :text="shieldLabel(user)">
-              <template #activator="{ props }">
-                <span v-bind="props" class="d-inline-flex">
+      <v-sheet v-if="userGroups.length > 0" border rounded="lg" class="mx-4 mb-4 overflow-hidden">
+        <template v-for="(group, gi) in userGroups" :key="group.key">
+          <v-divider v-if="gi > 0"></v-divider>
+          <v-list-item v-for="user in group.users" :key="user.userId" :title="user.userId">
+            <template #append>
+              <v-tooltip v-if="isAdmin" location="top" text="Set password">
+                <template #activator="{ props }">
                   <v-btn
-                    :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
+                    v-bind="props"
+                    icon="mdi-key-variant"
                     variant="text"
+                    color="primary"
                     size="small"
-                    :color="user.admin ? 'primary' : undefined"
-                    :aria-label="shieldLabel(user)"
-                    :aria-pressed="user.admin"
-                    :disabled="isRowLocked(user) || saving"
-                    @click="onToggle(user, !user.admin)"
+                    aria-label="Set password"
+                    :disabled="saving"
+                    @click="askSetPassword(user)"
                   ></v-btn>
-                </span>
-              </template>
-            </v-tooltip>
-            <v-tooltip location="top" :text="deleteLabel(user)">
-              <template #activator="{ props }">
-                <span v-bind="props" class="d-inline-flex">
-                  <v-btn
-                    icon="mdi-delete-outline"
-                    variant="text"
-                    color="error"
-                    size="small"
-                    :aria-label="deleteLabel(user)"
-                    :disabled="isRowLocked(user) || saving"
-                    @click="askDelete(user)"
-                  ></v-btn>
-                </span>
-              </template>
-            </v-tooltip>
-          </template>
-        </v-list-item>
-      </template>
+                </template>
+              </v-tooltip>
+              <v-tooltip location="top" :text="shieldLabel(user)">
+                <template #activator="{ props }">
+                  <span v-bind="props" class="d-inline-flex">
+                    <v-btn
+                      :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
+                      variant="text"
+                      size="small"
+                      :color="user.admin ? 'primary' : undefined"
+                      :aria-label="shieldLabel(user)"
+                      :aria-pressed="user.admin"
+                      :disabled="isRowLocked(user) || saving"
+                      @click="onToggle(user, !user.admin)"
+                    ></v-btn>
+                  </span>
+                </template>
+              </v-tooltip>
+              <v-tooltip location="top" :text="deleteLabel(user)">
+                <template #activator="{ props }">
+                  <span v-bind="props" class="d-inline-flex">
+                    <v-btn
+                      icon="mdi-delete-outline"
+                      variant="text"
+                      color="error"
+                      size="small"
+                      :aria-label="deleteLabel(user)"
+                      :disabled="isRowLocked(user) || saving"
+                      @click="askDelete(user)"
+                    ></v-btn>
+                  </span>
+                </template>
+              </v-tooltip>
+            </template>
+          </v-list-item>
+        </template>
+      </v-sheet>
 
       <v-dialog v-model="confirmOpen" max-width="480">
         <v-card>
