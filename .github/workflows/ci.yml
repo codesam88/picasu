@@ -116,6 +116,13 @@ jobs:
           just install-ffmpeg
           ffmpeg -version
 
+      - name: Install uv
+        env:
+          UV_VERSION: "0.12.18"
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Build the frontend assets
         run: just frontend-build
 
@@ -274,7 +281,7 @@ jobs:
       # proves the lints still behave as their fixtures say.
       - name: Dylint UI suites
         run: |
-          for crate in auth2_guard_propagation auth3_no_forward_denial decode_agreement token_typ_agreement; do
+          for crate in auth2_guard_propagation auth3_no_forward_denial credentials_agreement decode_agreement; do
             echo "::group::$crate"
             (cd "utils/dylint-lints/$crate" && cargo test)
             echo "::endgroup::"

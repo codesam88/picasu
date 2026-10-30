@@ -1,4 +1,4 @@
-warning: `GuardShare` has no assigned decode target but calls `decode_typed`
+warning: `GuardPresenter` has no assigned decode target but calls `decode_typed`
   --> $DIR/fail_share_must_not_decode.rs:21:38
    |
 LL |         let _claims: ClaimsSession = decode_typed(token).unwrap();
