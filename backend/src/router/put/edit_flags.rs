@@ -6,6 +6,7 @@ use crate::process::transitor::index_to_asset_id;
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
+use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
@@ -42,9 +43,9 @@ pub struct EditFlagsData {
 /// every flag as it was. An index whose asset record no longer exists is
 /// skipped and still answers 200.
 ///
-/// Errors: 400 malformed body — 401 missing or invalid credentials; share
-/// tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
-/// out-of-range index, or storage failure.
+/// Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
+/// credentials; share tokens are not accepted — 405 read-only mode — 500
+/// out-of-range index or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = EditFlagsData,
@@ -86,7 +87,7 @@ pub async fn edit_flags(
     let affected_album_ids =
         tokio::task::spawn_blocking(move || -> Result<HashSet<ArrayString<64>>, AppError> {
             let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-                .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+                .map_err(SnapshotReadError::into_app_error)?;
 
             let mut affected_album_ids = HashSet::new();
             let mut items: Vec<EditedItem> = Vec::new();
@@ -158,6 +159,25 @@ pub async fn edit_flags(
 #[cfg(test)]
 mod tests {
     use super::EditFlagsData;
+    use rocket::http::{ContentType, Status};
+    use serde_json::json;
+
+    use crate::tests::bootstrap::{cookie, lock, seed, setup};
+
+    #[test]
+    fn unknown_snapshot_is_400_not_500() {
+        let _g = lock();
+        let client = setup();
+        seed("s6-flags", false, None);
+        let status = client
+            .put("/put/edit_flags")
+            .header(ContentType::JSON)
+            .cookie(cookie("s6-flags", false))
+            .body(json!({ "indexArray": [], "timestamp": 0 }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::BadRequest);
+    }
 
     /// The request body only carries the trash flag now: favorite/archived
     /// were removed from the payload, so a re-serialized body must not

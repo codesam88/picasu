@@ -20,24 +20,6 @@ use redb::ReadableDatabase;
 use rocket::serde::json::Json;
 use std::time::Instant;
 
-/// Maps a tree-snapshot read failure onto the HTTP error model.
-///
-/// A snapshot id that is absent from both the in-memory map and the on-disk
-/// store was never minted or has been dropped by the ~1h expire check, which
-/// makes it client input: it maps to `ErrorKind::InvalidInput` (400), matching
-/// the `(status = 400, description = "Invalid input")` both operations already
-/// publish. Everything the snapshot store reports as `Storage` is a genuine
-/// server-side fault and stays `ErrorKind::Database` (500).
-fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
-    match err {
-        SnapshotReadError::NotFound { timestamp } => AppError::new(
-            ErrorKind::InvalidInput,
-            format!("Unknown snapshot id: {timestamp}"),
-        ),
-        SnapshotReadError::Storage(source) => AppError::from_err(ErrorKind::Database, source),
-    }
-}
-
 /// Serve one page of timeline/list rows for a snapshot timestamp.
 ///
 /// Returns the rows in the half-open index range `[start, end)` of the snapshot
@@ -93,8 +75,8 @@ pub async fn get_data(
         let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
         let metadata_table = open_metadata_table();
-        let tree_snapshot = open_tree_snapshot_table(timestamp)
-            .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot table"))?;
+        let tree_snapshot =
+            open_tree_snapshot_table(timestamp).map_err(SnapshotReadError::into_app_error)?;
 
         // Lean identity records for media rows (path, kind, times, album).
         let asset_txn = TREE
@@ -105,7 +87,11 @@ pub async fn get_data(
             .open_table(ASSET_BY_ID)
             .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
 
-        end = end.min(tree_snapshot.len().map_err(map_snapshot_read_error)?);
+        end = end.min(
+            tree_snapshot
+                .len()
+                .map_err(SnapshotReadError::into_app_error)?,
+        );
 
         if start >= end {
             return Ok(Json(vec![]));
@@ -247,7 +233,7 @@ pub async fn get_rows(
         let start_time = Instant::now();
         let filtered_rows = TREE_SNAPSHOT
             .read_row(index, timestamp)
-            .map_err(map_snapshot_read_error)?;
+            .map_err(SnapshotReadError::into_app_error)?;
         let duration = format!("{:?}", start_time.elapsed());
         debug!(duration = &*duration; "Read rows: index = {index}");
         Ok(Json(filtered_rows))
@@ -293,6 +279,6 @@ pub fn get_scroll_bar(
     let _ = auth?;
     let scrollbar_data = TREE_SNAPSHOT
         .read_scrollbar(timestamp)
-        .map_err(map_snapshot_read_error)?;
+        .map_err(SnapshotReadError::into_app_error)?;
     Ok(Json(scrollbar_data))
 }

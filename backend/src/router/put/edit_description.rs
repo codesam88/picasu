@@ -2,6 +2,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::sanitize::sanitize_text;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
+use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
@@ -38,9 +39,9 @@ pub struct SetUserDefinedDescription {
 /// and still answers 200, and a failed sidecar write is logged rather than
 /// failing the request.
 ///
-/// Errors: 400 malformed body — 401 missing or invalid session —
-/// 403 no enrolled user — 405 read-only mode — 500 unknown snapshot,
-/// out-of-range index, or storage failure.
+/// Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
+/// session — 403 no enrolled user — 405 read-only mode — 500 out-of-range
+/// index or storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetUserDefinedDescription,
@@ -78,7 +79,7 @@ pub async fn set_user_defined_description(
     let _ = mutation?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)
-            .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+            .map_err(SnapshotReadError::into_app_error)?;
 
         let asset_id = index_to_asset_id(&tree_snapshot, set_user_defined_description.index)
             .or_raise(|| {

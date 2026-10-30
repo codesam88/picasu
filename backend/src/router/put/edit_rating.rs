@@ -6,6 +6,7 @@ use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_me
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
+use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
@@ -35,9 +36,9 @@ pub struct EditRatingData {
 /// exists is skipped and still answers 200, and a failed sidecar write is
 /// logged rather than failing the request.
 ///
-/// Errors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing
-/// or invalid credentials; share tokens are not accepted — 405 read-only
-/// mode — 500 unknown snapshot, out-of-range index, or storage failure.
+/// Errors: 400 `rating` above 5, malformed body, or unknown snapshot id —
+/// 401 missing or invalid credentials; share tokens are not accepted —
+/// 405 read-only mode — 500 out-of-range index or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = EditRatingData,
@@ -82,7 +83,7 @@ pub async fn edit_rating(
 
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-            .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+            .map_err(SnapshotReadError::into_app_error)?;
 
         let mut edited: Vec<EditedItem> = Vec::new();
 

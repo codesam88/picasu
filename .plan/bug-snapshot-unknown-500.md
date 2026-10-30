@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: medium
 area: backend
@@ -33,3 +33,15 @@ scope it to genuine storage failures).
    `set_user_defined_description`) asserts non-5xx + JSON error body.
 2. Fix at the snapshot-open path (validate before opening).
 3. Re-run new tests + full backend suite; update spec annotations.
+
+## Resolution (2026-10-30)
+
+Fixed at the snapshot-open path, not per handler: `SnapshotReadError`
+grew `into_app_error` (`NotFound` → 400 "Unknown snapshot id",
+`Storage` → 500), `open_tree_snapshot_table` returns the typed error
+instead of erasing it via `anyhow::Context`, and all five call sites
+(`edit_flags`, `edit_rating`, `edit_tag`, `edit_description`,
+`GET /get/get-data`) map through it — `get_data`'s local copy retired.
+`get_rows`/`get_scroll_bar` already mapped this way. PUT handler docs
+moved "unknown snapshot" from the 500 to the 400 clause, matching the
+GET docs. Pinned by dispatch test `unknown_snapshot_is_400_not_500`.
