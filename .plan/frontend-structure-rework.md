@@ -36,6 +36,33 @@ dialogs.
    template slots/loading states first.
 5. Later, if the layering keeps being violated: `eslint-plugin-boundaries`
    sketch, theme-token lint, visual regression coverage.
+6. Test cleanup: detect and remove vacuous absence-only tests, then add
+   mutation testing as a periodic audit.
+
+Evidence (2026-10-30 audit of `frontend/src`, 276 test blocks):
+75 negations, 18 negation-only blocks. Two families: behavioral
+negatives with real stimulus (mock never called after driving the
+code — `passwordChange`, `registration`, `tokenStore`,
+`axiosInterceptor` — legitimate, falsifiable) versus source-text
+absence-only checks (`shareLoginModal` snackbar, `changePasswordForm`
+alias, `createShareModal` snackbar, `userManagement` navigation,
+`registerRoute` S7 probe/cache — pass even if the feature is deleted).
+History shows absence checks arriving with features, plus one commit
+explicitly removing vacuous ones and an existing R31 convention
+marking source tripwires as rewrite candidates once behavior tests
+exist.
+
+Planned mechanisms (not yet built):
+
+- Meta-test in the style of the structural scan: flag test blocks with
+  zero positive assertions inside source-reading test files (files
+  using `readFileSync` on components/routes), grandfather the known
+  list, convert each via pair-with-positive or rewrite-ticket. Scoped
+  to source-reading files so legitimate behavioral negatives stay
+  green.
+- StrykerJS mutation audit on the frontend suite (periodic, not a PR
+  gate): delete/change production code, confirm the suite fails.
+  Catches vacuous tests the meta-test pattern misses.
 
 Checks per change: `just frontend-check`, frontend vitest run,
 `just plan-lint`. No step claims enforcement until its check runs green
