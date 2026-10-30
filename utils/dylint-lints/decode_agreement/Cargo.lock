@@ -226,9 +226,9 @@ dependencies = [
 
 [[package]]
 name = "dylint"
-version = "6.1.1"
+version = "6.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d816dfae573cce757412edf51a2a4078c099e65a30ddca04eeb8dbe6ffae5c17"
+checksum = "66be24b8dd4ec2920fddd4eb2f47d51a22a586b07ca73668cd2b292f1c7fabdf"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -244,9 +244,9 @@ dependencies = [
 
 [[package]]
 name = "dylint_internal"
-version = "6.1.1"
+version = "6.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41be9f3e60a9d9e75b409249d7661708721c860694dc6931ba2d0b6064f667fd"
+checksum = "7a920e454e4ba2845229c310246d7970cee9db94f6af100fe19120a8c221ef4c"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -255,6 +255,7 @@ dependencies = [
  "git2",
  "home",
  "log",
+ "pastey",
  "regex",
  "semver",
  "serde",
@@ -268,9 +269,9 @@ dependencies = [
 
 [[package]]
 name = "dylint_linting"
-version = "6.1.1"
+version = "6.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad79092ab934678503d5b5e2ec64fcaa54dede767497adcd93feff58fa8ef190"
+checksum = "cb4a8f5c2320a9d69c56f2ef398467d07a0320f0e6957293f82f41199638324b"
 dependencies = [
  "cargo_metadata",
  "dylint_internal",
@@ -283,9 +284,9 @@ dependencies = [
 
 [[package]]
 name = "dylint_testing"
-version = "6.1.1"
+version = "6.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44d268e66a9c5ce135d0a006d1593c369e6aed09cb10a977f8f60dc98a32e75f"
+checksum = "b7650f335fdccc1c3432ad1bb1da6c9890910e9b87ef74cf7ee8eccc5b0e737c"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -591,6 +592,12 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "pastey"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pin-project-lite"

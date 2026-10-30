@@ -180,7 +180,7 @@ openapi-json-match:
     echo "openapi.json matches the generated spec"
 
 # Pinned cargo-dylint release (matches the lint crate's dylint_linting; no sha256 — crates.io verification).
-dylint_version := "6.1.0"
+dylint_version := "6.3.1"
 
 # Install pinned cargo-dylint (idempotent)
 [group('utils')]
