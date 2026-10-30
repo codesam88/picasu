@@ -98,6 +98,28 @@ describe('UserManagement grouped display', () => {
   })
 })
 
+describe('UserManagement promote confirmation', () => {
+  test('promotion confirms like demotion, with its own prompt', () => {
+    expect(source).toMatch(/Make admin\?/)
+    expect(source).toMatch(/Demote admin\?/)
+  })
+
+  test('shield toggle stages a confirm instead of applying the role itself', () => {
+    // The toggle must never flip admin state or call the API inline —
+    // granting admin is too destructive for an unconfirmed click. Scope
+    // to the toggle body so unrelated confirms cannot satisfy the pin.
+    const toggleStart = source.indexOf('const onToggle')
+    const toggleEnd = source.indexOf('const cancelRoleChange')
+    expect(toggleStart).toBeGreaterThanOrEqual(0)
+    expect(toggleEnd).toBeGreaterThan(toggleStart)
+    const toggleBody = source.slice(toggleStart, toggleEnd)
+    expect(toggleBody).toMatch(/pendingTarget\.value = user/)
+    expect(toggleBody).toMatch(/confirmOpen\.value = true/)
+    expect(toggleBody).not.toMatch(/applyRoleChange|setUserAdmin/)
+    expect(toggleBody).not.toMatch(/\.admin =/)
+  })
+})
+
 describe('UserManagement single-owner display', () => {
   test('no duplicate navigation to login (interceptor owns the redirect)', () => {
     expect(source).not.toMatch(/router\.push/)

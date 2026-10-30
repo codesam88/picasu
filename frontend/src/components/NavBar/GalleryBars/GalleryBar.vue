@@ -185,7 +185,8 @@ const baseTitleMap: Record<string, string> = {
   albums: 'Albums',
   album: 'Album',
   tags: 'Tags',
-  config: 'Settings'
+  shares: 'Shares',
+  config: 'Admin'
 }
 
 const pageTitle = computed(() => {

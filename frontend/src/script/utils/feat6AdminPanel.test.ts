@@ -83,6 +83,29 @@ describe('FEAT6 invite management panel', () => {
     expect(inviteMgmt).toMatch(/<v-sheet[\s\S]*?border/)
   })
 
+  test('creating an invite never touches the clipboard', () => {
+    // The token link is shown once in the alert; writing it to the
+    // clipboard unprompted would leak it to whatever reads the clipboard.
+    const createStart = inviteMgmt.indexOf('const create = async')
+    const createEnd = inviteMgmt.indexOf('const revoke = async')
+    expect(createStart).toBeGreaterThanOrEqual(0)
+    expect(createEnd).toBeGreaterThan(createStart)
+    const createBody = inviteMgmt.slice(createStart, createEnd)
+    expect(createBody).not.toMatch(/clipboard/i)
+    expect(createBody).not.toMatch(/copyLink|copyTextToClipboard/)
+  })
+
+  test('copy uses the secure Clipboard API, gated on a secure context', () => {
+    // navigator.clipboard is undefined in insecure contexts (plain HTTP)
+    // and execCommand('copy') is deprecated, so the Copy button renders
+    // only where the secure API can run; otherwise a manual-copy hint
+    // shows instead of a button that always errors.
+    expect(inviteMgmt).not.toMatch(/navigator\.clipboard/)
+    expect(inviteMgmt).not.toMatch(/execCommand/)
+    expect(inviteMgmt).toMatch(/v-if="showCopy"/)
+    expect(inviteMgmt).toMatch(/Select and copy manually/)
+  })
+
   test('status derivation is used for display', () => {
     expect(inviteMgmt).toMatch(/inviteStatus\(/)
   })

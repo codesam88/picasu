@@ -37,5 +37,5 @@ type BaseName =
   | 'login'
   | 'register'
   | 'share'
-  | 'links'
+  | 'shares'
   | 'config'

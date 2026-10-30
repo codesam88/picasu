@@ -45,7 +45,8 @@
           <div class="text-body-2 mb-1">Invite link (shown once — copy it now):</div>
           <div class="d-flex align-center gap-2">
             <code class="text-caption">{{ createdLink }}</code>
-            <v-btn size="small" variant="text" @click="copyLink">Copy</v-btn>
+            <v-btn v-if="showCopy" size="small" variant="text" @click="copyLink">Copy</v-btn>
+            <span v-else class="text-caption text-medium-emphasis">Select and copy manually</span>
           </div>
         </v-alert>
       </v-card-text>
@@ -98,6 +99,7 @@ import {
 import type { InviteView } from '@/api/invites'
 import { inviteStatus } from '@/script/utils/inviteStatus'
 import { MAX_EXPIRY_HOURS, parseExpiryInput } from '@/script/utils/expiryInput'
+import { copyTextToClipboard, canShowCopyButton } from '@/script/utils/clipboard'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { errorDisplay } from '@/script/utils/errorDisplay'
@@ -111,6 +113,9 @@ const creating = ref(false)
 const revoking = ref<string | null>(null)
 const createdLink = ref<string | null>(null)
 const revokedIds = ref<Set<string>>(new Set())
+
+/// Copy button renders only where the secure Clipboard API can run.
+const showCopy = computed(() => canShowCopyButton())
 
 // Bound the server enforces on `expiresInHours`, fetched when the panel
 // builds; the mirrored const stands in until the fetch lands (and if it
@@ -184,11 +189,11 @@ const revoke = async (id: string) => {
 
 const copyLink = async () => {
   if (createdLink.value === null) return
-  try {
-    await navigator.clipboard.writeText(createdLink.value)
+  const ok = await copyTextToClipboard(createdLink.value)
+  if (ok) {
     messageStore.success('Link copied')
-  } catch (error: unknown) {
-    messageStore.error(errorDisplay(error))
+  } else {
+    messageStore.error('Copy failed — select the link manually')
   }
 }
 

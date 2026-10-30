@@ -1,7 +1,7 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold"> Advanced Settings </v-card-title>
+    <v-card border flat class="danger-zone-card">
+      <v-card-title class="font-weight-bold text-error">Danger Zone</v-card-title>
       <v-divider thickness="4" variant="double"></v-divider>
 
       <v-list-item
@@ -24,6 +24,25 @@
       </v-list-item>
 
       <v-divider></v-divider>
+      <v-list-item
+        v-if="isAdmin"
+        title="Allow Registration"
+        subtitle="Permit new users to register"
+      >
+        <template #append>
+          <v-switch
+            :model-value="allowRegistration"
+            color="error"
+            hide-details
+            inset
+            aria-label="Allow Registration"
+            :disabled="allowRegistrationSaving"
+            @update:model-value="$emit('update:allowRegistration', $event)"
+            @click.stop
+          ></v-switch>
+        </template>
+      </v-list-item>
+      <v-divider v-if="isAdmin"></v-divider>
       <v-list-item title="JWT Authentication Key" subtitle="Resetting signs everyone out">
         <template #append>
           <v-btn
@@ -70,15 +89,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { resetAuthKey } from '@/api/config'
 import { disableReadOnly } from '@/api/adminConfig'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { AppConfig } from '@/api/config'
+import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 
 const readOnlyMode = defineModel<boolean>('readOnlyMode', { required: true })
+const allowRegistration = defineModel<boolean>('allowRegistration', { required: true })
+
+defineProps<{ allowRegistrationSaving?: boolean }>()
+defineEmits<(e: 'update:allowRegistration', value: unknown) => void>()
+
+const currentUser = useCurrentUser()
+const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
@@ -144,8 +171,14 @@ const save = async () => {
   const success = await configStore.updateConfig(payload)
 
   if (success === true) {
-    messageStore.success('Advanced settings saved successfully')
+    messageStore.success('Danger zone settings saved successfully')
   }
   loading.value = false
 }
 </script>
+
+<style scoped>
+.danger-zone-card {
+  border-color: rgb(var(--v-theme-error)) !important;
+}
+</style>
