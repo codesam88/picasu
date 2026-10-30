@@ -41,32 +41,49 @@
 
       <v-list-item v-for="user in users" :key="user.userId" :title="user.userId">
         <template #append>
-          <v-btn
-            v-if="isAdmin"
-            icon="mdi-key-variant"
-            variant="text"
-            color="primary"
-            size="small"
-            :disabled="saving"
-            @click="askSetPassword(user)"
-          ></v-btn>
-          <v-btn
-            v-if="!isRowLocked(user)"
-            icon="mdi-delete-outline"
-            variant="text"
-            color="error"
-            size="small"
-            :disabled="saving"
-            @click="askDelete(user)"
-          ></v-btn>
-          <v-switch
-            :model-value="user.admin"
-            color="primary"
-            hide-details
-            inset
-            :disabled="isRowLocked(user) || saving"
-            @update:model-value="onToggle(user, $event)"
-          ></v-switch>
+          <v-tooltip v-if="isAdmin" location="top" text="Set password">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-key-variant"
+                variant="text"
+                color="primary"
+                size="small"
+                aria-label="Set password"
+                :disabled="saving"
+                @click="askSetPassword(user)"
+              ></v-btn>
+            </template>
+          </v-tooltip>
+          <v-tooltip location="top" :text="user.admin ? 'Demote admin' : 'Make admin'">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
+                variant="text"
+                size="small"
+                :color="user.admin ? 'primary' : undefined"
+                :aria-label="user.admin ? 'Demote admin' : 'Make admin'"
+                :aria-pressed="user.admin"
+                :disabled="isRowLocked(user) || saving"
+                @click="onToggle(user, !user.admin)"
+              ></v-btn>
+            </template>
+          </v-tooltip>
+          <v-tooltip v-if="!isRowLocked(user)" location="top" text="Delete user">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-delete-outline"
+                variant="text"
+                color="error"
+                size="small"
+                aria-label="Delete user"
+                :disabled="saving"
+                @click="askDelete(user)"
+              ></v-btn>
+            </template>
+          </v-tooltip>
         </template>
         <template #subtitle>
           <span v-if="isRowLocked(user)"
@@ -213,11 +230,11 @@ const applyRoleChange = async (target: UserSummary, admin: boolean) => {
   }
 }
 
-const onToggle = (user: UserSummary, value: unknown) => {
-  const admin = value === true
+const onToggle = (user: UserSummary, admin: boolean) => {
   if (!admin) {
-    // Demotion always requires confirmation. The switch is controlled
-    // (:model-value), so nothing has mutated yet: just stage the confirm.
+    // Demotion always requires confirmation. The shield button passes the
+    // flipped flag explicitly, so nothing has mutated yet: just stage the
+    // confirm.
     pendingTarget.value = user
     confirmOpen.value = true
     return
