@@ -57,38 +57,37 @@
                 ></v-btn>
               </template>
             </v-tooltip>
-            <v-tooltip location="top" :text="user.admin ? 'Demote admin' : 'Make admin'">
+            <v-tooltip location="top" :text="shieldLabel(user)">
               <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
-                  variant="text"
-                  size="small"
-                  :color="user.admin ? 'primary' : undefined"
-                  :aria-label="user.admin ? 'Demote admin' : 'Make admin'"
-                  :aria-pressed="user.admin"
-                  :disabled="isRowLocked(user) || saving"
-                  @click="onToggle(user, !user.admin)"
-                ></v-btn>
+                <span v-bind="props" class="d-inline-flex">
+                  <v-btn
+                    :icon="user.admin ? 'mdi-shield-crown' : 'mdi-shield-outline'"
+                    variant="text"
+                    size="small"
+                    :color="user.admin ? 'primary' : undefined"
+                    :aria-label="shieldLabel(user)"
+                    :aria-pressed="user.admin"
+                    :disabled="isRowLocked(user) || saving"
+                    @click="onToggle(user, !user.admin)"
+                  ></v-btn>
+                </span>
               </template>
             </v-tooltip>
-            <v-tooltip v-if="!isRowLocked(user)" location="top" text="Delete user">
+            <v-tooltip location="top" :text="deleteLabel(user)">
               <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  icon="mdi-delete-outline"
-                  variant="text"
-                  color="error"
-                  size="small"
-                  aria-label="Delete user"
-                  :disabled="saving"
-                  @click="askDelete(user)"
-                ></v-btn>
+                <span v-bind="props" class="d-inline-flex">
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    variant="text"
+                    color="error"
+                    size="small"
+                    :aria-label="deleteLabel(user)"
+                    :disabled="isRowLocked(user) || saving"
+                    @click="askDelete(user)"
+                  ></v-btn>
+                </span>
               </template>
             </v-tooltip>
-          </template>
-          <template v-if="isRowLocked(user)" #subtitle>
-            <span>Promote someone else first to demote your own account</span>
           </template>
         </v-list-item>
       </template>
@@ -199,6 +198,22 @@ const userGroups = computed(() => groupUsersByRole(users.value))
 
 const isRowLocked = (user: UserSummary): boolean =>
   selfRowState(me.value, user.userId, adminCount.value) === 'sole-admin'
+
+// Tooltip and accessible name for the shield toggle. When demote is locked
+// the phrasing carries the reason: the disabled button shows no subtitle
+// and fires no hover of its own (the activator is the wrapper span).
+const shieldLabel = (user: UserSummary): string => {
+  if (isRowLocked(user)) return 'Cannot demote admin - promote another user first'
+  return user.admin ? 'Demote admin' : 'Make admin'
+}
+
+// Same treatment for delete: the locked row keeps a visible but disabled
+// trash with the reason instead of hiding the action. Deleting the sole
+// admin is a backend 409, so the disabled state is truthful.
+const deleteLabel = (user: UserSummary): string => {
+  if (isRowLocked(user)) return 'Cannot delete admin - promote another user first'
+  return 'Delete user'
+}
 
 // --- Actions ---
 const refreshUsers = async () => {

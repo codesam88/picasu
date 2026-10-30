@@ -47,11 +47,10 @@ describe('UserManagement admin shield toggle', () => {
 describe('UserManagement row-action labels', () => {
   test('icon buttons expose hover labels and accessible names', () => {
     // Bare icon buttons carry no affordance; the house pattern (LinksPage,
-    // GalleryBar) is v-tooltip + aria-label.
+    // GalleryBar) is v-tooltip + aria-label. Set-password keeps static
+    // strings; shield and delete bind dynamic labels (own tests below).
     expect(source).toMatch(/text="Set password"/)
-    expect(source).toMatch(/text="Delete user"/)
     expect(source).toMatch(/aria-label="Set password"/)
-    expect(source).toMatch(/aria-label="Delete user"/)
   })
 })
 
@@ -64,7 +63,29 @@ describe('UserManagement grouped display', () => {
 
   test('role is conveyed by grouping, not a per-row subtitle', () => {
     expect(source).not.toMatch(/Standard user/)
-    expect(source).toMatch(/Promote someone else first/)
+    expect(source).not.toMatch(/#subtitle/)
+    expect(source).toMatch(/promote another user first/)
+  })
+
+  test('lock hint lives on the shield tooltip, readable while disabled', () => {
+    // A disabled button fires no hover events, so the tooltip activator is
+    // a wrapper span; the label picks the locked phrasing when demote is
+    // locked, since no subtitle explains the row anymore.
+    expect(source).toMatch(/<span v-bind="props"/)
+    expect(source).toMatch(/:text="shieldLabel\(user\)"/)
+    expect(source).toMatch(/:aria-label="shieldLabel\(user\)"/)
+    expect(source).toMatch(/Cannot demote admin - promote another user first/)
+  })
+
+  test('locked delete stays visible as disabled with a reason', () => {
+    // Hiding the action teaches nothing; like the shield, the trash stays
+    // rendered but disabled, with the tooltip carrying the reason. Both
+    // tooltips need the span activator since disabled buttons fire no hover.
+    expect(source).not.toMatch(/v-if="!isRowLocked\(user\)"/)
+    expect(source).toMatch(/:text="deleteLabel\(user\)"/)
+    expect(source).toMatch(/:aria-label="deleteLabel\(user\)"/)
+    expect(source).toMatch(/Cannot delete admin - promote another user first/)
+    expect(source.match(/<span v-bind="props"/g)).toHaveLength(2)
   })
 })
 
