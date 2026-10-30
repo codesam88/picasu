@@ -558,6 +558,39 @@
   {
     "method": "GET",
     "modeled": true,
+    "operationId": "invite_limits_handler",
+    "path": "/get/invites/limits",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "credentials": [
+        "session"
+      ],
+      "effects": [
+        "read"
+      ],
+      "fallback": [],
+      "guards": [
+        "GuardAdmin"
+      ],
+      "invariants": [
+        "AUTH-11"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "waivers": {}
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
     "operationId": "get_metadata",
     "path": "/get/metadata/{asset_id}",
     "security": [

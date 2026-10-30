@@ -15,8 +15,9 @@ use crate::router::{AppResult, GuardResult};
 #[serde(rename_all = "camelCase")]
 pub struct CreateInviteRequest {
     /// Lifetime of the invite in hours, required: `0` means the invite
-    /// never expires. Negative values are rejected. Pass 168 for the
-    /// conventional 7-day lifetime.
+    /// never expires, `1`–`8760` (one year) lands on that deadline.
+    /// Negative values and values past one year are rejected. Pass 168 for
+    /// the conventional 7-day lifetime.
     pub expires_in_hours: i64,
     /// Optional user id the invite is bound to. Trimmed; empty or
     /// missing means unbound. Validated as a user id.
@@ -49,8 +50,9 @@ pub struct CreateInviteResponse {
 /// `GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional
 /// `username` binds the invite to that user id (403 on mismatch at redeem).
 ///
-/// Errors: 400 negative `expiresInHours` or invalid `username` — 401 missing or invalid admin
-/// credentials — 405 read-only mode — 500 storage failure.
+/// Errors: 400 negative or over-limit `expiresInHours` (max one year) or
+/// invalid `username` — 401 missing or invalid admin credentials — 405
+/// read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         request_body = CreateInviteRequest,
@@ -97,4 +99,53 @@ pub fn create_invite_handler(
         invite: record.into_view(invites::hash_token(&token)),
         token,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use rocket::http::{ContentType, Status};
+    use serde_json::json;
+
+    use crate::tests::bootstrap::{cookie, lock, seed, setup};
+
+    fn post_invite(client: &rocket::local::blocking::Client, body: &serde_json::Value) -> Status {
+        client
+            .post("/post/invites")
+            .header(ContentType::JSON)
+            .cookie(cookie("s6-root", true))
+            .body(body.to_string())
+            .dispatch()
+            .status()
+    }
+
+    #[test]
+    fn extreme_expiry_is_400_not_500() {
+        let _g = lock();
+        let client = setup();
+        seed("s6-root", true, None);
+        // Over the one-year bound and far past u64 arithmetic: both are
+        // client errors, never a 500 (debug panic or release wrap).
+        assert_eq!(
+            post_invite(&client, &json!({ "expiresInHours": 9000 })),
+            Status::BadRequest
+        );
+        assert_eq!(
+            post_invite(&client, &json!({ "expiresInHours": i64::MAX })),
+            Status::BadRequest
+        );
+    }
+
+    #[test]
+    fn max_expiry_is_accepted() {
+        let _g = lock();
+        let client = setup();
+        seed("s6-root", true, None);
+        assert_eq!(
+            post_invite(
+                &client,
+                &json!({ "expiresInHours": crate::auth::invites::MAX_EXPIRY_HOURS })
+            ),
+            Status::Ok
+        );
+    }
 }

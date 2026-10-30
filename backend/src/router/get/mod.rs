@@ -13,6 +13,7 @@ pub mod get_metadata;
 pub mod get_page;
 pub mod get_prefetch;
 pub mod invites;
+pub mod invites_limits;
 pub mod self_profile;
 // The probe handlers are registered only in test builds (see
 // `generate_get_routes`); outside them they stay compiled — `#[utoipauto]` names
@@ -74,6 +75,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         users::list_users_handler,
         server_info::server_info_handler,
         invites::list_invites_handler,
+        invites_limits::invite_limits_handler,
         self_profile::get_self_profile_handler,
     ];
 

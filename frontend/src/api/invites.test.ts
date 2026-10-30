@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { buildInviteLink, createInvite, InviteViewSchema } from './invites'
+import { buildInviteLink, createInvite, getInviteLimits, InviteViewSchema } from './invites'
 
 vi.mock('axios')
 
@@ -73,6 +73,14 @@ describe('createInvite', () => {
     expect(mockedAxios.post).toHaveBeenCalledWith('/post/invites', {
       expiresInHours: 168
     })
+  })
+})
+
+describe('getInviteLimits', () => {
+  test('returns maxExpiryHours from GET /get/invites/limits', async () => {
+    mockedAxios.get = vi.fn().mockResolvedValue({ data: { maxExpiryHours: 8760 } })
+    await expect(getInviteLimits()).resolves.toEqual({ maxExpiryHours: 8760 })
+    expect(mockedAxios.get).toHaveBeenCalledWith('/get/invites/limits')
   })
 })
 

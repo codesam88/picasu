@@ -67,6 +67,16 @@ describe('FEAT6 invite management panel', () => {
     expect(inviteMgmt).toMatch(/refreshInvites\(\)/)
   })
 
+  test('expiry input parses <integer><unit> against the server bound', () => {
+    // The raw-hours number field accepted anything finite; the parser
+    // strips spaces, enforces h/d/m and validates against the bound the
+    // console fetches when building the panel.
+    expect(inviteMgmt).toMatch(/parseExpiryInput\(/)
+    expect(inviteMgmt).toMatch(/getInviteLimits\(/)
+    expect(inviteMgmt).toMatch(/maxExpiryHours/)
+    expect(inviteMgmt).not.toMatch(/type="number"/)
+  })
+
   test('invite rows sit in an inset sub-table, aligned with the form', () => {
     // The create form lives in v-card-text; a bare v-list as a direct card
     // child bleeds edge to edge and reads as outside the frame.

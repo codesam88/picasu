@@ -53,10 +53,5 @@ accepted:
     check: content_type_conformance
     failure: UndefinedContentType
     bug: bug-spa-fallback-missing-param
-  # bug-invite-expiry-overflow: extreme expiresInHours overflows to a 500.
-  - method: POST
-    path: /post/invites
-    operation: "POST /post/invites"
-    check: not_a_server_error
-    failure: ServerError
-    bug: bug-invite-expiry-overflow
+  # (bug-invite-expiry-overflow resolved: extreme expiresInHours is now a
+  # 400 via MAX_EXPIRY_HOURS + checked arithmetic, so this entry was removed.)
