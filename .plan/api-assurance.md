@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: medium
 area: testing
@@ -107,26 +107,27 @@ generate from.
 
 ## Status overview (single source of status; bodies below hold design detail)
 
-| Item                                                                          | Status                                                                                           |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)  | done (see Progress)                                                                              |
-| Step 6 AUTH-3 lint + triage                                                   | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline)      |
-| Step 6 AUTH-11/12                                                             | done (S9 role, S10 effects incl. AUTH-12 manage half; typed waivers replace the exemption class) |
-| Step 6 decode agreement                                                       | done (`decode_agreement` crate)                                                                  |
-| Step 6 claims-consumption (F3)                                                | open, queued                                                                                     |
-| Step 7 UI fixtures                                                            | done (4 crates, UI suites run in the dylint CI job); allowlist/baseline open                     |
-| Step 8 expiry/decode ratchets                                                 | open                                                                                             |
-| Step 9 env-var lint                                                           | done, gating; sequencing rule amended to dylint scope; further domains open                      |
-| Step 10 + S-rules                                                             | S1/S2/S5/S6/S7/S8 gating, S1 paired both ways, S3 gating (`credentials_agreement`); done         |
-| Fuzz gate (tier 1)                                                            | done — `just fuzz-check` gates CI against the accepted-findings baseline; tier 2 advisory        |
-| Fuzz matrix gate                                                              | done — check list rebuilt from the matrix per run, executed by `just fuzz-matrix` in CI          |
-| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | open (allowlist/baseline); CI wiring done, S3 gated in CI                                        |
-| Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`) |
-| Consumers: hook derivation + S4 checks                                        | done; gating via `just fuzz-matrix` (28 ops, rebuilt per run)                                    |
-| Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)              |
-| Consumers: effects/invariants backfill                                        | done (3-class vocabulary, S9/S10/S11 rules, invariant existence test)                            |
-| Contract checker coverage + strength                                          | open (`.plan/api-assurance-coverage.md`: registry, existence test, generated profile, floor)     |
-| `authz-model.md` derivation-back                                              | deferred until matrix proves itself                                                              |
+| Item                                                                          | Status                                                                                              |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Steps 1–5 (breakcheck, hybrid lints, pilot, reconciliation, strategy record)  | done (see Progress)                                                                                 |
+| Step 6 AUTH-3 lint + triage                                                   | lint done; triage done — 2 genuine findings, gating decision open (fix vs finding-baseline)         |
+| Step 6 AUTH-11/12                                                             | done (S9 role, S10 effects incl. AUTH-12 manage half; typed waivers replace the exemption class)    |
+| Step 6 decode agreement                                                       | done (`decode_agreement` crate)                                                                     |
+| Step 6 claims-consumption (F3)                                                | open — carried forward (38 sites; see Carried forward)                                              |
+| Step 7 UI fixtures                                                            | done (4 crates, UI suites run in the dylint CI job); allowlist/baseline open                        |
+| Step 8 expiry/decode ratchets                                                 | open — carried forward                                                                              |
+| Step 9 env-var lint                                                           | done, gating; sequencing rule amended to dylint scope; further domains open                         |
+| Step 10 + S-rules                                                             | S1–S12 gating (incl. closed field set, `fallback` vocabulary), S1 paired both ways, S3 gating; done |
+| Fuzz gate (tier 1)                                                            | done — `just fuzz-check` gates CI against the accepted-findings baseline; tier 2 advisory           |
+| Fuzz matrix gate                                                              | done — check list rebuilt from the matrix per run, executed by `just fuzz-matrix` in CI             |
+| Dylint gating story (allowlist/baseline, CI wiring, re-pin as run-the-suites) | allowlist/baseline open — carried forward; CI wiring done, S3 gated in CI                           |
+| Consumers: matrix generator                                                   | done (`scripts/auth-matrix.mjs` → human + machine, `auth-matrix-check` phase of `openapi-check`)    |
+| Consumers: hook derivation + S4 checks                                        | done; gating via `just fuzz-matrix` (28 ops, rebuilt per run)                                       |
+| Consumers: generated negatives                                                | done for the role layer (`backend/src/tests/matrix_negatives.rs`, 92 pairs, gating)                 |
+| Consumers: effects/invariants backfill                                        | done (3-class vocabulary, S9/S10/S11 rules, invariant existence test)                               |
+| Contract checker coverage + strength                                          | open — separate task (`.plan/api-assurance-coverage.md`: registry, existence test, profile, floor)  |
+| Behavioural cells (share principal, expiry, flags, share password)            | open — carried forward                                                                              |
+| `authz-model.md` derivation-back                                              | deferred until matrix proves itself                                                                 |
 
 ## Steps (sketch — phases in order, details at build time)
 
@@ -269,8 +270,8 @@ read-only completeness); background in `docs/briefs/dylint.md`.
   → `ClaimsSession`, hash guards → `ClaimsAsset`, timestamp guards →
   `ClaimsSnapshot`). Directly decidable, GREEN on day one — pins the
   F1 incident class.
-- **ClaimsSession consumption (F3, queued after):** 23 handlers do
-  `let _ = auth?` — rejection propagated but claims never read.
+- **ClaimsSession consumption (F3, carried forward):** 38 sites in 28 files
+  do `let _ = auth?` — rejection propagated but claims never read.
   Extends AUTH-2's use analysis with the target-source question
   (claims-derived target vs body/query-derived on a share-guarded
   write); triage may yield genuine F3s.
@@ -372,8 +373,9 @@ Background: `docs/briefs/openapi-auth-metadata.md`,
 Interfaces: `openapi-sanity` parses the extension (A9 no longer
 fires), validates shape against one schema, and cross-checks
 extension against guard signature (`GuardPresenter` present ⇒ share
-schemes in `security`; `GuardMutate` ⇒ 405 declared;
-`public: true` ⇔ `security: []`); a generated per-operation auth
+schemes in `security`; `GuardMutate` ⇒ 405 declared; publicness derived
+from the guards ⇔ `security(())`; `fallback` names non-guard admission
+paths); a generated per-operation auth
 matrix (op × principals × typ × scope × readonly × reauth × effects)
 is diffed in CI next to the spec for security review; the
 Schemathesis tier-2 hooks consume the matrix for share-guarded sets,
@@ -441,11 +443,64 @@ Consumers, in build order:
 
 Relation to the rest of this plan: steps 1–5 are done foundations
 (contract gate, hybrid lint runner, pilot, reconciliation, strategy
-record); steps 6–9 stay open (AUTH-3/11/12 spikes, UI-fixture
-runner, expiry/decode ratchets, cross-domain lints) and remain part
-of the overall strategy. Final shape and reasoning land in
+record); steps 6 (F3), 8 (expiry/decode ratchets) and the dylint
+allowlist remain open and are carried forward below; step 7 (UI
+fixtures) and step 9 (env-var gate) are done. Final shape and reasoning land in
 `docs/api-assurance.md` (permanent record for developers and
 security reviewers); this file stays the implementation roadmap.
+
+## Carried forward
+
+The layer's main goals are met: S1–S12 gate the annotated contract, the
+generator produces the reviewed matrix, and the matrix drives both the fuzz
+checks and the generated role-layer negatives. The items below are known and
+deliberately left for follow-up tasks; none blocks the current gates.
+
+### Behavioural cells not yet pinned
+
+- **Share principal in `matrix_negatives`.** The role matrix covers anonymous,
+  viewer and admin only. Share credentials need a seeded album and share, and
+  refusals can be `404` (foreign album) rather than `401`, so the cell needs an
+  expectation family. Claim: refused on admin/user-only operations, admitted on
+  rows that list `share`, never admitted across albums.
+- **Expired share on an ordinary read.** `validate_share_access` answers `403`
+  for `exp <= now`; only renewal after expiry is tested today.
+- **Share flags (AUTH-5).** `show_metadata=false` redacts metadata fields;
+  `show_download=false` mints asset tokens with `allow_original=false`. Neither
+  cell is pinned, and the shape is content narrowing, not a row-level refusal.
+- **Share password.** Missing or wrong `x-share-password` answers `401`; no
+  scenario test pins the refusal (`GuardReauth` wrong-password `403` on lift and
+  password change is covered).
+- **`shareScope` static agreement.** No rule compares the declared scope with
+  the enforced binding; the S4 probe covers one operation.
+
+### Claims consumption and remaining lints
+
+- **F3 triage.** 38 `let _ = auth?` sites (28 files): classify claims-derived
+  target required (AUTH-4 violation) versus guard-as-gate, then encode the
+  decidable subset as a lint.
+- **Expiry confinement.** Flag `VALIDATION_ALLOW_EXPIRED` inside a `FromRequest`
+  impl; the two renewal handlers are the only legitimate uses.
+- **Decode path.** Flag a JWT decode outside `decode_typed`; the `typ` backstop
+  holds only while every decode flows through it.
+- **Dylint allowlist/baseline** for triaged findings, so advisory exceptions
+  have a recorded home instead of per-site `#[allow]`.
+
+### Model limits
+
+- `fallback` records that a non-guard admission path exists, not whether a given
+  invite or knob state satisfies it.
+- Share query fallback (`albumId`/`shareId`) resolves an identity in
+  `GuardPresenter` but appears in no published scheme.
+- `invariants` reference a source-verified subset of `authz-model.md`.
+- One `bearer_token` scheme covers `snapshot`, `asset` and share-credential
+  tokens; `credentials` stays authoritative until the schemes split.
+- `authz-model.md` remains hand-maintained; derivation-back is deferred.
+
+### Coverage registry
+
+- `.plan/api-assurance-coverage.md` (open): the contract-element registry,
+  existence test, generated profile and strength floor.
 
 ## Progress
 
@@ -535,3 +590,14 @@ security reviewers); this file stays the implementation roadmap.
   admin-only expectation to admitted reports 21 violations. Public
   operations and share credentials stay out of scope, as recorded in
   `docs/api-assurance.md`.
+- Step 10 field rename done 2026-10-30: `tokenTyp` → `credentials` in the
+  annotation, generated matrix, hooks and docs; dylint crate and lint
+  `credentials_agreement`; fuzz check id `wrong-credential`. No behaviour
+  change.
+- Step 10 admission model done 2026-10-30: the authored `public` boolean is
+  removed and derived from the guards into the machine artifact; `fallback`
+  names `registration-invite` / `allow-registration` on registration and
+  `bootstrap-window` on bootstrap; S12 closes the extension field set and
+  validates the vocabulary and placement; retired `public`, `readonly` and
+  `reauth` fields dropped from fixtures. The Rust negative matrix reads the
+  derived `public` from the committed matrix.
