@@ -34,4 +34,5 @@ steps:
       - ui.route: /config
       - ui.text_visible: User Management
       - ui.text_visible: admin
-      - ui.text_visible: Promote someone else first to demote your own account
+      - ui.disabled: button/Cannot demote admin - promote another user first
+      - ui.disabled: button/Cannot delete admin - promote another user first
