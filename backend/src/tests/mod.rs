@@ -20,6 +20,9 @@ mod share_secrets;
 mod share_ownership;
 
 #[cfg(test)]
+mod personal_reads;
+
+#[cfg(test)]
 mod user_writes;
 
 #[cfg(test)]
