@@ -51,6 +51,8 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::tags,
         get_page::albums,
         get_page::albums_view,
+        get_page::my_albums,
+        get_page::my_albums_view,
         get_page::album_page,
         get_page::share,
         get_page::shares,

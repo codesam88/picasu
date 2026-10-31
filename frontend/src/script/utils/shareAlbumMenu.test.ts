@@ -28,10 +28,10 @@ describe('Share album placement', () => {
     expect(batchMenu).toMatch(/modalStore\.shareAlbumId/)
   })
 
-  test('the share entry is admin-only and targets the dialog at its album', () => {
+  test('the share entry is available to authenticated users and targets the dialog at its album', () => {
     expect(shareItem).toMatch(/Share album/)
     expect(shareItem).toMatch(/mdi-share-variant/)
-    expect(shareItem).toMatch(/canSeeUserPanel|isAdmin/)
+    expect(shareItem).toMatch(/useCurrentUser|canShare|me\.value/)
     expect(shareItem).toMatch(/shareAlbumId/)
     expect(shareItem).toMatch(/showShareModal = true/)
     expect(shareItem).toMatch(/singleSelectedAlbumId|isSingleAlbumSelected/)

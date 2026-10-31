@@ -6,9 +6,13 @@ export async function prefetch(
   filterJsonString: string | null,
   _priorityId: string | undefined = 'default',
   _reverse: string | undefined = 'false',
-  locate: null | string = null
+  locate: null | string = null,
+  includePersonal: boolean = false
 ): Promise<PrefetchReturn> {
-  const fetchUrl = `/get/prefetch?${locate !== null ? `locate=${locate}` : ''}`
+  const params: string[] = []
+  if (locate !== null) params.push(`locate=${locate}`)
+  if (includePersonal) params.push('include_personal=true')
+  const fetchUrl = `/get/prefetch?${params.join('&')}`
 
   const axiosResponse = await axios.post<Prefetch>(fetchUrl, filterJsonString, {
     headers: {

@@ -25,6 +25,13 @@ export async function provisionCliUsers(paths: WorkerPaths, users: CliUserDecl[]
   for (const user of users) {
     await provisionOneUser(paths, user)
   }
+  // Personal areas: pre-create each user's home directory so the backend can
+  // index it (ensure_personal_home is best-effort and the CLI bypasses it).
+  const usersRoot = path.join(paths.DATA_DIR, 'users')
+  fs.mkdirSync(usersRoot, { recursive: true })
+  for (const user of users) {
+    fs.mkdirSync(path.join(usersRoot, user.user_id), { recursive: true })
+  }
 }
 
 function resolveCmdBinary(): { cmd: string; args: string[]; cwd?: string } {
@@ -61,6 +68,7 @@ function provisionOneUser(paths: WorkerPaths, user: CliUserDecl): Promise<void> 
       env: {
         ...process.env,
         PICASU_DATA_HOME: paths.DATA_DIR,
+        PICASU_USERS_HOME: path.join(paths.DATA_DIR, 'users'),
         PICASU_WEAK_PWHASH: '1'
       },
       stdio: ['ignore', 'pipe', 'pipe']

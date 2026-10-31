@@ -76,6 +76,7 @@ const props = defineProps<{
   isolationId: IsolationId
   basicString: string | null
   searchString: LocationQueryValue | LocationQueryValue[] | undefined
+  includePersonal?: boolean
 }>()
 
 const scrollTopStore = useScrollTopStore(props.isolationId)
@@ -166,7 +167,10 @@ onMounted(() => {
     filterStore.generateFilterJsonString(props.basicString),
     windowWidth,
     route,
-    props.isolationId
+    props.isolationId,
+    // The toggle is only the unscoped-timeline switch; album-scoped and
+    // recovery views are always complete (visibility alone rules elsewhere).
+    props.includePersonal
   )
   useInitializeScrollPosition(
     imageContainerRef,

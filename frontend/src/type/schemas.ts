@@ -202,6 +202,8 @@ export const albumInfoSchema = z
     albumName: z.string().nullable(),
     shareList: z.record(z.string(), ShareInfoSchema),
     dirPath: z.string().nullable().optional(),
+    root: z.string().nullable().optional(),
+    owner: z.string().nullable().optional(),
     parentAlbumId: z.string().nullable().optional()
   })
   .transform((albumData) => ({
@@ -210,6 +212,8 @@ export const albumInfoSchema = z
     shareList: new Map(Object.entries(albumData.shareList)),
     displayName: albumData.albumName ?? 'Untitled',
     dirPath: albumData.dirPath ?? null,
+    root: albumData.root ?? null,
+    owner: albumData.owner ?? null,
     parentAlbumId: albumData.parentAlbumId ?? null
   }))
 

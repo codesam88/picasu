@@ -204,6 +204,7 @@ import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.
 
 import { useInitializedStore } from '@/store/initializedStore'
 import { useAlbumStore } from '@/store/albumStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import type { EditShareData } from '@/type/types'
@@ -212,6 +213,7 @@ import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const initializedStore = useInitializedStore('mainId')
 const albumStore = useAlbumStore('mainId')
+const currentUserId = computed(() => useSessionStore('mainId').profile?.userId ?? null)
 const modalStore = useModalStore('mainId')
 const messageStore = useMessageStore('mainId')
 
@@ -237,6 +239,8 @@ const headers = [
 const tableItems = computed<EditShareData[]>(() => {
   const arr: EditShareData[] = []
   for (const album of albumStore.albums.values()) {
+    // Defensive: only manage shares on albums visible to the caller.
+    if (album.owner != null && album.owner !== currentUserId.value) continue
     for (const [, share] of album.shareList) {
       const validatedShare = ShareInfoSchema.parse(share)
       arr.push({ albumId: album.albumId, displayName: album.displayName, share: validatedShare })
