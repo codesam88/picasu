@@ -304,6 +304,22 @@
       "required": ["reload"],
       "additionalProperties": false
     },
+    "uiWhenCapture": {
+      "type": "object",
+      "properties": {
+        "capture": {
+          "type": "object",
+          "properties": {
+            "param": { "type": "string", "minLength": 1 },
+            "id_as": { "$ref": "#/definitions/varName" }
+          },
+          "required": ["param", "id_as"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["capture"],
+      "additionalProperties": false
+    },
     "uiWhenClickMenu": {
       "type": "object",
       "properties": {
@@ -355,6 +371,7 @@
         { "$ref": "#/definitions/uiWhenLogin" },
         { "$ref": "#/definitions/uiWhenIndex" },
         { "$ref": "#/definitions/uiWhenReload" },
+        { "$ref": "#/definitions/uiWhenCapture" },
         { "$ref": "#/definitions/uiWhenClickMenu" }
       ]
     },

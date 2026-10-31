@@ -287,6 +287,15 @@ export const UiWhenReload = z
   })
   .strict()
 
+export const UiWhenCapture = z
+  .object({
+    capture: z.object({
+      param: z.string().min(1),
+      id_as: VarName
+    })
+  })
+  .strict()
+
 /// Click a text item inside an overlay menu (`v-menu` content teleports to
 /// `body`, where list-item roles are unreliable — the hand-written specs use
 /// `getByText` for the same reason). Exact text match within `.v-overlay`.
@@ -316,6 +325,7 @@ export const UiWhenItem = z.union([
   UiWhenLogin,
   UiWhenIndex,
   UiWhenReload,
+  UiWhenCapture,
   UiWhenClickMenu
 ])
 

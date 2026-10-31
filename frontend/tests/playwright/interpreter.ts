@@ -38,8 +38,12 @@ async function resolveLocator(
 ): Promise<Locator> {
   const resolved = interpolate(roleLabel, vars)
   const slashIdx = resolved.indexOf('/')
+  if (slashIdx === -1) {
+    const role = resolved as any
+    return page.getByRole(role)
+  }
   const prefix = resolved.slice(0, slashIdx)
-  const name = slashIdx === -1 ? undefined : resolved.slice(slashIdx + 1) || undefined
+  const name = resolved.slice(slashIdx + 1) || undefined
   // testid/ is not an ARIA role — route to getByTestId instead.
   if (prefix === 'testid' && name) {
     return page.getByTestId(name)
@@ -232,6 +236,20 @@ export async function executeWhen(
       if (!settled) throw new Error('Index step did not settle within 60s')
     } else if ('reload' in step) {
       await page.reload()
+    } else if ('capture' in step) {
+      const spec = step['capture']
+      const url = page.url()
+      let value = ''
+      try {
+        const u = new URL(url)
+        const segments = u.pathname.split('/').filter(Boolean)
+        if (segments.length > 0) {
+          value = segments[segments.length - 1]
+        }
+      } catch {
+        value = ''
+      }
+      ctx.vars[spec.id_as] = value
     } else if ('click.menu' in step) {
       const text = interpolate(step['click.menu'], ctx.vars)
       // Overlay menus (v-menu/v-dialog teleport to body) expose no stable
@@ -241,7 +259,7 @@ export async function executeWhen(
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload, click.menu`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload, capture, click.menu`
       )
     }
   }
@@ -273,6 +291,10 @@ async function clickTrigger(
   }
   if (trigger.startsWith('testid/')) {
     await page.getByTestId(trigger.slice('testid/'.length)).click()
+    return
+  }
+  if (trigger.startsWith('text/')) {
+    await page.getByText(trigger.slice('text/'.length), { exact: false }).first().click()
     return
   }
   await (await resolveLocator(page, trigger, vars)).click()
