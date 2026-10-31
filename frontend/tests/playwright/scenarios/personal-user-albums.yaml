@@ -28,7 +28,6 @@ steps:
       - navigate: /albums
     assert:
       - ui.text_visible: Public Album
-      - ui.text_visible: Admin
       - ui.text_hidden: Viewer
   - when:
       - navigate: /my-albums
@@ -61,7 +60,7 @@ steps:
       - navigate: /albums
     assert:
       - ui.text_visible: Public Album
-      - ui.text_visible: Viewer
+      - ui.text_hidden: Viewer
       - ui.text_hidden: Admin
   - when:
       - navigate: /my-albums

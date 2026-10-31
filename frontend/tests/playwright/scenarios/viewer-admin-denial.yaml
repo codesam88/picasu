@@ -127,6 +127,9 @@ steps:
       - api.response:
           url: /get/index/status
           status: 401
+      # Owner-scoped shares (S4): an unresolvable albumId is 404 Not Found
+      # for every authenticated caller (no existence oracle), not a 401.
+      # Real cross-user refusals are pinned by backend share_ownership tests.
       - api.response:
           url: /post/create_share
           method: POST
@@ -138,7 +141,7 @@ steps:
             showDownload: true
             showUpload: false
             exp: 0
-          status: 401
+          status: 404
       - api.response:
           url: /put/edit_share
           method: PUT
@@ -152,7 +155,7 @@ steps:
               showDownload: true
               showUpload: false
               exp: 0
-          status: 401
+          status: 404
 
   - when:
       - navigate: /timeline
@@ -163,7 +166,7 @@ steps:
           body:
             albumId: x
             shareId: u
-          status: 401
+          status: 404
       - api.response:
           url: /get/path-completion?path=/
           status: 401
