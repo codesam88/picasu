@@ -70,6 +70,9 @@ fn field_value(config: &crate::model::config::AppConfig, name: &str) -> serde_js
             serde_json::to_value(config.use_client_timestamp_info).unwrap_or_default()
         }
         "allow_registration" => serde_json::to_value(config.allow_registration).unwrap_or_default(),
+        "personal_albums_enabled" => {
+            serde_json::to_value(config.personal_albums_enabled).unwrap_or_default()
+        }
         "trivial_passwords" => serde_json::to_value(config.trivial_passwords).unwrap_or_default(),
         "bootstrap_admin" => serde_json::to_value(config.bootstrap_admin).unwrap_or_default(),
         "trust_proxy_forwarded_for" => {

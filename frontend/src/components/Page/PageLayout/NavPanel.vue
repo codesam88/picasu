@@ -34,28 +34,23 @@
 import { computed, inject, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useInitializedStore } from '@/store/initializedStore'
-import { useAlbumStore } from '@/store/albumStore'
+import { useConfigStore } from '@/store/configStore'
 import { onMounted } from 'vue'
 import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
+import { usePersonalAlbumsEnabled } from '@/script/utils/personalAlbumsEnabled'
 
 const showNavPanel = inject<Ref<boolean>>('showNavPanel')
 const route = useRoute()
 const initializedStore = useInitializedStore('mainId')
 const currentUser = useCurrentUser()
-const albumStore = useAlbumStore('mainId')
+const configStore = useConfigStore('mainId')
 const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 
-const showMyAlbums = computed(() => {
-  if (currentUser.value === null) return false
-  // Personal areas are enabled iff the caller-visible album list contains at
-  // least one album in the personal root. Fields are optional/legacy: an
-  // album without `root` never matches, so the entry stays hidden.
-  return Array.from(albumStore.albums.values()).some((a) => a.root === 'personal')
-})
+const showMyAlbums = usePersonalAlbumsEnabled()
 
 onMounted(() => {
-  if (!albumStore.fetched) {
-    void albumStore.fetchAlbums()
+  if (configStore.config === undefined) {
+    void configStore.fetchConfig()
   }
 })
 </script>

@@ -165,6 +165,10 @@ pub struct AppConfig {
     /// invite token. Default off: registration then requires a valid invite.
     #[serde(default)]
     pub allow_registration: bool,
+    /// Enable per-user personal albums. Host-only switch (env/file/restart);
+    /// effective only when `users_home` is also configured. Default off.
+    #[serde(default)]
+    pub personal_albums_enabled: bool,
     /// Disable the default password-strength checks (length floor/ceiling,
     /// blocklist, user-id and pattern rules) for new passwords. Default
     /// off. Only for development, throwaway installs, or tests that must
@@ -332,6 +336,11 @@ pub mod config_tier_table {
             env_var: Some("PICASU_ALLOW_REGISTRATION"),
         },
         ConfigField {
+            name: "personal_albums_enabled",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_PERSONAL_ALBUMS"),
+        },
+        ConfigField {
             name: "trivial_passwords",
             tier: ConfigTier::Host,
             env_var: Some("PICASU_TRIVIAL_PASSWORDS"),
@@ -435,6 +444,7 @@ impl Default for AppConfig {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: false,
+            personal_albums_enabled: false,
             trivial_passwords: false,
             bootstrap_admin: false,
             trust_proxy_forwarded_for: false,
@@ -558,6 +568,8 @@ pub(crate) struct TomlGallery {
     #[serde(default)]
     pub(crate) allow_registration: bool,
     #[serde(default)]
+    pub(crate) personal_albums_enabled: bool,
+    #[serde(default)]
     pub(crate) trivial_passwords: bool,
     #[serde(default)]
     pub(crate) bootstrap_admin: bool,
@@ -578,6 +590,7 @@ impl Default for TomlGallery {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: false,
+            personal_albums_enabled: false,
             trivial_passwords: false,
             bootstrap_admin: false,
             web_root: None,
@@ -613,6 +626,7 @@ impl From<TomlFile> for AppConfig {
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             allow_registration: t.gallery.allow_registration,
+            personal_albums_enabled: t.gallery.personal_albums_enabled,
             trivial_passwords: t.gallery.trivial_passwords,
             bootstrap_admin: t.gallery.bootstrap_admin,
             trust_proxy_forwarded_for: t.server.trust_proxy_forwarded_for,
@@ -668,6 +682,7 @@ impl From<AppConfig> for TomlFile {
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
                 allow_registration: c.allow_registration,
+                personal_albums_enabled: c.personal_albums_enabled,
                 trivial_passwords: c.trivial_passwords,
                 bootstrap_admin: c.bootstrap_admin,
                 web_root: c.web_root,
@@ -950,6 +965,7 @@ impl AppConfig {
         }
         set_parse!(read_only_mode, "PICASU_READ_ONLY_MODE");
         set_parse!(allow_registration, "PICASU_ALLOW_REGISTRATION");
+        set_parse!(personal_albums_enabled, "PICASU_PERSONAL_ALBUMS");
         set_parse!(trivial_passwords, "PICASU_TRIVIAL_PASSWORDS");
         set_parse!(bootstrap_admin, "PICASU_BOOTSTRAP_ADMIN");
         set_parse!(
@@ -1112,6 +1128,7 @@ mod tests {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: true,
+            personal_albums_enabled: true,
             trivial_passwords: true,
             bootstrap_admin: true,
             trust_proxy_forwarded_for: true,
