@@ -76,14 +76,16 @@ pub async fn edit_flags(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<EditFlagsData>,
 ) -> AppResult<Json<()>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     // The flag goes to disk as well as to the record, so the edit runs through
     // the shared write-then-store contract: every sidecar lands first, and only
     // then is every record stored. Nothing is half-applied.
     let is_trashed = json_data.is_trashed;
 
+    let caller_clone = caller.clone();
     let affected_album_ids =
         tokio::task::spawn_blocking(move || -> Result<HashSet<ArrayString<64>>, AppError> {
             let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
@@ -92,6 +94,9 @@ pub async fn edit_flags(
             let mut affected_album_ids = HashSet::new();
             let mut items: Vec<EditedItem> = Vec::new();
 
+            // First pass: compose + gate every asset before any sidecar write,
+            // so a mixed batch is refused in full rather than partially applied.
+            let mut collected: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
             for &index in &json_data.index_array {
                 let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
                     (
@@ -104,26 +109,39 @@ pub async fn edit_flags(
                     crate::process::transitor::compose_by_asset_id(&asset_id)
                         .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
                 {
-                    // A trash change is the only kind that moves members between
-                    // albums' visible sets.
-                    if is_trashed.is_some()
-                        && let Some(album_id) = abstract_data.album()
-                    {
-                        affected_album_ids.insert(album_id);
+                    // Write gate: source must be writable by caller.
+                    if let Some(path) = abstract_data.visibility_path() {
+                        crate::storage::files::write_gate(&caller_clone, Some(&path), None)
+                            .map_err(|_| {
+                                AppError::new(ErrorKind::PermissionDenied, "Asset not writable")
+                            })?;
                     }
+                    collected.push((asset_id, abstract_data));
+                }
+            }
 
-                    // The composed view still holds the pre-edit flag. The
-                    // sidecar is written from this view, so the new value has
-                    // to be applied here — writing it as composed would record
-                    // the old state.
-                    if let Some(trashed) = is_trashed {
-                        let mut edited = abstract_data;
-                        edited.set_trashed(trashed);
-                        items.push(EditedItem {
-                            asset_id,
-                            data: edited,
-                        });
-                    }
+            // Second pass: apply the edit (preserves the write-then-store
+            // contract per asset).
+            for (asset_id, abstract_data) in collected {
+                // A trash change is the only kind that moves members between
+                // albums' visible sets.
+                if is_trashed.is_some()
+                    && let Some(album_id) = abstract_data.album()
+                {
+                    affected_album_ids.insert(album_id);
+                }
+
+                // The composed view still holds the pre-edit flag. The
+                // sidecar is written from this view, so the new value has
+                // to be applied here — writing it as composed would record
+                // the old state.
+                if let Some(trashed) = is_trashed {
+                    let mut edited = abstract_data;
+                    edited.set_trashed(trashed);
+                    items.push(EditedItem {
+                        asset_id,
+                        data: edited,
+                    });
                 }
             }
 
