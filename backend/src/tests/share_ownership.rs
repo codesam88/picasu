@@ -6,6 +6,7 @@
 
 use rocket::http::{ContentType, Status};
 use serde_json::{Value, json};
+use std::path::PathBuf;
 
 use crate::tests::bootstrap::{cookie, lock, seed, setup_image_home};
 use crate::tests::fixtures::authz::create_album;
@@ -106,10 +107,10 @@ fn non_admin_list_omits_foreign_shares() {
     );
 }
 
-/// Editing a share as another admin preserves the original creator: the
-/// owner still lists it afterwards.
+/// Editing a share as another user is refused: the share's creator is
+/// unchanged and the editor gains no visibility.
 #[test]
-fn edit_by_other_admin_preserves_creator() {
+fn edit_by_other_user_refused_preserves_creator() {
     let _guard = lock();
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/owned3/photo.jpg");
@@ -138,7 +139,7 @@ fn edit_by_other_admin_preserves_creator() {
             .to_string(),
         )
         .dispatch();
-    assert_eq!(edit.status(), Status::Ok, "edit_share as other admin");
+    assert_eq!(edit.status(), Status::Forbidden, "edit_share as other user");
 
     let root_shares = listed_share_urls(&client, "own-root3", true, &album_id);
     assert!(
@@ -177,4 +178,243 @@ fn delete_share_removes_it_from_listings() {
         !listed_share_urls(&client, "own-root4", true, &album_id).contains(&share_id),
         "share gone from listing after delete"
     );
+}
+
+// ── S4 personal-album share management ───────────────────────────────
+
+fn enable_users_home() -> PathBuf {
+    let data_path = crate::storage::files::DATA_PATH
+        .get()
+        .expect("DATA_PATH set");
+    let users_home = data_path.join("users");
+    let _ = std::fs::remove_dir_all(&users_home);
+    std::fs::create_dir_all(&users_home).expect("create users home");
+    let mut c = crate::model::config::APP_CONFIG
+        .get()
+        .expect("cfg")
+        .write()
+        .expect("lock");
+    c.users_home = Some(users_home.clone());
+    users_home
+}
+
+fn personal_album_id(users_home: &std::path::Path, user: &str) -> String {
+    let dir = users_home.join(user);
+    crate::process::dir_album::get_album_id_for_dir(&dir)
+        .expect("personal home album id")
+        .to_string()
+}
+
+fn prefetch_as_share_anon(
+    client: &rocket::local::blocking::Client,
+    album_id: &str,
+    share_id: &str,
+) -> rocket::http::Status {
+    client
+        .post("/get/prefetch")
+        .header(rocket::http::Header::new(
+            "x-album-id",
+            album_id.to_string(),
+        ))
+        .header(rocket::http::Header::new(
+            "x-share-id",
+            share_id.to_string(),
+        ))
+        .header(ContentType::JSON)
+        .dispatch()
+        .status()
+}
+
+#[test]
+fn s4_non_admin_personal_share_crud_and_resolve() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("pers-user", false, None);
+    let album_id = personal_album_id(&users_home, "pers-user");
+
+    let share_id = create_share_as(&client, "pers-user", false, &album_id);
+
+    // edit
+    let edit = client
+        .put("/put/edit_share")
+        .cookie(cookie("pers-user", false))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "share": {
+                    "url": share_id,
+                    "description": "edited",
+                    "password": null,
+                    "showMetadata": true,
+                    "showDownload": true,
+                    "showUpload": false,
+                    "exp": 0
+                }
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(edit.status(), Status::Ok, "edit own personal share");
+
+    // resolve round-trip for anonymous holder
+    let status = prefetch_as_share_anon(&client, &album_id, &share_id);
+    assert_eq!(status, Status::Ok, "personal share resolves anonymously");
+
+    // delete
+    let delete = client
+        .put("/put/delete_share")
+        .cookie(cookie("pers-user", false))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "shareId": share_id }).to_string())
+        .dispatch();
+    assert_eq!(delete.status(), Status::Ok, "delete own personal share");
+}
+
+#[test]
+fn s4_non_admin_creates_share_on_public_album() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s4pub/photo.jpg");
+    seed("pub-user", false, None);
+    let share_id = create_share_as(&client, "pub-user", false, &album_id);
+    assert_ne!(share_id, "");
+}
+
+#[test]
+fn s4_non_admin_refused_on_others_personal_album() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("pers-a", false, None);
+    seed("pers-b", false, None);
+    let album_id = personal_album_id(&users_home, "pers-a");
+
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("pers-b", false))
+        .header(ContentType::JSON)
+        .body(share_body(&album_id).to_string())
+        .dispatch();
+    assert_eq!(create.status(), Status::NotFound, "other's personal album");
+
+    // target unchanged: no shares on the album for its owner
+    let urls = listed_share_urls(&client, "pers-a", false, &album_id);
+    assert!(urls.is_empty(), "no share created, got {urls:?}");
+}
+
+#[test]
+fn s4_admin_refused_on_others_personal_album() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("pers-a2", false, None);
+    seed("admin", true, None);
+    let album_id = personal_album_id(&users_home, "pers-a2");
+
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(share_body(&album_id).to_string())
+        .dispatch();
+    assert_eq!(
+        create.status(),
+        Status::NotFound,
+        "admin on other's personal"
+    );
+}
+
+#[test]
+fn s4_user_b_cannot_edit_or_delete_users_share_on_public_album() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s4shared/photo.jpg");
+    seed("user-a", false, None);
+    seed("user-b", false, None);
+
+    let share_id = create_share_as(&client, "user-a", false, &album_id);
+    assert!(listed_share_urls(&client, "user-a", false, &album_id).contains(&share_id));
+
+    // edit
+    let edit = client
+        .put("/put/edit_share")
+        .cookie(cookie("user-b", false))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "share": {
+                    "url": share_id,
+                    "description": "hijacked",
+                    "password": null,
+                    "showMetadata": true,
+                    "showDownload": true,
+                    "showUpload": false,
+                    "exp": 0
+                }
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(edit.status(), Status::Forbidden, "edit by other user");
+
+    // delete
+    let delete = client
+        .put("/put/delete_share")
+        .cookie(cookie("user-b", false))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "shareId": share_id }).to_string())
+        .dispatch();
+    assert_eq!(delete.status(), Status::Forbidden, "delete by other user");
+
+    // share unchanged
+    assert!(
+        listed_share_urls(&client, "user-a", false, &album_id).contains(&share_id),
+        "share must remain after refused edit/delete"
+    );
+}
+
+#[test]
+fn s4_personal_share_resolves_anonymously_with_flags() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("flag-user", false, None);
+    let album_id = personal_album_id(&users_home, "flag-user");
+
+    // create share with show_metadata false
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("flag-user", false))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "description": "flagged",
+                "password": null,
+                "showMetadata": false,
+                "showDownload": true,
+                "showUpload": false,
+                "exp": 0
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(create.status(), Status::Ok, "create personal share");
+    let share_id = create.into_string().expect("share id").trim().to_string();
+
+    let status = prefetch_as_share_anon(&client, &album_id, &share_id);
+    assert_eq!(status, Status::Ok, "personal share resolves anonymously");
+}
+
+#[test]
+fn s4_disabled_mode_non_admin_can_create_public_share() {
+    let _guard = lock();
+    let client = setup_image_home(); // users_home stays None
+    let (album_id, _asset_id) = create_album(&client, "/s4disabled/photo.jpg");
+    seed("disabled-user", false, None);
+    let share_id = create_share_as(&client, "disabled-user", false, &album_id);
+    assert_ne!(share_id, "");
 }

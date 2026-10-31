@@ -1000,16 +1000,16 @@
       "albums"
     ],
     "x-picasu-auth": {
-      "admin": "admin",
+      "admin": "any",
       "credentials": [
         "session"
       ],
       "effects": [
-        "manage"
+        "write"
       ],
       "fallback": [],
       "guards": [
-        "GuardAdmin",
+        "GuardUser",
         "GuardMutate"
       ],
       "invariants": [
@@ -1402,16 +1402,16 @@
       "albums"
     ],
     "x-picasu-auth": {
-      "admin": "admin",
+      "admin": "any",
       "credentials": [
         "session"
       ],
       "effects": [
-        "manage"
+        "write"
       ],
       "fallback": [],
       "guards": [
-        "GuardAdmin",
+        "GuardUser",
         "GuardMutate"
       ],
       "invariants": [
@@ -1505,16 +1505,16 @@
       "albums"
     ],
     "x-picasu-auth": {
-      "admin": "admin",
+      "admin": "any",
       "credentials": [
         "session"
       ],
       "effects": [
-        "manage"
+        "write"
       ],
       "fallback": [],
       "guards": [
-        "GuardAdmin",
+        "GuardUser",
         "GuardMutate"
       ],
       "invariants": [

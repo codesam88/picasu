@@ -3444,6 +3444,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Album not found"
           },
@@ -3467,15 +3470,15 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "admin",
+          "admin": "any",
           "credentials": [
             "session"
           ],
           "effects": [
-            "manage"
+            "write"
           ],
           "guards": [
-            "GuardAdmin",
+            "GuardUser",
             "GuardMutate"
           ],
           "invariants": [
@@ -4220,6 +4223,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Not found"
           },
@@ -4243,15 +4249,15 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "admin",
+          "admin": "any",
           "credentials": [
             "session"
           ],
           "effects": [
-            "manage"
+            "write"
           ],
           "guards": [
-            "GuardAdmin",
+            "GuardUser",
             "GuardMutate"
           ],
           "invariants": [
@@ -4422,6 +4428,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Not found"
           },
@@ -4445,15 +4454,15 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "admin",
+          "admin": "any",
           "credentials": [
             "session"
           ],
           "effects": [
-            "manage"
+            "write"
           ],
           "guards": [
-            "GuardAdmin",
+            "GuardUser",
             "GuardMutate"
           ],
           "invariants": [
