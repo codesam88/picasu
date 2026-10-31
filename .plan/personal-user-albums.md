@@ -36,6 +36,18 @@ keeping the filesystem as source of truth.
   toggle, never the client alone.
 - Scan: admin Scan Now covers global plus all personal trees.
 
+## Settled decisions (follow-up)
+
+- Two knobs: host-tier `gallery.personal_albums_enabled` (`PICASU_PERSONAL_ALBUMS`,
+  host-only like `IMAGE_HOME`) plus host-tier `gallery.users_home` path.
+  Effective `personalAlbumsEnabled` in public config = switch ON and path set;
+  switch ON with path unset leaves the feature off. Path never served.
+- Naming: `personal_albums_enabled` (config/Rust), `PICASU_PERSONAL_ALBUMS`
+  (env), `personalAlbumsEnabled` (API + frontend).
+- Admin panel shows `USERS_HOME` read-only after the image path, plus the
+  switch state read-only. Nav entry and timeline toggle key off the strict
+  server flag (`=== true`); legacy backends and logged-out users hide both.
+
 ## Boundary namespace (2026-10-31 follow-up)
 
 - Storage stays external (`S0`/`S1` as built); nesting rejected: no volume
