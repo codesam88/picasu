@@ -150,8 +150,22 @@
               "null"
             ]
           },
+          "owner": {
+            "description": "Owner user id for personal albums; `None` for global albums.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "parentAlbumId": {
             "description": "Album ID of the direct parent directory album, or `None` for top-level\ndir albums and all user-created albums.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "root": {
+            "description": "Root namespace of the album: `\"global\"` for the public tree or\n`\"personal\"` for a per-user area. `None` when the album lives outside\nboth configured roots.",
             "type": [
               "string",
               "null"
@@ -786,6 +800,13 @@
           "clear": {
             "description": "When true, drop all asset tables (and clear the in-memory tree and the\ndirectory-album cache) before indexing, so the scan rebuilds from an\nempty state instead of merging into stale rows.",
             "type": "boolean"
+          },
+          "root": {
+            "description": "Optional scan root selector: `\"global\"`, `\"personal\"`, or\n`\"auto\"` (default) preserving the image-then-users probe order.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2830,6 +2851,15 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Opt-in flag including the caller's own personal items in the timeline",
+            "in": "query",
+            "name": "include_personal",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],

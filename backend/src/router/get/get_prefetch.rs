@@ -1,4 +1,5 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::model::abstract_data::AbstractData;
 use crate::model::album::ResolvedShare;
 use crate::model::expression::{AlbumFilterValue, Expression};
 use crate::model::response::DatabaseTimestamp;
@@ -94,9 +95,27 @@ fn check_query_cache(
     None
 }
 
+fn row_visible(ad: &AbstractData, caller: &str, include_personal: bool) -> bool {
+    if let Some(path) = ad.visibility_path() {
+        if !crate::storage::files::visible_to(caller, &path) {
+            return false;
+        }
+        if matches!(
+            crate::storage::files::classify_path(&path),
+            crate::storage::files::PathClassification::Personal { .. }
+        ) && !include_personal
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn filter_items(
     expression_option: Option<Expression>,
     resolved_share_option: Option<&ResolvedShare>,
+    caller_id: &str,
+    include_personal: bool,
 ) -> Result<Vec<ReducedData>, AppError> {
     let filter_items_start_time = Instant::now();
 
@@ -116,7 +135,17 @@ fn filter_items(
             };
             tree_guard
                 .par_iter()
-                .filter(|db_ts| filter_fn(&db_ts.abstract_data))
+                .filter(|db_ts| {
+                    // Share scoping comes from the injected Expression::Album, and
+                    // share callers have caller_id ""; visible_to is not applied here.
+                    if let Some(path) = db_ts.abstract_data.visibility_path()
+                        && crate::storage::files::classify_path(&path)
+                            == crate::storage::files::PathClassification::UsersRoot
+                    {
+                        return false;
+                    }
+                    filter_fn(&db_ts.abstract_data)
+                })
                 .map(std::convert::Into::into)
                 .collect()
         }
@@ -124,12 +153,22 @@ fn filter_items(
             let filter_fn = expr.generate_filter();
             tree_guard
                 .par_iter()
-                .filter(|database_timestamp| filter_fn(&database_timestamp.abstract_data))
+                .filter(|database_timestamp| {
+                    let ad = &database_timestamp.abstract_data;
+                    if !row_visible(ad, caller_id, include_personal) {
+                        return false;
+                    }
+                    filter_fn(ad)
+                })
                 .map(std::convert::Into::into)
                 .collect()
         }
         (None, _) => tree_guard
             .par_iter()
+            .filter(|database_timestamp| {
+                let ad = &database_timestamp.abstract_data;
+                row_visible(ad, caller_id, include_personal)
+            })
             .map(std::convert::Into::into)
             .collect(),
     };
@@ -161,7 +200,12 @@ fn compute_locate(
     locate_to_index
 }
 
-fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option<&String>) -> u64 {
+fn build_cache_key(
+    expression_option: Option<&Expression>,
+    locate_option: Option<&String>,
+    caller_id: &str,
+    include_personal: bool,
+) -> u64 {
     let cache_key_start_time = Instant::now();
 
     let mut hasher = DefaultHasher::new();
@@ -170,6 +214,8 @@ fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option
         .load(Ordering::Relaxed)
         .hash(&mut hasher);
     locate_option.hash(&mut hasher);
+    caller_id.hash(&mut hasher);
+    include_personal.hash(&mut hasher);
     let query_hash = hasher.finish();
 
     let duration = format!("{:?}", cache_key_start_time.elapsed());
@@ -232,16 +278,24 @@ fn create_json_response(
 // ── Single prefetch function ─────────────────────────────────────────────────
 // -----------------------------------------------------------------------------
 
+#[allow(clippy::needless_pass_by_value)]
 fn execute_prefetch_logic(
     expression_option: Option<Expression>,
     locate_option: Option<&String>,
     mut resolved_share_option: Option<ResolvedShare>,
+    caller_id: String,
+    include_personal: bool,
 ) -> Result<Json<PrefetchReturn>, AppError> {
     // Start timer
     let start_time = Instant::now();
 
     // Step 1: Build cache key for response creation
-    let query_hash = build_cache_key(expression_option.as_ref(), locate_option);
+    let query_hash = build_cache_key(
+        expression_option.as_ref(),
+        locate_option,
+        &caller_id,
+        include_personal,
+    );
 
     // Step 2: Check if query cache is available
     if let Some(cached_response) = check_query_cache(query_hash, &mut resolved_share_option) {
@@ -249,7 +303,12 @@ fn execute_prefetch_logic(
     }
 
     // Step 3: Filter items
-    let reduced_data_vector = filter_items(expression_option, resolved_share_option.as_ref())?;
+    let reduced_data_vector = filter_items(
+        expression_option,
+        resolved_share_option.as_ref(),
+        &caller_id,
+        include_personal,
+    )?;
 
     // Step 4: Compute layout
     let locate_to_index = compute_locate(&reduced_data_vector, locate_option);
@@ -299,6 +358,7 @@ fn execute_prefetch_logic(
         tag = "timeline",
         params(
             ("locate" = Option<String>, Query, description = "Asset whose row index comes back as locateTo"),
+            ("include_personal" = Option<bool>, Query, description = "Opt-in flag including the caller's own personal items in the timeline"),
         ),
         request_body = serde_json::Value,
         security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
@@ -320,13 +380,24 @@ fn execute_prefetch_logic(
         )
     )
 ]
-#[post("/get/prefetch?<locate>", format = "json", data = "<query_data>")]
+#[post(
+    "/get/prefetch?<locate>&<include_personal>",
+    format = "json",
+    data = "<query_data>"
+)]
+#[allow(non_snake_case)]
 pub async fn prefetch(
     auth_guard: GuardResult<GuardPresenter>,
     query_data: Option<Json<Expression>>,
     locate: Option<String>,
+    include_personal: Option<bool>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
+    let caller_id = match &auth_guard.claims.role {
+        crate::router::auth::Role::User { id, .. } => id.clone(),
+        crate::router::auth::Role::Share(_) => String::new(),
+    };
+    let include_personal = include_personal.unwrap_or(false);
     // Combine album filter (if any) with the client‑supplied query.
     let mut combined_expression_option = query_data.map(rocket::serde::json::Json::into_inner);
     let resolved_share_option = auth_guard.claims.get_share();
@@ -349,6 +420,8 @@ pub async fn prefetch(
             combined_expression_option,
             locate.as_ref(),
             resolved_share_option,
+            caller_id,
+            include_personal,
         )
     })
     .await
