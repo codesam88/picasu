@@ -91,12 +91,13 @@ Effect and purpose:
 
 Gallery application settings.
 
-| Key              | Type           | Default                    | Description                                                                                                                                                                                                                     |
-| ---------------- | -------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `data_home`      | string \| null | _resolved at first launch_ | Absolute path holding `db/`, `object/`, etc. Set automatically from `PICASU_DATA_HOME` or platform default. Stored so the runtime path is consistent regardless of env var changes.                                             |
-| `image_home`     | string \| null | _resolved at first launch_ | Single root directory the backend watches for new or changed media files. Set from `PICASU_IMAGE_HOME` or defaults to `<data_home>/images`. Read-only from the frontend — configure via env var or edit `config.toml` directly. |
-| `upload_folder`  | string         | `uploads`                  | Subfolder name (relative to `image_home`) that uploads with no target album land in.                                                                                                                                            |
-| `read_only_mode` | boolean        | `false`                    | If `true`, the gallery runs in read-only mode — uploads, edits, and deletions are disabled.                                                                                                                                     |
+| Key              | Type           | Default                    | Description                                                                                                                                                                                                                                                                |
+| ---------------- | -------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data_home`      | string \| null | _resolved at first launch_ | Absolute path holding `db/`, `object/`, etc. Set automatically from `PICASU_DATA_HOME` or platform default. Stored so the runtime path is consistent regardless of env var changes.                                                                                        |
+| `image_home`     | string \| null | _resolved at first launch_ | Single root directory the backend watches for new or changed media files. Set from `PICASU_IMAGE_HOME` or defaults to `<data_home>/images`. Read-only from the frontend — configure via env var or edit `config.toml` directly.                                            |
+| `users_home`     | string \| null | _unset (feature disabled)_ | Optional root directory holding per-user personal album trees. When unset/empty, personal areas are disabled and the server behaves as today. Set from `PICASU_USERS_HOME`. Read-only from the frontend — configure via env var or edit `config.toml` directly. Host-only. |
+| `upload_folder`  | string         | `uploads`                  | Subfolder name (relative to `image_home`) that uploads with no target album land in.                                                                                                                                                                                       |
+| `read_only_mode` | boolean        | `false`                    | If `true`, the gallery runs in read-only mode — uploads, edits, and deletions are disabled.                                                                                                                                                                                |
 
 ### `[secrets]` section
 
@@ -136,6 +137,7 @@ directory > working directory (last resort)**.
 | Config | `PICASU_CONFIG_HOME` | `config.toml`                     | platform config dir (e.g. `~/.config/picasu` on Linux)    |
 | Data   | `PICASU_DATA_HOME`   | `db/`, `object/`, `index_v5.redb` | platform data dir (e.g. `~/.local/share/picasu` on Linux) |
 | Image  | `PICASU_IMAGE_HOME`  | base for `image_home` if unset    | `<data dir>/images`                                       |
+| Users  | `PICASU_USERS_HOME`  | base for `users_home` if unset    | _(unset: personal areas disabled)_                        |
 
 The platform config/data dirs come from the `directories` crate, which
 already honors `$XDG_CONFIG_HOME`/`$XDG_DATA_HOME` on Linux and the platform
@@ -161,11 +163,11 @@ Every `AppConfig` field belongs to a tier that determines how it can be
 changed. The tier table is the single source of truth in
 `backend/src/model/config.rs` (`CONFIG_FIELDS`).
 
-| Tier     | Fields                                                                                                                                                                                | How to set                                                | Restart? |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
-| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
-| host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`     | env var, CLI flag, or `config.toml`                       | yes      |
-| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`                                                                                                                      | env var only                                              | yes      |
+| Tier     | Fields                                                                                                                                                                                          | How to set                                                | Restart? |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
+| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration`           | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
+| host     | `address`, `port`, `data_home`, `image_home`, `users_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root` | env var, CLI flag, or `config.toml`                       | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`                                                                                                                                | env var only                                              | yes      |
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
@@ -195,6 +197,7 @@ The following env vars override the config file on every launch:
 | `PICASU_DATA_HOME`                     | `gallery.data_home`                                                   |
 | `PICASU_FS_NOTIFY_WATCHER`             | `gallery.fs_notify_watcher`                                           |
 | `PICASU_IMAGE_HOME`                    | `gallery.image_home`                                                  |
+| `PICASU_USERS_HOME`                    | `gallery.users_home`                                                  |
 | `PICASU_READ_ONLY_MODE`                | `gallery.read_only_mode`                                              |
 | `PICASU_TRIVIAL_PASSWORDS`             | `gallery.trivial_passwords`                                           |
 | `PICASU_UPLOAD_FOLDER`                 | `gallery.upload_folder`                                               |
@@ -229,6 +232,7 @@ var, or `config.toml` key listed, then restart:
 | `gallery.bootstrap_admin`           | `--bootstrap-admin`, `PICASU_BOOTSTRAP_ADMIN`, or `gallery.bootstrap_admin`          |
 | `gallery.data_home`                 | `PICASU_DATA_HOME` (not accepted by the API at all)                                  |
 | `gallery.image_home`                | `PICASU_IMAGE_HOME` (not accepted by the API at all)                                 |
+| `gallery.users_home`                | `PICASU_USERS_HOME` (not accepted by the API at all)                                 |
 | `server.trust_proxy_forwarded_for`  | `PICASU_TRUST_PROXY_FORWARDED_FOR` or `server.trust_proxy_forwarded_for`             |
 | all `server.login_*` throttle knobs | the matching `PICASU_LOGIN_*` env var or `config.toml` key                           |
 | `auth_key` (managed)                | `PICASU_AUTH_KEY` or the secrets file; rotate via `POST /post/config/auth-key/reset` |

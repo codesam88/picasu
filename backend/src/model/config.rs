@@ -120,6 +120,8 @@ pub struct AppConfig {
     #[schema(value_type = Option<String>)]
     #[serde(rename = "imagePath", alias = "imageHome")]
     pub image_home: Option<PathBuf>,
+    #[schema(value_type = Option<String>)]
+    pub users_home: Option<PathBuf>,
     #[serde(default = "default_upload_folder")]
     pub upload_folder: String,
     #[serde(default = "default_max_upload_size")]
@@ -285,6 +287,11 @@ pub mod config_tier_table {
             env_var: Some("PICASU_IMAGE_HOME"),
         },
         ConfigField {
+            name: "users_home",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_USERS_HOME"),
+        },
+        ConfigField {
             name: "upload_folder",
             tier: ConfigTier::Runtime,
             env_var: Some("PICASU_UPLOAD_FOLDER"),
@@ -419,6 +426,7 @@ impl Default for AppConfig {
             port: 5673,
             data_home: None,
             image_home: None,
+            users_home: None,
             upload_folder: default_upload_folder(),
             max_upload_size: default_max_upload_size(),
             read_only_mode: false,
@@ -534,6 +542,7 @@ pub(crate) struct TomlGallery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) data_home: Option<PathBuf>,
     pub(crate) image_home: Option<PathBuf>,
+    pub(crate) users_home: Option<PathBuf>,
     #[serde(default = "default_upload_folder")]
     pub(crate) upload_folder: String,
     #[serde(default)]
@@ -561,6 +570,7 @@ impl Default for TomlGallery {
         Self {
             data_home: None,
             image_home: None,
+            users_home: None,
             upload_folder: default_upload_folder(),
             read_only_mode: false,
             fs_notify_watcher: true,
@@ -591,6 +601,10 @@ impl From<TomlFile> for AppConfig {
             port: t.server.port,
             data_home: t.gallery.data_home,
             image_home: t.gallery.image_home,
+            users_home: t
+                .gallery
+                .users_home
+                .filter(|p| !p.to_string_lossy().trim().is_empty()),
             upload_folder: t.gallery.upload_folder,
             max_upload_size: t.server.max_upload_size,
             read_only_mode: t.gallery.read_only_mode,
@@ -646,6 +660,7 @@ impl From<AppConfig> for TomlFile {
             gallery: TomlGallery {
                 data_home: c.data_home,
                 image_home: c.image_home,
+                users_home: c.users_home,
                 upload_folder: c.upload_folder,
                 read_only_mode: c.read_only_mode,
                 fs_notify_watcher: c.fs_notify_watcher,
@@ -712,6 +727,15 @@ impl AppConfig {
         Ok(())
     }
 
+    /// Validate that `users_home` does not equal or nest within `image_home`
+    /// (or vice versa). Called at load so an unsafe root layout fails startup.
+    ///
+    /// # Errors
+    /// Returns an error describing the overlap.
+    pub fn validate_users_home(&self) -> anyhow::Result<()> {
+        crate::storage::files::validate_path_roots(self.image_home.clone(), self.users_home.clone())
+    }
+
     /// The three login-throttle schedules (see [`ThrottleSchedules`]).
     #[must_use]
     pub fn login_throttle_schedules(&self) -> ThrottleSchedules {
@@ -752,6 +776,7 @@ impl AppConfig {
     /// Returns an error when the login-throttle configuration is
     /// degenerate; the caller must fail startup instead of serving with a
     /// silently altered throttle policy.
+    #[allow(clippy::too_many_lines)]
     pub fn init() -> anyhow::Result<()> {
         let config_path = get_config_path();
         let config_path_display = config_path.display();
@@ -853,6 +878,10 @@ impl AppConfig {
         // to a non-zero exit) rather than clamp to a silent policy.
         config.validate_login_throttle()?;
 
+        // Nested/equal image_home/users_home roots are unsafe (double-index,
+        // cross-root ownership); fail startup instead of serving.
+        config.validate_users_home()?;
+
         if config.web_root.is_none() {
             let data_home = config
                 .data_home
@@ -914,6 +943,7 @@ impl AppConfig {
         }
         set_str!(data_home, "PICASU_DATA_HOME");
         set_str!(image_home, "PICASU_IMAGE_HOME");
+        set_str!(users_home, "PICASU_USERS_HOME");
         set_parse!(port, "PICASU_PORT");
         if let Some(val) = get("PICASU_ADDRESS") {
             config.address = val;
@@ -1073,6 +1103,7 @@ mod tests {
             port: 8080,
             data_home: Some(PathBuf::from("/tmp/data")),
             image_home: Some(PathBuf::from("/tmp/images")),
+            users_home: Some(PathBuf::from("/tmp/users")),
             upload_folder: "test_uploads".to_string(),
             max_upload_size: "500MiB".to_string(),
             read_only_mode: true,
@@ -1200,6 +1231,19 @@ port = 9999
     }
 
     #[test]
+    fn users_home_empty_string_normalizes_to_none() {
+        let toml_str = "[gallery]\nusers_home = \"\"\n";
+        let parsed: TomlFile = toml::from_str(toml_str).expect("parse");
+        let config = AppConfig::from(parsed);
+        assert_eq!(config.users_home, None);
+
+        let toml_str = "[gallery]\nusers_home = \"   \"\n";
+        let parsed: TomlFile = toml::from_str(toml_str).expect("parse");
+        let config = AppConfig::from(parsed);
+        assert_eq!(config.users_home, None);
+    }
+
+    #[test]
     fn bootstrap_admin_defaults_to_false() {
         assert!(!AppConfig::default().bootstrap_admin);
     }
@@ -1228,6 +1272,7 @@ port = 9999
         let config = AppConfig {
             data_home: Some(PathBuf::from("/tmp/data")),
             image_home: Some(PathBuf::from("/tmp/images")),
+            users_home: Some(PathBuf::from("/tmp/users")),
             auth_key: Some("secret".to_string()),
             web_root: Some(PathBuf::from("/tmp/www")),
             ..AppConfig::default()
