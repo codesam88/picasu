@@ -47,6 +47,8 @@ keeping the filesystem as source of truth.
 - Admin panel shows `USERS_HOME` read-only after the image path, plus the
   switch state read-only. Nav entry and timeline toggle key off the strict
   server flag (`=== true`); legacy backends and logged-out users hide both.
+- Sandbox (`just run`) launches with personal areas enabled
+  (`sandbox/users` + `PICASU_PERSONAL_ALBUMS=true`).
 
 ## Boundary namespace (2026-10-31 follow-up)
 
