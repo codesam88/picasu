@@ -7,6 +7,7 @@ import 'vue-router'
 import TimelineMain from '@/components/Page/TimelinePage.vue'
 import TrashedPage from '@/components/Page/TrashedPage.vue'
 import AlbumsPage from '@/components/Page/AlbumsPage.vue'
+import MyAlbumsPage from '@/components/Page/MyAlbumsPage.vue'
 import AlbumContentsPage from '@/components/Page/AlbumContentsPage.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
 import ViewPage from '@/components/View/ViewPage.vue'
@@ -44,6 +45,8 @@ const timelinePageRoutes = createRoute('timeline', TimelineMain)
 const trashedPageRoutes = createRoute('trashed', TrashedPage)
 
 const albumsPageRoutes = createRoute('albums', AlbumsPage)
+
+const myAlbumsPageRoutes = createRoute('my-albums', MyAlbumsPage)
 
 const videosPageRoutes = createRoute('videos', VideosPage)
 
@@ -99,6 +102,7 @@ const routes: RouteRecordRaw[] = [
   ...timelinePageRoutes,
   ...trashedPageRoutes,
   ...albumsPageRoutes,
+  ...myAlbumsPageRoutes,
   ...videosPageRoutes,
   albumContentRoute
 ]
@@ -151,6 +155,7 @@ router.afterEach((to) => {
     timeline: 'Timeline',
     trashed: 'Trash',
     albums: 'Albums',
+    'my-albums': 'My Albums',
     videos: 'Videos',
     album: 'Album',
     tags: 'Tags',

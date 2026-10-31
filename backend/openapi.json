@@ -3087,6 +3087,50 @@
         ]
       }
     },
+    "/my-albums": {
+      "get": {
+        "description": "Returns the shared `index.html` shell for the `my-albums` client route. The\nalbum list itself comes from the albums API route, which reads the album\nindex, so this route performs no lookup of its own.",
+        "operationId": "my_albums",
+        "responses": {
+          "200": {
+            "description": "SPA page (HTML)"
+          }
+        },
+        "summary": "Serve the SPA shell for the my-albums page.",
+        "tags": [
+          "pages"
+        ]
+      }
+    },
+    "/my-albums/view/{path}": {
+      "get": {
+        "description": "Returns `index.html` for `/my-albums/view/<path..>` at any depth. The\ncaptured path is bound and discarded; the client router resolves the view\n(`view/:assetId`) from the URL, so the server performs no lookup.",
+        "operationId": "my_albums_view",
+        "parameters": [
+          {
+            "description": "View path below /my-albums/view/; served the SPA shell and resolved by the client router",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SPA page (HTML)"
+          },
+          "422": {
+            "description": "Unprocessable entity"
+          }
+        },
+        "summary": "Serve the SPA shell for a my-albums view path resolved by the client.",
+        "tags": [
+          "pages"
+        ]
+      }
+    },
     "/object/compressed/{file_path}": {
       "get": {
         "description": "Resolves the requested path under `DATA_HOME/object/compressed` and serves\n`.jpg` in a single response or `.mp4` as a range-capable stream pinned to\n`video/mp4`.\n\nCorner cases: one image-serving token authorizes exactly one file — its\n`hash` claim must equal the id in the last path segment. Any extension other\nthan `.jpg` or `.mp4`, and a path without an extension, are rejected as\ninvalid input.\n\nErrors: 400 unsupported or missing file extension — 401 no valid admin or\nshare credentials, or no image-serving token for this file — 500 the\ncompressed file could not be opened.",

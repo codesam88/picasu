@@ -100,10 +100,15 @@ fn row_visible(ad: &AbstractData, caller: &str, include_personal: bool) -> bool 
         if !crate::storage::files::visible_to(caller, &path) {
             return false;
         }
-        if matches!(
-            crate::storage::files::classify_path(&path),
-            crate::storage::files::PathClassification::Personal { .. }
-        ) && !include_personal
+        // The timeline opt-in toggle governs personal *media* (images/videos)
+        // only. Personal albums remain visible to their owner regardless of the
+        // toggle; other users' albums are already excluded by `visible_to`.
+        if !matches!(ad, AbstractData::Album(_))
+            && matches!(
+                crate::storage::files::classify_path(&path),
+                crate::storage::files::PathClassification::Personal { .. }
+            )
+            && !include_personal
         {
             return false;
         }

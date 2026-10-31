@@ -4,6 +4,7 @@
     isolation-id="mainId"
     :basic-string="props.basicString"
     :search-string="searchString"
+    :include-personal="props.includePersonal"
   />
 </template>
 
@@ -17,6 +18,7 @@ const searchString = ref<LocationQueryValue | LocationQueryValue[] | undefined>(
 
 const props = defineProps<{
   basicString: string | null
+  includePersonal?: boolean
 }>()
 
 onBeforeMount(() => {

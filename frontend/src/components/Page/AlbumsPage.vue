@@ -1,7 +1,7 @@
 <template>
   <PageTemplate>
     <template #content>
-      <GalleryMain :basic-string="basicString" />
+      <GalleryMain :basic-string="basicString" :include-personal="true" />
     </template>
   </PageTemplate>
 </template>

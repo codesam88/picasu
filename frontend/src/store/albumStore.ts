@@ -2,6 +2,7 @@ import { AlbumInfo, IsolationId } from '@type/types'
 import { albumInfoSchema } from '@type/schemas'
 import axios from 'axios'
 import { defineStore } from 'pinia'
+import { useSessionStore } from '@/store/sessionStore'
 import { z } from 'zod'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
@@ -25,7 +26,11 @@ export const useAlbumStore = (isolationId: IsolationId) =>
 
           const albums = z.array(albumInfoSchema).parse(response.data)
 
+          const currentUserId = useSessionStore('mainId').profile?.userId ?? null
           albums.forEach((album) => {
+            // Defensive: never retain another user's personal album (the
+            // server already filters; this is belt-and-braces).
+            if (album.owner != null && album.owner !== currentUserId) return
             this.albums.set(album.albumId, album)
           })
 

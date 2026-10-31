@@ -2,6 +2,7 @@ import { watchDebounced } from '@vueuse/core'
 import { Ref } from 'vue'
 import { IsolationId, PrefetchReturn } from '@type/types'
 import { prefetch } from '@/api/fetchPrefetch'
+import { getIncludePersonal } from '@/script/utils/personalTimelineToggle'
 import { useConfigStore } from '@/store/configStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
@@ -21,7 +22,8 @@ export function usePrefetch(
   filterJsonString: string | null,
   windowWidth: Ref<number>,
   route: RouteLocationNormalizedLoadedGeneric,
-  isolationId: IsolationId
+  isolationId: IsolationId,
+  includePersonalOverride?: boolean
 ) {
   const stopWatcher = watchDebounced(
     windowWidth,
@@ -43,7 +45,15 @@ export function usePrefetch(
         // Parallel Execution: Run Config chain and Prefetch chain simultaneously
         await Promise.all([
           processConfigChain(isolationId),
-          processPrefetchChain(filterJsonString, priorityId, reverse, locate, isolationId, route)
+          processPrefetchChain(
+            filterJsonString,
+            priorityId,
+            reverse,
+            locate,
+            isolationId,
+            route,
+            includePersonalOverride
+          )
         ])
 
         stopWatcher() // Stop the watcher after everything is done
@@ -72,10 +82,19 @@ export async function processPrefetchChain(
   reverse: string,
   locate: string | null,
   isolationId: IsolationId,
-  route: RouteLocationNormalizedLoadedGeneric
+  route: RouteLocationNormalizedLoadedGeneric,
+  includePersonalOverride?: boolean
 ) {
   // 1. Fetch main data (Critical step)
-  const prefetchReturn = await prefetch(filterJsonString, priorityId, reverse, locate)
+  const includePersonal =
+    includePersonalOverride !== undefined ? includePersonalOverride : getIncludePersonal()
+  const prefetchReturn = await prefetch(
+    filterJsonString,
+    priorityId,
+    reverse,
+    locate,
+    includePersonal
+  )
 
   // 2. Sync Store immediately after prefetch returns
   // This updates the Token which fetchScrollbar relies on.
@@ -151,13 +170,16 @@ export async function refreshGalleryAfterMutation(
   // in Modal dialogs (e.g. AssignAlbumModal) shows the updated hierarchy.
   await albumStore.fetchAlbums()
 
+  const forceIncludePersonal =
+    route.meta.baseName === 'albums' || route.meta.baseName === 'my-albums' ? true : undefined
   await processPrefetchChain(
     filterJsonString,
     typeof route.query.priority_id === 'string' ? route.query.priority_id : '',
     typeof route.query.reverse === 'string' ? route.query.reverse : '',
     null,
     isolationId,
-    route
+    route,
+    forceIncludePersonal
   )
 
   // Chain succeeded — clear stale per-row caches so fetchRowInWorker

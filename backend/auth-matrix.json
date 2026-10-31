@@ -793,6 +793,28 @@
   },
   {
     "method": "GET",
+    "modeled": false,
+    "operationId": "my_albums",
+    "path": "/my-albums",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "my_albums_view",
+    "path": "/my-albums/view/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
     "modeled": true,
     "operationId": "compressed_file",
     "path": "/object/compressed/{file_path}",
