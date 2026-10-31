@@ -17,6 +17,7 @@ use crate::router::AppResult;
 use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
 use crate::storage::files::get_resolved_image_home;
+use crate::storage::files::get_resolved_users_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -121,24 +122,16 @@ pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
     let image_root = get_resolved_image_home()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured to scan"))?;
 
-    let root = image_root.join(src.trim_start_matches('/'));
-
-    if !root.is_dir() {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            format!(
-                "Path does not exist or is not a directory: {}",
-                root.display()
-            ),
-        ));
-    }
+    let scan_roots = resolve_scan_roots(src, &image_root)?;
 
     let internal_roots = internal_subtree_roots();
-    if is_inside_internal_subtree(&root, &internal_roots) {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            "Cannot index Picasu internal data directories",
-        ));
+    for root in &scan_roots {
+        if is_inside_internal_subtree(root, &internal_roots) {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "Cannot index Picasu internal data directories",
+            ));
+        }
     }
 
     let job_id = NEXT_JOB_ID.fetch_add(1, Ordering::Relaxed);
@@ -154,10 +147,7 @@ pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
         }
 
         slot.job_id = job_id;
-        let root_display = root.strip_prefix(&image_root).map_or_else(
-            |_| root.to_string_lossy().into_owned(),
-            |rel| rel.to_string_lossy().into_owned(),
-        );
+        let root_display = src.to_string();
         slot.status = AlbumIndexStatus {
             state: AlbumIndexState::Running,
             root: Some(root_display),
@@ -181,31 +171,34 @@ pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
         clear_asset_tables_and_caches()?;
     }
 
-    let image_root_clone = image_root;
-    let root_clone = root.clone();
+    let scan_roots_clone = scan_roots.clone();
     INDEX_RUNTIME.spawn(async move {
-        info!("Starting one-time album index: {}", root_clone.display());
+        info!(
+            "Starting one-time album index: {} root(s)",
+            scan_roots_clone.len()
+        );
 
-        // First, ensure a dir-album exists for every directory strictly under the
-        // root, parent-first. This covers empty
-        // directories that the file walk below would otherwise skip, bringing
-        // `index_album` to parity with the filesystem rebuild for albums.
+        // First, ensure a dir-album exists for every directory strictly under
+        // each scan root, parent-first. This covers empty directories that the
+        // file walk below would otherwise skip.
         let mut dir_paths: Vec<PathBuf> = Vec::new();
-        for entry in WalkDir::new(&root)
-            .follow_links(false)
-            .into_iter()
-            .filter_entry(|entry| should_walk_entry(entry, &internal_roots))
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(err) => {
-                    warn!("Album index walk error: {err}");
-                    increment_failed(job_id, None);
-                    continue;
+        for scan_root in &scan_roots_clone {
+            for entry in WalkDir::new(scan_root)
+                .follow_links(false)
+                .into_iter()
+                .filter_entry(|entry| should_walk_entry(entry, &internal_roots))
+            {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(err) => {
+                        warn!("Album index walk error: {err}");
+                        increment_failed(job_id, None);
+                        continue;
+                    }
+                };
+                if entry.file_type().is_dir() && entry.depth() > 0 {
+                    dir_paths.push(entry.into_path());
                 }
-            };
-            if entry.file_type().is_dir() && entry.depth() > 0 {
-                dir_paths.push(entry.into_path());
             }
         }
 
@@ -226,64 +219,55 @@ pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
         }
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
-        let walker = WalkDir::new(&root)
-            .follow_links(false)
-            .into_iter()
-            .filter_entry(|entry| should_walk_entry(entry, &internal_roots));
+        'files: for scan_root in &scan_roots_clone {
+            let walker = WalkDir::new(scan_root)
+                .follow_links(false)
+                .into_iter()
+                .filter_entry(|entry| should_walk_entry(entry, &internal_roots));
 
-        for entry in walker {
-            if cancel.load(Ordering::SeqCst) {
-                break;
-            }
+            for entry in walker {
+                if cancel.load(Ordering::SeqCst) {
+                    break 'files;
+                }
 
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(err) => {
-                    warn!("Album index walk error: {err}");
-                    increment_failed(job_id, None);
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(err) => {
+                        warn!("Album index walk error: {err}");
+                        increment_failed(job_id, None);
+                        continue;
+                    }
+                };
+
+                if !entry.file_type().is_file() {
                     continue;
                 }
-            };
 
-            if !entry.file_type().is_file() {
-                continue;
-            }
+                increment_scanned(job_id);
 
-            increment_scanned(job_id);
-
-            let abs_path = entry.into_path();
-            if let MediaOutcome::Skip(reason) = classify_media_file(&abs_path) {
-                // An unsupported extension is unremarkable in a media folder and
-                // has always been ignored silently. Only content that
-                // contradicts a supported extension is worth surfacing.
-                if !matches!(reason, SkipReason::UnsupportedExtension) {
-                    info!(
-                        "Ignoring unrecognized file {}: {reason:?}",
-                        abs_path.display()
-                    );
-                }
-                continue;
-            }
-
-            increment_matched(job_id);
-
-            let relative = if let Ok(r) = abs_path.strip_prefix(&image_root_clone) {
-                r.to_path_buf()
-            } else {
-                warn!("File outside IMAGE_HOME, skipping: {}", abs_path.display());
-                increment_failed(job_id, Some(abs_path.display().to_string()));
-                continue;
-            };
-
-            handles.push(tokio::spawn(async move {
-                match crate::workflow::index_image(&relative).await {
-                    Ok(()) => increment_processed(job_id),
-                    Err(err) => {
-                        handle_error(err);
-                        increment_failed(job_id, Some(abs_path.display().to_string()));
+                let abs_path = entry.into_path();
+                if let MediaOutcome::Skip(reason) = classify_media_file(&abs_path) {
+                    if !matches!(reason, SkipReason::UnsupportedExtension) {
+                        info!(
+                            "Ignoring unrecognized file {}: {reason:?}",
+                            abs_path.display()
+                        );
                     }
+                    continue;
                 }
-            }));
+
+                increment_matched(job_id);
+
+                handles.push(tokio::spawn(async move {
+                    match crate::workflow::index_image(&abs_path).await {
+                        Ok(()) => increment_processed(job_id),
+                        Err(err) => {
+                            handle_error(err);
+                            increment_failed(job_id, Some(abs_path.display().to_string()));
+                        }
+                    }
+                }));
+            }
         }
 
         debug!(
@@ -307,13 +291,20 @@ pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
         debug!("BATCH flush_tree pre-sweep done (job {job_id})");
 
         // Sweep stale asset paths: remove DB records whose asset file no
-        // longer exists on disk under the target root.
-        debug!(
-            "sweeping stale asset paths under {} (job {job_id})",
-            root.display()
-        );
-        sweep_stale_asset_paths(&root);
-        debug!("stale asset path sweep done (job {job_id})");
+        // longer exists on disk under each target root.
+        for scan_root in &scan_roots_clone {
+            debug!(
+                "sweeping stale asset paths under {} (job {job_id})",
+                scan_root.display()
+            );
+            sweep_stale_asset_paths(scan_root);
+            debug!("stale asset path sweep done (job {job_id})");
+        }
+
+        // The users_home root itself must never carry an album record.
+        if let Some(users_root) = get_resolved_users_home() {
+            prune_users_root_album(&users_root);
+        }
 
         // Drain the sweep's detached remove/update batches, then
         // UpdateTreeTask for album metadata.
@@ -362,7 +353,76 @@ pub fn album_index_status() -> AlbumIndexStatus {
     INDEX_STATUS.lock().expect("lock poisoned").status.clone()
 }
 
+/// Remove any album record whose directory is the `users_home` root itself.
+/// The root must never gain an album record; this prunes one if a prior
+/// (buggy or pre-existing) state created it.
+fn prune_users_root_album(users_root: &Path) {
+    use crate::process::dir_album;
+    use crate::storage::db::METADATA_TABLE;
+
+    let users_root_str = users_root.to_string_lossy().to_string();
+    let Ok(Some(album_id)) = crate::storage::asset_store::get_asset_id_by_path(&users_root_str)
+    else {
+        return;
+    };
+
+    let _ = crate::storage::asset_store::remove_asset_by_id(album_id.as_str());
+    let _ = crate::storage::asset_store::remove_asset_by_path(&users_root_str);
+
+    if let Ok(txn) = TREE.in_disk.begin_write() {
+        if let Ok(mut table) = txn.open_table(METADATA_TABLE) {
+            let _ = table.remove(&*album_id);
+        }
+        let _ = txn.commit();
+    }
+    dir_album::evict_dir_album(users_root);
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────
+
+fn resolve_scan_roots(src: &str, image_root: &Path) -> AppResult<Vec<PathBuf>> {
+    let users_root = get_resolved_users_home();
+    let trimmed = src.trim();
+
+    // Global scan: walk both roots when personal areas are enabled.
+    if trimmed == "/" || trimmed.is_empty() {
+        let mut roots = vec![image_root.to_path_buf()];
+        if let Some(u) = users_root {
+            roots.push(u);
+        }
+        for r in &roots {
+            if !r.is_dir() {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    format!("Path does not exist or is not a directory: {}", r.display()),
+                ));
+            }
+        }
+        return Ok(roots);
+    }
+
+    let trimmed_rel = trimmed.trim_start_matches('/');
+
+    // Relative path: image root first, then users root (when enabled).
+    let img_candidate = image_root.join(trimmed_rel);
+    if img_candidate.is_dir() {
+        return Ok(vec![img_candidate]);
+    }
+    if let Some(u) = &users_root {
+        let usr_candidate = u.join(trimmed_rel);
+        if usr_candidate.is_dir() {
+            return Ok(vec![usr_candidate]);
+        }
+    }
+
+    Err(AppError::new(
+        ErrorKind::InvalidInput,
+        format!(
+            "Path does not exist or is not a directory: {}",
+            img_candidate.display()
+        ),
+    ))
+}
 
 fn internal_subtree_roots() -> Vec<PathBuf> {
     let data_path = get_data_path();
@@ -790,6 +850,334 @@ mod tests {
         drop(tree);
 
         std::fs::remove_dir_all(&album_dir).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn index_album_walks_both_roots_when_users_home_enabled() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let data_path = crate::storage::files::DATA_PATH
+            .get()
+            .expect("DATA_PATH set");
+        let users_home = data_path.join("users");
+        let _ = std::fs::remove_dir_all(&users_home);
+        std::fs::create_dir_all(&users_home).expect("create users home");
+
+        // enable users_home
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = Some(users_home.clone());
+        }
+
+        let img_album = image_home.join("global_album");
+        let usr_album = users_home.join("alice");
+        std::fs::create_dir_all(&img_album).expect("create img album");
+        std::fs::create_dir_all(&usr_album).expect("create usr album");
+
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(img_album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(usr_album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        index_album("/").expect("index_album accepted");
+        wait_for_index_completion();
+
+        assert!(
+            dir_album::get_album_id_for_dir(&img_album).is_some(),
+            "global album must be indexed"
+        );
+        assert!(
+            dir_album::get_album_id_for_dir(&usr_album).is_some(),
+            "personal album must be indexed"
+        );
+        assert!(
+            dir_album::get_album_id_for_dir(&users_home).is_none(),
+            "users_home root itself must not gain an album record"
+        );
+
+        // asset membership per root
+        let tree = crate::storage::db::TREE
+            .in_memory
+            .read()
+            .expect("tree lock");
+        let has_img = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file.contains("global_album"))
+        });
+        let has_usr = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file.contains("alice"))
+        });
+        assert!(has_img, "global asset must be present");
+        assert!(has_usr, "personal asset must be present");
+        drop(tree);
+
+        // stale sweep prunes removed personal file
+        let doomed = usr_album.join("doomed.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(doomed.to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+        index_album("/").expect("index accepted");
+        wait_for_index_completion();
+        assert!(
+            crate::storage::db::TREE
+                .in_memory
+                .read()
+                .expect("tree")
+                .iter()
+                .any(|dt| dt
+                    .abstract_data
+                    .path()
+                    .is_some_and(|p| p.file.contains("doomed.jpg"))),
+            "doomed personal file should be indexed before removal"
+        );
+        std::fs::remove_file(&doomed).expect("remove doomed");
+        index_album("/").expect("index accepted");
+        wait_for_index_completion();
+        assert!(
+            !crate::storage::db::TREE
+                .in_memory
+                .read()
+                .expect("tree")
+                .iter()
+                .any(|dt| dt
+                    .abstract_data
+                    .path()
+                    .is_some_and(|p| p.file.contains("doomed.jpg"))),
+            "removed personal file must be pruned by sweep"
+        );
+
+        std::fs::remove_dir_all(&img_album).ok();
+        std::fs::remove_dir_all(&usr_album).ok();
+        // reset users_home
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = None;
+        }
+        reset_backend_state();
+    }
+
+    #[test]
+    fn index_album_disabled_mode_single_root_unchanged() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        // users_home stays None (disabled)
+        let image_home = test_image_home();
+        let album = image_home.join("disabled_album");
+        std::fs::create_dir_all(&album).expect("create album");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        index_album("/").expect("index accepted");
+        wait_for_index_completion();
+
+        assert!(dir_album::get_album_id_for_dir(&album).is_some());
+        reset_backend_state();
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn index_album_leading_slash_relative_resolves_under_image_root() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let album = image_home.join("leading_slash_album");
+        std::fs::create_dir_all(&album).expect("create album");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        index_album("/leading_slash_album").expect("index accepted");
+        wait_for_index_completion();
+
+        assert!(dir_album::get_album_id_for_dir(&album).is_some());
+        reset_backend_state();
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn index_album_users_root_relative_resolves_under_users_root_when_enabled() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let data_path = crate::storage::files::DATA_PATH
+            .get()
+            .expect("DATA_PATH set");
+        let users_home = data_path.join("users");
+        let _ = std::fs::remove_dir_all(&users_home);
+        std::fs::create_dir_all(&users_home).expect("create users home");
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = Some(users_home.clone());
+        }
+
+        let album = users_home.join("onlypersonal");
+        std::fs::create_dir_all(&album).expect("create album");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        index_album("onlypersonal").expect("index accepted");
+        wait_for_index_completion();
+
+        assert!(dir_album::get_album_id_for_dir(&album).is_some());
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = None;
+        }
+        reset_backend_state();
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn index_album_image_root_wins_on_ambiguous_relative_name() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let data_path = crate::storage::files::DATA_PATH
+            .get()
+            .expect("DATA_PATH set");
+        let users_home = data_path.join("users");
+        let _ = std::fs::remove_dir_all(&users_home);
+        std::fs::create_dir_all(&users_home).expect("create users home");
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = Some(users_home.clone());
+        }
+
+        let img_album = image_home.join("ambiguous");
+        let usr_album = users_home.join("ambiguous");
+        std::fs::create_dir_all(&img_album).expect("create img album");
+        std::fs::create_dir_all(&usr_album).expect("create usr album");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(img_album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(usr_album.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        index_album("ambiguous").expect("index accepted");
+        wait_for_index_completion();
+
+        assert!(dir_album::get_album_id_for_dir(&img_album).is_some());
+        assert!(dir_album::get_album_id_for_dir(&usr_album).is_none());
+
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = None;
+        }
         reset_backend_state();
     }
 }

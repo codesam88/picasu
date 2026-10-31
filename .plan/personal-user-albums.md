@@ -36,6 +36,15 @@ keeping the filesystem as source of truth.
   toggle, never the client alone.
 - Scan: admin Scan Now covers global plus all personal trees.
 
+## Boundary namespace (2026-10-31 follow-up)
+
+- Storage stays external (`S0`/`S1` as built); nesting rejected: no volume
+  separation, share exposure, name reservation, dot-dir backup risk.
+- Minimal marker where paths cross the API boundary: `POST /post/index/album`
+  gains an explicit root selector (default preserves probe order
+  image-then-users); `dir_path` in `get-albums` gains an owner/root marker
+  (`S2`). No URI scheme; mutation APIs stay ID-based.
+
 ## Solution strategy
 
 Chosen direction: filesystem-prefix ownership under a separate, configurable

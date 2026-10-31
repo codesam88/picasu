@@ -279,6 +279,7 @@ pub fn reset_backend_state() {
     config.read_only_mode = false;
     config.allow_registration = false;
     config.trivial_passwords = false;
+    config.users_home = None;
     // Tests run in bootstrap mode (empty-store window open); production's
     // default is closed. Individual tests opt out via `write_config`.
     config.bootstrap_admin = true;

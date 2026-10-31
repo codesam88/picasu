@@ -2,6 +2,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::process::dir_album::{get_album_id_for_dir, get_or_create_dir_album};
 use crate::process::index::process_media_info;
 use crate::storage::files::get_resolved_image_home;
+use crate::storage::files::get_resolved_users_home;
 use crate::tasks::{
     INDEX_COORDINATOR,
     actor::{
@@ -39,22 +40,20 @@ fn try_acquire(path_key: String) -> Option<ProcessingGuard> {
 /// the file isn't under the configured image root or sits directly in it
 /// (no sub-directory to album-map).
 async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64>> {
-    let image_root = get_resolved_image_home()?;
-
     let file_dir = file_path.parent()?;
 
-    if !file_dir.starts_with(&image_root) {
+    let image_root = get_resolved_image_home().filter(|r| file_dir.starts_with(r));
+    let root =
+        image_root.or_else(|| get_resolved_users_home().filter(|r| file_dir.starts_with(r)))?;
+
+    // Files directly in the root have no sub-directory to album-map.
+    if file_dir == root {
         return None;
     }
 
-    // Files directly in the image root have no sub-directory to album-map.
-    if file_dir == image_root {
-        return None;
-    }
+    let relative = file_dir.strip_prefix(&root).ok()?;
 
-    let relative = file_dir.strip_prefix(&image_root).ok()?;
-
-    let mut current = image_root.clone();
+    let mut current = root.clone();
     let mut deepest_album_id = None;
     for component in relative.components() {
         current.push(component);
@@ -117,10 +116,21 @@ pub fn index_media_file(
 /// path-primary record — records are never merged. Duplicate content is
 /// grouped via `DUPE_INDEX` only.
 pub async fn index_image(src: &Path) -> Result<()> {
-    let image_root =
-        get_resolved_image_home().ok_or_else(|| anyhow::anyhow!("IMAGE_HOME not configured"))?;
+    let path = if src.is_absolute() {
+        src.to_path_buf()
+    } else {
+        let image_root = get_resolved_image_home()
+            .ok_or_else(|| anyhow::anyhow!("IMAGE_HOME not configured"))?;
+        image_root.join(src)
+    }
+    .clean();
 
-    let path = image_root.join(src).clean();
+    // Accept files under either configured root.
+    let under_image = get_resolved_image_home().is_some_and(|r| path.starts_with(&r));
+    let under_users = get_resolved_users_home().is_some_and(|r| path.starts_with(&r));
+    if !under_image && !under_users {
+        return Err(anyhow::anyhow!("path outside configured roots"));
+    }
 
     let already_known_album_id = path.parent().and_then(get_album_id_for_dir);
     let resolved_dir_album_id = match already_known_album_id {
