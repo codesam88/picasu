@@ -144,7 +144,9 @@ partial moves (refuse before first rename; existing skip/rename semantics
 kept within the allowed tree). Upload default target stays
 `<image_home>/<upload_folder>`; personal upload requires an explicit
 caller-owned target album. Covers are included (cover must be visible to
-caller).
+caller). Home provisioning: `ensure_personal_home` (mkdir + dir-album record,
+best-effort after user creation; CLI direct provisioning and pre-existing
+users covered by admin Scan Now).
 Done: per-op tests for cross-user move/create/delete/upload/trash refusal and
 target-unchanged assertions; admin-on-other-user refusal.
 

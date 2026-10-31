@@ -302,9 +302,74 @@ pub fn visible_to(caller: &str, path: &Path) -> bool {
     }
 }
 
+/// Ensure the personal home directory and its dir-album record exist for
+/// `id`. No-op when personal areas are disabled. Pre-existing users created
+/// before `users_home` was enabled are covered by the admin Scan Now pass
+/// (which indexes empty directories too).
+pub fn ensure_personal_home(id: &str) -> Result<(), crate::error::AppError> {
+    if get_resolved_users_home().is_none() {
+        return Ok(());
+    }
+    let dir = users_dir_for(id).map_err(|_| {
+        crate::error::AppError::new(crate::error::ErrorKind::InvalidInput, "invalid user id")
+    })?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| crate::error::AppError::new(crate::error::ErrorKind::IO, e.to_string()))?;
+    crate::process::dir_album::get_or_create_dir_album(dir).map_err(|e| {
+        crate::error::AppError::new(crate::error::ErrorKind::Internal, e.to_string())
+    })?;
+    Ok(())
+}
+
+/// Why a write through the central gate was refused. The variants are
+/// informational; handlers map them to their own `ErrorKind` (typically
+/// `PermissionDenied`, HTTP 403).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteDenial {
+    /// The path is (or resolves to) the `users_home` root itself, which is
+    /// never addressable.
+    UsersRoot,
+    /// A personal path whose owner is not `caller`.
+    NotOwner,
+    /// A move pairing two personal trees with different owners.
+    CrossOwner,
+}
+
+/// Central write gate for S3. `source` and `dest` are optional: pass
+/// `Some(path)` for whichever side an operation touches (a delete touches
+/// only the source; a create/upload touches only the destination; a move
+/// touches both). Returns `Ok(())` when every supplied path is writable by
+/// `caller`, and `Err(reason)` otherwise. Refuses the `users_home` root in
+/// either role, personal paths owned by someone else, and cross-owner moves.
+pub fn write_gate(
+    caller: &str,
+    source: Option<&Path>,
+    dest: Option<&Path>,
+) -> Result<(), WriteDenial> {
+    // Cross-owner pairing is reported distinctly when both sides are personal
+    // trees with different owners.
+    if let (Some(s), Some(d)) = (source, dest)
+        && let (
+            PathClassification::Personal { owner: so },
+            PathClassification::Personal { owner: do_ },
+        ) = (classify_path(s), classify_path(d))
+        && so != do_
+    {
+        return Err(WriteDenial::CrossOwner);
+    }
+    for path in [source, dest].into_iter().flatten() {
+        match classify_path(path) {
+            PathClassification::UsersRoot => return Err(WriteDenial::UsersRoot),
+            PathClassification::Personal { owner } if owner != caller => {
+                return Err(WriteDenial::NotOwner);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Validate that the two roots do not equal or nest in either direction.
-// Not yet called by request handlers; S1 wires indexing/watcher.
-#[allow(dead_code)]
 pub fn validate_path_roots<I, U>(image_home: Option<I>, users_home: Option<U>) -> anyhow::Result<()>
 where
     I: AsRef<Path>,
@@ -490,6 +555,50 @@ mod tests {
             }
             let _ = std::fs::remove_file(&link);
         }
+
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = None;
+        }
+    }
+
+    #[test]
+    fn write_gate_refuses_users_root_and_other_personal() {
+        let _g = crate::tests::bootstrap::lock();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let root = tempfile::tempdir().expect("tmp");
+        let images = root.path().join("images");
+        let users = root.path().join("users");
+        std::fs::create_dir_all(&images).expect("images");
+        std::fs::create_dir_all(&users).expect("users");
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.image_home = Some(images.clone());
+            c.users_home = Some(users.clone());
+        }
+
+        let alice_file = users.join("alice").join("a.jpg");
+        let bob_file = users.join("bob").join("b.jpg");
+        let public_file = images.join("p.jpg");
+
+        // users_root refused
+        assert!(write_gate("alice", None, Some(&users)).is_err());
+        // other's personal refused
+        assert!(write_gate("alice", Some(&bob_file), None).is_err());
+        // cross-owner pair refused
+        assert!(write_gate("alice", Some(&alice_file), Some(&bob_file)).is_err());
+        // own personal + public allowed
+        assert!(write_gate("alice", Some(&alice_file), Some(&public_file)).is_ok());
+        // public allowed
+        assert!(write_gate("alice", None, Some(&public_file)).is_ok());
 
         {
             let mut c = crate::model::config::APP_CONFIG

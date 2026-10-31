@@ -47,6 +47,11 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
         Ok(())
     })
     .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    // Provision the personal home (best-effort: a failure leaves a valid user
+    // whose home is created on the next admin scan).
+    if let Err(e) = crate::storage::files::ensure_personal_home(&target) {
+        log::warn!("ensure_personal_home failed for {target}: {e}");
+    }
     Ok(())
 }
 
@@ -297,6 +302,11 @@ pub fn provision_user_with_home(
     // token version. One locked write, no second store to keep in step.
     crate::auth::user_store::provision(&user_store_path(), &id, &canonical, admin, home)
         .map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
+    // Provision the personal home (best-effort: a failure leaves a valid user
+    // whose home is created on the next admin scan).
+    if let Err(e) = crate::storage::files::ensure_personal_home(&id) {
+        log::warn!("ensure_personal_home failed for {id}: {e}");
+    }
     Ok(id)
 }
 
@@ -725,5 +735,61 @@ mod tests {
         crate::auth::users::create_user("s5-d", false).expect("create d");
         assert!(!super::set_admin_role("s5-d", false).expect("noop demote"));
         clear_users_table();
+    }
+
+    #[test]
+    fn ensure_personal_home_creates_dir_and_album_when_enabled() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let data_path = crate::storage::files::DATA_PATH
+            .get()
+            .expect("DATA_PATH set");
+        let users_home = data_path.join("users");
+        let _ = std::fs::remove_dir_all(&users_home);
+        std::fs::create_dir_all(&users_home).expect("create users home");
+
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = Some(users_home.clone());
+        }
+
+        crate::auth::users::create_user("home-user", false).expect("create user");
+
+        let home_dir = users_home.join("home-user");
+        assert!(home_dir.is_dir(), "personal home dir must be created");
+        assert!(
+            crate::process::dir_album::get_album_id_for_dir(&home_dir).is_some(),
+            "personal home must have a dir-album record"
+        );
+
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = None;
+        }
+        reset_backend_state();
+    }
+
+    #[test]
+    fn ensure_personal_home_is_noop_when_disabled() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        assert!(crate::storage::files::ensure_personal_home("disabled-user").is_ok());
+        reset_backend_state();
     }
 }

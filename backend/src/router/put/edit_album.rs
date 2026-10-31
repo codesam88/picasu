@@ -145,8 +145,9 @@ pub async fn set_album_cover(
     mutation: GuardResult<GuardMutate>,
     set_album_cover: Json<SetAlbumCover>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let set_album_cover_inner = set_album_cover.into_inner();
@@ -201,6 +202,16 @@ pub async fn set_album_cover(
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
                 .value();
             let cover_data = compose_abstract_data(&cover_record, Some(&cover_payload));
+
+            // Write gate: album and cover must be writable/visible to caller.
+            crate::storage::files::write_gate(
+                &caller,
+                Some(&std::path::PathBuf::from(&cover_record.path)),
+                Some(&std::path::PathBuf::from(&record.path)),
+            )
+            .map_err(|_| {
+                AppError::new(ErrorKind::PermissionDenied, "Cover or album not writable")
+            })?;
 
             album.set_cover(&cover_data, cover_asset_id);
             let abstract_data = AbstractData::Album(album);

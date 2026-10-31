@@ -120,8 +120,9 @@ pub async fn assign_album(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<AssignAlbumData>,
 ) -> AppResult<Json<AssignResult>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     let data = json_data.into_inner();
     let asset_id = data.asset_id;
@@ -142,8 +143,16 @@ pub async fn assign_album(
         ));
     }
 
+    // Write gate: destination album must be writable by the caller.
+    crate::storage::files::write_gate(&caller, None, Some(&album_dir)).map_err(|_| {
+        AppError::new(
+            ErrorKind::PermissionDenied,
+            "Destination album not writable",
+        )
+    })?;
+
     let outcome = tokio::task::spawn_blocking(move || {
-        move_asset_into_album(asset_id, album_id, &album_dir, on_conflict)
+        move_asset_into_album(asset_id, album_id, &album_dir, on_conflict, &caller)
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -178,6 +187,7 @@ fn move_asset_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    caller: &str,
 ) -> Result<AssignOutcome, AppError> {
     use crate::storage::asset_store;
 
@@ -188,7 +198,7 @@ fn move_asset_into_album(
 
     // Albums move as directory trees.
     if record.kind == crate::model::asset::AssetKind::Album {
-        return move_album_into_album(asset_id, album_id, album_dir, on_conflict);
+        return move_album_into_album(asset_id, album_id, album_dir, on_conflict, caller);
     }
 
     let source_path = PathBuf::from(&record.path);
@@ -199,6 +209,15 @@ fn move_asset_into_album(
         ));
     }
 
+    // Write gate: source must be writable by caller and not cross-owner vs dest.
+    crate::storage::files::write_gate(caller, Some(&source_path), Some(album_dir)).map_err(
+        |_| {
+            AppError::new(
+                ErrorKind::PermissionDenied,
+                "Source or destination not writable",
+            )
+        },
+    )?;
     let file_name = source_path
         .file_name()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "File has no name"))?;
@@ -273,6 +292,7 @@ fn move_album_into_album(
     target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
+    caller: &str,
 ) -> Result<AssignOutcome, AppError> {
     // The album directory path is identity — read it from AssetRecord.
     let record = crate::storage::asset_store::get_asset_by_id(&album_id)
@@ -296,6 +316,15 @@ fn move_album_into_album(
         ));
     }
 
+    // Write gate: source and destination must be writable by caller.
+    crate::storage::files::write_gate(caller, Some(&source_dir), Some(target_dir)).map_err(
+        |_| {
+            AppError::new(
+                ErrorKind::PermissionDenied,
+                "Source or destination not writable",
+            )
+        },
+    )?;
     let dir_name = source_dir
         .file_name()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album directory has no name"))?;

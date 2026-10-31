@@ -85,8 +85,9 @@ pub async fn delete_data(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<DeleteList>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     if json_data.asset_ids.is_empty() {
         return Err(AppError::new(
@@ -98,7 +99,8 @@ pub async fn delete_data(
     let (abstract_data_to_remove, all_affected_album_ids) = tokio::task::spawn_blocking({
         let asset_ids = json_data.asset_ids.clone();
         let timestamp = json_data.timestamp;
-        move || process_deletes(&asset_ids, timestamp)
+        let caller = caller.clone();
+        move || process_deletes(&asset_ids, timestamp, &caller)
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -208,7 +210,11 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
 /// 3. Remove the compressed thumbnail only if no other assets share the
 ///    same content hash (checked via `DUPE_INDEX`).
 /// 4. Collect affected album IDs for later self-update.
-fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult, AppError> {
+fn process_deletes(
+    asset_ids: &[String],
+    _timestamp: i64,
+    caller: &str,
+) -> Result<DeleteResult, AppError> {
     use crate::model::metadata_record::compose_abstract_data;
 
     let txn = TREE
@@ -225,6 +231,10 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
 
+    // First pass: resolve every entry and enforce the write gate before any
+    // filesystem mutation, so a forbidden entry aborts the whole request with
+    // nothing deleted.
+    let mut collected: Vec<(AbstractData, Vec<ArrayString<64>>)> = Vec::new();
     for asset_id_str in asset_ids {
         let asset_id: ArrayString<64> = ArrayString::from(asset_id_str.as_str()).map_err(|_| {
             AppError::new(
@@ -262,6 +272,12 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             .map(|guard| guard.value());
         let abstract_data = compose_abstract_data(&record, payload.as_ref());
 
+        // Write gate: source must be writable by caller.
+        if let Some(path) = abstract_data.visibility_path() {
+            crate::storage::files::write_gate(caller, Some(&path), None)
+                .map_err(|_| AppError::new(ErrorKind::PermissionDenied, "Asset not writable"))?;
+        }
+
         // Collect affected albums.
         let affected_albums: Vec<ArrayString<64>> = match &abstract_data {
             AbstractData::Image(img) => img.metadata.album.iter().copied().collect(),
@@ -274,6 +290,11 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             }
         };
 
+        collected.push((abstract_data, affected_albums));
+    }
+
+    // Second pass: perform deletions now that all entries validated.
+    for (abstract_data, affected_albums) in collected {
         // Delete asset file + sidecar from disk.
         if let Some(file_entry) = abstract_data.path() {
             let original = Path::new(&file_entry.file);
