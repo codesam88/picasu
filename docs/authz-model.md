@@ -176,10 +176,9 @@ is never an album, addressable, movable, shareable, or scannable.
   only to its owner; `UsersRoot` is never exposed. A non-owner does not
   receive a 403 — the album is absent from `get-albums` and yields no
   rows.
-- _Timeline opt-in:_ personal _media_ (images/videos) appear in the
+- _Timeline opt-in:_ personal rows (media and albums) appear in the
   prefetch/timeline only when `include_personal = true` **and** the caller
-  owns them; personal _albums_ stay visible to their owner regardless of
-  the flag; other users' albums are already excluded by visibility. The
+  owns them; other users' rows are already excluded by visibility. The
   flag defaults to `false` and is enforced server-side regardless of any
   client-supplied filter or `basicString`; the cache key includes the
   caller and the flag.
@@ -319,10 +318,9 @@ only entries with `created_by == caller`. Management of an invisible
 album returns 404, not 403. Pinned by `create_share`, `edit_share`, and
 `delete_share` plus `share_visible_to`.
 
-**AUTH-20 — Timeline personal opt-in.** Personal media (images/videos)
+**AUTH-20 — Timeline personal opt-in.** Personal rows (media and albums)
 appear in prefetch/timeline results only when `include_personal = true`
-and the caller owns them. Personal albums remain visible to their owner
-regardless of the flag. The flag defaults to `false` and is enforced
+and the caller owns them. The flag defaults to `false` and is enforced
 server-side independent of any client filter; the cache key includes the
 caller and the flag. Pinned by `row_visible` in
 `backend/src/router/get/get_prefetch.rs`.
