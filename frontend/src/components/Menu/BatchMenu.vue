@@ -25,6 +25,9 @@
             <!-- Album Info: grayed out unless the single selected item is itself an album -->
             <ItemAlbumInfo />
 
+            <!-- Share album: same single-album gating as Album Info -->
+            <ItemShareAlbum />
+
             <v-divider></v-divider>
 
             <!-- Tag Actions -->
@@ -50,6 +53,10 @@
       </v-menu>
     </template>
   </v-tooltip>
+  <CreateShareModal
+    v-if="modalStore.showShareModal && modalStore.shareAlbumId !== null"
+    :album-id="modalStore.shareAlbumId"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -57,14 +64,17 @@ import { mergeProps, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useConfigStore } from '@/store/configStore'
+import { useModalStore } from '@/store/modalStore'
 
 import ItemSetAsCover from '@Menu/MenuItem/ItemSetAsCover.vue'
 import ItemAlbumInfo from '@Menu/MenuItem/ItemAlbumInfo.vue'
+import ItemShareAlbum from '@Menu/MenuItem/ItemShareAlbum.vue'
 import ItemBatchEditTags from '@Menu/MenuItem/ItemBatchEditTags.vue'
 import ItemBatchEditAlbums from '@Menu/MenuItem/ItemBatchEditAlbums.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
 import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
+import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 
@@ -74,6 +84,9 @@ const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 const configStore = useConfigStore('mainId')
+// Share creation lives in the main gallery flow: the dialog this menu opens
+// is bound to the main store, like the toolbar entry it replaces.
+const modalStore = useModalStore('mainId')
 
 const editModeList = computed(() => Array.from(collectionStore.editModeCollection))
 

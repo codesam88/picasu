@@ -34,6 +34,9 @@ export const useModalStore = (isolationId: IsolationId) =>
       showShareLoginModal: boolean
       showAlbumInfoModal: boolean
       showUserSettingsModal: boolean
+      /// Album the share dialog targets. The dialog boolean is shared, so a
+      /// mounted dialog only opens for the album named here.
+      shareAlbumId: string | null
     } => ({
       showEditTagsModal: false,
       showBatchEditTagsModal: false,
@@ -47,7 +50,8 @@ export const useModalStore = (isolationId: IsolationId) =>
       showDeleteShareModal: false,
       showShareLoginModal: false,
       showAlbumInfoModal: false,
-      showUserSettingsModal: false
+      showUserSettingsModal: false,
+      shareAlbumId: null
     }),
     getters: {
       hasOpenDialog: (state) => dialogKeys.some((key) => state[key])
@@ -58,6 +62,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       // back-navigation or edit-mode-exit.
       closeOpenDialog() {
         for (const key of dialogKeys) this[key] = false
+        this.shareAlbumId = null
       }
     }
   })()
