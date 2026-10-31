@@ -202,3 +202,81 @@ fn prefetch_include_personal_toggle_is_server_enforced() {
         c.users_home = None;
     }
 }
+
+#[test]
+fn prefetch_root_albums_respect_include_personal_flag() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let _users_home = enable_users_home();
+    seed("read-a", false, None);
+    seed("read-b", false, None);
+
+    let image_home = crate::tests::bootstrap::test_image_home();
+    let global_album = image_home.join("globalroot");
+    std::fs::create_dir_all(&global_album).expect("global album dir");
+
+    // index both roots (cache already holds the personal-home albums created
+    // by `seed`, so the walk reuses them instead of duplicating)
+    crate::tasks::actor::album_index::index_album_with_root("/", false, None)
+        .expect("index accepted");
+    wait_for_index_completion();
+
+    let filter = serde_json::json!({
+        "And": [
+            {"ExtType": "album"},
+            {"Trashed": false},
+            {"RootAlbum": true}
+        ]
+    });
+
+    // default (no flag): only global root album
+    for user in ["read-a", "read-b"] {
+        let resp = client
+            .post("/get/prefetch")
+            .cookie(cookie(user, false))
+            .header(rocket::http::ContentType::JSON)
+            .body(filter.to_string())
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            rocket::http::Status::Ok,
+            "prefetch {user} default"
+        );
+        let body: serde_json::Value = resp.into_json().expect("prefetch json");
+        assert_eq!(
+            body["prefetch"]["dataLength"].as_u64(),
+            Some(1),
+            "{user} default must return only global root album"
+        );
+    }
+
+    // opt-in: global + own personal root (never the other user's)
+    for user in ["read-a", "read-b"] {
+        let resp = client
+            .post("/get/prefetch?include_personal=true")
+            .cookie(cookie(user, false))
+            .header(rocket::http::ContentType::JSON)
+            .body(filter.to_string())
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            rocket::http::Status::Ok,
+            "prefetch {user} opt-in"
+        );
+        let body: serde_json::Value = resp.into_json().expect("prefetch json");
+        assert_eq!(
+            body["prefetch"]["dataLength"].as_u64(),
+            Some(2),
+            "{user} opt-in must return global + own root album only"
+        );
+    }
+
+    {
+        let mut c = crate::model::config::APP_CONFIG
+            .get()
+            .expect("cfg")
+            .write()
+            .expect("lock");
+        c.users_home = None;
+    }
+}
