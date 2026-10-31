@@ -21,6 +21,33 @@
 
       <v-divider></v-divider>
 
+      <!-- Users Home Path (read-only) -->
+      <v-list-item
+        v-if="props.usersHomePath"
+        title="Users Home Path"
+        :subtitle="props.usersHomePath"
+        prepend-icon="mdi-account-multiple-outline"
+        lines="two"
+      ></v-list-item>
+      <v-empty-state
+        v-else
+        icon="mdi-account-multiple-outline"
+        title="No users home path set"
+        text="Set a users home path in config.toml or via PICASU_USERS_HOME env var"
+      ></v-empty-state>
+
+      <v-divider></v-divider>
+
+      <!-- Personal Albums (read-only host switch) -->
+      <v-list-item
+        title="Personal Albums"
+        :subtitle="props.personalAlbumsEnabled ? 'Enabled' : 'Disabled'"
+        prepend-icon="mdi-account-multiple-outline"
+        lines="two"
+      ></v-list-item>
+
+      <v-divider></v-divider>
+
       <!-- Filesystem watcher toggle -->
       <v-list-item
         :title="
@@ -195,7 +222,11 @@ import {
 import ServerFilePicker from '@/components/Page/Config/ServerFilePicker.vue'
 import { useCurrentUser } from '@/script/utils/currentUser'
 
-const props = defineProps<{ imagePath: string | null }>()
+const props = defineProps<{
+  imagePath: string | null
+  usersHomePath?: string | null
+  personalAlbumsEnabled?: boolean
+}>()
 const uploadFolder = defineModel<string | null>('uploadFolder', { required: true })
 const maxUploadSize = defineModel<string>('maxUploadSize', { required: true })
 const fsNotifyWatcher = defineModel<boolean>('fsNotifyWatcher', { required: true })

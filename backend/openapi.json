@@ -300,6 +300,10 @@
             "description": "NFC-normalize uploaded filenames so macOS NFD names collapse onto\ntheir composed form. Optional (unlike the always-on sanitization tiers).",
             "type": "boolean"
           },
+          "personalAlbumsEnabled": {
+            "description": "Enable per-user personal albums. Host-only switch (env/file/restart);\neffective only when `users_home` is also configured. Default off.",
+            "type": "boolean"
+          },
           "port": {
             "format": "int32",
             "minimum": 0,
@@ -461,6 +465,10 @@
           "normalizeUploadFilenames": {
             "type": "boolean"
           },
+          "personalAlbumsEnabled": {
+            "description": "Whether per-user personal areas are enabled on this server.\nBoolean only — the host path of the personal-users root is never\nserved (host-only setting), mirroring `uploadFolder` being relative.",
+            "type": "boolean"
+          },
           "readOnlyMode": {
             "type": "boolean"
           },
@@ -481,7 +489,8 @@
           "fsNotifyWatcher",
           "normalizeUploadFilenames",
           "validateUploadContent",
-          "useClientTimestampInfo"
+          "useClientTimestampInfo",
+          "personalAlbumsEnabled"
         ],
         "type": "object"
       },
@@ -2077,7 +2086,7 @@
     },
     "/get/config": {
       "get": {
-        "description": "Returns the values a client needs to drive the other operations:\n`uploadFolder` (relative to the image library root), `maxUploadSize`,\n`readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,\n`validateUploadContent` and `useClientTimestampInfo`.\n\nCorner cases: the host image path is never served here — it is a\nhost-only setting (env/file) surfaced to admins through\n`GET /get/admin/config`. The signing key is never exposed in any form.\n`uploadFolder` is relative and visible to every admitted caller, so the\nresponse carries no per-tier fields at all and is identical for every\ncredential that passes the gate.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
+        "description": "Returns the values a client needs to drive the other operations:\n`uploadFolder` (relative to the image library root), `maxUploadSize`,\n`readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,\n`validateUploadContent`, `useClientTimestampInfo` and\n`personalAlbumsEnabled` (boolean only — whether per-user personal areas\nare enabled; the host path of the personal-users root is never served).\n\nCorner cases: the host image path is never served here — it is a\nhost-only setting (env/file) surfaced to admins through\n`GET /get/admin/config`. The signing key is never exposed in any form.\n`uploadFolder` is relative and visible to every admitted caller, so the\nresponse carries no per-tier fields at all and is identical for every\ncredential that passes the gate.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
         "operationId": "get_config_handler",
         "responses": {
           "200": {
