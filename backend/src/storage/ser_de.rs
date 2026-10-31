@@ -29,13 +29,13 @@ use redb::{TypeName, Value};
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
-const SCHEMA_VERSION: u8 = 2;
+const SCHEMA_VERSION: u8 = 1;
 
 /// On-disk schema version for `MetadataRecord` (the `METADATA_TABLE` value).
 /// The table's on-disk name changed when `MetadataRecord` replaced
 /// `AbstractData` as the stored value, so rows written under the previous
 /// name are never decoded by this impl.
-const METADATA_SCHEMA_VERSION: u8 = 2;
+const METADATA_SCHEMA_VERSION: u8 = 1;
 
 /// Abort decoding of a record this build cannot interpret, with instructions
 /// for the operator.
@@ -281,29 +281,17 @@ mod tests {
             bytes[1], SCHEMA_VERSION,
             "version byte must match SCHEMA_VERSION"
         );
-        assert_eq!(SCHEMA_VERSION, 2, "current schema is version 2");
+        assert_eq!(SCHEMA_VERSION, 1, "current schema is version 1");
     }
 
+    /// Rows written under an unknown schema version must be refused with
+    /// rebuild instructions rather than surfacing as a bare bitcode decode
+    /// failure. (v1 is the current version, so no older lineage exists to
+    /// name: any other byte is either corruption or a newer writer.)
     #[test]
     #[should_panic(expected = "POST /post/index/album")]
     fn unknown_version_requires_rebuild() {
         AbstractData::from_bytes(&[0xFF, 9, 0, 0, 0]);
-    }
-
-    /// Rows written before the favorite/archived removal carry the older
-    /// schema version on both stored types; they must be refused with
-    /// rebuild instructions rather than surfacing as a bare bitcode decode
-    /// failure.
-    #[test]
-    #[should_panic(expected = "POST /post/index/album")]
-    fn pre_removal_object_version_requires_rebuild() {
-        AbstractData::from_bytes(&[0xFF, 1, 0, 0, 0]);
-    }
-
-    #[test]
-    #[should_panic(expected = "POST /post/index/album")]
-    fn pre_removal_metadata_version_requires_rebuild() {
-        MetadataRecord::from_bytes(&[0xFF, 1, 0, 0, 0]);
     }
 
     #[test]

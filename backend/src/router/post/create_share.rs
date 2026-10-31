@@ -6,6 +6,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
 use crate::router::auth::GuardAdmin;
 use crate::router::auth::GuardMutate;
+use crate::router::put::users_password::caller_identity;
 use crate::storage::db::TREE;
 use crate::{router::GuardResult, storage::db::METADATA_TABLE};
 
@@ -42,7 +43,9 @@ pub struct CreateShare {
 ///
 /// Corner cases: The id is generated, never supplied by the caller, so a
 /// second share for the same album is a separate entry. Nothing is written
-/// unless the album exists.
+/// unless the album exists. The caller's user id is recorded as the share's
+/// owner in the same transaction, which is what per-caller album listings
+/// filter on.
 ///
 /// Errors: 400 unusable request body — 401 missing or invalid credentials —
 /// 404 `albumId` names no album — 405 read-only mode — 500 storage failure.
@@ -75,15 +78,16 @@ pub async fn create_share(
     mutation: GuardResult<GuardMutate>,
     create_share: Json<CreateShare>,
 ) -> AppResult<String> {
-    let _ = auth?;
+    let GuardAdmin { claims } = auth?;
     let _ = mutation?;
+    let (creator, _) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || {
         let create_share = create_share.into_inner();
         let txn = TREE
             .in_disk
             .begin_write()
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        match create_and_insert_share(&txn, create_share) {
+        match create_and_insert_share(&txn, create_share, &creator) {
             Ok(link) => {
                 txn.commit()
                     .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -96,7 +100,11 @@ pub async fn create_share(
     .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))?
 }
 
-fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) -> AppResult<String> {
+fn create_and_insert_share(
+    txn: &WriteTransaction,
+    create_share: CreateShare,
+    creator: &str,
+) -> AppResult<String> {
     let mut metadata_table = txn
         .open_table(METADATA_TABLE)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -127,6 +135,7 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                 show_download: create_share.show_download,
                 show_upload: create_share.show_upload,
                 exp: create_share.exp,
+                created_by: creator.to_string(),
             };
             album.share_list.insert(share_id, share);
             metadata_table

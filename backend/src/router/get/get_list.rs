@@ -3,9 +3,11 @@ use crate::model::album::Share;
 use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_parent_album_id;
 use crate::router::auth::GuardUser;
+use crate::router::put::users_password::caller_identity;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TREE;
 use crate::storage::db::TagInfo;
+use crate::storage::db::share_visible_to;
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -109,7 +111,9 @@ impl From<&Share> for ShareInfo {
 /// absolute path for albums outside that root; `parentAlbumId` names the direct
 /// parent directory album and is `null` for top-level dir albums and all
 /// manually created albums. Share entries carry `hasPassword` presence only —
-/// the stored password is never returned by an album read.
+/// the stored password is never returned by an album read. Each album's
+/// `shareList` is scoped to the caller: only shares they created are listed
+/// (see [`crate::storage::db::share_visible_to`]).
 ///
 /// Errors: 401 missing, invalid or share-role session — 403 no enrolled
 /// users — 500 storage failure.
@@ -134,10 +138,13 @@ impl From<&Share> for ShareInfo {
 ]
 #[get("/get/get-albums")]
 pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<AlbumInfo>>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
+    let (caller, _) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || {
         let image_home = crate::model::config::with_config(|c| c.image_home.clone());
 
+        // Share ownership for this request: only the caller's own shares
+        // are listed. The admin panel does not filter.
         let album_list = TREE
             .read_albums()
             .map_err(|e| e.context("Failed to read albums"))?;
@@ -163,6 +170,7 @@ pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<Albu
                         .metadata
                         .share_list
                         .iter()
+                        .filter(|(_, share)| share_visible_to(&caller, &share.created_by))
                         .map(|(id, share)| (*id, ShareInfo::from(share)))
                         .collect(),
                     dir_path,

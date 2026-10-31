@@ -17,6 +17,9 @@ mod auth_users;
 mod share_secrets;
 
 #[cfg(test)]
+mod share_ownership;
+
+#[cfg(test)]
 mod user_writes;
 
 #[cfg(test)]

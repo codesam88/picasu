@@ -6,6 +6,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::GuardResult;
 use crate::router::auth::GuardAdmin;
 use crate::router::auth::GuardMutate;
+use crate::router::put::users_password::caller_identity;
 use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -67,8 +68,9 @@ pub async fn edit_share(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<EditShare>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardAdmin { claims } = auth?;
     let _ = mutation?;
+    let (creator, _) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let txn = TREE
             .in_disk
@@ -106,6 +108,13 @@ pub async fn edit_share(
                     }
                     Some(pw) => share.password = Some(hash_share_password(pw)),
                 }
+                // Creator is server-assigned, never taken from the client:
+                // keep the stored creator across the full-object replace,
+                // falling back to the editor when the entry is absent.
+                share.created_by = album
+                    .share_list
+                    .get(&share.url)
+                    .map_or_else(|| creator.clone(), |existing| existing.created_by.clone());
                 album.share_list.insert(share.url, share);
                 metadata_table
                     .insert(json_data.album_id.as_str(), MetadataRecord::Album(album))

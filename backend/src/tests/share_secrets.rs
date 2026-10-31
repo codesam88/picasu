@@ -112,9 +112,9 @@ fn album_reads_carry_share_presence_not_password() {
     assert_eq!(create.status(), Status::Ok, "create_share");
     let share_id = create.into_string().expect("share id").trim().to_string();
 
-    for (label, request_cookie) in [
-        ("admin", cookie("admin", true)),
-        ("viewer", cookie("pw-reader", false)),
+    for (label, request_cookie, should_see) in [
+        ("admin", cookie("admin", true), true),
+        ("viewer", cookie("pw-reader", false), false),
     ] {
         let raw = client
             .get("/get/get-albums")
@@ -127,18 +127,26 @@ fn album_reads_carry_share_presence_not_password() {
             "{label} album read must not name a password field, got: {raw}"
         );
         let albums: Value = serde_json::from_str(&raw).expect("get-albums json");
-        let entry = albums
+        let shares = albums
             .as_array()
             .expect("album array")
             .iter()
             .find(|a| a["albumId"].as_str() == Some(album_id.as_str()))
             .expect("album listed")["shareList"]
-            .get(&share_id)
-            .expect("share listed");
-        assert_eq!(
-            entry["hasPassword"], true,
-            "{label} read must surface presence, got: {entry}"
-        );
+            .as_object()
+            .expect("shareList object");
+        if should_see {
+            let entry = shares.get(&share_id).expect("share listed");
+            assert_eq!(
+                entry["hasPassword"], true,
+                "{label} read must surface presence, got: {entry}"
+            );
+        } else {
+            assert!(
+                !shares.contains_key(&share_id),
+                "{label} must not see another user's share, got: {shares:?}"
+            );
+        }
     }
 
     // The capability chain is unaffected: the stored password still works,
