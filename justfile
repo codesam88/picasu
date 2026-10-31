@@ -459,6 +459,7 @@ run: build
     #!/usr/bin/env sh
     set -e
     mkdir -p sandbox/images
+    mkdir -p sandbox/users
     rm -rf sandbox/data
     # Dev-sandbox-only KDF effort (matches the e2e launcher); production default untouched.
     cd backend && \
@@ -466,6 +467,8 @@ run: build
         PICASU_WEAK_PWHASH=1 \
         PICASU_CONFIG_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_DATA_HOME="{{justfile_directory()}}/sandbox/data" \
+        PICASU_USERS_HOME="{{justfile_directory()}}/sandbox/users" \
+        PICASU_PERSONAL_ALBUMS=true \
         PICASU_IMAGE_HOME="{{justfile_directory()}}/sandbox/images" \
         PICASU_WEB_ROOT="{{justfile_directory()}}/frontend/dist" \
         cargo run --bin picasu -- --bootstrap-admin
