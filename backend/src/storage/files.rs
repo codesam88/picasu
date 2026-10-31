@@ -291,6 +291,17 @@ pub fn classify_path(canonical: &Path) -> PathClassification {
     PathClassification::Outside
 }
 
+/// Whether `caller` may see the data at `path`: public paths are always
+/// visible, personal paths only to their owner, and the users root itself is
+/// never visible. Paths outside both roots are treated as public (legacy).
+pub fn visible_to(caller: &str, path: &Path) -> bool {
+    match classify_path(path) {
+        PathClassification::Public | PathClassification::Outside => true,
+        PathClassification::Personal { owner } => owner == caller,
+        PathClassification::UsersRoot => false,
+    }
+}
+
 /// Validate that the two roots do not equal or nest in either direction.
 // Not yet called by request handlers; S1 wires indexing/watcher.
 #[allow(dead_code)]

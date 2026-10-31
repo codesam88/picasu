@@ -7,7 +7,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAdmin;
 use crate::router::auth::GuardMutate;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album_index::{cancel_album_index, index_album, index_album_with_options};
+use crate::tasks::actor::album_index::{cancel_album_index, index_album_with_root};
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IndexAlbumRequest {
@@ -17,6 +17,10 @@ pub struct IndexAlbumRequest {
     /// empty state instead of merging into stale rows.
     #[serde(default)]
     clear: bool,
+    /// Optional scan root selector: `"global"`, `"personal"`, or
+    /// `"auto"` (default) preserving the image-then-users probe order.
+    #[serde(default)]
+    root: Option<String>,
 }
 
 /// Index every media file under a directory tree in the background.
@@ -65,9 +69,9 @@ pub fn index_album_handler(
     let _ = read_only?;
     let req = req.into_inner();
     if req.clear {
-        index_album_with_options(&req.album, true)?;
+        index_album_with_root(&req.album, true, req.root.as_deref())?;
     } else {
-        index_album(&req.album)?;
+        index_album_with_root(&req.album, false, req.root.as_deref())?;
     }
     Ok(Status::Accepted)
 }

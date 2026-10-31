@@ -110,19 +110,28 @@ pub fn clear_asset_tables_and_caches() -> AppResult<()> {
 /// media file.  Album is always resolved from the file's parent directory.
 ///
 /// Runs as a background job; status can be polled via `album_index_status()`.
-pub fn index_album(src: &str) -> AppResult<()> {
-    index_album_with_options(src, false)
-}
-
-/// Same as [`index_album`], optionally resetting to an empty state first.
-/// The reset happens after the running-job guard, keeping clear+scan atomic
-/// from the caller's perspective.
+/// Index all media files under `src`, optionally clearing first and/or
+/// selecting a scan root (`"global"`, `"personal"`, or `"auto"` preserving
+/// the historical image-then-users probe order).
 #[allow(clippy::too_many_lines)]
-pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
+pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppResult<()> {
+    // Validate selector up front.
+    if let Some(r) = root {
+        match r {
+            "global" | "personal" | "auto" => {}
+            _ => {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    format!("Unknown scan root selector: {r}"),
+                ));
+            }
+        }
+    }
+
     let image_root = get_resolved_image_home()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured to scan"))?;
 
-    let scan_roots = resolve_scan_roots(src, &image_root)?;
+    let scan_roots = resolve_scan_roots(src, &image_root, root)?;
 
     let internal_roots = internal_subtree_roots();
     for root in &scan_roots {
@@ -380,15 +389,32 @@ fn prune_users_root_album(users_root: &Path) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
 
-fn resolve_scan_roots(src: &str, image_root: &Path) -> AppResult<Vec<PathBuf>> {
+fn resolve_scan_roots(src: &str, image_root: &Path, root: Option<&str>) -> AppResult<Vec<PathBuf>> {
     let users_root = get_resolved_users_home();
     let trimmed = src.trim();
+    let mode = root.unwrap_or("auto");
 
-    // Global scan: walk both roots when personal areas are enabled.
+    let global_only = mode == "global";
+    let personal_only = mode == "personal";
+
+    // Global scan: walk roots according to selector.
     if trimmed == "/" || trimmed.is_empty() {
-        let mut roots = vec![image_root.to_path_buf()];
-        if let Some(u) = users_root {
-            roots.push(u);
+        let mut roots = Vec::new();
+        if !personal_only {
+            roots.push(image_root.to_path_buf());
+        }
+        if !global_only
+            && users_root.is_some()
+            && let Some(u) = &users_root
+        {
+            roots.push(u.clone());
+        }
+        if roots.is_empty() {
+            // personal requested but disabled
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "Personal areas are disabled (users_home unset)".to_string(),
+            ));
         }
         for r in &roots {
             if !r.is_dir() {
@@ -403,7 +429,35 @@ fn resolve_scan_roots(src: &str, image_root: &Path) -> AppResult<Vec<PathBuf>> {
 
     let trimmed_rel = trimmed.trim_start_matches('/');
 
-    // Relative path: image root first, then users root (when enabled).
+    // Relative path.
+    if personal_only {
+        if let Some(u) = &users_root {
+            let usr_candidate = u.join(trimmed_rel);
+            if usr_candidate.is_dir() {
+                return Ok(vec![usr_candidate]);
+            }
+        }
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!("Path does not exist or is not a directory: {trimmed_rel}"),
+        ));
+    }
+
+    if global_only {
+        let img_candidate = image_root.join(trimmed_rel);
+        if img_candidate.is_dir() {
+            return Ok(vec![img_candidate]);
+        }
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "Path does not exist or is not a directory: {}",
+                img_candidate.display()
+            ),
+        ));
+    }
+
+    // auto: image first, then users.
     let img_candidate = image_root.join(trimmed_rel);
     if img_candidate.is_dir() {
         return Ok(vec![img_candidate]);
@@ -621,7 +675,7 @@ mod tests {
         let empty_dir = image_home.join("empty_album");
         fs::create_dir_all(&empty_dir).expect("create empty album dir");
 
-        index_album("/").expect("index_album accepted");
+        index_album_with_root("/", false, None).expect("index_album accepted");
         wait_for_index_completion();
 
         assert!(
@@ -647,7 +701,7 @@ mod tests {
         fs::create_dir_all(&doomed_dir).expect("create doomed album dir");
 
         // First pass: create the dir album.
-        index_album("/").expect("index_album accepted");
+        index_album_with_root("/", false, None).expect("index_album accepted");
         wait_for_index_completion();
         assert!(
             dir_album::get_album_id_for_dir(&doomed_dir).is_some(),
@@ -658,7 +712,7 @@ mod tests {
         fs::remove_dir_all(&doomed_dir).expect("remove doomed album dir");
 
         // Second pass: sweep should evict the stale dir album.
-        index_album("/").expect("index_album accepted");
+        index_album_with_root("/", false, None).expect("index_album accepted");
         wait_for_index_completion();
 
         assert!(
@@ -760,7 +814,7 @@ mod tests {
         let bytes = std::fs::read(&path).expect("read generated test photo");
         std::fs::write(&path, &bytes[..100]).expect("truncate test photo");
 
-        index_album("/").expect("index_album accepted");
+        index_album_with_root("/", false, None).expect("index_album accepted");
         wait_for_index_completion();
 
         let status = album_index_status();
@@ -819,12 +873,12 @@ mod tests {
         .expect("generate jpeg");
 
         // First pass populates the cache and tables.
-        index_album("/").expect("initial index accepted");
+        index_album_with_root("/", false, None).expect("initial index accepted");
         wait_for_index_completion();
 
         // Reset exactly as the HTTP `clear` path does, then scan again.
         clear_asset_tables_and_caches().expect("clear asset tables and caches");
-        index_album("/").expect("reset scan accepted");
+        index_album_with_root("/", false, None).expect("reset scan accepted");
         wait_for_index_completion();
 
         let album_id = dir_album::get_album_id_for_dir(&album_dir)
@@ -907,7 +961,7 @@ mod tests {
         }])
         .expect("generate jpeg");
 
-        index_album("/").expect("index_album accepted");
+        index_album_with_root("/", false, None).expect("index_album accepted");
         wait_for_index_completion();
 
         assert!(
@@ -954,7 +1008,7 @@ mod tests {
             minimal: false,
         }])
         .expect("generate jpeg");
-        index_album("/").expect("index accepted");
+        index_album_with_root("/", false, None).expect("index accepted");
         wait_for_index_completion();
         assert!(
             crate::storage::db::TREE
@@ -969,7 +1023,7 @@ mod tests {
             "doomed personal file should be indexed before removal"
         );
         std::fs::remove_file(&doomed).expect("remove doomed");
-        index_album("/").expect("index accepted");
+        index_album_with_root("/", false, None).expect("index accepted");
         wait_for_index_completion();
         assert!(
             !crate::storage::db::TREE
@@ -1022,7 +1076,7 @@ mod tests {
         }])
         .expect("generate jpeg");
 
-        index_album("/").expect("index accepted");
+        index_album_with_root("/", false, None).expect("index accepted");
         wait_for_index_completion();
 
         assert!(dir_album::get_album_id_for_dir(&album).is_some());
@@ -1053,7 +1107,7 @@ mod tests {
         }])
         .expect("generate jpeg");
 
-        index_album("/leading_slash_album").expect("index accepted");
+        index_album_with_root("/leading_slash_album", false, None).expect("index accepted");
         wait_for_index_completion();
 
         assert!(dir_album::get_album_id_for_dir(&album).is_some());
@@ -1098,7 +1152,7 @@ mod tests {
         }])
         .expect("generate jpeg");
 
-        index_album("onlypersonal").expect("index accepted");
+        index_album_with_root("onlypersonal", false, None).expect("index accepted");
         wait_for_index_completion();
 
         assert!(dir_album::get_album_id_for_dir(&album).is_some());
@@ -1164,7 +1218,7 @@ mod tests {
         }])
         .expect("generate jpeg");
 
-        index_album("ambiguous").expect("index accepted");
+        index_album_with_root("ambiguous", false, None).expect("index accepted");
         wait_for_index_completion();
 
         assert!(dir_album::get_album_id_for_dir(&img_album).is_some());
