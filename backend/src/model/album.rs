@@ -293,6 +293,12 @@ pub struct Share {
     pub show_download: bool,
     pub show_upload: bool,
     pub exp: i64,
+    /// User id that created the share. Server-assigned on create and
+    /// preserved on edit — never taken from the client, so listings can
+    /// scope shares to their creator. Defaults empty for payloads that
+    /// predate the field; every write path overwrites it.
+    #[serde(default)]
+    pub created_by: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]

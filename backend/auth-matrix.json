@@ -783,17 +783,6 @@
   {
     "method": "GET",
     "modeled": false,
-    "operationId": "links",
-    "path": "/links",
-    "security": null,
-    "tags": [
-      "pages"
-    ],
-    "x-picasu-auth": null
-  },
-  {
-    "method": "GET",
-    "modeled": false,
     "operationId": "login",
     "path": "/login",
     "security": null,
@@ -1872,6 +1861,17 @@
     "modeled": false,
     "operationId": "share",
     "path": "/share/{path}",
+    "security": null,
+    "tags": [
+      "pages"
+    ],
+    "x-picasu-auth": null
+  },
+  {
+    "method": "GET",
+    "modeled": false,
+    "operationId": "shares",
+    "path": "/shares",
     "security": null,
     "tags": [
       "pages"

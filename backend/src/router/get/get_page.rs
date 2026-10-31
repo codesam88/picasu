@@ -424,9 +424,9 @@ pub async fn tags() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA shell for the links page.
+/// Serve the SPA shell for the shares page.
 ///
-/// Returns the shared `index.html` shell for the `links` client route. The path
+/// Returns the shared `index.html` shell for the `shares` client route. The path
 /// is fixed and carries no parameters, so this route performs no lookup of its
 /// own.
 #[utoipa::path(
@@ -436,8 +436,8 @@ pub async fn tags() -> AppResult<FrontendResponse> {
         )
     )
 ]
-#[get("/links")]
-pub async fn links() -> AppResult<FrontendResponse> {
+#[get("/shares")]
+pub async fn shares() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
@@ -621,5 +621,25 @@ mod tests {
             .routes()
             .any(|route| route.method == rocket::http::Method::Get && route.uri == "/register");
         assert!(register_mounted, "GET /register must be mounted");
+    }
+
+    /// The client renamed `/links` to `/shares`; the shell route has to move
+    /// with it, or a fresh load of the shares page answers JSON 404.
+    #[test]
+    fn shares_page_is_mounted_without_links_legacy() {
+        let _ = &*TEST_ENV;
+        let mounted: Vec<String> = build_test_rocket()
+            .routes()
+            .filter(|route| route.method == rocket::http::Method::Get)
+            .map(|route| route.uri.to_string())
+            .collect();
+        assert!(
+            mounted.iter().any(|uri| uri == "/shares"),
+            "GET /shares must be mounted"
+        );
+        assert!(
+            !mounted.iter().any(|uri| uri == "/links"),
+            "GET /links must be gone with the rename"
+        );
     }
 }

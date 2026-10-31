@@ -182,6 +182,13 @@ pub const INVITES: TableDefinition<&str, &str> = TableDefinition::new("invites")
 /// revokes. Runtime state, not identity.
 pub const REVOCATIONS: TableDefinition<&str, &str> = TableDefinition::new("revocations");
 
+/// Whether `caller` may see a share in an album listing: only the
+/// creator's own shares are shown. The admin panel does not filter — it
+/// always shows the full list.
+pub fn share_visible_to(caller: &str, owner: &str) -> bool {
+    caller == owner
+}
+
 use anyhow::Result;
 
 pub fn open_metadata_table() -> ReadOnlyTable<&'static str, MetadataRecord> {
