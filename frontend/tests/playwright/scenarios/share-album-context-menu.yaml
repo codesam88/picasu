@@ -1,0 +1,42 @@
+name: Share album opens from the album context menu
+covers:
+  ui:
+    - testid/batch-menu
+    - option/Share album
+    - modal:open
+given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - dir_album: sharealbumtest
+  - photo: sharealbumtest/child.jpg
+  - index: '/'
+steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  # Select the album card and open its context menu, then Share album.
+  - when:
+      - click.select_text: sharealbumtest
+      - click.testid: batch-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Share album
+    assert:
+      - ui.modal: open
+      - ui.text_visible: Share Settings
+
+  - when:
+      - keyboard: Escape
+    assert:
+      - ui.modal: closed

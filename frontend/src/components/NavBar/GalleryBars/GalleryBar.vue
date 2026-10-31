@@ -59,15 +59,6 @@
           </v-card-text>
         </v-card>
 
-        <v-tooltip v-if="route.meta.baseName === 'album'" location="top" text="Share">
-          <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              icon="mdi-share-variant"
-              @click="modalStore.showShareModal = true"
-            />
-          </template>
-        </v-tooltip>
         <v-tooltip v-if="route.meta.level === 1" location="top" text="Upload">
           <template #activator="{ props }">
             <v-btn
@@ -98,16 +89,6 @@
         </v-menu>
       </v-toolbar>
       <EditBar v-else />
-
-      <CreateShareModal
-        v-if="
-          modalStore.showShareModal &&
-          route.meta.baseName === 'album' &&
-          typeof route.params.albumId === 'string'
-        "
-        :album-id="route.params.albumId"
-        :mode="'create'"
-      />
     </template>
   </GalleryBarTemplate>
 </template>
@@ -122,7 +103,6 @@ import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
 import { useModalStore } from '@/store/modalStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
-import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import { useTheme } from 'vuetify'
 import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 import { leaveView } from '@utils/leaveView'
