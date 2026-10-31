@@ -49,6 +49,10 @@ keeping the filesystem as source of truth.
   server flag (`=== true`); legacy backends and logged-out users hide both.
 - Sandbox (`just run`) launches with personal areas enabled
   (`sandbox/users` + `PICASU_PERSONAL_ALBUMS=true`).
+- Harness follow-up: SMALL/LARGE tiers (4s/8s, cheap KDF proven in launcher),
+  per-scenario budget with 60s ceiling, globalTimeout backstop, timeout
+  guidance (split-don't-extend), allowed-flow epic split per user; guidance
+  and constants live in interpreter.ts (single home).
 
 ## Boundary namespace (2026-10-31 follow-up)
 
