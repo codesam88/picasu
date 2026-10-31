@@ -3,11 +3,13 @@ use crate::error::{AppError, ErrorKind};
 use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
 use crate::openapi_components::Unauthorized;
+use crate::process::dir_album::get_dir_path_for_album;
 use crate::router::AppResult;
-use crate::router::auth::GuardAdmin;
 use crate::router::auth::GuardMutate;
+use crate::router::auth::GuardUser;
 use crate::router::put::users_password::caller_identity;
 use crate::storage::db::TREE;
+use crate::storage::files::visible_to;
 use crate::{router::GuardResult, storage::db::METADATA_TABLE};
 
 use arrayvec::ArrayString;
@@ -54,11 +56,11 @@ pub struct CreateShare {
         request_body = CreateShare,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAdmin", "GuardMutate"],
+            "guards": ["GuardUser", "GuardMutate"],
             "credentials": ["session"],
-            "admin": "admin",
+            "admin": "any",
             "shareScope": "n-a",
-            "effects": ["manage"],
+            "effects": ["write"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
@@ -66,6 +68,7 @@ pub struct CreateShare {
             (status = 400, description = "Invalid input"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 404, description = "Album not found"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
@@ -74,20 +77,29 @@ pub struct CreateShare {
 ]
 #[post("/post/create_share", data = "<create_share>")]
 pub async fn create_share(
-    auth: GuardResult<GuardAdmin>,
+    auth: GuardResult<GuardUser>,
     mutation: GuardResult<GuardMutate>,
     create_share: Json<CreateShare>,
 ) -> AppResult<String> {
-    let GuardAdmin { claims } = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
     let (creator, _) = caller_identity(&claims);
+    let create_share_inner = create_share.into_inner();
+    // Ownership check on the target album before any write: the album's
+    // directory must be visible to the caller (public or own personal).
+    let album_dir = get_dir_path_for_album(create_share_inner.album_id)
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?;
+    if !visible_to(&creator, &album_dir) {
+        return Err(AppError::new(ErrorKind::NotFound, "Album not found"));
+    }
+    let creator_for_task = creator.clone();
     tokio::task::spawn_blocking(move || {
-        let create_share = create_share.into_inner();
+        let create_share = create_share_inner;
         let txn = TREE
             .in_disk
             .begin_write()
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        match create_and_insert_share(&txn, create_share, &creator) {
+        match create_and_insert_share(&txn, create_share, &creator_for_task) {
             Ok(link) => {
                 txn.commit()
                     .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
