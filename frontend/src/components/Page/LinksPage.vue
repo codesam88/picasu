@@ -40,12 +40,62 @@
           </v-tooltip>
         </template>
 
-        <!-- Password -->
-        <template #[`item.share.hasPassword`]="{ item }">
-          <v-icon
-            :icon="item.share.hasPassword ? 'mdi-check' : 'mdi-close'"
-            :color="item.share.hasPassword ? 'success' : 'grey'"
-          />
+        <!-- Access: password, download, upload, metadata as state icons -->
+        <template #[`item.access`]="{ item }">
+          <div class="d-flex flex-row justify-center ga-1">
+            <v-tooltip
+              location="top"
+              :text="item.share.hasPassword ? 'Password required' : 'No password set'"
+            >
+              <template #activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  icon="mdi-lock"
+                  :color="item.share.hasPassword ? 'success' : 'grey'"
+                  size="small"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip
+              location="top"
+              :text="item.share.showDownload ? 'Download allowed' : 'Download disabled'"
+            >
+              <template #activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  icon="mdi-download"
+                  :color="item.share.showDownload ? 'success' : 'grey'"
+                  size="small"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip
+              location="top"
+              :text="item.share.showUpload ? 'Upload allowed' : 'Upload disabled'"
+            >
+              <template #activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  icon="mdi-upload"
+                  :color="item.share.showUpload ? 'success' : 'grey'"
+                  size="small"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip
+              location="top"
+              :text="item.share.showMetadata ? 'Metadata shown' : 'Metadata hidden'"
+            >
+              <template #activator="{ props }">
+                <v-icon
+                  v-bind="props"
+                  icon="mdi-tag"
+                  :color="item.share.showMetadata ? 'success' : 'grey'"
+                  size="small"
+                />
+              </template>
+            </v-tooltip>
+          </div>
         </template>
 
         <!-- Expiration -->
@@ -53,30 +103,6 @@
           <span v-if="item.share.exp === 0">Never</span>
           <span v-else-if="item.share.exp * 1000 < Date.now()" class="text-error">Expired</span>
           <span v-else>{{ formatExpiration(item.share.exp) }}</span>
-        </template>
-
-        <!-- Allow Download -->
-        <template #[`item.share.showDownload`]="{ item }">
-          <v-icon
-            :icon="item.share.showDownload ? 'mdi-check' : 'mdi-close'"
-            :color="item.share.showDownload ? 'success' : 'grey'"
-          />
-        </template>
-
-        <!-- Allow Upload -->
-        <template #[`item.share.showUpload`]="{ item }">
-          <v-icon
-            :icon="item.share.showUpload ? 'mdi-check' : 'mdi-close'"
-            :color="item.share.showUpload ? 'success' : 'grey'"
-          />
-        </template>
-
-        <!-- Show Metadata -->
-        <template #[`item.share.showMetadata`]="{ item }">
-          <v-icon
-            :icon="item.share.showMetadata ? 'mdi-check' : 'mdi-close'"
-            :color="item.share.showMetadata ? 'success' : 'grey'"
-          />
         </template>
 
         <!-- Actions -->
@@ -203,11 +229,8 @@ const headers = [
     maxWidth: '200px',
     nowrap: true
   },
-  { title: 'Password', key: 'share.hasPassword' },
   { title: 'Expires', key: 'share.exp', nowrap: true },
-  { title: 'Download', key: 'share.showDownload' },
-  { title: 'Upload', key: 'share.showUpload' },
-  { title: 'Metadata', key: 'share.showMetadata' },
+  { title: 'Access', key: 'access', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false }
 ]
 

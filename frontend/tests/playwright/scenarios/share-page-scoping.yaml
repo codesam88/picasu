@@ -1,0 +1,67 @@
+name: Shares page shows own shares with an Access column, hiding others
+covers:
+  api:
+    - POST /post/create_share
+  ui:
+    - testid/batch-menu
+    - option/Share album
+server:
+  bootstrap_admin: false
+given:
+  - empty: true
+  - cli_user:
+      user_id: admin
+      password: e2e_test_pwd
+      admin: true
+  - cli_user:
+      user_id: viewer
+      password: e2e_test_pwd
+  - dir_album: sharepagealbum
+    id_as: $album
+  - photo: sharepagealbum/child.jpg
+  - index: '/'
+steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /shares
+    assert:
+      - api.response:
+          url: /post/create_share
+          method: POST
+          body:
+            albumId: ${album}
+            description: scoped share
+            password: null
+            showMetadata: true
+            showDownload: true
+            showUpload: false
+            exp: 0
+          status: 200
+  - when:
+      - navigate: /shares
+    assert:
+      - ui.text_visible: Access
+      - ui.text_visible: scoped share
+
+  # A non-admin sees neither the share nor its row on the same page.
+  - when:
+      - navigate: /timeline
+      - click.icon: mdi-account-circle
+      - click.menu: Log out
+    assert:
+      - ui.route: /login
+  - when:
+      - login:
+          user: viewer
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /shares
+    assert:
+      - ui.text_hidden: scoped share
