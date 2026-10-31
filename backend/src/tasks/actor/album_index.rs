@@ -1234,4 +1234,39 @@ mod tests {
         }
         reset_backend_state();
     }
+
+    #[test]
+    fn index_album_unknown_scan_root_selector_is_invalid_input() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let err = index_album_with_root("/", false, Some("bogus")).expect_err("unknown selector");
+        assert_eq!(err.kind, crate::error::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("Unknown scan root selector"),
+            "error should name the bad selector: {err}"
+        );
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn index_album_personal_selector_disabled_is_invalid_input() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        // users_home stays None (disabled)
+        let err = index_album_with_root("/", false, Some("personal")).expect_err("disabled");
+        assert_eq!(err.kind, crate::error::ErrorKind::InvalidInput);
+
+        reset_backend_state();
+    }
 }

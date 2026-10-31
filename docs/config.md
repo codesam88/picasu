@@ -126,6 +126,31 @@ already there. Scan Now re-walks the tree and indexes every media file it
 finds — identity is by path, and a content hash is computed per file only
 for duplicate grouping. Safe to re-run routinely.
 
+### Enabling `users_home` on an existing install
+
+`users_home` defaults to unset, so enabling it changes nothing until it is
+set. When you point it at a directory:
+
+- Nothing under the existing `image_home` moves; public albums, assets, and
+  shares stay exactly as they are.
+- Set the env var (or `gallery.users_home` in `config.toml`) and restart.
+  The two roots must not equal or nest in either direction; boot rejects a
+  bad combination with an error.
+- Pre-existing users created before `users_home` was enabled (and users
+  created via the offline CLI) have no personal home yet. The next admin
+  **Scan Now** walks the global root plus all personal subtrees and creates
+  dir-album records for empty directories, so personal trees appear
+  automatically. `ensure_personal_home` also runs on future user creation.
+- Empty personal directories gain album records via the directory-first
+  pass of Scan Now; files already present under the new root are indexed
+  in the same pass.
+- Permission/backup: place `users_home` on a separate volume if possible;
+  back it up independently of `image_home`. Personal trees are **not**
+  inside the image share, so Samba/NFS exposure of `image_home` does not
+  expose personal data — review share exports to confirm no path overlaps.
+- The `users_home` root itself is never listed, addressable, movable,
+  shareable, or scannable; only its per-user subtrees are.
+
 ## Storage locations
 
 Picasu resolves three independent root directories, each with the same

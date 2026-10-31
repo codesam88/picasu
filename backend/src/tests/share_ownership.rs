@@ -182,7 +182,7 @@ fn delete_share_removes_it_from_listings() {
 
 // ── S4 personal-album share management ───────────────────────────────
 
-fn enable_users_home() -> PathBuf {
+pub fn enable_users_home() -> PathBuf {
     let data_path = crate::storage::files::DATA_PATH
         .get()
         .expect("DATA_PATH set");
@@ -198,7 +198,7 @@ fn enable_users_home() -> PathBuf {
     users_home
 }
 
-fn personal_album_id(users_home: &std::path::Path, user: &str) -> String {
+pub fn personal_album_id(users_home: &std::path::Path, user: &str) -> String {
     let dir = users_home.join(user);
     crate::process::dir_album::get_album_id_for_dir(&dir)
         .expect("personal home album id")
