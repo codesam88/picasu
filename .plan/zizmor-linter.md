@@ -43,4 +43,6 @@ under `[group('deps')]`.
 CI job for the zizmor gate: `.github/workflows/zizmor.yml` (2026-11-01) —
 paths-filtered on push/PR (offline `zizmor-check`), plus daily schedule
 and manual dispatch running `zizmor-check-online` (stale pins, archived
-actions via the GitHub API; flags drift without blocking PRs).
+actions via the GitHub API; flags drift without blocking PRs). Scheduled
+run reports SARIF to code scanning (`--format=sarif`, upload-sarif,
+`security-events: write`); SARIF findings do not fail the job.

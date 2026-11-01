@@ -240,10 +240,11 @@ zizmor-check: install-zizmor
 
 # Online audit for the scheduled CI job: stale pins, archived actions and
 # other checks that need the GitHub API. Needs GH_TOKEN (or GITHUB_TOKEN);
-# without one it degrades to the offline check.
+# without one it degrades to the offline check. Takes extra zizmor flags,
+# e.g. `just zizmor-check-online --format=sarif`.
 [group('utils')]
-zizmor-check-online: install-zizmor
-    uvx zizmor@"{{ zizmor_version }}" --no-progress .
+zizmor-check-online *args="": install-zizmor
+    uvx zizmor@"{{ zizmor_version }}" {{ args }} --no-progress .
 
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at
