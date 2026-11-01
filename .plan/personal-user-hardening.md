@@ -25,6 +25,15 @@ universal. This task closes the gaps, with tests proving each one.
 
 - Scope is the round-3 FIX NOW list only (F1–F10 below); RIDE-ALONG items
   stay batched for when adjacent code is next touched; no new scope.
+- F3 took the full caller-bound snapshots direction (option B, user-decided
+  2026-11-01): `ClaimsSnapshot.caller` minted at prefetch, `GuardSnapshot`
+  binds presenter (user id, `""` + share-pair for shares), renewed tokens
+  require caller equality (admins included), `get-metadata` checks
+  `visible_to` for user sessions (404 canon), `ClaimsAsset` carries
+  caller + share scope with presenter enforcement on serving, renew-hash
+  checks presenter scope + claim equality. Commits B1–B6 on
+  `feature/personal-user-albums` (99951389, 1ec905c4, c4c8b53f, 2a0cdbc9,
+  eaae77b5, 1cc06957).
 - F5 (share survives move into personal area): REFUSE moves carrying
   foreign-owned shares. Rationale: the alternatives (prune, reveal, or
   otherwise disable someone else's share) would break expected behavior
