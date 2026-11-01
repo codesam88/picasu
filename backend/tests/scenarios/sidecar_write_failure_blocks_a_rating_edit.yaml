@@ -45,7 +45,6 @@ when:
     then:
       - response.status: 200
   - call: GET /get/metadata/${asset_id}?timestamp=${ts}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:

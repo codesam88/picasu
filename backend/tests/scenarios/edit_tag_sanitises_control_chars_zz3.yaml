@@ -23,7 +23,6 @@ when:
       idx: response.prefetch.locateTo
   # Tags live on the metadata detail endpoint now (Phase 14 lean list rows).
   - call: GET /get/metadata/${asset_id}?timestamp=${ts}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:

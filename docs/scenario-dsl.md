@@ -270,12 +270,16 @@ when:
       timestamp: "${ts}"
       exp_offset: -3600
   - call: GET /get/get-rows?index=0&timestamp=${ts}
-    auth: false
     headers:
       Authorization: "Bearer ${expired_token}"
 ```
 
-`as` binds the signed JWT to `${expired_token}` for later interpolation;
+Snapshot-bearer routes also require the presenter's credentials: the
+default session cookie (or share headers on share pages) must accompany
+the bearer, and a minted token's `caller` must equal the presenting user
+(`""` for share-minted tokens). The mint helper signs `caller: "admin"`,
+matching the runner's default admin session, so the example above
+presents correctly.
 `timestamp` becomes the token's `timestamp` claim (pass the snapshot the
 request targets so expiry, not a claim mismatch, is the rejection reason);
 `exp_offset` is seconds relative to now (`300`, the app default, when

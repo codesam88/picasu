@@ -50,7 +50,6 @@ when:
       ts2: response.prefetch.timestamp
       idx2: response.prefetch.locateTo
   - call: GET /get/metadata/${asset_after}?timestamp=${ts2}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
     then:
@@ -76,7 +75,6 @@ when:
       token3: response.token
       ts3: response.prefetch.timestamp
   - call: GET /get/metadata/${asset_restored}?timestamp=${ts3}
-    auth: false
     headers:
       Authorization: "Bearer ${token3}"
     then:

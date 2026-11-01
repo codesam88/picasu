@@ -41,7 +41,6 @@ when:
       path: /e2e_ro_album
       octal: "0755"
   - call: GET /get/metadata/${album_id}?timestamp=${ts}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:

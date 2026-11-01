@@ -24,7 +24,6 @@ when:
     calc:
       end: "${idx}+1"
   - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
   - call: PUT /put/assign_album
@@ -49,7 +48,6 @@ when:
     calc:
       end2: "${idx2}+1"
   - call: GET /get/get-data?timestamp=${ts2}&start=${idx2}&end=${end2}
-    auth: false
     headers:
       Authorization: "Bearer ${token2}"
 then:
