@@ -424,6 +424,8 @@ fn assert_serves_image(client: &Client, photo_var: &str, vars: &HashMap<String, 
         asset_id,
         chrono::Utc::now().timestamp_millis(),
         false,
+        "admin".to_string(),
+        None,
     )
     .encode();
 

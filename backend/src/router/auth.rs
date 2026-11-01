@@ -136,6 +136,10 @@ pub struct ClaimsAsset {
     pub asset_id: ArrayString<64>,
     pub timestamp: i64,
     pub exp: u64,
+    /// Caller (user id) this asset token was minted for; empty for share-minted.
+    pub caller: String,
+    /// Share scope this asset token was minted under, if any.
+    pub resolved_share_opt: Option<ResolvedShare>,
     /// Type marker; always [`TokenType::Asset`].
     #[serde(rename = "typ")]
     pub typ: TokenType,
@@ -147,6 +151,8 @@ impl ClaimsAsset {
         asset_id: ArrayString<64>,
         timestamp: i64,
         allow_original: bool,
+        caller: String,
+        resolved_share_opt: Option<ResolvedShare>,
     ) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
@@ -157,6 +163,8 @@ impl ClaimsAsset {
             asset_id,
             timestamp,
             exp,
+            caller,
+            resolved_share_opt,
             typ: TokenType::Asset,
         }
     }
@@ -1266,6 +1274,53 @@ impl<'r> FromRequest<'r> for GuardHash {
                 AppError::new(ErrorKind::Auth, "Hash does not match"),
             ));
         }
+
+        // Bind the presenter to the token's caller/share (B5).
+        let presenter = match resolve_presenter(req) {
+            Ok(p) => p,
+            Err(err) => {
+                let status = err.http_status();
+                return Outcome::Error((status, err));
+            }
+        };
+        match &presenter.role {
+            Role::User { id, .. } => {
+                if *id != claims.caller {
+                    warn!(
+                        "Asset caller mismatch: presenter {} != token caller {}",
+                        id, claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+            }
+            Role::Share(boxed) => {
+                if !claims.caller.is_empty() {
+                    warn!(
+                        "Asset caller mismatch: share presenter requires empty caller, got {}",
+                        claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+                let token_share = claims.resolved_share_opt.as_ref();
+                let same = token_share.is_some_and(|s| {
+                    s.album_id == boxed.album_id && s.share.url == boxed.share.url
+                });
+                if !same {
+                    warn!("Asset share mismatch: presenter and token share differ");
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset share mismatch"),
+                    ));
+                }
+            }
+        }
+
         Outcome::Success(GuardHash)
     }
 }
@@ -1333,6 +1388,53 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
                 AppError::new(ErrorKind::Auth, "Asset ID does not match"),
             ));
         }
+
+        // Bind the presenter to the token's caller/share (B5).
+        let presenter = match resolve_presenter(req) {
+            Ok(p) => p,
+            Err(err) => {
+                let status = err.http_status();
+                return Outcome::Error((status, err));
+            }
+        };
+        match &presenter.role {
+            Role::User { id, .. } => {
+                if *id != claims.caller {
+                    warn!(
+                        "Asset caller mismatch: presenter {} != token caller {}",
+                        id, claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+            }
+            Role::Share(boxed) => {
+                if !claims.caller.is_empty() {
+                    warn!(
+                        "Asset caller mismatch: share presenter requires empty caller, got {}",
+                        claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+                let token_share = claims.resolved_share_opt.as_ref();
+                let same = token_share.is_some_and(|s| {
+                    s.album_id == boxed.album_id && s.share.url == boxed.share.url
+                });
+                if !same {
+                    warn!("Asset share mismatch: presenter and token share differ");
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset share mismatch"),
+                    ));
+                }
+            }
+        }
+
         Outcome::Success(GuardHashOriginal)
     }
 }
@@ -1388,6 +1490,7 @@ pub struct RenewHashTokenReturn {
     )
 ]
 #[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
+#[allow(clippy::too_many_lines)]
 pub async fn renew_hash_token(
     auth: GuardRenewHash,
     token_request: Json<RenewHashToken>,
@@ -1414,6 +1517,31 @@ pub async fn renew_hash_token(
             return Err(AppError::new(
                 ErrorKind::Auth,
                 "Unauthorized: Timestamp mismatch",
+            ));
+        }
+
+        // Claim-equality (defense in depth): the asset token's caller/share
+        // must match the presenter snapshot's caller/share.
+        if claims.caller != auth.claims.caller {
+            warn!(
+                "Renewal caller mismatch: asset {} != presenter {}",
+                claims.caller, auth.claims.caller
+            );
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Caller mismatch",
+            ));
+        }
+        let share_same = match (&claims.resolved_share_opt, &auth.claims.resolved_share_opt) {
+            (Some(a), Some(b)) => a.album_id == b.album_id && a.share.url == b.share.url,
+            (None, None) => true,
+            _ => false,
+        };
+        if !share_same {
+            warn!("Renewal share mismatch: asset and presenter share differ");
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Share mismatch",
             ));
         }
 
@@ -1471,6 +1599,8 @@ pub async fn renew_hash_token(
             claims.asset_id,
             claims.timestamp,
             claims.allow_original,
+            claims.caller.clone(),
+            claims.resolved_share_opt.clone(),
         );
         let new_hash_token = new_hash_claims.encode();
 

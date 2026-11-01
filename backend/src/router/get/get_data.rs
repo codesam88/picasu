@@ -61,6 +61,7 @@ use std::time::Instant;
     )
 ]
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
+#[allow(clippy::too_many_lines)]
 pub async fn get_data(
     guard_timestamp: GuardResult<GuardSnapshot>,
     timestamp: i64,
@@ -71,8 +72,10 @@ pub async fn get_data(
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
 
-        let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
-        let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
+        let resolved_share_opt = guard_timestamp.claims.resolved_share_opt.clone();
+        let caller = guard_timestamp.claims.caller.clone();
+        let (show_download, show_metadata) =
+            resolve_show_download_and_metadata(resolved_share_opt.clone());
 
         let metadata_table = open_metadata_table();
         let tree_snapshot =
@@ -168,6 +171,8 @@ pub async fn get_data(
                         show_metadata,
                         asset_id,
                         cover_content_hash,
+                        caller.clone(),
+                        resolved_share_opt.clone(),
                     );
                 // Row timestamps equal the tree snapshot's date (computed
                 // from the full in-memory record when the snapshot was taken),

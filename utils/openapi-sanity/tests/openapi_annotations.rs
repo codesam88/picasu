@@ -1023,7 +1023,12 @@ fn app_error_map() -> PathBuf {
 /// The guards whose outcome status is computed rather than written as a
 /// `Status` constant, pinned so a new one fails here instead of silently
 /// requiring nothing.
-const DYNAMIC_GUARDS: [&str; 2] = ["GuardPresenter", "GuardSnapshot"];
+const DYNAMIC_GUARDS: [&str; 4] = [
+    "GuardHash",
+    "GuardHashOriginal",
+    "GuardPresenter",
+    "GuardSnapshot",
+];
 
 /// Every guard the scan resolves — each `impl FromRequest for G` under the
 /// source root — in the scan's sorted order, pinned so a guard whose impl moves

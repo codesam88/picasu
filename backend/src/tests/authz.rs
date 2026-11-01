@@ -332,6 +332,8 @@ fn original_serving_without_allow_original_is_401() {
         asset,
         chrono::Utc::now().timestamp_millis(),
         false,
+        "admin".to_string(),
+        None,
     )
     .encode();
     let resp = client
@@ -800,7 +802,7 @@ fn b4_bob_cannot_renew_alices_personal_asset_token() {
     let (asset_id, hash) = alice_personal_asset();
 
     let ts: i64 = 999_999_999;
-    let mut expired = ClaimsAsset::new(hash, asset_id, ts, false);
+    let mut expired = ClaimsAsset::new(hash, asset_id, ts, false, "alice".to_string(), None);
     expired.exp = 0;
     let expired_token = expired.encode();
 
@@ -850,7 +852,7 @@ fn b4_alice_renews_own_expired_asset_token() {
     let (asset_id, hash) = alice_personal_asset();
 
     let ts: i64 = 999_999_998;
-    let mut expired = ClaimsAsset::new(hash, asset_id, ts, false);
+    let mut expired = ClaimsAsset::new(hash, asset_id, ts, false, "alice".to_string(), None);
     expired.exp = 0;
     let expired_token = expired.encode();
 
@@ -898,7 +900,11 @@ fn b4_share_holder_renews_own_album_asset() {
         .parse()
         .expect("hash");
 
-    let mut expired = ClaimsAsset::new(hash, asset_id, ts, false);
+    let snapshot_claims: ClaimsSnapshot =
+        decode_typed(&snapshot_token, &crate::router::auth::VALIDATION).expect("decode snapshot");
+    let resolved_share = snapshot_claims.resolved_share_opt.clone();
+
+    let mut expired = ClaimsAsset::new(hash, asset_id, ts, false, String::new(), resolved_share);
     expired.exp = 0;
     let expired_token = expired.encode();
 
@@ -925,4 +931,161 @@ fn b4_share_holder_renews_own_album_asset() {
     assert_eq!(decoded.hash, hash);
     assert_eq!(decoded.asset_id, asset_id);
     assert_eq!(decoded.timestamp, ts);
+}
+
+// ── B5: asset serving is bound to the presenter ────────────────────────
+
+#[test]
+fn b5_bob_cannot_serve_alices_personal_asset() {
+    let _g = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("alice", false, None);
+    seed("bob", false, None);
+
+    let alice_dir = users_home.join("alice");
+    std::fs::create_dir_all(&alice_dir).expect("alice dir");
+    let photo = alice_dir.join("photo.jpg");
+    snapfab::generate_batch(&[snapfab::PhotoSpec {
+        output: Some(photo.to_string_lossy().into()),
+        format: Some("jpeg".into()),
+        width: Some(8),
+        height: Some(8),
+        tags: None,
+        exif_date: None,
+        minimal: false,
+    }])
+    .expect("gen");
+    crate::process::dir_album::reset_dir_album_cache();
+    crate::tasks::actor::album_index::index_album_with_root("/", false, None)
+        .expect("index accepted");
+    wait_for_index_completion();
+
+    let (asset_id, hash) = alice_personal_asset();
+    let hash_str = hash.to_string();
+
+    let ts: i64 = 999_999_997;
+    let token = ClaimsAsset::new(hash, asset_id, ts, false, "alice".to_string(), None).encode();
+
+    let bob_cookie = crate::tests::bootstrap::cookie("bob", false);
+    let resp = client
+        .get(format!(
+            "/object/compressed/{}/{}.jpg",
+            &hash_str[..2],
+            hash_str
+        ))
+        .cookie(bob_cookie)
+        .header(Header::new("Authorization", format!("Bearer {token}")))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "bob must not serve alice's personal asset bytes"
+    );
+
+    let alice_cookie = crate::tests::bootstrap::cookie("alice", false);
+    let resp = client
+        .get(format!(
+            "/object/compressed/{}/{}.jpg",
+            &hash_str[..2],
+            hash_str
+        ))
+        .cookie(alice_cookie)
+        .header(Header::new("Authorization", format!("Bearer {token}")))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "alice must serve her own asset bytes"
+    );
+}
+
+#[test]
+fn b5_share_holder_serves_share_album_image() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (album, asset) = create_album(&client, "/b5_share_serve/album/photo.jpg");
+    let share = create_share(&client, &album, true, true);
+    let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
+    let asset_token = get_data_asset_token(&client, ts, &snapshot_token, &album, &share);
+
+    let claims: ClaimsAsset =
+        decode_typed(&asset_token, &crate::router::auth::VALIDATION).expect("decode asset token");
+    let hash_str = claims.hash.to_string();
+
+    let resp = client
+        .get(format!(
+            "/object/compressed/{}/{}.jpg",
+            &hash_str[..2],
+            hash_str
+        ))
+        .header(Header::new("x-album-id", album.clone()))
+        .header(Header::new("x-share-id", share.clone()))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {asset_token}"),
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "share-holder must serve share-album image bytes"
+    );
+}
+
+#[test]
+fn b5_renew_hash_preserves_caller_and_share() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (album, asset) = create_album(&client, "/b5_renew_preserve/album/photo.jpg");
+    let share = create_share(&client, &album, true, true);
+    let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
+
+    let record = crate::storage::asset_store::get_asset_by_id(&asset)
+        .expect("asset lookup")
+        .expect("asset");
+    let asset_id: arrayvec::ArrayString<64> = asset.parse().expect("asset id");
+    let hash: arrayvec::ArrayString<64> = record
+        .content_hash
+        .unwrap_or(record.asset_id)
+        .to_string()
+        .parse()
+        .expect("hash");
+
+    let snapshot_claims: ClaimsSnapshot =
+        decode_typed(&snapshot_token, &crate::router::auth::VALIDATION).expect("decode snapshot");
+    let resolved_share = snapshot_claims.resolved_share_opt.clone();
+
+    let mut expired = ClaimsAsset::new(
+        hash,
+        asset_id,
+        ts,
+        false,
+        String::new(),
+        resolved_share.clone(),
+    );
+    expired.exp = 0;
+    let expired_token = expired.encode();
+
+    let resp = client
+        .post("/post/renew-hash-token")
+        .header(Header::new("x-album-id", album.clone()))
+        .header(Header::new("x-share-id", share.clone()))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {snapshot_token}"),
+        ))
+        .header(ContentType::JSON)
+        .body(json!({ "expiredHashToken": expired_token }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "renew must succeed");
+    let body: Value = resp.into_json().expect("renew json");
+    let renewed = body["token"].as_str().expect("token");
+    let decoded: ClaimsAsset =
+        decode_typed(renewed, &crate::router::auth::VALIDATION).expect("decode renewed");
+    assert_eq!(decoded.hash, hash);
+    assert_eq!(decoded.asset_id, asset_id);
+    assert_eq!(decoded.timestamp, ts);
+    assert_eq!(decoded.caller, "");
+    assert_eq!(decoded.resolved_share_opt, resolved_share);
 }
