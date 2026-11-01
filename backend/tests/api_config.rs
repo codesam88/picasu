@@ -382,7 +382,11 @@ fn index_and_share(client: &Client, admin: &Cookie<'static>) -> (String, String)
         )
         .dispatch();
     assert_eq!(share_res.status(), Status::Ok, "create_share");
-    let share_id = share_res.into_string().expect("share id").trim().to_owned();
+    let share_body: Value = share_res.into_json().expect("create_share json");
+    let share_id = share_body["link"]
+        .as_str()
+        .expect("create_share link")
+        .to_owned();
     (album_id, share_id)
 }
 

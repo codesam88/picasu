@@ -277,7 +277,9 @@ is gated by `GuardAdmin` ∩ `GuardReauth` (the admin's password proof).
 
 **AUTH-13 — Credential isolation.** `(manage, config-secrets) ∉ holds(Share(a,F))`
 for every share; bearer tokens are extracted from the `Authorization` header
-only.
+only. Share bearers never appear in album listings or export; the only paths
+that return a bearer are the create response and the creator-only, logged
+`GET /get/share/token`.
 
 **AUTH-14 — Statelessness.** The authority of a request is a function of its
 token and the DB alone; no component's decision depends on a server-side session.
@@ -317,9 +319,14 @@ by `write_gate` in `backend/src/storage/files.rs` and the per-op tests.
 **AUTH-19 — Share creator-ownership.** A share may be created, edited, or
 deleted on an album only when `visible_to(caller, album path)` holds; for
 a personal album this means `caller` is its owner. Share listings expose
-only entries with `created_by == caller`. Management of an invisible
-album returns 404, not 403. Pinned by `create_share`, `edit_share`, and
-`delete_share` plus `share_visible_to`.
+entries by non-secret `keyFingerprint` only: creators see their own entries,
+admins see every entry, and no listing or export carries a bearer. Edit
+stays creator-only; delete is creator-or-admin (admin revoke). The bearer is
+revealable only by the creator through `GET /get/share/token`, which answers
+404 to everyone else, including admins. Management addresses the entry by
+its fingerprint; an invisible album returns 404, not 403. Pinned by
+`create_share`, `edit_share`, `delete_share`, `get_share_token`, and
+`share_visible_to`.
 
 **AUTH-20 — Timeline personal opt-in.** Personal rows (media and albums)
 appear in prefetch/timeline results only when `include_personal = true`
