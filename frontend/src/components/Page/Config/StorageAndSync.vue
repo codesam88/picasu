@@ -38,16 +38,6 @@
 
       <v-divider></v-divider>
 
-      <!-- Personal Albums (read-only host switch) -->
-      <v-list-item
-        title="Personal Albums"
-        :subtitle="props.personalAlbumsEnabled ? 'Enabled' : 'Disabled'"
-        prepend-icon="mdi-account-multiple-outline"
-        lines="two"
-      ></v-list-item>
-
-      <v-divider></v-divider>
-
       <!-- Filesystem watcher toggle -->
       <v-list-item
         :title="
@@ -225,7 +215,6 @@ import { useCurrentUser } from '@/script/utils/currentUser'
 const props = defineProps<{
   imagePath: string | null
   usersHomePath?: string | null
-  personalAlbumsEnabled?: boolean
 }>()
 const uploadFolder = defineModel<string | null>('uploadFolder', { required: true })
 const maxUploadSize = defineModel<string>('maxUploadSize', { required: true })

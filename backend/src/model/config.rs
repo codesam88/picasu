@@ -165,10 +165,6 @@ pub struct AppConfig {
     /// invite token. Default off: registration then requires a valid invite.
     #[serde(default)]
     pub allow_registration: bool,
-    /// Enable per-user personal albums. Host-only switch (env/file/restart);
-    /// effective only when `users_home` is also configured. Default off.
-    #[serde(default)]
-    pub personal_albums_enabled: bool,
     /// Disable the default password-strength checks (length floor/ceiling,
     /// blocklist, user-id and pattern rules) for new passwords. Default
     /// off. Only for development, throwaway installs, or tests that must
@@ -336,11 +332,6 @@ pub mod config_tier_table {
             env_var: Some("PICASU_ALLOW_REGISTRATION"),
         },
         ConfigField {
-            name: "personal_albums_enabled",
-            tier: ConfigTier::Host,
-            env_var: Some("PICASU_PERSONAL_ALBUMS"),
-        },
-        ConfigField {
             name: "trivial_passwords",
             tier: ConfigTier::Host,
             env_var: Some("PICASU_TRIVIAL_PASSWORDS"),
@@ -444,7 +435,6 @@ impl Default for AppConfig {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: false,
-            personal_albums_enabled: false,
             trivial_passwords: false,
             bootstrap_admin: false,
             trust_proxy_forwarded_for: false,
@@ -568,8 +558,6 @@ pub(crate) struct TomlGallery {
     #[serde(default)]
     pub(crate) allow_registration: bool,
     #[serde(default)]
-    pub(crate) personal_albums_enabled: bool,
-    #[serde(default)]
     pub(crate) trivial_passwords: bool,
     #[serde(default)]
     pub(crate) bootstrap_admin: bool,
@@ -590,7 +578,6 @@ impl Default for TomlGallery {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: false,
-            personal_albums_enabled: false,
             trivial_passwords: false,
             bootstrap_admin: false,
             web_root: None,
@@ -614,10 +601,7 @@ impl From<TomlFile> for AppConfig {
             port: t.server.port,
             data_home: t.gallery.data_home,
             image_home: t.gallery.image_home,
-            users_home: t
-                .gallery
-                .users_home
-                .filter(|p| !p.to_string_lossy().trim().is_empty()),
+            users_home: t.gallery.users_home,
             upload_folder: t.gallery.upload_folder,
             max_upload_size: t.server.max_upload_size,
             read_only_mode: t.gallery.read_only_mode,
@@ -626,7 +610,6 @@ impl From<TomlFile> for AppConfig {
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             allow_registration: t.gallery.allow_registration,
-            personal_albums_enabled: t.gallery.personal_albums_enabled,
             trivial_passwords: t.gallery.trivial_passwords,
             bootstrap_admin: t.gallery.bootstrap_admin,
             trust_proxy_forwarded_for: t.server.trust_proxy_forwarded_for,
@@ -682,7 +665,6 @@ impl From<AppConfig> for TomlFile {
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
                 allow_registration: c.allow_registration,
-                personal_albums_enabled: c.personal_albums_enabled,
                 trivial_passwords: c.trivial_passwords,
                 bootstrap_admin: c.bootstrap_admin,
                 web_root: c.web_root,
@@ -748,6 +730,11 @@ impl AppConfig {
     /// # Errors
     /// Returns an error describing the overlap.
     pub fn validate_users_home(&self) -> anyhow::Result<()> {
+        if let Some(p) = &self.users_home
+            && p.to_string_lossy().trim().is_empty()
+        {
+            return Err(anyhow::anyhow!("users_home must not be empty"));
+        }
         crate::storage::files::validate_path_roots(self.image_home.clone(), self.users_home.clone())
     }
 
@@ -810,6 +797,11 @@ impl AppConfig {
                 Err(_) => Some(data_home.join("images")),
             };
 
+            let users_home = match std::env::var("PICASU_USERS_HOME") {
+                Ok(p) => Some(PathBuf::from(p)),
+                Err(_) => Some(data_home.join("users")),
+            };
+
             let web_root = match std::env::var("PICASU_WEB_ROOT") {
                 Ok(p) => Some(PathBuf::from(p)),
                 Err(_) => Some(data_home.join("www")),
@@ -818,6 +810,7 @@ impl AppConfig {
             let config = AppConfig {
                 data_home: Some(data_home),
                 image_home,
+                users_home,
                 web_root,
                 ..AppConfig::default()
             };
@@ -889,13 +882,42 @@ impl AppConfig {
 
         Self::apply_env_overrides(&mut config);
 
+        // Backfill users_home once for existing configs that lack it, mirroring
+        // the first-launch default for image_home. Explicit (non-empty) values
+        // are never overwritten; an explicitly empty value is rejected below.
+        let backfilled_users_home = if config.users_home.is_none() {
+            let data_home = config
+                .data_home
+                .clone()
+                .unwrap_or_else(|| get_data_path().clone());
+            config.users_home = Some(data_home.join("users"));
+            true
+        } else {
+            false
+        };
+
         // Degenerate throttle schedules fail startup (the caller maps this
         // to a non-zero exit) rather than clamp to a silent policy.
         config.validate_login_throttle()?;
 
         // Nested/equal image_home/users_home roots are unsafe (double-index,
-        // cross-root ownership); fail startup instead of serving.
+        // cross-root ownership); fail startup instead of serving. An
+        // explicitly empty users_home is also rejected.
         config.validate_users_home()?;
+
+        if backfilled_users_home {
+            info!(
+                "users_home was unset; defaulting to {}",
+                config
+                    .users_home
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default()
+            );
+            if let Err(e) = Self::save_update(&config) {
+                warn!("Failed to persist backfilled users_home: {e}");
+            }
+        }
 
         if config.web_root.is_none() {
             let data_home = config
@@ -965,7 +987,6 @@ impl AppConfig {
         }
         set_parse!(read_only_mode, "PICASU_READ_ONLY_MODE");
         set_parse!(allow_registration, "PICASU_ALLOW_REGISTRATION");
-        set_parse!(personal_albums_enabled, "PICASU_PERSONAL_ALBUMS");
         set_parse!(trivial_passwords, "PICASU_TRIVIAL_PASSWORDS");
         set_parse!(bootstrap_admin, "PICASU_BOOTSTRAP_ADMIN");
         set_parse!(
@@ -1128,7 +1149,6 @@ mod tests {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: true,
-            personal_albums_enabled: true,
             trivial_passwords: true,
             bootstrap_admin: true,
             trust_proxy_forwarded_for: true,
@@ -1248,21 +1268,37 @@ port = 9999
     }
 
     #[test]
-    fn users_home_empty_string_normalizes_to_none() {
+    fn users_home_empty_string_is_preserved_and_rejected() {
         let toml_str = "[gallery]\nusers_home = \"\"\n";
         let parsed: TomlFile = toml::from_str(toml_str).expect("parse");
         let config = AppConfig::from(parsed);
-        assert_eq!(config.users_home, None);
+        assert_eq!(config.users_home, Some(std::path::PathBuf::from("")));
+        assert!(config.validate_users_home().is_err());
 
         let toml_str = "[gallery]\nusers_home = \"   \"\n";
         let parsed: TomlFile = toml::from_str(toml_str).expect("parse");
         let config = AppConfig::from(parsed);
-        assert_eq!(config.users_home, None);
+        assert!(config.validate_users_home().is_err());
     }
 
     #[test]
     fn bootstrap_admin_defaults_to_false() {
         assert!(!AppConfig::default().bootstrap_admin);
+    }
+
+    #[test]
+    fn legacy_personal_albums_enabled_key_is_ignored() {
+        let toml_str = r#"
+[gallery]
+personal_albums_enabled = true
+users_home = "/tmp/users"
+"#;
+        let parsed: TomlFile = toml::from_str(toml_str).expect("old file must still parse");
+        let config = AppConfig::from(parsed);
+        assert_eq!(
+            config.users_home,
+            Some(std::path::PathBuf::from("/tmp/users"))
+        );
     }
 
     #[test]

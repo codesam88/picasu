@@ -37,7 +37,6 @@ import { useInitializedStore } from '@/store/initializedStore'
 import { useConfigStore } from '@/store/configStore'
 import { onMounted } from 'vue'
 import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
-import { usePersonalAlbumsEnabled } from '@/script/utils/personalAlbumsEnabled'
 
 const showNavPanel = inject<Ref<boolean>>('showNavPanel')
 const route = useRoute()
@@ -46,7 +45,9 @@ const currentUser = useCurrentUser()
 const configStore = useConfigStore('mainId')
 const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 
-const showMyAlbums = usePersonalAlbumsEnabled()
+const showMyAlbums = computed(
+  () => currentUser.value !== null && configStore.config?.personalAlbumsEnabled === true
+)
 
 onMounted(() => {
   if (configStore.config === undefined) {

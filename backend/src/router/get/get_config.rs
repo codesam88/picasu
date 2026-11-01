@@ -75,7 +75,7 @@ pub fn get_config_handler(auth: GuardResult<GuardPresenter>) -> AppResult<Json<C
         normalize_upload_filenames: config.normalize_upload_filenames,
         validate_upload_content: config.validate_upload_content,
         use_client_timestamp_info: config.use_client_timestamp_info,
-        personal_albums_enabled: config.personal_albums_enabled && config.users_home.is_some(),
+        personal_albums_enabled: config.users_home.is_some(),
     });
     Ok(Json(response))
 }
@@ -167,20 +167,19 @@ mod tests {
     }
 
     /// `GET /get/config` reports `personalAlbumsEnabled` as the effective
-    /// flag: true only when the runtime switch is on AND `users_home` is set.
+    /// flag: true only when `users_home` is set.
     #[test]
     fn config_reports_personal_albums_enabled() {
         let _g = lock();
         let client = setup();
         seed("cfg-pa", true, None);
 
-        let set_state = |switch: bool, home: bool| {
+        let set_state = |home: bool| {
             let mut c = crate::model::config::APP_CONFIG
                 .get()
                 .expect("cfg")
                 .write()
                 .expect("lock");
-            c.personal_albums_enabled = switch;
             c.users_home = if home {
                 Some(std::path::PathBuf::from("/tmp/picasu-users-home"))
             } else {
@@ -200,16 +199,12 @@ mod tests {
             );
         };
 
-        set_state(false, false);
+        set_state(false);
         check(false);
-        set_state(false, true);
-        check(false);
-        set_state(true, false);
-        check(false);
-        set_state(true, true);
+        set_state(true);
         check(true);
 
         // Restore defaults.
-        set_state(false, false);
+        set_state(false);
     }
 }
