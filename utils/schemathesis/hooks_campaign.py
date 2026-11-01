@@ -153,7 +153,7 @@ def _album_asset(album_id):
         rcode, rows = _api(
             "GET",
             f"/get/get-data?timestamp={ts}&start=0&end=500",
-            headers={"Authorization": f"Bearer {tok}"},
+            headers={"Authorization": f"Bearer {tok}", "Cookie": ADMIN_COOKIE},
         )
         if not isinstance(rows, list):
             raise RuntimeError(f"admin data failed: status={rcode} body={rows!r}")
@@ -218,6 +218,10 @@ def _install_markers(case, headers):
         token, ts = _share_snapshot(own_album, share)
         headers["X-Pilot"] = probe
         headers["Authorization"] = f"Bearer {token}"
+        # Present the owning share so the presenter check passes and the
+        # album-scope check (not the missing presenter) decides: 404.
+        headers["x-album-id"] = own_album
+        headers["x-share-id"] = share
         case.query = _snapshot_query(case, ts)
         asset = _album_asset(foreign_album)
         params = dict(case.path_parameters or {})
