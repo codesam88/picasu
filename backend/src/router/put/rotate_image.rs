@@ -5,6 +5,7 @@ use crate::process::misc::{generate_phash, generate_thumbhash};
 use crate::process::thumbnail::generate_thumbnail_for_image;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
+use crate::storage::files::write_gate;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::auth::GuardMutate;
@@ -69,17 +70,28 @@ pub async fn rotate_image(
     mutation: GuardResult<GuardMutate>,
     request: Json<RotateImageRequest>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     let _asset_id = ArrayString::<64>::from(&request.asset_id)
         .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid asset_id length or format"))?;
+
+    if request.asset_id.is_empty() || request.asset_id.len() > 64 {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid asset_id"));
+    }
 
     let abstract_data =
         tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>, AppError> {
             let abstract_data = asset_store::lookup_abstract_data_by_asset_id(&request.asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
+
+            if let Some(path) = abstract_data.visibility_path() {
+                write_gate(&caller, Some(&path), None).map_err(|_| {
+                    AppError::new(ErrorKind::PermissionDenied, "Asset not writable")
+                })?;
+            }
 
             let mut abstract_data = abstract_data;
 

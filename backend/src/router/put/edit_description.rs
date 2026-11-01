@@ -4,6 +4,7 @@ use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
+use crate::storage::files::write_gate;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::router::auth::GuardMutate;
@@ -75,8 +76,20 @@ pub async fn set_user_defined_description(
     mutation: GuardResult<GuardMutate>,
     set_user_defined_description: Json<SetUserDefinedDescription>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
+
+    if set_user_defined_description.timestamp < 0 {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid timestamp"));
+    }
+    if set_user_defined_description.index > usize::MAX / 2 {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Index out of bounds",
+        ));
+    }
+
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)
             .map_err(SnapshotReadError::into_app_error)?;
@@ -95,6 +108,11 @@ pub async fn set_user_defined_description(
         if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to get data from table"))?
         {
+            if let Some(path) = abstract_data.visibility_path() {
+                write_gate(&caller, Some(&path), None).map_err(|_| {
+                    AppError::new(ErrorKind::PermissionDenied, "Asset not writable")
+                })?;
+            }
             let description = set_user_defined_description
                 .description
                 .as_deref()

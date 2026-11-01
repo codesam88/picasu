@@ -5,6 +5,7 @@ use crate::process::misc::generate_dynamic_image;
 use crate::process::misc::{generate_phash, generate_thumbhash};
 use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
+use crate::storage::files::write_gate;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::auth::GuardMutate;
@@ -74,8 +75,9 @@ pub async fn regenerate_thumbnail_with_frame(
     mutation: GuardResult<GuardMutate>,
     form: Result<Form<RegenerateThumbnailForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
     let mut inner_form = match form {
         Ok(form) => form.into_inner(),
         Err(errors) => {
@@ -88,16 +90,51 @@ pub async fn regenerate_thumbnail_with_frame(
         }
     };
 
+    if inner_form.asset_id.is_empty() {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid asset_id"));
+    }
     // Convert asset_id string to ArrayString
     let asset_id = ArrayString::<64>::from(&inner_form.asset_id)
         .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid asset_id length or format"))?;
+
+    // Validate asset_id format before slicing
+    let asset_id_str = asset_id.as_str();
+    if asset_id_str.is_empty() || asset_id_str.len() < 2 {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid asset_id"));
+    }
+    // Validate charset - only hex-like or alphanumeric typically; but be defensive
+    if !asset_id_str
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid asset_id"));
+    }
+
+    // Look up and gate BEFORE any file write
+    let _abstract_data = tokio::task::spawn_blocking({
+        let caller_gate = caller.clone();
+        let asset_id_gate = inner_form.asset_id.clone();
+        move || -> Result<AbstractData, AppError> {
+            let abstract_data = asset_store::lookup_abstract_data_by_asset_id(&asset_id_gate)
+                .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
+                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
+            if let Some(path) = abstract_data.visibility_path() {
+                write_gate(&caller_gate, Some(&path), None).map_err(|_| {
+                    AppError::new(ErrorKind::PermissionDenied, "Asset not writable")
+                })?;
+            }
+            Ok(abstract_data)
+        }
+    })
+    .await
+    .or_raise(|| (ErrorKind::Internal, "Failed to spawn blocking task"))??;
 
     let root = crate::storage::files::get_data_path();
     // Use asset_id for the compressed file path
     let file_path = root.join(format!(
         "object/compressed/{}/{}.jpg",
-        &asset_id[0..2],
-        asset_id.as_str()
+        &asset_id_str[0..2],
+        asset_id_str
     ));
     // The asset-addressed directory need not exist yet (nothing may have
     // served this asset's thumbnail before): create it like the thumbnail
