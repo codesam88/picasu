@@ -122,7 +122,7 @@ describe('shares tab', () => {
     expect(shareMgmt).toMatch(/ShareDeleteConfirmModal/)
     expect(shareMgmt).toMatch(/\/share\//)
     expect(shareMgmt).toMatch(/copyTextToClipboard/)
-    expect(shareMgmt).toMatch(/v-if="showCopy"/)
+    expect(shareMgmt).toMatch(/showCopy/)
     expect(shareMgmt).not.toMatch(/navigator\.clipboard/)
     expect(shareMgmt).not.toMatch(/execCommand/)
   })

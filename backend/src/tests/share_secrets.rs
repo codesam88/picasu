@@ -115,8 +115,13 @@ fn album_reads_carry_share_presence_not_password() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
-    let share_id = create.into_string().expect("share id").trim().to_string();
-    let share_fp = share_fingerprint_for(&share_id);
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
+    let share_fp = body["fingerprint"]
+        .as_str()
+        .expect("fingerprint")
+        .trim()
+        .to_string();
 
     for (label, request_cookie, should_see) in [
         ("admin", cookie("admin", true), true),
@@ -219,8 +224,13 @@ fn edit_share_keeps_sets_and_clears_password() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
-    let share_id = create.into_string().expect("share id").trim().to_string();
-    let share_fp = share_fingerprint_for(&share_id);
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
+    let share_fp = body["fingerprint"]
+        .as_str()
+        .expect("fingerprint")
+        .trim()
+        .to_string();
 
     let edit = |password: Value| {
         client
@@ -231,7 +241,7 @@ fn edit_share_keeps_sets_and_clears_password() {
                 json!({
                     "albumId": album_id,
                     "share": {
-                        "url": share_fingerprint_for(&share_id),
+                        "url": share_fp,
                         "description": "edit me",
                         "password": password,
                         "showMetadata": true,
@@ -315,7 +325,8 @@ fn share_password_is_hashed_at_rest() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
-    let share_id = create.into_string().expect("share id").trim().to_string();
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
 
     let stored = stored_share_password(&album_id, &share_id).expect("stored password");
     assert!(
@@ -352,7 +363,8 @@ fn a_hashed_share_password_grants_access() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
-    let share_id = create.into_string().expect("share id").trim().to_string();
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
 
     assert_eq!(
         share_prefetch(&client, &album_id, &share_id, Some("s3cret-share-pw")),
@@ -390,7 +402,8 @@ fn a_legacy_plaintext_share_row_still_grants_access() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
-    let share_id = create.into_string().expect("share id").trim().to_string();
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
 
     // Simulate a pre-hashing plaintext row (no migration).
     set_legacy_share_password(&album_id, &share_id, "legacy-pw");
@@ -432,8 +445,8 @@ fn export_redacts_share_secrets_and_absolute_paths() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
-    let raw_create = create.into_string().expect("share id");
-    let share_id = raw_create.trim().to_string();
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
 
     // Absolute path that must not survive into the export.
     let raw_image_home = crate::storage::files::get_data_path()

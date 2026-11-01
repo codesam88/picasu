@@ -359,7 +359,6 @@ impl Share {
     /// Non-secret handle for this share: blake3 of the bearer token (`url`),
     /// truncated to the first 16 lowercase hex characters (64 bits).
     /// Deterministic and non-reversible; carries no bearer material.
-    #[allow(dead_code)] // exercised by unit tests; no production caller yet (S2+)
     pub fn fingerprint(&self) -> String {
         let hex = blake3::hash(self.url.as_str().as_bytes())
             .to_hex()

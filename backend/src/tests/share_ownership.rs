@@ -23,13 +23,14 @@ fn share_body(album_id: &str) -> Value {
     })
 }
 
-/// Create a share on `album_id` as `creator`, returning the share id.
+/// Create a share on `album_id` as `creator`, returning its bearer and
+/// fingerprint.
 fn create_share_as(
     client: &rocket::local::blocking::Client,
     creator: &str,
     creator_admin: bool,
     album_id: &str,
-) -> String {
+) -> (String, String) {
     let create = client
         .post("/post/create_share")
         .cookie(cookie(creator, creator_admin))
@@ -37,7 +38,14 @@ fn create_share_as(
         .body(share_body(album_id).to_string())
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share as {creator}");
-    create.into_string().expect("share id").trim().to_string()
+    let body: Value = create.into_json().expect("create_share json");
+    let link = body["link"].as_str().expect("link").trim().to_string();
+    let fingerprint = body["fingerprint"]
+        .as_str()
+        .expect("fingerprint")
+        .trim()
+        .to_string();
+    (link, fingerprint)
 }
 
 /// Share urls the caller's `GET /get/get-albums` exposes for `album_id`.
@@ -76,8 +84,7 @@ fn listings_scope_shares_to_their_creator() {
     seed("own-root", true, None);
     seed("own-other", true, None);
 
-    let share_id = create_share_as(&client, "own-root", true, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (share_id, fp) = create_share_as(&client, "own-root", true, &album_id);
 
     // Creator sees own share, keyed by fingerprint, never by bearer.
     let root_keys = listed_share_urls(&client, "own-root", true, &album_id);
@@ -148,7 +155,7 @@ fn non_admin_list_omits_foreign_shares() {
     seed("own-root2", true, None);
     seed("own-viewer", false, None);
 
-    let share_id = create_share_as(&client, "own-root2", true, &album_id);
+    let (share_id, _) = create_share_as(&client, "own-root2", true, &album_id);
 
     let viewer_shares = listed_share_urls(&client, "own-viewer", false, &album_id);
     assert!(
@@ -167,7 +174,7 @@ fn edit_by_other_user_refused_preserves_creator() {
     seed("own-root3", false, None);
     seed("own-other3", false, None);
 
-    let share_id = create_share_as(&client, "own-root3", false, &album_id);
+    let (share_id, _) = create_share_as(&client, "own-root3", false, &album_id);
 
     let edit = client
         .put("/put/edit_share")
@@ -211,7 +218,7 @@ fn delete_share_removes_it_from_listings() {
     let (album_id, _asset_id) = create_album(&client, "/ownedel/photo.jpg");
     seed("own-root4", true, None);
 
-    let share_id = create_share_as(&client, "own-root4", true, &album_id);
+    let (share_id, _) = create_share_as(&client, "own-root4", true, &album_id);
     assert!(
         listed_share_urls(&client, "own-root4", true, &album_id)
             .contains(&share_fingerprint_for(&share_id)),
@@ -287,7 +294,7 @@ fn s4_non_admin_personal_share_crud_and_resolve() {
     seed("pers-user", false, None);
     let album_id = personal_album_id(&users_home, "pers-user");
 
-    let share_id = create_share_as(&client, "pers-user", false, &album_id);
+    let (share_id, _) = create_share_as(&client, "pers-user", false, &album_id);
 
     // edit
     let edit = client
@@ -334,7 +341,7 @@ fn s4_non_admin_creates_share_on_public_album() {
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/s4pub/photo.jpg");
     seed("pub-user", false, None);
-    let share_id = create_share_as(&client, "pub-user", false, &album_id);
+    let (share_id, _) = create_share_as(&client, "pub-user", false, &album_id);
     assert_ne!(share_id, "");
 }
 
@@ -390,7 +397,7 @@ fn s4_user_b_cannot_edit_or_delete_users_share_on_public_album() {
     seed("user-a", false, None);
     seed("user-b", false, None);
 
-    let share_id = create_share_as(&client, "user-a", false, &album_id);
+    let (share_id, _) = create_share_as(&client, "user-a", false, &album_id);
     assert!(
         listed_share_urls(&client, "user-a", false, &album_id)
             .contains(&share_fingerprint_for(&share_id))
@@ -465,7 +472,8 @@ fn s4_personal_share_resolves_anonymously_with_flags() {
         )
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create personal share");
-    let share_id = create.into_string().expect("share id").trim().to_string();
+    let body: Value = create.into_json().expect("create_share json");
+    let share_id = body["link"].as_str().expect("link").trim().to_string();
 
     let status = prefetch_as_share_anon(&client, &album_id, &share_id);
     assert_eq!(status, Status::Ok, "personal share resolves anonymously");
@@ -477,7 +485,7 @@ fn s4_disabled_mode_non_admin_can_create_public_share() {
     let client = setup_image_home(); // users_home stays None
     let (album_id, _asset_id) = create_album(&client, "/s4disabled/photo.jpg");
     seed("disabled-user", false, None);
-    let share_id = create_share_as(&client, "disabled-user", false, &album_id);
+    let (share_id, _) = create_share_as(&client, "disabled-user", false, &album_id);
     assert_ne!(share_id, "");
 }
 
@@ -490,7 +498,7 @@ fn move_album_with_foreign_share_refused_and_tree_unchanged() {
     seed("alice", false, None);
 
     let (album_id, _asset_id) = create_album(&client, "/shared/pub/photo.jpg");
-    let share_id = create_share_as(&client, "bob", false, &album_id);
+    let (share_id, _) = create_share_as(&client, "bob", false, &album_id);
 
     let alice_personal = personal_album_id(&users_home, "alice");
 
@@ -533,7 +541,7 @@ fn move_album_with_own_shares_succeeds() {
     seed("alice", false, None);
 
     let (album_id, _asset_id) = create_album(&client, "/owned/album/photo.jpg");
-    let _share_id = create_share_as(&client, "alice", false, &album_id);
+    let (_share_id, _) = create_share_as(&client, "alice", false, &album_id);
     let alice_personal = personal_album_id(&users_home, "alice");
 
     let resp = client
@@ -561,7 +569,7 @@ fn admin_moving_album_with_another_users_share_refused() {
     seed("admin", true, None);
 
     let (album_id, _asset_id) = create_album(&client, "/shared/pub2/photo.jpg");
-    let _share_id = create_share_as(&client, "bob", false, &album_id);
+    let (_share_id, _) = create_share_as(&client, "bob", false, &album_id);
     let admin_personal = personal_album_id(&users_home, "admin");
 
     let resp = client
@@ -610,8 +618,7 @@ fn s2_creator_reveals_own_share_bearer() {
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/s2reveal/photo.jpg");
     seed("rev-a", false, None);
-    let share_id = create_share_as(&client, "rev-a", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (share_id, fp) = create_share_as(&client, "rev-a", false, &album_id);
 
     let resp = client
         .get(format!(
@@ -642,8 +649,7 @@ fn s2_other_user_cannot_reveal_foreign_share() {
     let (album_id, _asset_id) = create_album(&client, "/s2foreign/photo.jpg");
     seed("rev-owner", false, None);
     seed("rev-bob", false, None);
-    let share_id = create_share_as(&client, "rev-owner", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (share_id, fp) = create_share_as(&client, "rev-owner", false, &album_id);
 
     let resp = client
         .get(format!(
@@ -670,8 +676,7 @@ fn s2_admin_cannot_reveal_foreign_share() {
     let (album_id, _asset_id) = create_album(&client, "/s2admin/photo.jpg");
     seed("rev-owner2", false, None);
     seed("rev-admin", true, None);
-    let share_id = create_share_as(&client, "rev-owner2", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (_share_id, fp) = create_share_as(&client, "rev-owner2", false, &album_id);
 
     assert_eq!(
         reveal_status(&client, "rev-admin", true, &album_id, &fp),
@@ -686,7 +691,7 @@ fn s2_unknown_fingerprint_is_not_found() {
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/s2unknown/photo.jpg");
     seed("rev-owner3", false, None);
-    create_share_as(&client, "rev-owner3", false, &album_id);
+    let _ = create_share_as(&client, "rev-owner3", false, &album_id);
 
     assert_eq!(
         reveal_status(&client, "rev-owner3", false, &album_id, "0123456789abcdef"),
@@ -703,8 +708,7 @@ fn s2_reveal_on_invisible_personal_album_is_not_found() {
     seed("rev-pa", false, None);
     seed("rev-pb", false, None);
     let album_id = personal_album_id(&users_home, "rev-pa");
-    let share_id = create_share_as(&client, "rev-pa", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (_share_id, fp) = create_share_as(&client, "rev-pa", false, &album_id);
 
     assert_eq!(
         reveal_status(&client, "rev-pb", false, &album_id, &fp),
@@ -724,8 +728,7 @@ fn s3_edit_by_fingerprint_as_creator_ok() {
     // Use admin-created album? create_album uses admin cookie. Share created by s3creator? Need album visible to s3creator.
     // Simpler: create share as admin (creator admin) on admin-visible album.
     // Reuse admin as creator.
-    let share_id = create_share_as(&client, "admin", true, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (share_id, fp) = create_share_as(&client, "admin", true, &album_id);
 
     let edit = client
         .put("/put/edit_share")
@@ -764,8 +767,7 @@ fn s3_edit_by_other_user_refused() {
     let (album_id, _asset_id) = create_album(&client, "/s3editother/photo.jpg");
     seed("s3owner", false, None);
     seed("s3other", false, None);
-    let share_id = create_share_as(&client, "s3owner", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (_share_id, fp) = create_share_as(&client, "s3owner", false, &album_id);
 
     let edit = client
         .put("/put/edit_share")
@@ -797,8 +799,7 @@ fn s3_edit_by_admin_non_creator_refused() {
     let (album_id, _asset_id) = create_album(&client, "/s3editadmin/photo.jpg");
     seed("s3owner2", false, None);
     seed("s3admin", true, None);
-    let share_id = create_share_as(&client, "s3owner2", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (_share_id, fp) = create_share_as(&client, "s3owner2", false, &album_id);
 
     let edit = client
         .put("/put/edit_share")
@@ -833,8 +834,7 @@ fn s3_delete_by_fingerprint_as_creator_ok() {
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/s3del/photo.jpg");
     seed("s3delowner", false, None);
-    let share_id = create_share_as(&client, "s3delowner", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (share_id, fp) = create_share_as(&client, "s3delowner", false, &album_id);
     assert!(
         listed_share_urls(&client, "s3delowner", false, &album_id)
             .contains(&share_fingerprint_for(&share_id)),
@@ -862,8 +862,7 @@ fn s3_delete_by_admin_of_foreign_share_ok() {
     let (album_id, _asset_id) = create_album(&client, "/s3deladmin/photo.jpg");
     seed("s3foreignowner", false, None);
     seed("s3admin2", true, None);
-    let share_id = create_share_as(&client, "s3foreignowner", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (share_id, fp) = create_share_as(&client, "s3foreignowner", false, &album_id);
 
     let delete = client
         .put("/put/delete_share")
@@ -887,8 +886,7 @@ fn s3_delete_by_non_admin_non_creator_refused() {
     let (album_id, _asset_id) = create_album(&client, "/s3delrefused/photo.jpg");
     seed("s3owner3", false, None);
     seed("s3other3", false, None);
-    let share_id = create_share_as(&client, "s3owner3", false, &album_id);
-    let fp = share_fingerprint_for(&share_id);
+    let (_share_id, fp) = create_share_as(&client, "s3owner3", false, &album_id);
 
     let delete = client
         .put("/put/delete_share")
@@ -909,7 +907,7 @@ fn s3_delete_unknown_fingerprint_is_noop() {
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/s3delunknown/photo.jpg");
     seed("s3owner4", false, None);
-    let _share_id = create_share_as(&client, "s3owner4", false, &album_id);
+    let (_share_id, _) = create_share_as(&client, "s3owner4", false, &album_id);
 
     let delete = client
         .put("/put/delete_share")

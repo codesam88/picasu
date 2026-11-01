@@ -51,14 +51,15 @@ pub fn create_album(client: &Client, photo_rel: &str) -> (String, String) {
     (album_id, asset_id)
 }
 
-/// Create a share on `album_id` with the given policy and return its id.
+/// Create a share on `album_id` with the given policy and return its bearer
+/// (`link`) and non-secret fingerprint.
 pub fn create_share(
     client: &Client,
     album_id: &str,
     show_metadata: bool,
     show_download: bool,
     show_upload: bool,
-) -> String {
+) -> (String, String) {
     let resp = client
         .post("/post/create_share")
         .cookie(auth_cookie(client))
@@ -77,7 +78,14 @@ pub fn create_share(
         )
         .dispatch();
     assert_eq!(resp.status(), Status::Ok, "create_share");
-    resp.into_string().expect("share id").trim().to_string()
+    let body: Value = resp.into_json().expect("create_share json");
+    let link = body["link"].as_str().expect("link").trim().to_string();
+    let fingerprint = body["fingerprint"]
+        .as_str()
+        .expect("fingerprint")
+        .trim()
+        .to_string();
+    (link, fingerprint)
 }
 
 /// `POST /get/prefetch` authenticated as a share. Returns the snapshot id, the

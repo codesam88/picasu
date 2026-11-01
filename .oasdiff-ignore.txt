@@ -28,6 +28,11 @@ GET /get/admin/config/export removed the required property `config/disableImg` f
 PUT /put/admin/config removed the required property `config/disableImg` from the response with the `200` status
 GET /get/config/export removed the media type `text/plain` for the response with the status `200`
 
+# 2026-11-01 (share-token S5 follow-up, decided): `POST /post/create_share`
+# now answers a JSON object `{link, fingerprint}` instead of a bare bearer
+# string, so the `text/plain` media type is replaced by `application/json`.
+POST /post/create_share removed the media type `text/plain` for the response with the status `200`
+
 # 2026-10-31 (/links -> /shares rename, decided): the client route moved and
 # the frontend asserts no /links legacy, so the backend shell route moves
 # with it. Old /links bookmarks fall through to the JSON 404 like any other

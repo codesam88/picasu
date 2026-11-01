@@ -61,13 +61,13 @@ fn create_album(client: &Client, photo_rel: &str) -> (String, String) {
     (album_id, asset_id)
 }
 
-/// Create a share for `album_id` and return its id.
+/// Create a share for `album_id` and return its bearer and fingerprint.
 fn create_share(
     client: &Client,
     album_id: &str,
     show_metadata: bool,
     show_download: bool,
-) -> String {
+) -> (String, String) {
     let resp = client
         .post("/post/create_share")
         .cookie(auth_cookie(client))
@@ -86,7 +86,14 @@ fn create_share(
         )
         .dispatch();
     assert_eq!(resp.status(), Status::Ok, "create_share");
-    resp.into_string().expect("share id").trim().to_string()
+    let body: Value = resp.into_json().expect("create_share json");
+    let link = body["link"].as_str().expect("link").trim().to_string();
+    let fingerprint = body["fingerprint"]
+        .as_str()
+        .expect("fingerprint")
+        .trim()
+        .to_string();
+    (link, fingerprint)
 }
 
 /// `POST /get/prefetch` authenticated as a share, returning the snapshot id,
@@ -163,7 +170,7 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_asset_token/album/photo.jpg");
-    let share = create_share(&client, &album, false, false);
+    let (share, _) = create_share(&client, &album, false, false);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
     let asset_token = get_data_asset_token(&client, ts, &snapshot_token, &album, &share);
 
@@ -219,7 +226,7 @@ fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_snapshot_token/album/photo.jpg");
-    let share = create_share(&client, &album, true, true);
+    let (share, _) = create_share(&client, &album, true, true);
     let (_, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     let resp = client
@@ -249,7 +256,7 @@ fn a_valid_bearer_token_in_the_query_is_refused() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_query_token/album/photo.jpg");
-    let share = create_share(&client, &album, false, false);
+    let (share, _) = create_share(&client, &album, false, false);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     let resp = client
@@ -287,7 +294,7 @@ fn media_responses_are_not_shared_cacheable() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_cache_header/album/photo.jpg");
-    let share = create_share(&client, &album, true, true);
+    let (share, _) = create_share(&client, &album, true, true);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
     let asset_token = get_data_asset_token(&client, ts, &snapshot_token, &album, &share);
 
@@ -357,7 +364,7 @@ fn metadata_is_scoped_to_the_shares_album() {
     let client = setup_image_home();
     let (_album_a, asset_a) = create_album(&client, "/authz_scope_a/album/photo.jpg");
     let (album_b, _asset_b) = create_album(&client, "/authz_scope_b/album/photo.jpg");
-    let share_b = create_share(&client, &album_b, true, false);
+    let (share_b, _) = create_share(&client, &album_b, true, false);
     let (ts, token_b, _) = prefetch_as_share(&client, &album_b, &share_b, None);
 
     let resp = client
@@ -383,7 +390,7 @@ fn share_cannot_rename_any_album() {
     let client = setup_image_home();
     let (album_a, _asset_a) = create_album(&client, "/authz_rename_a/album/photo.jpg");
     let (_album_b, _asset_b) = create_album(&client, "/authz_rename_b/album/photo.jpg");
-    let share_a = create_share(&client, &album_a, true, false);
+    let (share_a, _) = create_share(&client, &album_a, true, false);
     let before = album_title(&client, &album_a);
 
     let resp = client
@@ -412,7 +419,7 @@ fn share_cannot_write_any_albums_asset() {
     let client = setup_image_home();
     let (album_a, asset_a) = create_album(&client, "/authz_desc_a/album/photo.jpg");
     let (_album_b, _asset_b) = create_album(&client, "/authz_desc_b/album/photo.jpg");
-    let share_a = create_share(&client, &album_a, true, false);
+    let (share_a, _) = create_share(&client, &album_a, true, false);
     let (ts_a, _, idx_a) = prefetch_as_share(&client, &album_a, &share_a, Some(&asset_a));
     let idx_a = idx_a.expect("album A asset must be locatable");
 
@@ -439,8 +446,8 @@ fn renewal_is_bound_to_the_presenters_share() {
     let client = setup_image_home();
     let (album_a, _asset_a) = create_album(&client, "/authz_renew_a/album/photo.jpg");
     let (album_b, _asset_b) = create_album(&client, "/authz_renew_b/album/photo.jpg");
-    let share_a = create_share(&client, &album_a, true, false);
-    let share_b = create_share(&client, &album_b, true, false);
+    let (share_a, _) = create_share(&client, &album_a, true, false);
+    let (share_b, _) = create_share(&client, &album_b, true, false);
     let (_, token_b, _) = prefetch_as_share(&client, &album_b, &share_b, None);
 
     let resp = client
@@ -464,11 +471,10 @@ fn renewal_revalidates_the_embedded_share() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_renew_expired/album/photo.jpg");
-    let share = create_share(&client, &album, true, false);
+    let (share, share_fp) = create_share(&client, &album, true, false);
     let (_, token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     // Expire the share after the token was minted.
-    let share_fp = blake3::hash(share.as_bytes()).to_hex().to_string()[..16].to_string();
     let share_obj = json!({
         "url": share_fp,
         "description": "authz test",
@@ -505,7 +511,7 @@ fn prefetch_snapshot_token_carries_caller() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/caller_prefetch/album/photo.jpg");
-    let share = create_share(&client, &album, false, false);
+    let (share, _) = create_share(&client, &album, false, false);
 
     // User prefetch: the snapshot token carries the requesting user's id.
     let resp = client
@@ -665,7 +671,7 @@ fn b2_share_holder_prefetch_roundtrip_still_200() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/b2_share/album/photo.jpg");
-    let share = create_share(&client, &album, true, true);
+    let (share, _) = create_share(&client, &album, true, true);
     let (ts, token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     // get-data
@@ -887,7 +893,7 @@ fn b4_share_holder_renews_own_album_asset() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/b4_share/album/photo.jpg");
-    let share = create_share(&client, &album, true, true);
+    let (share, _) = create_share(&client, &album, true, true);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     let record = crate::storage::asset_store::get_asset_by_id(&asset)
@@ -1006,7 +1012,7 @@ fn b5_share_holder_serves_share_album_image() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/b5_share_serve/album/photo.jpg");
-    let share = create_share(&client, &album, true, true);
+    let (share, _) = create_share(&client, &album, true, true);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
     let asset_token = get_data_asset_token(&client, ts, &snapshot_token, &album, &share);
 
@@ -1039,7 +1045,7 @@ fn b5_renew_hash_preserves_caller_and_share() {
     let _g = lock();
     let client = setup_image_home();
     let (album, asset) = create_album(&client, "/b5_renew_preserve/album/photo.jpg");
-    let share = create_share(&client, &album, true, true);
+    let (share, _) = create_share(&client, &album, true, true);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     let record = crate::storage::asset_store::get_asset_by_id(&asset)

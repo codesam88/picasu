@@ -49,6 +49,7 @@ watch(
     if (!val) {
       formState.value = { ...defaultFormState }
       createdShareKey.value = null
+      createdFingerprint.value = null
       shareLink.value = null
     }
   }
@@ -56,6 +57,7 @@ watch(
 
 const shareLink: Ref<string | null> = ref(null)
 const createdShareKey: Ref<string | null> = ref(null)
+const createdFingerprint: Ref<string | null> = ref(null)
 const loading = ref(false)
 
 const createLink = async (formData: ShareFormData) => {
@@ -67,7 +69,7 @@ const createLink = async (formData: ShareFormData) => {
 
   try {
     await tryWithMessageStore('mainId', async () => {
-      const result = await axios.post<string>('/post/create_share', {
+      const result = await axios.post<{ link: string; fingerprint: string }>('/post/create_share', {
         albumId: props.albumId,
         description: formData.description,
         password: formData.passwordRequired ? formData.password : null,
@@ -77,8 +79,9 @@ const createLink = async (formData: ShareFormData) => {
         exp: expirationTimestamp
       })
 
-      createdShareKey.value = result.data
-      shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
+      createdShareKey.value = result.data.link
+      createdFingerprint.value = result.data.fingerprint
+      shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data.link}`
       messageStore.success('Share link created successfully.')
     })
   } catch (e) {
@@ -89,7 +92,7 @@ const createLink = async (formData: ShareFormData) => {
 }
 
 const updateLink = async (formData: ShareFormData) => {
-  if (createdShareKey.value === null || createdShareKey.value === '') return
+  if (createdFingerprint.value === null || createdFingerprint.value === '') return
 
   loading.value = true
   const expirationTimestamp =
@@ -102,7 +105,7 @@ const updateLink = async (formData: ShareFormData) => {
       await axios.put('/put/edit_share', {
         albumId: props.albumId,
         share: {
-          url: createdShareKey.value,
+          url: createdFingerprint.value,
           description: formData.description,
           password: formData.passwordRequired ? formData.password : null,
           showMetadata: formData.showMetadata,

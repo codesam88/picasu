@@ -17,7 +17,7 @@ describe('CreateShareModal single-owner display', () => {
 
   test('create path routes through tryWithMessageStore', () => {
     expect(source).toMatch(
-      /tryWithMessageStore\('mainId', async \(\) => \{[\s\S]*?axios\.post<string>\('\/post\/create_share'/
+      /tryWithMessageStore\('mainId', async \(\) => \{[\s\S]*?axios\.post<\{ link: string; fingerprint: string \}>\('\/post\/create_share'/
     )
   })
 
@@ -27,5 +27,10 @@ describe('CreateShareModal single-owner display', () => {
 
   test('create path still resets loading in finally', () => {
     expect(source).toMatch(/const createLink[\s\S]*?\} finally \{\s*loading\.value = false\s*\}/)
+  })
+
+  test('updateLink addresses the created share by fingerprint, not bearer', () => {
+    expect(source).toMatch(/url: createdFingerprint\.value/)
+    expect(source).not.toMatch(/url: createdShareKey\.value/)
   })
 })

@@ -80,8 +80,9 @@ const saveChanges = async (formData: ShareFormData) => {
     : formData.passwordDirty
       ? ''
       : null
+  const fingerprint = props.editShareData.share.keyFingerprint
   const storedShare = {
-    url: props.editShareData.share.url,
+    keyFingerprint: fingerprint,
     description: formData.description,
     hasPassword:
       wirePassword === null ? props.editShareData.share.hasPassword : wirePassword !== '',
@@ -91,7 +92,7 @@ const saveChanges = async (formData: ShareFormData) => {
     exp: newExp
   }
   const wireShare = {
-    url: props.editShareData.share.url,
+    url: fingerprint,
     description: formData.description,
     password: wirePassword,
     showMetadata: formData.showMetadata,
@@ -106,7 +107,7 @@ const saveChanges = async (formData: ShareFormData) => {
     if (album) {
       // eslint-disable-next-line vue/no-mutating-props
       Object.assign(props.editShareData.share, storedShare)
-      album.shareList.set(storedShare.url, storedShare)
+      album.shareList.set(fingerprint, storedShare)
     }
 
     await tryWithMessageStore('mainId', async () => {

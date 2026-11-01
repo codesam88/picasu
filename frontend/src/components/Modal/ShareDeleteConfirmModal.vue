@@ -55,7 +55,7 @@ const albumStore = useAlbumStore('mainId')
 const messageStore = useMessageStore('mainId')
 
 const dummy = ref(true) // Required by v-confirm-edit
-const shareUrl = `${window.location.origin}/share/${props.deleteShareData.albumId}-${props.deleteShareData.share.url}`
+const shareUrl = props.deleteShareData.share.keyFingerprint
 
 const submit = ref<(() => void) | undefined>()
 
@@ -64,7 +64,7 @@ onMounted(() => {
     void tryWithMessageStore('mainId', async () => {
       await axios.put('/put/delete_share', {
         albumId: props.deleteShareData.albumId,
-        shareId: props.deleteShareData.share.url
+        shareId: props.deleteShareData.share.keyFingerprint
       })
 
       messageStore.success('Share deleted')
