@@ -47,6 +47,21 @@ adds account disable as the fast, side-effect-free lever.
   last enabled admin is refused with 409, mirroring the zero-admin
   invariant. A disabled user with photos still cannot be deleted
   (disable is not a purge shortcut).
+- Sharing is an independent per-user flag (`shares_enabled`, default
+  true, same tolerant pattern): while disabled, the user cannot create
+  new shares and share-based access resolving to their shares is denied
+  exactly like a dead share (401, indistinguishable from removed), so no
+  new oracle opens. Existing share rows are kept, so re-enabling
+  restores access instantly. Account disable does NOT touch shares
+  (lock stays side-effect-free); share disable does not touch the
+  account. Both flags surface in the admin user listing next to each
+  other, each with its own toggle endpoint mirroring the admin-role
+  pattern.
+- The delete-failure response for remaining photos (409) names the
+  remedy in its message: lock the account and remove/revoke the shares;
+  to delete manually, remove the files from the host filesystem under
+  `USERS_HOME/<username>`, then retry the delete. The manual path is
+  documented operator procedure, not API behavior.
 - "Has photos" means any media file under the user's personal home
   (trashed included — trashed originals still occupy storage); global
   uploads are not attributable to a user and never block. On successful
@@ -94,6 +109,36 @@ deletable. Done: targeted suites + `just frontend-check` +
 `just frontend-vitest` (state counts), fmt, clippy, openapi regen +
 `openapi-json-match` + `auth-matrix-check` (new route), env-var/doc
 gates unaffected.
+
+### D5-3 — Backend + UI: per-user share enable/disable
+
+`UserRecord.shares_enabled: bool` (default true, same tolerant
+pattern). Create path (`POST /post/create_share`) refuses with 403
+when the creator's sharing is disabled. Resolve paths
+(`try_resolve_share_from_headers/query`, share re-validation in
+renew flows) deny shares whose creator disabled sharing, with the
+same status as a dead share (indistinguishable, no new oracle).
+New `PUT /put/users/sharing` (`{userId, enabled}`, GuardAdmin, 404
+unknown) mirroring the disable endpoint (no last-admin rule: sharing
+is not a liveness property). Admin user listing exposes both flags;
+`UserManagement.vue` gains the share toggle next to the account lock.
+Delete flow unchanged (cascade already removes owned shares).
+Tests (RED first): disabled creator cannot create (403); anonymous
+prefetch/serve/renew against their shares denied like dead shares;
+re-enable restores all three; flags visible in admin listing;
+non-admin cannot flip either flag. Done: targeted suites +
+frontend checks, fmt, clippy, openapi regen + contract checks.
+
+### D5-4 — Docs: deletion runbook and account-state model
+
+Document the operator procedure (refuse-while-photos 409 message
+wording pinned by D5-1 tests; lock account; revoke/remove shares;
+manual deletion by removing files under `USERS_HOME/<username>` then
+retrying delete) and the account-state model (active / disabled /
+sharing-disabled as independent flags with a state table) wherever
+admin user management is documented. Verify with `just docs-check`
+and the plan's doc conventions (current state only, no
+progress-chatter).
 
 ## Explicitly out of scope
 
