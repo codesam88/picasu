@@ -300,10 +300,6 @@
             "description": "NFC-normalize uploaded filenames so macOS NFD names collapse onto\ntheir composed form. Optional (unlike the always-on sanitization tiers).",
             "type": "boolean"
           },
-          "personalAlbumsEnabled": {
-            "description": "Enable per-user personal albums. Host-only switch (env/file/restart);\neffective only when `users_home` is also configured. Default off.",
-            "type": "boolean"
-          },
           "port": {
             "format": "int32",
             "minimum": 0,

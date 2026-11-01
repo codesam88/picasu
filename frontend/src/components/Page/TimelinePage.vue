@@ -18,12 +18,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 import { getIncludePersonal, setIncludePersonal } from '@/script/utils/personalTimelineToggle'
-import { usePersonalAlbumsEnabled } from '@/script/utils/personalAlbumsEnabled'
 import { useConfigStore } from '@/store/configStore'
 import { onMounted } from 'vue'
 import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
@@ -32,7 +31,7 @@ const route = useRoute()
 const basicString = 'and(not(type:"album"), trashed:false)'
 
 const includePersonal = ref(getIncludePersonal())
-const personalAlbumsEnabled = usePersonalAlbumsEnabled()
+const personalAlbumsEnabled = computed(() => configStore.config?.personalAlbumsEnabled === true)
 const configStore = useConfigStore('mainId')
 
 onMounted(() => {
