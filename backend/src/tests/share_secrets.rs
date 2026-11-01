@@ -17,6 +17,11 @@ use crate::tests::fixtures::authz::create_album;
 use crate::tests::fixtures::test_password;
 use redb::{ReadableDatabase, ReadableTable};
 
+/// Non-secret handle for a share bearer: mirrors `Share::fingerprint`.
+fn share_fingerprint_for(token: &str) -> String {
+    blake3::hash(token.as_bytes()).to_hex().to_string()[..16].to_string()
+}
+
 /// `POST /get/prefetch` as the album's share, with an optional password.
 fn share_prefetch(
     client: &rocket::local::blocking::Client,
@@ -209,9 +214,6 @@ fn edit_share_keeps_sets_and_clears_password() {
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
     let share_id = create.into_string().expect("share id").trim().to_string();
-    // Recover the stored url: only `url` keys the replace, so read it once
-    // through the album listing (the password itself is not exposed).
-    let stored = listed_share(&client, &album_id, &share_id);
 
     let edit = |password: Value| {
         client
@@ -222,7 +224,7 @@ fn edit_share_keeps_sets_and_clears_password() {
                 json!({
                     "albumId": album_id,
                     "share": {
-                        "url": stored["url"],
+                        "url": share_fingerprint_for(&share_id),
                         "description": "edit me",
                         "password": password,
                         "showMetadata": true,

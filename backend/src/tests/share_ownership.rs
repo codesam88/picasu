@@ -127,7 +127,7 @@ fn edit_by_other_user_refused_preserves_creator() {
             json!({
                 "albumId": album_id,
                 "share": {
-                    "url": share_id,
+                    "url": share_fingerprint_for(&share_id),
                     "description": "renamed by other admin",
                     "password": null,
                     "showMetadata": true,
@@ -171,7 +171,9 @@ fn delete_share_removes_it_from_listings() {
         .put("/put/delete_share")
         .cookie(cookie("own-root4", true))
         .header(ContentType::JSON)
-        .body(json!({ "albumId": album_id, "shareId": share_id }).to_string())
+        .body(
+            json!({ "albumId": album_id, "shareId": share_fingerprint_for(&share_id) }).to_string(),
+        )
         .dispatch();
     assert_eq!(delete.status(), Status::Ok, "delete_share");
     assert!(
@@ -244,7 +246,7 @@ fn s4_non_admin_personal_share_crud_and_resolve() {
             json!({
                 "albumId": album_id,
                 "share": {
-                    "url": share_id,
+                    "url": share_fingerprint_for(&share_id),
                     "description": "edited",
                     "password": null,
                     "showMetadata": true,
@@ -267,7 +269,9 @@ fn s4_non_admin_personal_share_crud_and_resolve() {
         .put("/put/delete_share")
         .cookie(cookie("pers-user", false))
         .header(ContentType::JSON)
-        .body(json!({ "albumId": album_id, "shareId": share_id }).to_string())
+        .body(
+            json!({ "albumId": album_id, "shareId": share_fingerprint_for(&share_id) }).to_string(),
+        )
         .dispatch();
     assert_eq!(delete.status(), Status::Ok, "delete own personal share");
 }
@@ -346,7 +350,7 @@ fn s4_user_b_cannot_edit_or_delete_users_share_on_public_album() {
             json!({
                 "albumId": album_id,
                 "share": {
-                    "url": share_id,
+                    "url": share_fingerprint_for(&share_id),
                     "description": "hijacked",
                     "password": null,
                     "showMetadata": true,
@@ -365,7 +369,9 @@ fn s4_user_b_cannot_edit_or_delete_users_share_on_public_album() {
         .put("/put/delete_share")
         .cookie(cookie("user-b", false))
         .header(ContentType::JSON)
-        .body(json!({ "albumId": album_id, "shareId": share_id }).to_string())
+        .body(
+            json!({ "albumId": album_id, "shareId": share_fingerprint_for(&share_id) }).to_string(),
+        )
         .dispatch();
     assert_eq!(delete.status(), Status::Forbidden, "delete by other user");
 
@@ -649,4 +655,208 @@ fn s2_reveal_on_invisible_personal_album_is_not_found() {
         Status::NotFound,
         "bob must not reveal through alice's personal album"
     );
+}
+
+// ── S3: edit and revoke by fingerprint ──────────────────────────────
+
+#[test]
+fn s3_edit_by_fingerprint_as_creator_ok() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3edit/photo.jpg");
+    seed("s3creator", false, None);
+    // Use admin-created album? create_album uses admin cookie. Share created by s3creator? Need album visible to s3creator.
+    // Simpler: create share as admin (creator admin) on admin-visible album.
+    // Reuse admin as creator.
+    let share_id = create_share_as(&client, "admin", true, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let edit = client
+        .put("/put/edit_share")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "share": {
+                    "url": fp,
+                    "description": "renamed",
+                    "password": null,
+                    "showMetadata": true,
+                    "showDownload": true,
+                    "showUpload": false,
+                    "exp": 0
+                }
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(edit.status(), Status::Ok, "edit by creator");
+
+    // stored bearer still present in listing (url unchanged), creator unchanged
+    let urls = listed_share_urls(&client, "admin", true, &album_id);
+    assert!(
+        urls.contains(&share_id),
+        "bearer must remain the listing key after edit, got {urls:?}"
+    );
+}
+
+#[test]
+fn s3_edit_by_other_user_refused() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3editother/photo.jpg");
+    seed("s3owner", false, None);
+    seed("s3other", false, None);
+    let share_id = create_share_as(&client, "s3owner", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let edit = client
+        .put("/put/edit_share")
+        .cookie(cookie("s3other", false))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "share": {
+                    "url": fp,
+                    "description": "hijacked",
+                    "password": null,
+                    "showMetadata": true,
+                    "showDownload": true,
+                    "showUpload": false,
+                    "exp": 0
+                }
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(edit.status(), Status::Forbidden, "edit by other user");
+}
+
+#[test]
+fn s3_edit_by_admin_non_creator_refused() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3editadmin/photo.jpg");
+    seed("s3owner2", false, None);
+    seed("s3admin", true, None);
+    let share_id = create_share_as(&client, "s3owner2", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let edit = client
+        .put("/put/edit_share")
+        .cookie(cookie("s3admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "share": {
+                    "url": fp,
+                    "description": "hijacked by admin",
+                    "password": null,
+                    "showMetadata": true,
+                    "showDownload": true,
+                    "showUpload": false,
+                    "exp": 0
+                }
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(
+        edit.status(),
+        Status::Forbidden,
+        "admin non-creator edit refused"
+    );
+}
+
+#[test]
+fn s3_delete_by_fingerprint_as_creator_ok() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3del/photo.jpg");
+    seed("s3delowner", false, None);
+    let share_id = create_share_as(&client, "s3delowner", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+    assert!(
+        listed_share_urls(&client, "s3delowner", false, &album_id).contains(&share_id),
+        "share listed before delete"
+    );
+
+    let delete = client
+        .put("/put/delete_share")
+        .cookie(cookie("s3delowner", false))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "shareId": fp }).to_string())
+        .dispatch();
+    assert_eq!(delete.status(), Status::Ok, "delete by creator");
+    assert!(
+        !listed_share_urls(&client, "s3delowner", false, &album_id).contains(&share_id),
+        "share gone after delete"
+    );
+}
+
+#[test]
+fn s3_delete_by_admin_of_foreign_share_ok() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3deladmin/photo.jpg");
+    seed("s3foreignowner", false, None);
+    seed("s3admin2", true, None);
+    let share_id = create_share_as(&client, "s3foreignowner", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let delete = client
+        .put("/put/delete_share")
+        .cookie(cookie("s3admin2", true))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "shareId": fp }).to_string())
+        .dispatch();
+    assert_eq!(delete.status(), Status::Ok, "admin revoke of foreign share");
+    // verify gone from owner listing
+    assert!(
+        !listed_share_urls(&client, "s3foreignowner", false, &album_id).contains(&share_id),
+        "share gone after admin revoke"
+    );
+}
+
+#[test]
+fn s3_delete_by_non_admin_non_creator_refused() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3delrefused/photo.jpg");
+    seed("s3owner3", false, None);
+    seed("s3other3", false, None);
+    let share_id = create_share_as(&client, "s3owner3", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let delete = client
+        .put("/put/delete_share")
+        .cookie(cookie("s3other3", false))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "shareId": fp }).to_string())
+        .dispatch();
+    assert_eq!(
+        delete.status(),
+        Status::Forbidden,
+        "delete by non-creator non-admin"
+    );
+}
+
+#[test]
+fn s3_delete_unknown_fingerprint_is_noop() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s3delunknown/photo.jpg");
+    seed("s3owner4", false, None);
+    let _share_id = create_share_as(&client, "s3owner4", false, &album_id);
+
+    let delete = client
+        .put("/put/delete_share")
+        .cookie(cookie("s3owner4", false))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "shareId": "0123456789abcdef" }).to_string())
+        .dispatch();
+    assert_eq!(delete.status(), Status::Ok, "unknown fingerprint no-op");
 }
