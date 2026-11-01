@@ -175,7 +175,7 @@ when:
   auth: <true|false> # default true; attaches admin auth cookie
   then: [...] # inline assertions (list); on the last step the top-level `then:` applies
   capture: { var: response.json.<path> } # bind response fields for later steps
-  # (`response` alone binds a bare-text body, e.g. a share id)
+  # (`response` alone binds a bare-text body)
   calc: { var: "${other}+1" } # numeric offset expression
   id_as: $name # content hash, resolved after this call by `discover_path:`
   asset_id_as: $name # API asset id, resolved the same way

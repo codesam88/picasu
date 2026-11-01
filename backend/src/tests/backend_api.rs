@@ -1265,9 +1265,9 @@ fn process_capture(call: &Value, body_bytes: &[u8], vars: &mut HashMap<String, S
     if let Some(capture) = call.get("capture").and_then(|c| c.as_object())
         && !capture.is_empty()
     {
-        // Most responses are JSON; a few endpoints (e.g. create_share) answer
-        // with a bare text body. Support capturing that whole body as a
-        // variable so scenarios can mint shares and present their id.
+        // Most responses are JSON. A bare-text body is still supported for
+        // capture so older scenarios that mint a plain-text id keep working,
+        // but share creation now answers JSON with `link` and `fingerprint`.
         if let Ok(body) = serde_json::from_slice::<Value>(body_bytes) {
             for (var_name, json_path_val) in capture {
                 let bare = var_name.trim_start_matches('$');
