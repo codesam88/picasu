@@ -166,8 +166,10 @@ impl AlbumCombined {
 mod tests {
     use std::path::Path;
 
+    use super::Share;
     use super::path_is_in_album_or_descendant;
     use crate::model::response::FileEntry;
+    use arrayvec::ArrayString;
 
     fn belongs_to_album(file_entry: Option<&FileEntry>, dir_path: &str) -> bool {
         let dir_path = Path::new(dir_path);
@@ -232,6 +234,57 @@ mod tests {
             "/photos/vacation/day1/img.jpg",
             Path::new("/photos/vacation")
         ));
+    }
+
+    fn make_share(token: &str) -> Share {
+        Share {
+            url: ArrayString::from(token).expect("token fits in ArrayString<64>"),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn share_fingerprint_is_deterministic() {
+        let token = "a".repeat(64);
+        let a = make_share(&token);
+        let b = make_share(&token);
+        assert_eq!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn share_fingerprint_shape_is_16_lowercase_hex() {
+        let s = make_share(&"a".repeat(64));
+        let fp = s.fingerprint();
+        assert_eq!(fp.len(), 16, "fingerprint must be 16 chars");
+        assert!(
+            fp.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+            "fingerprint must be lowercase hex: {fp}"
+        );
+    }
+
+    #[test]
+    fn share_fingerprint_differs_for_different_inputs() {
+        let tokens = [
+            "a".repeat(64),
+            "b".repeat(64),
+            "0123456789".repeat(6).chars().take(64).collect::<String>(),
+            "z".repeat(64),
+        ];
+        let fps: Vec<String> = tokens.iter().map(|t| make_share(t).fingerprint()).collect();
+        for i in 0..fps.len() {
+            for j in (i + 1)..fps.len() {
+                assert_ne!(fps[i], fps[j], "inputs {i} and {j} collided");
+            }
+        }
+    }
+
+    #[test]
+    fn share_fingerprint_carries_no_input_substring() {
+        let token: String = (0..64u8).map(|i| (b'a' + (i % 26)) as char).collect();
+        assert_eq!(token.len(), 64);
+        let fp = make_share(&token).fingerprint();
+        assert!(!fp.contains(&token[..8]), "fingerprint leaked input prefix");
     }
 }
 
@@ -299,6 +352,19 @@ pub struct Share {
     /// predate the field; every write path overwrites it.
     #[serde(default)]
     pub created_by: String,
+}
+
+impl Share {
+    /// Non-secret handle for this share: blake3 of the bearer token (`url`),
+    /// truncated to the first 16 lowercase hex characters (64 bits).
+    /// Deterministic and non-reversible; carries no bearer material.
+    #[allow(dead_code)] // exercised by unit tests; no production caller yet (S2+)
+    pub fn fingerprint(&self) -> String {
+        let hex = blake3::hash(self.url.as_str().as_bytes())
+            .to_hex()
+            .to_string();
+        hex[..16].to_string()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
