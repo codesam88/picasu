@@ -11,11 +11,12 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
+use crate::storage::files::write_gate;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadableTable;
+use redb::{ReadableDatabase, ReadableTable};
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 
@@ -286,13 +287,42 @@ pub async fn set_album_title(
     mutation: GuardResult<GuardMutate>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     let set_album_title_inner = set_album_title.into_inner();
     let album_id = set_album_title_inner.album_id;
 
     tokio::task::spawn_blocking(move || {
+        // Gate before any effect
+        {
+            let read_txn = TREE
+                .in_disk
+                .begin_read()
+                .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
+            let id_table = read_txn
+                .open_table(ASSET_BY_ID)
+                .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
+            let record_json = id_table
+                .get(&*album_id)
+                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?;
+            let record: AssetRecord = serde_json::from_str(record_json.value())
+                .or_raise(|| (ErrorKind::Database, "Failed to deserialize AssetRecord"))?;
+            if record.kind != AssetKind::Album {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Expected Album but got different type",
+                ));
+            }
+            if !record.path.is_empty() {
+                write_gate(&caller, Some(&std::path::PathBuf::from(&record.path)), None).map_err(
+                    |_| AppError::new(ErrorKind::PermissionDenied, "Album not writable"),
+                )?;
+            }
+        }
+
         update_album(album_id, |album| {
             album
                 .metadata

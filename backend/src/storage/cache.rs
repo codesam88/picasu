@@ -2,12 +2,10 @@ use crate::constant::ROW_BATCH_NUMBER;
 use crate::error::{AppError, ErrorKind};
 use crate::model::response::DisplayElement;
 use crate::model::response::Row;
-use rayon::prelude::*;
 use redb::ReadableTable;
 use std::error::Error;
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicI64;
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use dashmap::DashMap;
@@ -270,47 +268,6 @@ impl TreeSnapshot {
         }
         debug!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
         Ok(scroll_bar_data_vec)
-    }
-}
-
-use crate::storage::db::{TagInfo, open_metadata_table};
-impl TreeSnapshot {
-    pub fn read_tags() -> Result<Vec<TagInfo>> {
-        // Concurrent counter for each tag
-        let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
-
-        // Begin read-only transaction and open the METADATA_TABLE
-        let metadata_table = open_metadata_table();
-
-        // Walk the table in parallel; stop on first error
-        metadata_table
-            .iter()
-            .context("Create iterator over METADATA_TABLE failed")?
-            .par_bridge()
-            .try_for_each(|entry| -> Result<()> {
-                let (_, data) = entry.context("Read table row failed")?;
-                let payload = data.value();
-
-                // Count regular tags only
-                for tag in payload.tags() {
-                    tag_counts
-                        .entry(tag.clone())
-                        .or_insert_with(|| AtomicUsize::new(0))
-                        .fetch_add(1, Ordering::Relaxed);
-                }
-
-                Ok(())
-            })?;
-
-        let tag_infos: Vec<TagInfo> = tag_counts
-            .par_iter()
-            .map(|e| TagInfo {
-                tag: e.key().clone(),
-                number: e.value().load(Ordering::Relaxed),
-            })
-            .collect();
-
-        Ok(tag_infos)
     }
 }
 

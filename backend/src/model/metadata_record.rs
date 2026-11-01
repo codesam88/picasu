@@ -91,17 +91,6 @@ pub struct AlbumPayload {
     pub custom_title: Option<String>,
 }
 
-impl MetadataRecord {
-    /// The stored user tags of this payload.
-    pub fn tags(&self) -> &HashSet<String> {
-        match self {
-            MetadataRecord::Image(img) => &img.tags,
-            MetadataRecord::Video(vid) => &vid.tags,
-            MetadataRecord::Album(alb) => &alb.tags,
-        }
-    }
-}
-
 /// Extract the metadata-only payload from a composed `AbstractData` view.
 ///
 /// Used at every write to `METADATA_TABLE`: identity fields present on the
