@@ -124,6 +124,7 @@ fn filter_items(
     resolved_share_option: Option<&ResolvedShare>,
     caller_id: &str,
     include_personal: bool,
+    personal_only_roots: bool,
 ) -> Result<Vec<ReducedData>, AppError> {
     let filter_items_start_time = Instant::now();
 
@@ -164,6 +165,18 @@ fn filter_items(
                 .filter(|database_timestamp| {
                     let ad = &database_timestamp.abstract_data;
                     if !row_visible(ad, caller_id, include_personal) {
+                        return false;
+                    }
+                    // MyAlbums view: when the query selects root albums and the
+                    // caller opted into personal items, drop global roots so only
+                    // the caller's own personal roots remain. Ownership scoping
+                    // already happens in `row_visible`, so this only removes the
+                    // public-tree roots.
+                    if personal_only_roots
+                        && let Some(path) = ad.visibility_path()
+                        && crate::storage::files::classify_path(&path)
+                            == crate::storage::files::PathClassification::Public
+                    {
                         return false;
                     }
                     filter_fn(ad)
@@ -213,6 +226,7 @@ fn build_cache_key(
     locate_option: Option<&String>,
     caller_id: &str,
     include_personal: bool,
+    personal_only_roots: bool,
 ) -> u64 {
     let cache_key_start_time = Instant::now();
 
@@ -224,6 +238,7 @@ fn build_cache_key(
     locate_option.hash(&mut hasher);
     caller_id.hash(&mut hasher);
     include_personal.hash(&mut hasher);
+    personal_only_roots.hash(&mut hasher);
     let query_hash = hasher.finish();
 
     let duration = format!("{:?}", cache_key_start_time.elapsed());
@@ -298,6 +313,7 @@ fn execute_prefetch_logic(
     mut resolved_share_option: Option<ResolvedShare>,
     caller_id: String,
     include_personal: bool,
+    personal_only_roots: bool,
 ) -> Result<Json<PrefetchReturn>, AppError> {
     // Start timer
     let start_time = Instant::now();
@@ -308,6 +324,7 @@ fn execute_prefetch_logic(
         locate_option,
         &caller_id,
         include_personal,
+        personal_only_roots,
     );
 
     // Step 2: Check if query cache is available
@@ -323,6 +340,7 @@ fn execute_prefetch_logic(
         resolved_share_option.as_ref(),
         &caller_id,
         include_personal,
+        personal_only_roots,
     )?;
 
     // Step 4: Compute layout
@@ -418,6 +436,15 @@ pub async fn prefetch(
     let mut combined_expression_option = query_data.map(rocket::serde::json::Json::into_inner);
     let resolved_share_option = auth_guard.claims.get_share();
 
+    // MyAlbums scoping: when the caller opts into personal items and the
+    // query selects root albums, the view must show only the caller's own
+    // personal roots (no global roots). Ownership is still enforced by
+    // `row_visible` below; this flag only drops public-tree roots.
+    let personal_only_roots = include_personal
+        && combined_expression_option
+            .as_ref()
+            .is_some_and(Expression::contains_root_album_true);
+
     if let Some(resolved_share) = &resolved_share_option {
         let album_filter_expression =
             Expression::Album(AlbumFilterValue::Value(resolved_share.album_id));
@@ -438,6 +465,7 @@ pub async fn prefetch(
             resolved_share_option,
             caller_id,
             include_personal,
+            personal_only_roots,
         )
     })
     .await
