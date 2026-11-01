@@ -3,7 +3,8 @@
 //! Personal-area read isolation: a user sees their own personal album and
 //! never another user's, and the `users_home` root itself is never listed.
 
-use serde_json::Value;
+use rocket::http::{ContentType, Status};
+use serde_json::{Value, json};
 
 use crate::tests::bootstrap::{cookie, lock, seed, setup_image_home};
 use crate::tests::share_ownership::{enable_users_home, personal_album_id};
@@ -279,4 +280,171 @@ fn prefetch_root_albums_respect_include_personal_flag() {
             .expect("lock");
         c.users_home = None;
     }
+}
+
+// ── B3: get_metadata personal-area read isolation ────────────────────
+
+/// Shared setup: two users, one personal photo each (alice's tagged with a
+/// unique tag), indexed. Returns alice/bob snapshot tokens + timestamps and
+/// alice's personal asset id.
+fn setup_personal_metadata() -> (
+    rocket::local::blocking::Client,
+    i64,
+    String,
+    String,
+    i64,
+    String,
+) {
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("alice", false, None);
+    seed("bob", false, None);
+
+    let alice_dir = users_home.join("alice");
+    let bob_dir = users_home.join("bob");
+    std::fs::create_dir_all(&alice_dir).expect("a dir");
+    std::fs::create_dir_all(&bob_dir).expect("b dir");
+    let alice_photo = alice_dir.join("photo.jpg");
+    let bob_photo = bob_dir.join("photo.jpg");
+    snapfab::generate_batch(&[snapfab::PhotoSpec {
+        output: Some(alice_photo.to_string_lossy().into()),
+        format: Some("jpeg".into()),
+        width: Some(8),
+        height: Some(8),
+        tags: Some(vec!["alice-secret-tag".to_string()]),
+        exif_date: None,
+        minimal: false,
+    }])
+    .expect("gen a");
+    snapfab::generate_batch(&[snapfab::PhotoSpec {
+        output: Some(bob_photo.to_string_lossy().into()),
+        format: Some("jpeg".into()),
+        width: Some(8),
+        height: Some(8),
+        tags: None,
+        exif_date: None,
+        minimal: false,
+    }])
+    .expect("gen b");
+
+    crate::process::dir_album::reset_dir_album_cache();
+    crate::tasks::actor::album_index::index_album_with_root("/", false, None)
+        .expect("index accepted");
+    wait_for_index_completion();
+
+    let filter = json!({
+        "And": [
+            {"Not": {"ExtType": "album"}},
+            {"Trashed": false}
+        ]
+    });
+
+    // alice prefetch with personal opt-in to discover her asset id
+    let resp = client
+        .post("/get/prefetch?include_personal=true")
+        .cookie(cookie("alice", false))
+        .header(ContentType::JSON)
+        .body(filter.to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "alice prefetch");
+    let body: Value = resp.into_json().expect("alice prefetch json");
+    let ts_alice = body["prefetch"]["timestamp"].as_i64().expect("ts");
+    let token_alice = body["token"].as_str().expect("token").to_string();
+
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts_alice}&start=0&end=10"))
+        .cookie(cookie("alice", false))
+        .header(rocket::http::Header::new(
+            "Authorization",
+            format!("Bearer {token_alice}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "alice get-data");
+    let data: Value = resp.into_json().expect("alice get-data json");
+    let arr = data.as_array().expect("data array");
+    assert_eq!(
+        arr.len(),
+        1,
+        "expected one personal photo row for alice, got {}",
+        arr.len()
+    );
+    let asset_alice = arr[0]["assetId"].as_str().expect("assetId").to_string();
+
+    // bob prefetch (default, no personal) for a snapshot bearer + timestamp
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(cookie("bob", false))
+        .header(ContentType::JSON)
+        .body(filter.to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "bob prefetch");
+    let body: Value = resp.into_json().expect("bob prefetch json");
+    let ts_bob = body["prefetch"]["timestamp"].as_i64().expect("ts");
+    let token_bob = body["token"].as_str().expect("token").to_string();
+
+    (
+        client,
+        ts_alice,
+        token_alice,
+        asset_alice,
+        ts_bob,
+        token_bob,
+    )
+}
+
+#[test]
+fn b3_bob_snapshot_cannot_read_alice_personal_metadata() {
+    let _guard = lock();
+    let (client, _ts_alice, _token_alice, asset_alice, ts_bob, token_bob) =
+        setup_personal_metadata();
+
+    let resp = client
+        .get(format!("/get/metadata/{asset_alice}?timestamp={ts_bob}"))
+        .cookie(cookie("bob", false))
+        .header(rocket::http::Header::new(
+            "Authorization",
+            format!("Bearer {token_bob}"),
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::NotFound,
+        "bob must not read alice metadata"
+    );
+
+    let body = resp.into_string().unwrap_or_default();
+    assert!(
+        !body.contains("alice-secret-tag"),
+        "alice's tag leaked to bob: {body}"
+    );
+    assert!(
+        !body.contains("/users/alice"),
+        "alice's path leaked to bob: {body}"
+    );
+}
+
+#[test]
+fn b3_alice_reads_own_personal_metadata_ok() {
+    let _guard = lock();
+    let (client, ts_alice, token_alice, asset_alice, _ts_bob, _token_bob) =
+        setup_personal_metadata();
+
+    let resp = client
+        .get(format!("/get/metadata/{asset_alice}?timestamp={ts_alice}"))
+        .cookie(cookie("alice", false))
+        .header(rocket::http::Header::new(
+            "Authorization",
+            format!("Bearer {token_alice}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "alice must read own metadata");
+
+    let body: Value = resp.into_json().expect("metadata json");
+    assert_eq!(body["type"], "image");
+    let tags = body["tags"].as_array().cloned().unwrap_or_default();
+    let tag_strs: Vec<&str> = tags.iter().filter_map(|t| t.as_str()).collect();
+    assert!(
+        tag_strs.contains(&"alice-secret-tag"),
+        "own tag missing: {tag_strs:?}"
+    );
 }

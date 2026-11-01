@@ -9,7 +9,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::clear_abstract_data_metadata;
 use crate::process::transitor::compose_by_asset_id;
-use crate::router::auth::GuardSnapshot;
+use crate::router::auth::{GuardSnapshot, Role};
 use crate::router::{AppResult, GuardResult};
 
 /// Serve the full metadata of a single asset.
@@ -88,6 +88,25 @@ pub async fn get_metadata(
         // 404, not 403, so the route does not reveal that the id exists.
         if let Some(album) = share_album
             && abstract_data.album() != Some(album)
+        {
+            return Err(AppError::new(ErrorKind::NotFound, "Record not found"));
+        }
+
+        // Personal-area read isolation (F3): a user session may not read
+        // metadata for an asset whose stored path is another user's personal
+        // area (or the users root). Answer 404, not 403, so the route does not
+        // reveal that the id exists. Pathless records (None) have nothing
+        // personal to leak and are allowed. Share callers are handled by the
+        // album-membership check above.
+        if share_album.is_none()
+            && let Some(path) = abstract_data.visibility_path()
+            && !crate::storage::files::visible_to(
+                match &guard_timestamp.presenter.role {
+                    Role::User { id, .. } => id,
+                    Role::Share(_) => "",
+                },
+                &path,
+            )
         {
             return Err(AppError::new(ErrorKind::NotFound, "Record not found"));
         }
