@@ -1423,6 +1423,49 @@ pub async fn renew_hash_token(
             revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
         }
 
+        // Presenter-scope check on the asset being renewed.
+        let renewed_abstract_data =
+            crate::storage::asset_store::lookup_abstract_data_by_asset_id(claims.asset_id.as_str())
+                .map_err(|err| {
+                    AppError::from_err(ErrorKind::Database, err)
+                        .context("Failed to look up asset for renewal scope check")
+                })?;
+        let Some(renewed_abstract_data) = renewed_abstract_data else {
+            warn!(
+                "Renewal scope check failed: asset record not found for {}",
+                claims.asset_id
+            );
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Asset not found",
+            ));
+        };
+        if let Some(resolved) = &auth.claims.resolved_share_opt {
+            if renewed_abstract_data.album() != Some(resolved.album_id) {
+                warn!(
+                    "Renewal scope mismatch: asset album {:?} != share album {}",
+                    renewed_abstract_data.album(),
+                    resolved.album_id
+                );
+                return Err(AppError::new(
+                    ErrorKind::Auth,
+                    "Unauthorized: Asset out of scope",
+                ));
+            }
+        } else if let Some(path) = renewed_abstract_data.visibility_path()
+            && !crate::storage::files::visible_to(&auth.claims.caller, &path)
+        {
+            warn!(
+                "Renewal scope mismatch: asset path {} not visible to {}",
+                path.display(),
+                auth.claims.caller
+            );
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Asset out of scope",
+            ));
+        }
+
         let new_hash_claims = ClaimsAsset::new(
             claims.hash,
             claims.asset_id,
