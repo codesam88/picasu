@@ -1571,6 +1571,10 @@
             "description": "Whether a share password is configured; the stored secret never\nleaves the backend through an album read.",
             "type": "boolean"
           },
+          "keyFingerprint": {
+            "description": "Non-secret handle for the share (blake3 of the bearer token, first\n16 hex chars). Listings never carry the bearer itself.",
+            "type": "string"
+          },
           "showDownload": {
             "type": "boolean"
           },
@@ -1579,13 +1583,10 @@
           },
           "showUpload": {
             "type": "boolean"
-          },
-          "url": {
-            "type": "string"
           }
         },
         "required": [
-          "url",
+          "keyFingerprint",
           "description",
           "hasPassword",
           "showMetadata",

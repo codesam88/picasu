@@ -100,10 +100,16 @@ pub fn get_export(auth: GuardResult<GuardAdmin>) -> AppResult<ByteStream![Vec<u8
             }
             first = false;
 
-            // Build the ExportEntry
+            // Build the ExportEntry. Album entries are censored before
+            // serialization: share bearers are replaced with their
+            // fingerprints, passwords are dropped, and absolute filesystem
+            // paths are reduced to paths relative to the configured roots
+            // (or omitted when no root matches).
+            let mut value = compose_abstract_data(&record, Some(&value.value()));
+            censor_for_export(&mut value);
             let export = ExportEntry {
                 key: key.value().to_string(),
-                value: compose_abstract_data(&record, Some(&value.value())),
+                value,
             };
 
             // Convert it to JSON
@@ -120,4 +126,53 @@ pub fn get_export(auth: GuardResult<GuardAdmin>) -> AppResult<ByteStream![Vec<u8
         yield b"]".to_vec();
     };
     Ok(byte_stream)
+}
+
+/// Redact secrets and absolute paths from an exported record.
+fn censor_for_export(data: &mut AbstractData) {
+    let image_home = crate::model::config::with_config(|c| c.image_home.clone());
+    let users_home = crate::storage::files::get_resolved_users_home();
+
+    let relativize = |p: &str| -> String {
+        let path = std::path::Path::new(p);
+        for root in [image_home.as_deref(), users_home.as_deref()] {
+            if let Some(root) = root
+                && let Ok(rel) = path.strip_prefix(root)
+            {
+                return rel.to_string_lossy().into_owned();
+            }
+        }
+        String::new()
+    };
+
+    match data {
+        AbstractData::Image(img) => {
+            if let Some(entry) = img.metadata.path.as_mut() {
+                entry.file = relativize(&entry.file);
+            }
+        }
+        AbstractData::Video(vid) => {
+            if let Some(entry) = vid.metadata.path.as_mut() {
+                entry.file = relativize(&entry.file);
+            }
+        }
+        AbstractData::Album(alb) => {
+            alb.metadata.dir_path = relativize(&alb.metadata.dir_path);
+            // Replace share bearers with fingerprints and drop passwords.
+            let mut censored = std::collections::HashMap::new();
+            for share in alb.metadata.share_list.values() {
+                let fp = share.fingerprint();
+                let fp_key = arrayvec::ArrayString::<64>::from(&fp)
+                    .expect("fingerprint fits in ArrayString<64>");
+                let mut c = share.clone();
+                c.url = fp_key;
+                c.password = None;
+                censored.insert(
+                    arrayvec::ArrayString::<64>::from(&fp).expect("fingerprint fits"),
+                    c,
+                );
+            }
+            alb.metadata.share_list = censored;
+        }
+    }
 }

@@ -8,7 +8,7 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TREE;
 use crate::storage::db::TagInfo;
 use crate::storage::db::share_visible_to;
-use arrayvec::ArrayString;
+
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -63,7 +63,7 @@ pub struct AlbumInfo {
     pub album_id: String,
     pub album_name: Option<String>,
     #[schema(value_type = HashMap<String, ShareInfo>)]
-    pub share_list: HashMap<ArrayString<64>, ShareInfo>,
+    pub share_list: HashMap<String, ShareInfo>,
     pub dir_path: Option<String>,
     /// Root namespace of the album: `"global"` for the public tree or
     /// `"personal"` for a per-user area. `None` when the album lives outside
@@ -82,8 +82,9 @@ pub struct AlbumInfo {
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ShareInfo {
-    #[schema(value_type = String)]
-    pub url: ArrayString<64>,
+    /// Non-secret handle for the share (blake3 of the bearer token, first
+    /// 16 hex chars). Listings never carry the bearer itself.
+    pub key_fingerprint: String,
     pub description: String,
     /// Whether a share password is configured; the stored secret never
     /// leaves the backend through an album read.
@@ -97,7 +98,7 @@ pub struct ShareInfo {
 impl From<&Share> for ShareInfo {
     fn from(share: &Share) -> Self {
         Self {
-            url: share.url,
+            key_fingerprint: share.fingerprint(),
             description: share.description.clone(),
             has_password: share.password.is_some(),
             show_metadata: share.show_metadata,
@@ -146,7 +147,7 @@ impl From<&Share> for ShareInfo {
 #[get("/get/get-albums")]
 pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<AlbumInfo>>> {
     let GuardUser { claims } = auth?;
-    let (caller, _) = caller_identity(&claims);
+    let (caller, is_admin) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || {
         let image_home = crate::model::config::with_config(|c| c.image_home.clone());
         let users_home = crate::storage::files::get_resolved_users_home();
@@ -207,8 +208,8 @@ pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<Albu
                     .metadata
                     .share_list
                     .iter()
-                    .filter(|(_, share)| share_visible_to(&caller, &share.created_by))
-                    .map(|(id, share)| (*id, ShareInfo::from(share)))
+                    .filter(|(_, share)| share_visible_to(&caller, is_admin, &share.created_by))
+                    .map(|(_, share)| (share.fingerprint(), ShareInfo::from(share)))
                     .collect(),
                 dir_path,
                 root,

@@ -66,7 +66,8 @@ fn listed_share_urls(
         .collect()
 }
 
-/// Admins see their own shares; another admin does not.
+/// Creator sees own share by fingerprint; admins see every share by
+/// fingerprint only; no bearer value leaks into any listing.
 #[test]
 fn listings_scope_shares_to_their_creator() {
     let _guard = lock();
@@ -76,16 +77,65 @@ fn listings_scope_shares_to_their_creator() {
     seed("own-other", true, None);
 
     let share_id = create_share_as(&client, "own-root", true, &album_id);
+    let fp = share_fingerprint_for(&share_id);
 
-    let root_shares = listed_share_urls(&client, "own-root", true, &album_id);
+    // Creator sees own share, keyed by fingerprint, never by bearer.
+    let root_keys = listed_share_urls(&client, "own-root", true, &album_id);
     assert!(
-        root_shares.contains(&share_id),
-        "creator still sees own share"
+        root_keys.contains(&fp),
+        "creator still sees own share by fingerprint, got {root_keys:?}"
     );
-    let other_shares = listed_share_urls(&client, "own-other", true, &album_id);
     assert!(
-        !other_shares.contains(&share_id),
-        "other admin must not see it, got {other_shares:?}"
+        !root_keys.contains(&share_id),
+        "creator listing must not be keyed by the bearer, got {root_keys:?}"
+    );
+
+    // The ShareInfo entry carries the fingerprint and no url/bearer field.
+    let albums: Value = client
+        .get("/get/get-albums")
+        .cookie(cookie("own-root", true))
+        .dispatch()
+        .into_json()
+        .expect("get-albums json");
+    let entry = albums
+        .as_array()
+        .expect("album array")
+        .iter()
+        .find(|a| a["albumId"].as_str() == Some(album_id.as_str()))
+        .expect("album listed")["shareList"]
+        .get(&fp)
+        .expect("share listed");
+    assert_eq!(
+        entry["keyFingerprint"].as_str(),
+        Some(fp.as_str()),
+        "entry must carry the fingerprint, got {entry}"
+    );
+    assert!(
+        entry.get("url").is_none(),
+        "ShareInfo must not carry url, got {entry}"
+    );
+
+    // Admin sees foreign shares too, by fingerprint only.
+    let other_keys = listed_share_urls(&client, "own-other", true, &album_id);
+    assert!(
+        other_keys.contains(&fp),
+        "admin must see foreign share by fingerprint, got {other_keys:?}"
+    );
+    assert!(
+        !other_keys.contains(&share_id),
+        "admin listing must not be keyed by the bearer, got {other_keys:?}"
+    );
+
+    // No bearer value anywhere in the admin's raw response.
+    let raw = client
+        .get("/get/get-albums")
+        .cookie(cookie("own-other", true))
+        .dispatch()
+        .into_string()
+        .expect("get-albums body");
+    assert!(
+        !raw.contains(&share_id),
+        "admin listing must not contain the bearer anywhere, got: {raw}"
     );
 }
 
@@ -102,7 +152,7 @@ fn non_admin_list_omits_foreign_shares() {
 
     let viewer_shares = listed_share_urls(&client, "own-viewer", false, &album_id);
     assert!(
-        !viewer_shares.contains(&share_id),
+        !viewer_shares.contains(&share_fingerprint_for(&share_id)),
         "viewer must not see admin shares, got {viewer_shares:?}"
     );
 }
@@ -114,14 +164,14 @@ fn edit_by_other_user_refused_preserves_creator() {
     let _guard = lock();
     let client = setup_image_home();
     let (album_id, _asset_id) = create_album(&client, "/owned3/photo.jpg");
-    seed("own-root3", true, None);
-    seed("own-other3", true, None);
+    seed("own-root3", false, None);
+    seed("own-other3", false, None);
 
-    let share_id = create_share_as(&client, "own-root3", true, &album_id);
+    let share_id = create_share_as(&client, "own-root3", false, &album_id);
 
     let edit = client
         .put("/put/edit_share")
-        .cookie(cookie("own-other3", true))
+        .cookie(cookie("own-other3", false))
         .header(ContentType::JSON)
         .body(
             json!({
@@ -141,14 +191,14 @@ fn edit_by_other_user_refused_preserves_creator() {
         .dispatch();
     assert_eq!(edit.status(), Status::Forbidden, "edit_share as other user");
 
-    let root_shares = listed_share_urls(&client, "own-root3", true, &album_id);
+    let root_shares = listed_share_urls(&client, "own-root3", false, &album_id);
     assert!(
-        root_shares.contains(&share_id),
+        root_shares.contains(&share_fingerprint_for(&share_id)),
         "original creator still sees the edited share"
     );
-    let other_shares = listed_share_urls(&client, "own-other3", true, &album_id);
+    let other_shares = listed_share_urls(&client, "own-other3", false, &album_id);
     assert!(
-        !other_shares.contains(&share_id),
+        !other_shares.contains(&share_fingerprint_for(&share_id)),
         "editor must not gain visibility, got {other_shares:?}"
     );
 }
@@ -163,7 +213,8 @@ fn delete_share_removes_it_from_listings() {
 
     let share_id = create_share_as(&client, "own-root4", true, &album_id);
     assert!(
-        listed_share_urls(&client, "own-root4", true, &album_id).contains(&share_id),
+        listed_share_urls(&client, "own-root4", true, &album_id)
+            .contains(&share_fingerprint_for(&share_id)),
         "share listed before delete"
     );
 
@@ -177,7 +228,8 @@ fn delete_share_removes_it_from_listings() {
         .dispatch();
     assert_eq!(delete.status(), Status::Ok, "delete_share");
     assert!(
-        !listed_share_urls(&client, "own-root4", true, &album_id).contains(&share_id),
+        !listed_share_urls(&client, "own-root4", true, &album_id)
+            .contains(&share_fingerprint_for(&share_id)),
         "share gone from listing after delete"
     );
 }
@@ -339,7 +391,10 @@ fn s4_user_b_cannot_edit_or_delete_users_share_on_public_album() {
     seed("user-b", false, None);
 
     let share_id = create_share_as(&client, "user-a", false, &album_id);
-    assert!(listed_share_urls(&client, "user-a", false, &album_id).contains(&share_id));
+    assert!(
+        listed_share_urls(&client, "user-a", false, &album_id)
+            .contains(&share_fingerprint_for(&share_id))
+    );
 
     // edit
     let edit = client
@@ -377,7 +432,8 @@ fn s4_user_b_cannot_edit_or_delete_users_share_on_public_album() {
 
     // share unchanged
     assert!(
-        listed_share_urls(&client, "user-a", false, &album_id).contains(&share_id),
+        listed_share_urls(&client, "user-a", false, &album_id)
+            .contains(&share_fingerprint_for(&share_id)),
         "share must remain after refused edit/delete"
     );
 }
@@ -454,7 +510,7 @@ fn move_album_with_foreign_share_refused_and_tree_unchanged() {
     assert_eq!(resp.status(), Status::Forbidden);
 
     let bob_shares = listed_share_urls(&client, "bob", false, &album_id);
-    assert!(bob_shares.contains(&share_id));
+    assert!(bob_shares.contains(&share_fingerprint_for(&share_id)));
     let albums: Value = client
         .get("/get/get-albums")
         .cookie(cookie("bob", false))
@@ -693,11 +749,11 @@ fn s3_edit_by_fingerprint_as_creator_ok() {
         .dispatch();
     assert_eq!(edit.status(), Status::Ok, "edit by creator");
 
-    // stored bearer still present in listing (url unchanged), creator unchanged
+    // fingerprint remains the listing key after edit, creator unchanged
     let urls = listed_share_urls(&client, "admin", true, &album_id);
     assert!(
-        urls.contains(&share_id),
-        "bearer must remain the listing key after edit, got {urls:?}"
+        urls.contains(&share_fingerprint_for(&share_id)),
+        "fingerprint must remain the listing key after edit, got {urls:?}"
     );
 }
 
@@ -780,7 +836,8 @@ fn s3_delete_by_fingerprint_as_creator_ok() {
     let share_id = create_share_as(&client, "s3delowner", false, &album_id);
     let fp = share_fingerprint_for(&share_id);
     assert!(
-        listed_share_urls(&client, "s3delowner", false, &album_id).contains(&share_id),
+        listed_share_urls(&client, "s3delowner", false, &album_id)
+            .contains(&share_fingerprint_for(&share_id)),
         "share listed before delete"
     );
 
@@ -792,7 +849,8 @@ fn s3_delete_by_fingerprint_as_creator_ok() {
         .dispatch();
     assert_eq!(delete.status(), Status::Ok, "delete by creator");
     assert!(
-        !listed_share_urls(&client, "s3delowner", false, &album_id).contains(&share_id),
+        !listed_share_urls(&client, "s3delowner", false, &album_id)
+            .contains(&share_fingerprint_for(&share_id)),
         "share gone after delete"
     );
 }
@@ -816,7 +874,8 @@ fn s3_delete_by_admin_of_foreign_share_ok() {
     assert_eq!(delete.status(), Status::Ok, "admin revoke of foreign share");
     // verify gone from owner listing
     assert!(
-        !listed_share_urls(&client, "s3foreignowner", false, &album_id).contains(&share_id),
+        !listed_share_urls(&client, "s3foreignowner", false, &album_id)
+            .contains(&share_fingerprint_for(&share_id)),
         "share gone after admin revoke"
     );
 }
