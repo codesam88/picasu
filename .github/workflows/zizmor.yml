@@ -26,8 +26,10 @@ permissions:
   contents: read
 
 jobs:
+  # Pinned, offline, deterministic. Blocks pull requests on findings.
   zizmor:
     name: zizmor
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -47,15 +49,49 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # Pinned, offline, deterministic: the same gate as `just zizmor-check`.
       - name: Offline check
         run: just zizmor-check
 
-      # Scheduled (and manual) only: online audits — stale pins, archived
-      # actions — that need the GitHub API. Flags drift over time; it does
-      # not block pull requests.
-      - name: Online check
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+  # Scheduled (and manual) only: online audits — stale pins, archived
+  # actions — reported to code scanning. SARIF findings do not fail the
+  # job; they appear under Security and flag drift without blocking PRs.
+  zizmor-scheduled:
+    name: zizmor (scheduled)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install just
+        uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: just
+
+      - name: Install uv
+        env:
+          UV_VERSION: "0.12.18"
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # The installer prints status to stdout, so it runs silenced and the
+      # pin is read via --evaluate: results.sarif must contain only SARIF.
+      - name: Online check (SARIF)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: just zizmor-check-online
+        run: |
+          just install-zizmor > /dev/null
+          uvx zizmor@"$(just --evaluate zizmor_version)" --format=sarif -q --no-progress . > results.sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: results.sarif
+          category: zizmor
