@@ -418,3 +418,102 @@ fn s4_disabled_mode_non_admin_can_create_public_share() {
     let share_id = create_share_as(&client, "disabled-user", false, &album_id);
     assert_ne!(share_id, "");
 }
+
+#[test]
+fn move_album_with_foreign_share_refused_and_tree_unchanged() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("bob", false, None);
+    seed("alice", false, None);
+
+    let (album_id, _asset_id) = create_album(&client, "/shared/pub/photo.jpg");
+    let share_id = create_share_as(&client, "bob", false, &album_id);
+
+    let alice_personal = personal_album_id(&users_home, "alice");
+
+    let resp = client
+        .put("/put/assign_album")
+        .cookie(cookie("alice", false))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "assetId": album_id,
+                "albumId": alice_personal,
+                "onConflict": "rename"
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(resp.status(), Status::Forbidden);
+
+    let bob_shares = listed_share_urls(&client, "bob", false, &album_id);
+    assert!(bob_shares.contains(&share_id));
+    let albums: Value = client
+        .get("/get/get-albums")
+        .cookie(cookie("bob", false))
+        .dispatch()
+        .into_json()
+        .expect("get-albums json");
+    let albums_arr = albums.as_array().expect("album array");
+    assert!(
+        albums_arr
+            .iter()
+            .any(|a| a["albumId"].as_str() == Some(&album_id))
+    );
+}
+
+#[test]
+fn move_album_with_own_shares_succeeds() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("alice", false, None);
+
+    let (album_id, _asset_id) = create_album(&client, "/owned/album/photo.jpg");
+    let _share_id = create_share_as(&client, "alice", false, &album_id);
+    let alice_personal = personal_album_id(&users_home, "alice");
+
+    let resp = client
+        .put("/put/assign_album")
+        .cookie(cookie("alice", false))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "assetId": album_id,
+                "albumId": alice_personal,
+                "onConflict": "rename"
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok);
+}
+
+#[test]
+fn admin_moving_album_with_another_users_share_refused() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("bob", false, None);
+    seed("admin", true, None);
+
+    let (album_id, _asset_id) = create_album(&client, "/shared/pub2/photo.jpg");
+    let _share_id = create_share_as(&client, "bob", false, &album_id);
+    let admin_personal = personal_album_id(&users_home, "admin");
+
+    let resp = client
+        .put("/put/assign_album")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "assetId": album_id,
+                "albumId": admin_personal,
+                "onConflict": "rename"
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(resp.status(), Status::Forbidden);
+}
