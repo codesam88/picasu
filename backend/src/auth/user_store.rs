@@ -908,7 +908,7 @@ mod tests {
                 }
                 std::fs::write(&ready, b"ready").expect("signal ready");
                 loop {
-                    std::thread::sleep(std::time::Duration::from_hours(1));
+                    std::thread::sleep(std::time::Duration::from_secs(3600));
                 }
             }
         }
