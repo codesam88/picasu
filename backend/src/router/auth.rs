@@ -1566,7 +1566,6 @@ pub struct GuardSnapshot {
     /// Resolved presenter (share headers → share query → JWT cookie) bound to
     /// this snapshot at request time. Binding the presenter to the token's
     /// `caller` is what prevents cross-user snapshot reuse.
-    #[allow(dead_code)]
     pub presenter: ClaimsSession,
 }
 
