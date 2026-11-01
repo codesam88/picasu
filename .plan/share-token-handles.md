@@ -1,11 +1,17 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: backend
 ---
 
 ## Notes
+
+Completed 2026-11-01: S1–S6 all committed on
+`feature/personal-user-albums` (569b70c9, 13e3721b, dd32244f, 8f53b075,
+07b497b8, 4b046e8b). Full gates green at the S6 commit: nextest
+backend suite 915/915, frontend vitest 45 files/351 tests, fuzz-matrix
+26/26, openapi/auth-matrix/env-var/docs checks.
 
 The working spec for the task: problem, goal, implementation steps. Refine
 these sections in place as understanding changes; append only short dated lines
