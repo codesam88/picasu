@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: medium
 area: tooling
@@ -40,4 +40,7 @@ under `[group('deps')]`.
 
 ## Remaining follow-up (separate slice)
 
-CI job for the zizmor gate.
+CI job for the zizmor gate: `.github/workflows/zizmor.yml` (2026-11-01) —
+paths-filtered on push/PR (offline `zizmor-check`), plus daily schedule
+and manual dispatch running `zizmor-check-online` (stale pins, archived
+actions via the GitHub API; flags drift without blocking PRs).
