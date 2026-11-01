@@ -163,7 +163,7 @@ fn guest_share_prefetch_get_data_and_serving() {
 
     // Album + share setup via the shared fixtures (local admin session).
     let (album_id, asset_id) = create_album(&client, "/matrix_guest/album/photo.jpg");
-    let share_id = create_share(&client, &album_id, true, true, false);
+    let (share_id, _) = create_share(&client, &album_id, true, true, false);
 
     // Anonymous prefetch with share headers only (no cookie).
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album_id, &share_id, Some(&asset_id));

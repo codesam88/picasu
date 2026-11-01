@@ -23,9 +23,9 @@
         :headers="headers"
         :items="tableItems"
         :group-by="[{ key: 'albumId' }]"
-        item-value="url"
+        item-value="keyFingerprint"
         :items-per-page="-1"
-        :sort-by="[{ key: 'share.url', order: 'asc' }]"
+        :sort-by="[{ key: 'share.keyFingerprint', order: 'asc' }]"
         class="h-100"
       >
         <!-- Description with tooltip -->
@@ -130,20 +130,33 @@
                 />
               </template>
             </v-tooltip>
-            <v-tooltip location="top" text="Open">
+            <v-tooltip location="top" text="Reveal">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-eye"
+                  variant="text"
+                  size="small"
+                  :loading="isRevealing(item)"
+                  @click="reveal(item)"
+                  v-if="!isRevealed(item)"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip location="top" text="Open" v-if="isRevealed(item)">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
                   icon="mdi-open-in-new"
                   variant="text"
                   size="small"
-                  :href="`${locationOrigin}/share/${item.albumId}-${item.share.url}`"
+                  :href="revealedUrl(item)"
                   target="_blank"
                   tag="a"
                 />
               </template>
             </v-tooltip>
-            <v-tooltip location="top" text="Copy">
+            <v-tooltip location="top" text="Copy" v-if="isRevealed(item)">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -199,6 +212,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useClipboard } from '@vueuse/core'
+import axios from 'axios'
 import EditShareModal from '@/components/Modal/EditShareModal.vue'
 import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
 
@@ -222,6 +236,9 @@ const { copy } = useClipboard()
 
 const currentEditShareData = ref<EditShareData | null>(null)
 const currentDeleteShareData = ref<EditShareData | null>(null)
+
+const revealed = ref<Map<string, string>>(new Map())
+const revealing = ref<Set<string>>(new Set())
 
 const headers = [
   {
@@ -259,8 +276,46 @@ function openDeleteConfirm(data: EditShareData) {
   modalStore.showDeleteShareModal = true
 }
 
+function isRevealed(item: EditShareData): boolean {
+  return revealed.value.has(item.share.keyFingerprint)
+}
+
+function isRevealing(item: EditShareData): boolean {
+  return revealing.value.has(item.share.keyFingerprint)
+}
+
+function revealedUrl(item: EditShareData): string | undefined {
+  const token = revealed.value.get(item.share.keyFingerprint)
+  if (token === undefined) return undefined
+  return `${locationOrigin}/share/${item.albumId}-${token}`
+}
+
+async function reveal(item: EditShareData) {
+  const fp = item.share.keyFingerprint
+  if (revealed.value.has(fp)) return
+  const nextRevealing = new Set(revealing.value)
+  nextRevealing.add(fp)
+  revealing.value = nextRevealing
+  try {
+    const result = await axios.get<{ token: string }>('/get/share/token', {
+      params: { album_id: item.albumId, fingerprint: fp }
+    })
+    const nextRevealed = new Map(revealed.value)
+    nextRevealed.set(fp, result.data.token)
+    revealed.value = nextRevealed
+  } catch {
+    messageStore.error('Share link not available')
+  } finally {
+    const done = new Set(revealing.value)
+    done.delete(fp)
+    revealing.value = done
+  }
+}
+
 async function performCopy(item: EditShareData) {
-  await copy(`${locationOrigin}/share/${item.albumId}-${item.share.url}`)
+  const url = revealedUrl(item)
+  if (url === undefined) return
+  await copy(url)
   messageStore.success('Share URL copied to clipboard.')
 }
 

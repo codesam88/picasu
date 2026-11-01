@@ -130,10 +130,12 @@ gamma="$(echo "$albums" | python3 -c 'import sys,json; print(next(a["albumId"] f
 
 share_a="$(curl -s -X POST "$BASE/post/create_share" -H "Cookie: jwt=$TOKEN" \
     -H 'Content-Type: application/json' \
-    -d "{\"albumId\":\"$alpha\",\"description\":\"fuzz share alpha\",\"showMetadata\":true,\"showDownload\":true,\"showUpload\":false,\"exp\":0}")"
+    -d "{\"albumId\":\"$alpha\",\"description\":\"fuzz share alpha\",\"showMetadata\":true,\"showDownload\":true,\"showUpload\":false,\"exp\":0}" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin)["link"])')"
 share_b="$(curl -s -X POST "$BASE/post/create_share" -H "Cookie: jwt=$TOKEN" \
     -H 'Content-Type: application/json' \
-    -d "{\"albumId\":\"$beta\",\"description\":\"fuzz share beta\",\"showMetadata\":true,\"showDownload\":false,\"showUpload\":false,\"exp\":0}")"
+    -d "{\"albumId\":\"$beta\",\"description\":\"fuzz share beta\",\"showMetadata\":true,\"showDownload\":false,\"showUpload\":false,\"exp\":0}" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin)["link"])')"
 
 curl -s -X POST "$BASE/post/users/register" -H "Cookie: jwt=$TOKEN" \
     -H 'Content-Type: application/json' \

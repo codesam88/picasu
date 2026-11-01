@@ -148,7 +148,7 @@ export const prefetchSchema = z.object({
 // The stored secret never crosses an album read; the capability shape below
 // (prefetch resolved share, create/edit request bodies) still carries it.
 export const ShareInfoSchema = z.object({
-  url: z.string().max(64),
+  keyFingerprint: z.string().max(64),
   description: z.string(),
   hasPassword: z.boolean(),
   showMetadata: z.boolean(),

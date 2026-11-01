@@ -14,7 +14,7 @@ when:
       showUpload: true
       exp: 0
     capture:
-      share_id: response
+      share_id: response.link
     then:
       - response.status: 200
   - upload:

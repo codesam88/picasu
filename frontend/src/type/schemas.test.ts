@@ -260,7 +260,7 @@ describe('databaseTimestampSchema', () => {
 
 describe('albumInfoSchema share entries', () => {
   const shareEntry = {
-    url: 'share-url',
+    keyFingerprint: 'share-fp',
     description: '',
     hasPassword: true,
     showMetadata: true,
@@ -273,11 +273,12 @@ describe('albumInfoSchema share entries', () => {
     const parsed = albumInfoSchema.parse({
       albumId: 'album-1',
       albumName: null,
-      shareList: { 'share-url': shareEntry },
+      shareList: { 'share-fp': shareEntry },
       dirPath: 'photos',
       parentAlbumId: null
     })
-    expect(parsed.shareList.get('share-url')?.hasPassword).toBe(true)
+    expect(parsed.shareList.get('share-fp')?.hasPassword).toBe(true)
+    expect(parsed.shareList.get('share-fp')?.keyFingerprint).toBe('share-fp')
   })
 
   test('parses root and owner markers', () => {
@@ -295,7 +296,7 @@ describe('albumInfoSchema share entries', () => {
 
   test('rejects a share that only carries the legacy password field', () => {
     const legacy = {
-      url: 'share-url',
+      keyFingerprint: 'share-fp',
       description: '',
       password: 'secret',
       showMetadata: true,

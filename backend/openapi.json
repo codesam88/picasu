@@ -582,6 +582,22 @@
         ],
         "type": "object"
       },
+      "CreateShareResponse": {
+        "description": "Response payload for `POST /post/create_share`: the freshly minted bearer\n(`link`) plus its non-secret fingerprint (`fingerprint`). The bearer is\nused to build/show the share link; the fingerprint is the management\nhandle for edit/delete/reveal.",
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "link",
+          "fingerprint"
+        ],
+        "type": "object"
+      },
       "DataBaseTimestampReturn": {
         "properties": {
           "abstractData": {
@@ -3566,9 +3582,9 @@
         "responses": {
           "200": {
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/CreateShareResponse"
                 }
               }
             },

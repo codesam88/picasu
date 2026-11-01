@@ -34,6 +34,18 @@ pub struct CreateShare {
     pub exp: i64,
 }
 
+/// Response payload for `POST /post/create_share`: the freshly minted bearer
+/// (`link`) plus its non-secret fingerprint (`fingerprint`). The bearer is
+/// used to build/show the share link; the fingerprint is the management
+/// handle for edit/delete/reveal.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[derive(utoipa::ToSchema)]
+pub struct CreateShareResponse {
+    pub link: String,
+    pub fingerprint: String,
+}
+
 /// Create a share for an album and return its generated id.
 ///
 /// `albumId` must name an existing album row. The returned id is a freshly
@@ -64,7 +76,7 @@ pub struct CreateShare {
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
-            (status = 200, description = "Share link created", body = String),
+            (status = 200, description = "Share link created", body = CreateShareResponse),
             (status = 400, description = "Invalid input"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
@@ -80,7 +92,7 @@ pub async fn create_share(
     auth: GuardResult<GuardUser>,
     mutation: GuardResult<GuardMutate>,
     create_share: Json<CreateShare>,
-) -> AppResult<String> {
+) -> AppResult<rocket::serde::json::Json<CreateShareResponse>> {
     let GuardUser { claims } = auth?;
     let _ = mutation?;
     let (creator, _) = caller_identity(&claims);
@@ -100,10 +112,10 @@ pub async fn create_share(
             .begin_write()
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
         match create_and_insert_share(&txn, create_share, &creator_for_task) {
-            Ok(link) => {
+            Ok(resp) => {
                 txn.commit()
                     .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-                Ok(link)
+                Ok(rocket::serde::json::Json(resp))
             }
             Err(err) => Err(err),
         }
@@ -116,7 +128,7 @@ fn create_and_insert_share(
     txn: &WriteTransaction,
     create_share: CreateShare,
     creator: &str,
-) -> AppResult<String> {
+) -> AppResult<CreateShareResponse> {
     let mut metadata_table = txn
         .open_table(METADATA_TABLE)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -149,11 +161,12 @@ fn create_and_insert_share(
                 exp: create_share.exp,
                 created_by: creator.to_string(),
             };
+            let fingerprint = share.fingerprint();
             album.share_list.insert(share_id, share);
             metadata_table
                 .insert(&*create_share.album_id, MetadataRecord::Album(album))
                 .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-            Ok(link)
+            Ok(CreateShareResponse { link, fingerprint })
         }
         None => Err(AppError::new(ErrorKind::NotFound, "Album not found")),
     }

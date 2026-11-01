@@ -5,9 +5,9 @@
       <v-divider thickness="4" variant="double"></v-divider>
 
       <v-sheet v-if="shares.length > 0" border rounded="lg" class="mx-4 my-4 overflow-hidden">
-        <template v-for="(item, i) in shares" :key="item.albumId + '-' + item.share.url">
+        <template v-for="(item, i) in shares" :key="item.albumId + '-' + item.share.keyFingerprint">
           <v-divider v-if="i > 0"></v-divider>
-          <v-list-item :title="item.share.description || item.share.url">
+          <v-list-item :title="item.share.description || item.share.keyFingerprint">
             <template #subtitle>
               <span>
                 {{ item.displayName }}
@@ -18,7 +18,7 @@
               </span>
             </template>
             <template #append>
-              <v-tooltip location="top" text="Edit">
+              <v-tooltip v-if="!isCensored(item)" location="top" text="Edit">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
@@ -30,7 +30,20 @@
                   ></v-btn>
                 </template>
               </v-tooltip>
-              <v-tooltip location="top" text="Open">
+              <v-tooltip v-if="!isCensored(item) && !isRevealed(item)" location="top" text="Reveal">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon="mdi-eye"
+                    variant="text"
+                    size="small"
+                    aria-label="Reveal share link"
+                    :loading="isRevealing(item)"
+                    @click="reveal(item)"
+                  ></v-btn>
+                </template>
+              </v-tooltip>
+              <v-tooltip v-if="isRevealed(item)" location="top" text="Open">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
@@ -44,7 +57,7 @@
                   ></v-btn>
                 </template>
               </v-tooltip>
-              <v-tooltip v-if="showCopy" location="top" text="Copy">
+              <v-tooltip v-if="isRevealed(item) && showCopy" location="top" text="Copy">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
@@ -56,7 +69,7 @@
                   ></v-btn>
                 </template>
               </v-tooltip>
-              <v-tooltip location="top" text="Delete">
+              <v-tooltip location="top" text="Revoke">
                 <template #activator="{ props }">
                   <v-btn
                     v-bind="props"
@@ -84,6 +97,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import axios from 'axios'
 import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
@@ -99,6 +113,10 @@ const messageStore = useMessageStore('mainId')
 
 const currentEdit = ref<EditShareData | null>(null)
 const currentDelete = ref<EditShareData | null>(null)
+
+const revealed = ref<Map<string, string>>(new Map())
+const revealing = ref<Set<string>>(new Set())
+const censored = ref<Set<string>>(new Set())
 
 /// Copy buttons render only where the secure Clipboard API can run.
 const showCopy = computed(() => canShowCopyButton())
@@ -118,12 +136,21 @@ const shares = computed<EditShareData[]>(() => {
   return arr
 })
 
-const shareUrl = (item: EditShareData): string =>
-  `${window.location.origin}/share/${item.albumId}-${item.share.url}`
-
 const isExpired = (exp: number): boolean => exp !== 0 && exp * 1000 < Date.now()
 
 const formatExpiry = (exp: number): string => new Date(exp * 1000).toLocaleString()
+
+const isRevealed = (item: EditShareData): boolean => revealed.value.has(item.share.keyFingerprint)
+
+const isRevealing = (item: EditShareData): boolean => revealing.value.has(item.share.keyFingerprint)
+
+const isCensored = (item: EditShareData): boolean => censored.value.has(item.share.keyFingerprint)
+
+const shareUrl = (item: EditShareData): string | undefined => {
+  const token = revealed.value.get(item.share.keyFingerprint)
+  if (token === undefined) return undefined
+  return `${window.location.origin}/share/${item.albumId}-${token}`
+}
 
 const openEdit = (item: EditShareData) => {
   currentEdit.value = item
@@ -136,11 +163,38 @@ const openDelete = (item: EditShareData) => {
 }
 
 const copyLink = async (item: EditShareData) => {
-  const ok = await copyTextToClipboard(shareUrl(item))
+  const url = shareUrl(item)
+  if (url === undefined) return
+  const ok = await copyTextToClipboard(url)
   if (ok) {
     messageStore.success('Share URL copied to clipboard.')
   } else {
     messageStore.error('Copy failed — select the link manually')
+  }
+}
+
+const reveal = async (item: EditShareData) => {
+  const fp = item.share.keyFingerprint
+  if (revealed.value.has(fp) || censored.value.has(fp)) return
+  const nextRevealing = new Set(revealing.value)
+  nextRevealing.add(fp)
+  revealing.value = nextRevealing
+  try {
+    const result = await axios.get<{ token: string }>('/get/share/token', {
+      params: { album_id: item.albumId, fingerprint: fp }
+    })
+    const nextRevealed = new Map(revealed.value)
+    nextRevealed.set(fp, result.data.token)
+    revealed.value = nextRevealed
+  } catch {
+    const nextCensored = new Set(censored.value)
+    nextCensored.add(fp)
+    censored.value = nextCensored
+    messageStore.error('Share link not available')
+  } finally {
+    const done = new Set(revealing.value)
+    done.delete(fp)
+    revealing.value = done
   }
 }
 
