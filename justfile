@@ -220,6 +220,17 @@ fuzz-run *args: install-schemathesis
     FUZZ_STATE_DIR="${FUZZ_STATE_DIR:-{{justfile_directory()}}/sandbox/fuzz}" \
     utils/schemathesis/campaign.sh "{{ schemathesis_version }}" {{ args }}
 
+# Pinned MSRV floor: the maximum rust-version across the locked dependency
+# tree. The scheduled CI job checks the workspace here; pull requests are
+# unaffected by design (the dev/CI toolchain stays on rust-toolchain.toml).
+msrv_version := "1.90"
+
+# Install the MSRV floor toolchain and check the workspace on it
+[group('utils')]
+msrv-check:
+    rustup toolchain install {{ msrv_version }} --profile minimal
+    cargo +{{ msrv_version }} check --workspace --locked --all-targets
+
 # Pinned zizmor release for the workflow lint below.
 #
 # zizmor runs via `uvx`, so the pin is a PyPI version resolved through uv

@@ -25,7 +25,8 @@ fn update_expire_task() {
             .begin_write()
             .expect("failed to begin write transaction");
         let new_expire_time = current_timestamp.saturating_add(
-            i64::try_from(Duration::from_hours(1).as_millis()).expect("value out of range for i64"),
+            i64::try_from(Duration::from_secs(3600).as_millis())
+                .expect("value out of range for i64"),
         );
         {
             let mut expire_table = expire_write_txn
