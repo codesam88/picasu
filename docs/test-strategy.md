@@ -70,7 +70,14 @@ to catch configuration-specific divergence before a release.
 **Location:** `backend/tests/scenarios/*.yaml`
 **Runner:** `build.rs` generates one `#[test]` per YAML file, delegating to
 the runtime interpreter in `src/tests/backend_api.rs`.
-**Run:** `cargo test`
+**Run:** `just backend-test` (cargo nextest, one process per test, with
+`PICASU_WEAK_PWHASH=1`). Do not substitute plain `cargo test --lib` for
+the backend suite: tests share global backend state within one process
+(redb stores, task coordinators, caches) that `reset_backend_state`
+only clears at test start, so a single shared binary admits
+cross-test residue (stale snapshot tables, uncleared query cache,
+detached batch work landing post-reset) that per-test processes do not.
+`cargo test` stays correct for pure unit tests and small modules.
 
 Each YAML file is a given/when/assert spec for a real Rocket instance with
 ephemeral `IMAGE_HOME` and `DATA_HOME`. Internal redb state is opaque —

@@ -20,7 +20,7 @@ Picasu is a self-hosted photo gallery for millions of images. The repo has two i
 **Entry points for a new agent:**
 
 1. **Architecture overview** — start with `docs/frontend.md` (frontend) and `docs/design.md` (backend). They cover routing, state, component tree, filter system, and design decisions.
-2. **Dev commands** — read `justfile` at the repo root. Key recipes: `just check` (lint), `just test` (backend cargo test + frontend vitest), `just frontend-check`, `just frontend-test`, `just format` (auto-format)
+2. **Dev commands** — read `justfile` at the repo root. Key recipes: `just check` (lint), `just test` (nextest backend, utils, frontend, fuzz), `just frontend-check`, `just frontend-test`, `just format` (auto-format)
 3. **Backend sources** — `backend/src/main.rs` (server bootstrap), `backend/src/router/` (API routes), `backend/src/operations/` (domain logic), `backend/src/process/` (background tasks).
 4. **Frontend sources** — `frontend/src/main.ts` (app bootstrap), `frontend/src/route/routes.ts` (URL structure), `frontend/src/store/` (Pinia stores), `frontend/src/components/` (Vue components) — see `docs/frontend.md` for the component tree.
 5. **Testing** — Review `docs/test-strategy.md` and `docs/playwright_generator.md` before extending or modifying test scenarios or test infratructure.
@@ -51,6 +51,25 @@ The `.plan/` directory tracks pending and completed work. Run `plan list` to vie
   Do not include verbose examples or documentation.
 - Update code-level documentation where applicable.
   Do not include verbose examples and documentation without request.
+
+## Backend tests
+
+- Run the backend suite with `just backend-test` (cargo nextest: one
+  process per test, `PICASU_WEAK_PWHASH=1`). Do not substitute plain
+  `cargo test`, especially not `cargo test --lib`: tests share global
+  backend state within one process (redb stores, task coordinators,
+  caches) that reset logic only clears at test start, so a shared
+  binary admits cross-test residue and failures that do not reproduce
+  under the supported runner.
+- Never run backend tests without the justfile recipe (or the same
+  env): without `PICASU_WEAK_PWHASH=1` every seeded user pays full
+  password hashing and the suite takes several times longer than its
+  expected `just backend-test` runtime (~45 s real, ~4 m user).
+- Backend tests mutate files under the shared tempdir; do not run
+  backend test commands concurrently with other work touching the
+  same tree, and treat count-sensitive failures that pass in small
+  runs as shared-state interference until the supported runner says
+  otherwise.
 
 ## Task Management (.plan)
 
