@@ -238,6 +238,13 @@ install-zizmor:
 zizmor-check: install-zizmor
     uvx zizmor@"{{ zizmor_version }}" --offline --no-progress .
 
+# Online audit for the scheduled CI job: stale pins, archived actions and
+# other checks that need the GitHub API. Needs GH_TOKEN (or GITHUB_TOKEN);
+# without one it degrades to the offline check.
+[group('utils')]
+zizmor-check-online: install-zizmor
+    uvx zizmor@"{{ zizmor_version }}" --no-progress .
+
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at
 # https://github.com/oasdiff/oasdiff/releases/download/v<version>/checksums.txt
