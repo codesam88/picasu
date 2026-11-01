@@ -136,7 +136,8 @@
       "fallback": [],
       "guards": [
         "GuardAdmin",
-        "GuardMutate"
+        "GuardMutate",
+        "GuardReauth"
       ],
       "invariants": [
         "AUTH-11",
