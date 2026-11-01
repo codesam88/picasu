@@ -119,7 +119,7 @@ utils-format:
 
 # cargo fmt --check + cargo clippy on utils/ crates (all targets)
 [group('utils')]
-utils-check:
+utils-check: zizmor-check
     cargo fmt --check -p snapfab -p paste -p openapi-sanity
     cargo clippy --all-targets -p snapfab -p paste -p openapi-sanity -- -D warnings
 
@@ -183,7 +183,7 @@ openapi-json-match:
 dylint_version := "6.3.1"
 
 # Install pinned cargo-dylint (idempotent)
-[group('utils')]
+[group('deps')]
 install-dylint:
     ./scripts/install-dylint.sh "{{ dylint_version }}"
 
@@ -191,7 +191,7 @@ install-dylint:
 schemathesis_version := "4.30.1"
 
 # Prefetch pinned Schemathesis (idempotent)
-[group('utils')]
+[group('deps')]
 install-schemathesis:
     ./scripts/install-schemathesis.sh "{{ schemathesis_version }}"
 
@@ -200,6 +200,7 @@ install-schemathesis:
 # as documented in utils/schemathesis/README.md.
 
 # Tier-1 gate: seeded sweep against a throwaway instance, baseline-compared
+[group('utils')]
 fuzz-check: frontend-build-maybe install-schemathesis
     utils/schemathesis/check.sh "{{ schemathesis_version }}"
 
@@ -209,13 +210,33 @@ fuzz-check: frontend-build-maybe install-schemathesis
 fuzz-matrix: frontend-build-maybe
     utils/schemathesis/fuzz_matrix.sh
 
+[group('utils')]
 fuzz-serve *args: frontend-build-maybe
     utils/schemathesis/serve.sh {{ args }}
 
 # Run the campaign against a served instance; budget in minutes via FUZZ_MIN
+[group('utils')]
 fuzz-run *args: install-schemathesis
     FUZZ_STATE_DIR="${FUZZ_STATE_DIR:-{{justfile_directory()}}/sandbox/fuzz}" \
     utils/schemathesis/campaign.sh "{{ schemathesis_version }}" {{ args }}
+
+# Pinned zizmor release for the workflow lint below.
+#
+# zizmor runs via `uvx`, so the pin is a PyPI version resolved through uv
+# (pre-compiled, no build step). Integrity comes from uv's registry
+# verification; there is no upstream-published sha256 to check, unlike the
+# tarball-based installs above.
+zizmor_version := "1.31.1"
+
+# Prefetch pinned zizmor (idempotent)
+[group('deps')]
+install-zizmor:
+    ./scripts/install-zizmor.sh "{{ zizmor_version }}"
+
+# Audit workflows and Dependabot config offline (no GH_TOKEN needed)
+[group('utils')]
+zizmor-check: install-zizmor
+    uvx zizmor@"{{ zizmor_version }}" --offline --no-progress .
 
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at
@@ -224,7 +245,7 @@ oasdiff_version := "1.33.0"
 oasdiff_sha256 := "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247"
 
 # Install pinned oasdiff (idempotent)
-[group('utils')]
+[group('deps')]
 install-oasdiff:
     ./scripts/install-oasdiff.sh "{{ oasdiff_version }}" "{{ oasdiff_sha256 }}"
 
@@ -233,24 +254,14 @@ install-oasdiff:
 openapi-breakcheck:
     OASDIFF_SHA256="{{ oasdiff_sha256 }}" ./scripts/openapi-breakcheck.sh "{{ justfile_directory() }}" "{{ oasdiff_version }}"
 
-# Auto-format .plan task frontmatter and body
-[group('tooling')]
-plan-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
-
-# check .plan task frontmatter correctness
-[group('tooling')]
-plan-lint:
-    node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
-
 # check that the PICASU_* env vars read by the backend match the docs/config.md table
-[group('tooling')]
+[group('utils')]
 env-var-check:
     node --test {{justfile_directory()}}/scripts/env-var-lint.test.mjs
     node {{justfile_directory()}}/scripts/env-var-lint.mjs {{justfile_directory()}}
 
 # Ensure committed auth-matrix artifacts match generator output
-[group('tooling')]
+[group('utils')]
 auth-matrix-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -273,8 +284,23 @@ auth-matrix-check:
     fi
     echo "auth-matrix artifacts match the generated output"
 
+# Install 'plan' and 'gloss' tools (pinned)
+[group('deps')]
+install-plan:
+    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
+
+# Auto-format .plan task frontmatter and body
+[group('utils')]
+plan-format:
+    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
+
+# check .plan task frontmatter correctness
+[group('utils')]
+plan-lint:
+    node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
+
 # run plan <args>, depends on `just install-plan`
-[group('tooling')]
+[group('utils')]
 plan *args:
     plan --root {{justfile_directory()}} {{args}}
 
@@ -324,22 +350,11 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check
+check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check
 
 # Run tests (backend + utils + frontend + generated auth probes)
 [group('global')]
 test: backend-test utils-test frontend-test fuzz-matrix
-
-# install dev tools + precommit hook
-[group('global')]
-setup-dev: install-dev
-    git config core.hooksPath .githooks
-    @echo "✓ Pre-commit hook enabled — ready to develop"
-
-# Install 'plan' and 'gloss' tools (pinned)
-[group('global')]
-install-plan:
-    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
 
 # Pinned ExifTool distribution for local development installs.
 #
@@ -359,7 +374,7 @@ exiftool_version := "13.59"
 exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828fd65a"
 
 # Install pinned ExifTool (idempotent)
-[group('global')]
+[group('deps')]
 install-exiftool:
     ./scripts/install-exiftool.sh "{{ exiftool_version }}" "{{ exiftool_sha256 }}"
 
@@ -377,7 +392,7 @@ ffmpeg_version := "7.0.2"
 ffmpeg_sha256 := "abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67"
 
 # Install pinned ffmpeg (idempotent)
-[group('global')]
+[group('deps')]
 install-ffmpeg:
     ./scripts/install-ffmpeg.sh "{{ ffmpeg_version }}" "{{ ffmpeg_sha256 }}"
 
@@ -398,7 +413,7 @@ nextest_sha256_linux_aarch64 := "e1c85dbe02dcf5b963803b3f96f4f561757f5c37cab68c9
 nextest_sha256_apple_darwin := "124baa34d160355fa8a8bed053856270cfcf132659e76a0bc8bbcdfc093266b7"
 
 # Install pinned cargo-nextest (idempotent)
-[group('global')]
+[group('deps')]
 install-nextest:
     ./scripts/install-nextest.sh "{{ nextest_version }}" "{{ nextest_sha256_linux_x86_64 }}" "{{ nextest_sha256_linux_aarch64 }}" "{{ nextest_sha256_apple_darwin }}"
 
@@ -418,14 +433,20 @@ cargo_deny_sha256_apple_x86_64 := "248da7f581724e470071990c088ffc55c811981715f4c
 cargo_deny_sha256_apple_aarch64 := "fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a72090c3"
 
 # Install pinned cargo-deny (idempotent)
-[group('global')]
+[group('deps')]
 install-cargo-deny:
     ./scripts/install-cargo-deny.sh "{{ cargo_deny_version }}" "{{ cargo_deny_sha256_linux_x86_64 }}" "{{ cargo_deny_sha256_linux_aarch64 }}" "{{ cargo_deny_sha256_apple_x86_64 }}" "{{ cargo_deny_sha256_apple_aarch64 }}"
 
 # Install dev tools
-[group('global')]
-install-dev: install-nextest install-cargo-deny install-ffmpeg install-exiftool install-oasdiff install-dylint install-schemathesis
+[group('deps')]
+install-dev: install-nextest install-cargo-deny install-ffmpeg install-exiftool install-oasdiff install-dylint install-schemathesis install-zizmor
     npm ci --prefix frontend
+
+# install dev tools + precommit hook
+[group('deps')]
+setup-dev: install-dev
+    git config core.hooksPath .githooks
+    @echo "✓ Pre-commit hook enabled — ready to develop"
 
 # Build frontend then backend (dev build)
 [group('global')]
