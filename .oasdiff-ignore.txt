@@ -17,6 +17,11 @@
 # `uploadFolder` is relative to the image path and visible to every tier,
 # so no redaction remains on the endpoint. `PUT /put/admin/config` and the
 # admin export lose the `disableImg` property the same way.
+# 2026-11-01 (share-token handles S4, decided: listings never carry
+# bearers): `GET /get/get-albums` replaces the share bearer `url` with the
+# non-secret `keyFingerprint` in `shareList` entries; creators reveal tokens
+# through the new `GET /get/share/token` instead.
+GET /get/get-albums removed the required property `items/shareList/additionalProperties/url` from the response with the `200` status
 GET /get/config removed the required property `hasAuthKey` from the response with the `200` status
 GET /get/config removed the required property `disableImg` from the response with the `200` status
 GET /get/admin/config/export removed the required property `config/disableImg` from the response with the `200` status

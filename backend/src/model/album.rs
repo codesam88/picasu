@@ -341,6 +341,7 @@ pub struct Share {
     pub description: String,
     /// Share password: an argon2id PHC string for passwords set through the
     /// API, or a legacy plaintext value for rows written before hashing.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub password: Option<String>,
     pub show_metadata: bool,
     pub show_download: bool,

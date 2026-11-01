@@ -116,6 +116,7 @@ fn album_reads_carry_share_presence_not_password() {
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
     let share_id = create.into_string().expect("share id").trim().to_string();
+    let share_fp = share_fingerprint_for(&share_id);
 
     for (label, request_cookie, should_see) in [
         ("admin", cookie("admin", true), true),
@@ -141,14 +142,19 @@ fn album_reads_carry_share_presence_not_password() {
             .as_object()
             .expect("shareList object");
         if should_see {
-            let entry = shares.get(&share_id).expect("share listed");
+            let entry = shares.get(&share_fp).expect("share listed");
             assert_eq!(
                 entry["hasPassword"], true,
                 "{label} read must surface presence, got: {entry}"
             );
-        } else {
+            // Listing keys are fingerprints, never the bearer.
             assert!(
                 !shares.contains_key(&share_id),
+                "{label} listing must not be keyed by the bearer, got: {shares:?}"
+            );
+        } else {
+            assert!(
+                !shares.contains_key(&share_fp),
                 "{label} must not see another user's share, got: {shares:?}"
             );
         }
@@ -214,6 +220,7 @@ fn edit_share_keeps_sets_and_clears_password() {
         .dispatch();
     assert_eq!(create.status(), Status::Ok, "create_share");
     let share_id = create.into_string().expect("share id").trim().to_string();
+    let share_fp = share_fingerprint_for(&share_id);
 
     let edit = |password: Value| {
         client
@@ -270,7 +277,7 @@ fn edit_share_keeps_sets_and_clears_password() {
         Status::Ok,
         "clear password"
     );
-    let entry = listed_share(&client, &album_id, &share_id);
+    let entry = listed_share(&client, &album_id, &share_fp);
     assert_eq!(
         entry["hasPassword"], false,
         "cleared share must report no password, got: {entry}"
@@ -396,4 +403,98 @@ fn a_legacy_plaintext_share_row_still_grants_access() {
 
     let stored = stored_share_password(&album_id, &share_id).expect("stored password");
     assert_eq!(stored, "legacy-pw", "legacy row must not be rewritten");
+}
+
+/// `get_export` emits the censored view: no bearer, no password, no
+/// absolute paths, while retaining share metadata needed for migration.
+#[test]
+fn export_redacts_share_secrets_and_absolute_paths() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/export/photo.jpg");
+
+    let share_password = "s3cret-export-pw";
+    let create = client
+        .post("/post/create_share")
+        .cookie(cookie("admin", true))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "albumId": album_id,
+                "description": "export-survivor-desc",
+                "password": share_password,
+                "showMetadata": true,
+                "showDownload": true,
+                "showUpload": false,
+                "exp": 0
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_eq!(create.status(), Status::Ok, "create_share");
+    let raw_create = create.into_string().expect("share id");
+    let share_id = raw_create.trim().to_string();
+
+    // Absolute path that must not survive into the export.
+    let raw_image_home = crate::storage::files::get_data_path()
+        .to_string_lossy()
+        .into_owned();
+
+    let resp = client
+        .get("/get/get-export")
+        .cookie(cookie("admin", true))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "get_export");
+    let body = resp.into_string().expect("export body");
+
+    // No bearer value anywhere.>
+    assert!(
+        !body.contains(&share_id),
+        "export must not contain the bearer, got: {body}"
+    );
+    // No password value anywhere.
+    assert!(
+        !body.contains(share_password),
+        "export must not contain the password, got: {body}"
+    );
+    // No absolute library path anywhere.
+    assert!(
+        !body.contains(&raw_image_home),
+        "export must not contain absolute paths, got: {body}"
+    );
+    // Metadata survives.
+    assert!(
+        body.contains("export-survivor-desc"),
+        "export must retain share description, got: {body}"
+    );
+
+    let fp = share_fingerprint_for(&share_id);
+    // And the share entry is keyed by fingerprint, with no password field.
+    let parsed: Value = serde_json::from_str(&body).expect("export json");
+    let arr = parsed.as_array().expect("export array");
+    let album_entry = arr
+        .iter()
+        .find(|e| {
+            e["value"]
+                .get("shareList")
+                .and_then(|s| s.as_object())
+                .is_some_and(|s| s.contains_key(&fp))
+        })
+        .expect("album entry with share present");
+    let shares = album_entry["value"]["shareList"]
+        .as_object()
+        .expect("shareList object");
+    assert!(
+        shares.contains_key(&fp),
+        "share keyed by fingerprint, got {shares:?}"
+    );
+    let entry = shares.get(&fp).expect("share entry");
+    assert!(
+        entry.get("password").is_none(),
+        "password field must be absent, got {entry}"
+    );
+    assert!(
+        entry.get("url").is_none() || entry["url"].as_str() == Some(fp.as_str()),
+        "url must be fingerprint or absent, got {entry}"
+    );
 }
