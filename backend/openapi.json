@@ -1595,6 +1595,17 @@
         ],
         "type": "object"
       },
+      "ShareTokenReturn": {
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
       "TagInfo": {
         "properties": {
           "number": {
@@ -3021,6 +3032,81 @@
           "effects": [],
           "guards": [],
           "invariants": [],
+          "shareScope": "n-a"
+        }
+      }
+    },
+    "/get/share/token": {
+      "get": {
+        "description": "The album must be visible to the caller (invisible albums answer 404,\nsame no-oracle canon as the other share endpoints). The entry is then\nlocated by its non-secret fingerprint; the bearer is returned only when\nthe entry's `created_by` equals the caller. Any other case — unknown\nfingerprint, foreign creator, including an admin who did not create the\nshare — answers 404 with the same message, so existence is never\ndisclosed to non-creators. Retrieval is logged at info level without\nthe token value.",
+        "operationId": "get_share_token",
+        "parameters": [
+          {
+            "description": "Album holding the share",
+            "in": "query",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "16-char blake3 fingerprint of the share bearer",
+            "in": "query",
+            "name": "fingerprint",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareTokenReturn"
+                }
+              }
+            },
+            "description": "Share bearer token"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
+        "summary": "Reveal the bearer token for one of an album's shares.",
+        "tags": [
+          "albums"
+        ],
+        "x-picasu-auth": {
+          "admin": "any",
+          "credentials": [
+            "session"
+          ],
+          "effects": [
+            "read"
+          ],
+          "guards": [
+            "GuardUser"
+          ],
+          "invariants": [
+            "AUTH-11"
+          ],
           "shareScope": "n-a"
         }
       }

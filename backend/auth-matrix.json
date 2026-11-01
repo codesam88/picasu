@@ -750,6 +750,39 @@
   {
     "method": "GET",
     "modeled": true,
+    "operationId": "get_share_token",
+    "path": "/get/share/token",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "albums"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "credentials": [
+        "session"
+      ],
+      "effects": [
+        "read"
+      ],
+      "fallback": [],
+      "guards": [
+        "GuardUser"
+      ],
+      "invariants": [
+        "AUTH-11"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "waivers": {}
+    }
+  },
+  {
+    "method": "GET",
+    "modeled": true,
     "operationId": "list_users_handler",
     "path": "/get/users",
     "security": [

@@ -517,3 +517,136 @@ fn admin_moving_album_with_another_users_share_refused() {
         .dispatch();
     assert_eq!(resp.status(), Status::Forbidden);
 }
+
+// ── S2: creator-only share-token reveal ─────────────────────────────
+
+/// Non-secret handle for a share bearer: mirrors
+/// `Share::fingerprint` without reaching into the stored record.
+fn share_fingerprint_for(token: &str) -> String {
+    blake3::hash(token.as_bytes()).to_hex().to_string()[..16].to_string()
+}
+
+fn reveal_status(
+    client: &rocket::local::blocking::Client,
+    user: &str,
+    admin: bool,
+    album_id: &str,
+    fingerprint: &str,
+) -> rocket::http::Status {
+    client
+        .get(format!(
+            "/get/share/token?album_id={album_id}&fingerprint={fingerprint}"
+        ))
+        .cookie(cookie(user, admin))
+        .dispatch()
+        .status()
+}
+
+#[test]
+fn s2_creator_reveals_own_share_bearer() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s2reveal/photo.jpg");
+    seed("rev-a", false, None);
+    let share_id = create_share_as(&client, "rev-a", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let resp = client
+        .get(format!(
+            "/get/share/token?album_id={album_id}&fingerprint={fp}"
+        ))
+        .cookie(cookie("rev-a", false))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "creator reveal");
+    let body: Value = resp.into_json().expect("reveal json");
+    assert_eq!(
+        body["token"].as_str(),
+        Some(share_id.as_str()),
+        "revealed bearer must match"
+    );
+
+    // The revealed bearer actually works anonymously.
+    assert_eq!(
+        prefetch_as_share_anon(&client, &album_id, &share_id),
+        Status::Ok,
+        "revealed bearer resolves"
+    );
+}
+
+#[test]
+fn s2_other_user_cannot_reveal_foreign_share() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s2foreign/photo.jpg");
+    seed("rev-owner", false, None);
+    seed("rev-bob", false, None);
+    let share_id = create_share_as(&client, "rev-owner", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    let resp = client
+        .get(format!(
+            "/get/share/token?album_id={album_id}&fingerprint={fp}"
+        ))
+        .cookie(cookie("rev-bob", false))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::NotFound,
+        "bob must not reveal alice's share"
+    );
+    let body = resp.into_string().expect("error body");
+    assert!(
+        !body.contains(&share_id),
+        "refusal must not leak the bearer"
+    );
+}
+
+#[test]
+fn s2_admin_cannot_reveal_foreign_share() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s2admin/photo.jpg");
+    seed("rev-owner2", false, None);
+    seed("rev-admin", true, None);
+    let share_id = create_share_as(&client, "rev-owner2", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    assert_eq!(
+        reveal_status(&client, "rev-admin", true, &album_id, &fp),
+        Status::NotFound,
+        "admin must not reveal another user's share"
+    );
+}
+
+#[test]
+fn s2_unknown_fingerprint_is_not_found() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/s2unknown/photo.jpg");
+    seed("rev-owner3", false, None);
+    create_share_as(&client, "rev-owner3", false, &album_id);
+
+    assert_eq!(
+        reveal_status(&client, "rev-owner3", false, &album_id, "0123456789abcdef"),
+        Status::NotFound,
+        "unknown fingerprint"
+    );
+}
+
+#[test]
+fn s2_reveal_on_invisible_personal_album_is_not_found() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let users_home = enable_users_home();
+    seed("rev-pa", false, None);
+    seed("rev-pb", false, None);
+    let album_id = personal_album_id(&users_home, "rev-pa");
+    let share_id = create_share_as(&client, "rev-pa", false, &album_id);
+    let fp = share_fingerprint_for(&share_id);
+
+    assert_eq!(
+        reveal_status(&client, "rev-pb", false, &album_id, &fp),
+        Status::NotFound,
+        "bob must not reveal through alice's personal album"
+    );
+}

@@ -12,6 +12,7 @@ pub mod get_list;
 pub mod get_metadata;
 pub mod get_page;
 pub mod get_prefetch;
+pub mod get_share_token;
 pub mod invites;
 pub mod invites_limits;
 pub mod self_profile;
@@ -67,6 +68,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::sregister_sw,
         get_page::spa_fallback,
         get_prefetch::prefetch,
+        get_share_token::get_share_token,
         get_export::get_export,
         get_config::get_config_handler,
         get_config::export_config_handler,
