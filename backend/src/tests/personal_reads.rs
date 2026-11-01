@@ -267,8 +267,8 @@ fn prefetch_root_albums_respect_include_personal_flag() {
         let body: serde_json::Value = resp.into_json().expect("prefetch json");
         assert_eq!(
             body["prefetch"]["dataLength"].as_u64(),
-            Some(2),
-            "{user} opt-in must return global + own root album only"
+            Some(1),
+            "{user} opt-in must return only own personal root album"
         );
     }
 
@@ -421,6 +421,77 @@ fn b3_bob_snapshot_cannot_read_alice_personal_metadata() {
         !body.contains("/users/alice"),
         "alice's path leaked to bob: {body}"
     );
+}
+
+#[test]
+fn prefetch_my_albums_personal_only_excludes_global_root() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let _users_home = enable_users_home();
+    seed("read-a", false, None);
+    seed("read-b", false, None);
+
+    let image_home = crate::tests::bootstrap::test_image_home();
+    let global_album = image_home.join("globalroot");
+    std::fs::create_dir_all(&global_album).expect("global album dir");
+
+    crate::tasks::actor::album_index::index_album_with_root("/", false, None)
+        .expect("index accepted");
+    wait_for_index_completion();
+
+    let filter = serde_json::json!({
+        "And": [
+            {"ExtType": "album"},
+            {"Trashed": false},
+            {"RootAlbum": true}
+        ]
+    });
+
+    let resp = client
+        .post("/get/prefetch?include_personal=true")
+        .cookie(cookie("read-a", false))
+        .header(rocket::http::ContentType::JSON)
+        .body(filter.to_string())
+        .dispatch();
+    assert_eq!(resp.status(), rocket::http::Status::Ok, "prefetch read-a");
+    let body: serde_json::Value = resp.into_json().expect("prefetch json");
+    assert_eq!(
+        body["prefetch"]["dataLength"].as_u64(),
+        Some(1),
+        "MyAlbums-equivalent prefetch must return only own personal root, got {:?}",
+        body["prefetch"]["dataLength"]
+    );
+
+    // Prove the single returned row is the own personal root, not the global one.
+    let ts = body["prefetch"]["timestamp"].as_i64().expect("ts");
+    let token = body["token"].as_str().expect("token").to_string();
+    let data_resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=10"))
+        .cookie(cookie("read-a", false))
+        .header(rocket::http::Header::new(
+            "Authorization",
+            format!("Bearer {token}"),
+        ))
+        .dispatch();
+    assert_eq!(data_resp.status(), rocket::http::Status::Ok, "get-data");
+    let data: serde_json::Value = data_resp.into_json().expect("get-data json");
+    let arr = data.as_array().expect("data array");
+    assert_eq!(arr.len(), 1, "expected one row");
+    let ad = &arr[0]["abstractData"];
+    let dir = ad["metadata"]["dirPath"].as_str().unwrap_or("");
+    assert!(
+        !dir.contains("globalroot"),
+        "global root leaked into MyAlbums view: {dir}"
+    );
+
+    {
+        let mut c = crate::model::config::APP_CONFIG
+            .get()
+            .expect("cfg")
+            .write()
+            .expect("lock");
+        c.users_home = None;
+    }
 }
 
 #[test]

@@ -51,6 +51,19 @@ fn normalize_parent(file_path: &str) -> Option<std::path::PathBuf> {
 }
 
 impl Expression {
+    /// Whether this expression selects root albums (a `RootAlbum(true)`
+    /// condition anywhere inside it). Used by prefetch to scope the
+    /// `MyAlbums` view to the caller's own personal roots.
+    pub fn contains_root_album_true(&self) -> bool {
+        match self {
+            Expression::RootAlbum(value) => *value,
+            Expression::And(exprs) | Expression::Or(exprs) => {
+                exprs.iter().any(Expression::contains_root_album_true)
+            }
+            _ => false,
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     pub fn generate_filter(self) -> Box<dyn Fn(&AbstractData) -> bool + Sync + Send> {
         match self {
