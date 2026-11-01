@@ -69,8 +69,14 @@ universal. This task closes the gaps, with tests proving each one.
   the share-token plan's S4 (export) — no separate F6 step.
   Personal-content scoping beyond that is intentionally left to the
   operator capability, documented as such.
-- D5: user deletion vs personal tree — purge/quarantine, refuse while data
-  exists, or document-and-keep? (carried over; no challenger verdict)
+- D5 (user deletion vs personal tree): DECIDED 2026-11-01 — deletion
+  stays admin-only and is refused with 409 while the user has any photos
+  in their personal area; confirmation is password re-entry via the
+  existing GuardReauth guard; owned shares cascade-delete with the user
+  (shares first, then the record); new disable/enable lever
+  (`UserRecord.disabled`, login/session rejection, ver bump, last-enabled
+  admin protected). Implementation plan: `.plan/user-deletion-disable.md`
+  (D5-1 backend deletion, D5-2 disable + UI).
 
 Deferred by user choice 2026-11-01 (decisions recorded, work not
 scheduled yet): F9 E2E honesty bundle, F10 docs claim corrections.
