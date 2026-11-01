@@ -2,7 +2,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, ErrorKind};
+use crate::error::{AppError, ErrorKind, ResultExt};
+use redb::ReadableTable;
 
 /// How long an identity token lives. The token carries its own expiry, so
 /// nothing server-side has to remember it.
@@ -117,16 +118,177 @@ pub fn set_admin(id: &str, admin: bool) -> Result<()> {
 /// [`ErrorKind::IO`] when the store cannot be read or written.
 pub fn delete_user(id: &str) -> Result<(), AppError> {
     let target = validate_user_id(id)?;
-    // The store's `delete` enforces the zero-admin invariant atomically
-    // (single write transaction, single writer) and returns `false` only
-    // when the id is absent.
-    let removed = crate::auth::user_store::delete(&user_store_path(), &target, false)?;
+    let path = user_store_path();
+
+    // Existence check: unknown id → 404 before any mutation.
+    let record = crate::auth::user_store::read(&path, &target)
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, format!("unknown user: {target}")))?;
+
+    // Zero-admin invariant: refuse before touching shares or the identity
+    // record, so a refused delete leaves everything intact.
+    if record.admin {
+        let admins = crate::auth::user_store::list(&path)
+            .into_iter()
+            .filter(|(_, r)| r.admin)
+            .count();
+        if admins <= 1 {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "deletion would leave zero admins",
+            ));
+        }
+    }
+
+    // Refuse while the user still owns any personal media (trashed included).
+    if has_personal_photos(&target) {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "user still has personal photos: lock the account and remove/revoke the shares; to delete manually, remove the files from the host filesystem under USERS_HOME/<username>, then retry the delete",
+        ));
+    }
+
+    // Cascade owned shares across every album first, so a crash between
+    // this and the identity delete leaves no orphaned bearer behind and the
+    // operation stays retryable.
+    cascade_owned_shares(&target)?;
+
+    // Prune the now-empty personal album record if present.
+    prune_personal_album(&target)?;
+
+    // Finally drop the identity record (zero-admin re-checked in store).
+    let removed = crate::auth::user_store::delete(&path, &target, false)?;
     if !removed {
         return Err(AppError::new(
             ErrorKind::NotFound,
             format!("unknown user: {target}"),
         ));
     }
+    Ok(())
+}
+
+fn has_personal_photos(user_id: &str) -> bool {
+    // Fail closed: an unreadable directory is treated as occupied, so a
+    // transient IO error can only refuse the delete (with an actionable
+    // message), never strand photos under a deleted account.
+    fn walk(dir: &std::path::Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return true;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                return true;
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                if walk(&path) {
+                    return true;
+                }
+            } else if path.is_file()
+                && crate::model::media::classify_media_file(&path)
+                    == crate::model::media::MediaOutcome::Index
+            {
+                return true;
+            }
+        }
+        false
+    }
+    let Ok(dir) = crate::storage::files::users_dir_for(user_id) else {
+        return false;
+    };
+    if !dir.exists() {
+        return false;
+    }
+    walk(&dir)
+}
+
+fn cascade_owned_shares(target: &str) -> Result<(), AppError> {
+    use crate::model::metadata_record::MetadataRecord;
+    use crate::storage::db::METADATA_TABLE;
+    use crate::storage::db::TREE;
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
+    {
+        let mut table = txn
+            .open_table(METADATA_TABLE)
+            .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+        let keys: Vec<String> = table
+            .iter()
+            .or_raise(|| (ErrorKind::Database, "Failed to iterate data table"))?
+            .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+            .collect();
+        for key in keys {
+            let album_opt = table
+                .get(key.as_str())
+                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+                .and_then(|guard| match guard.value() {
+                    MetadataRecord::Album(album) => Some(album),
+                    _ => None,
+                });
+            if let Some(mut album) = album_opt {
+                let before = album.share_list.len();
+                album
+                    .share_list
+                    .retain(|_, share| share.created_by != target);
+                if album.share_list.len() != before {
+                    table
+                        .insert(key.as_str(), MetadataRecord::Album(album))
+                        .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
+                }
+            }
+        }
+    }
+    txn.commit()
+        .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+    Ok(())
+}
+
+fn prune_personal_album(user_id: &str) -> Result<(), AppError> {
+    use crate::process::dir_album;
+    use crate::storage::asset_store;
+    use crate::storage::db::METADATA_TABLE;
+    use crate::storage::db::TREE;
+    let Ok(dir) = crate::storage::files::users_dir_for(user_id) else {
+        return Ok(());
+    };
+    // Resolve the album id from the cache, falling back to a metadata scan.
+    let album_id = dir_album::get_album_id_for_dir(&dir).or_else(|| {
+        crate::storage::asset_store::get_all_assets()
+            .ok()?
+            .into_iter()
+            .find(|r| {
+                r.kind == crate::model::asset::AssetKind::Album && r.path == dir.to_string_lossy()
+            })
+            .map(|r| r.asset_id)
+    });
+    let Some(album_id) = album_id else {
+        return Ok(());
+    };
+    // Drop the asset-table rows first (failures propagate: a half-pruned
+    // album must abort the delete loudly rather than strand records).
+    if let Some(record) = asset_store::get_asset_by_id(album_id.as_str())
+        .or_raise(|| (ErrorKind::Database, "Failed to look up album asset"))?
+    {
+        asset_store::remove_asset(&record)
+            .or_raise(|| (ErrorKind::Database, "Failed to remove album asset"))?;
+    }
+    // Drop the metadata row.
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
+    {
+        let mut table = txn
+            .open_table(METADATA_TABLE)
+            .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+        table
+            .remove(album_id.as_str())
+            .or_raise(|| (ErrorKind::Database, "Failed to remove album metadata"))?;
+    }
+    txn.commit()
+        .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+    dir_album::evict_dir_album(&dir);
     Ok(())
 }
 

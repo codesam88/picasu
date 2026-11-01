@@ -1927,7 +1927,7 @@
     },
     "/delete/users/{user_id}": {
       "delete": {
-        "description": "Admin-only: a non-admin, share, or missing credential is denied at\ndispatch with 401. The deletion refuses to leave zero admins; deleting\nthe sole admin is therefore impossible, while self-delete with another\nadmin present succeeds. The identity record (including its password\nhash) is removed in one store write.\n\nCorner cases: Unknown `user_id` names no user. An invalid id (empty or\nover 64 chars) is a 400. Read-only mode refuses with 405.\n\nErrors: 400 invalid `user_id` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 404 unknown `user_id` — 405\nread-only mode — 409 deletion would leave zero admins — 500 storage\nfailure.",
+        "description": "Admin-only: a non-admin, share, or missing credential is denied at\ndispatch with 401. The deletion refuses to leave zero admins; deleting\nthe sole admin is therefore impossible, while self-delete with another\nadmin present succeeds. The identity record (including its password\nhash) is removed in one store write.\n\nRequires re-authentication via the `X-Picasu-Password` header (403 when\nit is missing or wrong). Refuses with 409 while the user still has\npersonal photos.\n\nCorner cases: Unknown `user_id` names no user. An invalid id (empty or\nover 64 chars) is a 400. Read-only mode refuses with 405.\n\nErrors: 400 invalid `user_id` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 403 missing or wrong\nre-authentication password — 404 unknown `user_id` — 405 read-only mode\n— 409 deletion would leave zero admins, or the user still has personal\nphotos — 500 storage failure.",
         "operationId": "delete_user_handler",
         "parameters": [
           {
@@ -1950,6 +1950,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Unknown user id"
           },
@@ -1957,7 +1960,7 @@
             "description": "Read-only mode"
           },
           "409": {
-            "description": "Deletion would leave zero admins"
+            "description": "Deletion would leave zero admins or user still has personal photos"
           },
           "500": {
             "description": "Internal error"
@@ -1982,7 +1985,8 @@
           ],
           "guards": [
             "GuardAdmin",
-            "GuardMutate"
+            "GuardMutate",
+            "GuardReauth"
           ],
           "invariants": [
             "AUTH-11",

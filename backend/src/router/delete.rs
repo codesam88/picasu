@@ -12,6 +12,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::evict_dir_album;
 use crate::router::auth::GuardAdmin;
 use crate::router::auth::GuardMutate;
+use crate::router::auth::GuardReauth;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
@@ -393,13 +394,18 @@ pub fn delete_invite(
 /// admin present succeeds. The identity record (including its password
 /// hash) is removed in one store write.
 ///
+/// Requires re-authentication via the `X-Picasu-Password` header (403 when
+/// it is missing or wrong). Refuses with 409 while the user still has
+/// personal photos.
+///
 /// Corner cases: Unknown `user_id` names no user. An invalid id (empty or
 /// over 64 chars) is a 400. Read-only mode refuses with 405.
 ///
 /// Errors: 400 invalid `user_id` — 401 missing or invalid credentials,
-/// non-admin caller, or share credentials — 404 unknown `user_id` — 405
-/// read-only mode — 409 deletion would leave zero admins — 500 storage
-/// failure.
+/// non-admin caller, or share credentials — 403 missing or wrong
+/// re-authentication password — 404 unknown `user_id` — 405 read-only mode
+/// — 409 deletion would leave zero admins, or the user still has personal
+/// photos — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         params(
@@ -407,7 +413,7 @@ pub fn delete_invite(
         ),
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAdmin", "GuardMutate"],
+            "guards": ["GuardAdmin", "GuardMutate", "GuardReauth"],
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -418,22 +424,32 @@ pub fn delete_invite(
             (status = 200, description = "User deleted"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 404, description = "Unknown user id"),
             (status = 405, description = "Read-only mode"),
-            (status = 409, description = "Deletion would leave zero admins"),
+            (status = 409, description = "Deletion would leave zero admins or user still has personal photos"),
             (status = 500, description = "Internal error"),
         )
     )
 ]
 #[delete("/delete/users/<user_id>")]
-pub fn delete_user_handler(
+pub async fn delete_user_handler(
     auth: GuardResult<GuardAdmin>,
     mutation: GuardResult<GuardMutate>,
+    reauth: GuardResult<GuardReauth>,
     user_id: &str,
 ) -> AppResult<()> {
     let _ = auth?;
     let _ = mutation?;
-    crate::auth::users::delete_user(user_id)?;
+    let _ = reauth?;
+    let user_id = user_id.to_string();
+    tokio::task::spawn_blocking(move || crate::auth::users::delete_user(&user_id))
+        .await
+        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+    crate::tasks::BATCH_COORDINATOR
+        .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
+        .await
+        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
     Ok(())
 }
 
@@ -441,7 +457,7 @@ pub fn delete_user_handler(
 mod tests {
     use rocket::http::Status;
 
-    use crate::tests::bootstrap::{cookie, lock, seed, setup, write_config};
+    use crate::tests::bootstrap::{cookie, lock, seed, setup, setup_image_home, write_config};
     use serde_json::json;
 
     fn del(
@@ -451,7 +467,18 @@ mod tests {
     ) -> Status {
         let mut req = client.delete(format!("/delete/users/{user_id}"));
         if let Some(c) = cookie {
+            // GuardReauth requires the caller's password in X-Picasu-Password;
+            // mint it from the seeded default password for that caller.
+            let pw = match crate::tests::bootstrap::decode(c.value()).role {
+                crate::router::auth::Role::User { id, .. } => {
+                    Some(crate::tests::fixtures::test_password(&id))
+                }
+                crate::router::auth::Role::Share(_) => None,
+            };
             req = req.cookie(c);
+            if let Some(p) = pw {
+                req = req.header(rocket::http::Header::new("X-Picasu-Password", p));
+            }
         }
         req.dispatch().status()
     }
@@ -570,5 +597,209 @@ mod tests {
         seed("d-b", true, None);
         let status = del(&client, Some(cookie("d-a", true)), "d-a");
         assert_eq!(status, Status::Ok);
+    }
+
+    fn enable_users_home() -> std::path::PathBuf {
+        let data_path = crate::storage::files::DATA_PATH
+            .get()
+            .expect("DATA_PATH set");
+        let users_home = data_path.join("users");
+        let _ = std::fs::remove_dir_all(&users_home);
+        std::fs::create_dir_all(&users_home).expect("create users home");
+        let mut c = crate::model::config::APP_CONFIG
+            .get()
+            .expect("cfg")
+            .write()
+            .expect("lock");
+        c.users_home = Some(users_home.clone());
+        users_home
+    }
+
+    fn personal_album_id(users_home: &std::path::Path, user: &str) -> String {
+        let dir = users_home.join(user);
+        crate::process::dir_album::get_album_id_for_dir(&dir)
+            .expect("personal home album id")
+            .to_string()
+    }
+
+    fn create_share_for(
+        client: &rocket::local::blocking::Client,
+        creator: &str,
+        creator_admin: bool,
+        album_id: &str,
+    ) -> String {
+        let resp = client
+            .post("/post/create_share")
+            .cookie(cookie(creator, creator_admin))
+            .header(rocket::http::ContentType::JSON)
+            .body(
+                serde_json::json!({
+                    "albumId": album_id,
+                    "description": "owned",
+                    "password": null,
+                    "showMetadata": true,
+                    "showDownload": true,
+                    "showUpload": false,
+                    "exp": 0
+                })
+                .to_string(),
+            )
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "create_share as {creator}");
+        let body: serde_json::Value = resp.into_json().expect("create_share json");
+        body["link"].as_str().expect("link").trim().to_string()
+    }
+
+    fn anon_prefetch(
+        client: &rocket::local::blocking::Client,
+        album_id: &str,
+        share_id: &str,
+    ) -> Status {
+        client
+            .post("/get/prefetch")
+            .header(rocket::http::Header::new(
+                "x-album-id",
+                album_id.to_string(),
+            ))
+            .header(rocket::http::Header::new(
+                "x-share-id",
+                share_id.to_string(),
+            ))
+            .header(rocket::http::ContentType::JSON)
+            .dispatch()
+            .status()
+    }
+
+    #[test]
+    fn delete_with_personal_photos_is_409_and_unchanged() {
+        let _g = lock();
+        let client = setup_image_home();
+        let users_home = enable_users_home();
+        seed("d-root", true, None);
+        seed("d-victim", false, None);
+        let dir = users_home.join("d-victim");
+        std::fs::create_dir_all(&dir).expect("user dir");
+        std::fs::write(dir.join("photo.jpg"), [0xff, 0xd8, 0xff, 0xe0]).expect("photo");
+
+        let (album_id, _) =
+            crate::tests::fixtures::authz::create_album(&client, "/dphotos/photo.jpg");
+        let share_id = create_share_for(&client, "d-victim", false, &album_id);
+
+        let status = del(&client, Some(cookie("d-root", true)), "d-victim");
+        assert_eq!(status, Status::Conflict);
+
+        // Everything intact.
+        assert!(
+            crate::auth::users::user_record("d-victim")
+                .expect("get")
+                .is_some()
+        );
+        assert!(dir.join("photo.jpg").exists());
+        assert_eq!(anon_prefetch(&client, &album_id, &share_id), Status::Ok);
+    }
+
+    #[test]
+    fn delete_without_photos_cascades_shares_and_prunes_album() {
+        let _g = lock();
+        let client = setup_image_home();
+        let users_home = enable_users_home();
+        seed("d-root", true, None);
+        seed("d-victim", false, None);
+        let personal_dir = users_home.join("d-victim");
+        std::fs::create_dir_all(&personal_dir).expect("user dir");
+
+        // share on the victim's own personal album
+        let personal_album = personal_album_id(&users_home, "d-victim");
+        let share_own = create_share_for(&client, "d-victim", false, &personal_album);
+
+        // share on a public album
+        let (public_album, _) =
+            crate::tests::fixtures::authz::create_album(&client, "/dpub/photo.jpg");
+        let share_pub = create_share_for(&client, "d-victim", false, &public_album);
+
+        let status = del(&client, Some(cookie("d-root", true)), "d-victim");
+        assert_eq!(status, Status::Ok);
+
+        assert!(
+            crate::auth::users::user_record("d-victim")
+                .expect("get")
+                .is_none()
+        );
+        assert_eq!(
+            anon_prefetch(&client, &personal_album, &share_own),
+            Status::NotFound
+        );
+        assert_eq!(
+            anon_prefetch(&client, &public_album, &share_pub),
+            Status::NotFound
+        );
+        assert!(
+            crate::process::dir_album::get_album_id_for_dir(&personal_dir).is_none(),
+            "personal album record should be pruned"
+        );
+    }
+
+    #[test]
+    fn delete_missing_confirmation_password_is_403() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        seed("d-victim", false, None);
+        let status = client
+            .delete("/delete/users/d-victim")
+            .cookie(cookie("d-root", true))
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Forbidden);
+        assert!(
+            crate::auth::users::user_record("d-victim")
+                .expect("get")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn delete_wrong_confirmation_password_is_403() {
+        let _g = lock();
+        let client = setup();
+        seed("d-root", true, None);
+        seed("d-victim", false, None);
+        let status = client
+            .delete("/delete/users/d-victim")
+            .cookie(cookie("d-root", true))
+            .header(rocket::http::Header::new(
+                "X-Picasu-Password",
+                "definitely-wrong",
+            ))
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Forbidden);
+        assert!(
+            crate::auth::users::user_record("d-victim")
+                .expect("get")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn delete_after_manual_file_removal_succeeds() {
+        let _g = lock();
+        let client = setup_image_home();
+        let users_home = enable_users_home();
+        seed("d-root", true, None);
+        seed("d-victim", false, None);
+        let dir = users_home.join("d-victim");
+        std::fs::create_dir_all(&dir).expect("user dir");
+        let photo = dir.join("photo.jpg");
+        std::fs::write(&photo, [0xff, 0xd8, 0xff, 0xe0]).expect("photo");
+        // simulate operator removal
+        std::fs::remove_file(&photo).expect("remove");
+        let status = del(&client, Some(cookie("d-root", true)), "d-victim");
+        assert_eq!(status, Status::Ok);
+        assert!(
+            crate::auth::users::user_record("d-victim")
+                .expect("get")
+                .is_none()
+        );
     }
 }
