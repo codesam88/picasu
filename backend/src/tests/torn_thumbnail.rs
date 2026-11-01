@@ -232,7 +232,7 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
 
     let hash =
         blake3_hasher(std::fs::File::open(&photo_abs).expect("open photo")).expect("hash photo");
-    let token = ClaimsAsset::new(hash, hash, 0, false).encode();
+    let token = ClaimsAsset::new(hash, hash, 0, false, "admin".to_string(), None).encode();
     let url = format!("/object/compressed/{}/{}.jpg", &hash[..2], hash);
 
     // ── Sanity: the endpoint must serve a complete JPEG before we race it ──
