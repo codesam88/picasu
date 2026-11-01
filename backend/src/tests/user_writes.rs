@@ -55,7 +55,7 @@ fn snapshot_rows(
 ) -> (i64, Vec<Value>) {
     let prefetch: Value = client
         .post(format!("/get/prefetch?locate={asset_id}"))
-        .cookie(cookie)
+        .cookie(cookie.clone())
         .header(ContentType::JSON)
         .dispatch()
         .into_json()
@@ -66,6 +66,7 @@ fn snapshot_rows(
     let token = prefetch["token"].as_str().expect("token");
     let rows: Vec<Value> = client
         .get(format!("/get/get-data?timestamp={ts}&start=0&end=50"))
+        .cookie(cookie)
         .header(Header::new("Authorization", format!("Bearer {token}")))
         .dispatch()
         .into_json()
@@ -416,7 +417,7 @@ fn personal_snapshot_rows(
 ) -> (i64, String, Vec<Value>) {
     let prefetch: Value = client
         .post("/get/prefetch?include_personal=true")
-        .cookie(user_cookie)
+        .cookie(user_cookie.clone())
         .header(ContentType::JSON)
         .dispatch()
         .into_json()
@@ -427,6 +428,7 @@ fn personal_snapshot_rows(
     let token = prefetch["token"].as_str().expect("token").to_string();
     let rows: Vec<Value> = client
         .get(format!("/get/get-data?timestamp={ts}&start=0&end=50"))
+        .cookie(user_cookie)
         .header(Header::new("Authorization", format!("Bearer {token}")))
         .dispatch()
         .into_json()
