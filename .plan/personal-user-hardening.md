@@ -41,7 +41,11 @@ universal. This task closes the gaps, with tests proving each one.
   rewritten; the creator keeps full control of their share.
 - F8 (MyAlbums shows personal albums only): DECIDED personal-only
   selector — MyAlbums lists only the caller's own personal roots
-  (user-decided 2026-11-01).
+  (user-decided 2026-11-01). DONE: prefetch derives a
+  server-side personal-only flag when the query combines
+  `include_personal` with a root-album selector and drops
+  public-tree roots (ownership still via row_visible); cache key
+  covers the flag; `af07b2d8`.
 - F7 (personal_albums_enabled switch): DECIDED — mirror IMAGE_HOME
   (user-decided, re-confirmed 2026-11-01): the switch is removed
   entirely (no gating anywhere); USERS_HOME defaults to
