@@ -144,7 +144,10 @@ def rows_for(token, timestamp):
     status, body = api(
         "GET",
         f"/get/get-data?timestamp={timestamp}&start=0&end=100",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Cookie": f"jwt={ADMIN_JWT}",
+        },
     )
     if status != 200 or not isinstance(body, list):
         raise SystemExit(f"get-data failed: {status} {body!r}")
@@ -234,6 +237,10 @@ def main() -> int:
 
         if check == auth_rules.TEST_CROSS_SCOPE:
             headers["Authorization"] = f"Bearer {token_a}"
+            # Present the owning share so the presenter check passes and the
+            # album-scope check (not the missing presenter) decides: 404.
+            headers["x-album-id"] = ALBUM_A
+            headers["x-share-id"] = SHARE_A
             params = {"asset_id": asset_b}
             headers["X-Check"] = check
         elif check == auth_rules.TEST_WRONG_CREDENTIAL:

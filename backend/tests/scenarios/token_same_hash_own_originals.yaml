@@ -27,7 +27,6 @@ when:
     calc:
       end_a: "${idx_a}+1"
   - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
-    auth: false
     headers:
       Authorization: "Bearer ${token_a}"
     capture:
@@ -42,7 +41,6 @@ when:
       ts_b: response.prefetch.timestamp
       token_b: response.token
   - call: GET /get/get-data?timestamp=${ts_b}&start=0&end=1
-    auth: false
     headers:
       Authorization: "Bearer ${token_b}"
     capture:

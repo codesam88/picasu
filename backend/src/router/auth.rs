@@ -136,6 +136,10 @@ pub struct ClaimsAsset {
     pub asset_id: ArrayString<64>,
     pub timestamp: i64,
     pub exp: u64,
+    /// Caller (user id) this asset token was minted for; empty for share-minted.
+    pub caller: String,
+    /// Share scope this asset token was minted under, if any.
+    pub resolved_share_opt: Option<ResolvedShare>,
     /// Type marker; always [`TokenType::Asset`].
     #[serde(rename = "typ")]
     pub typ: TokenType,
@@ -147,6 +151,8 @@ impl ClaimsAsset {
         asset_id: ArrayString<64>,
         timestamp: i64,
         allow_original: bool,
+        caller: String,
+        resolved_share_opt: Option<ResolvedShare>,
     ) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
@@ -157,6 +163,8 @@ impl ClaimsAsset {
             asset_id,
             timestamp,
             exp,
+            caller,
+            resolved_share_opt,
             typ: TokenType::Asset,
         }
     }
@@ -186,6 +194,7 @@ impl TokenKind for ClaimsAsset {
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ClaimsSnapshot {
+    pub caller: String,
     pub resolved_share_opt: Option<ResolvedShare>,
     pub timestamp: i64,
     pub exp: u64,
@@ -195,11 +204,12 @@ pub struct ClaimsSnapshot {
 }
 
 impl ClaimsSnapshot {
-    pub fn new(resolved_share_opt: Option<ResolvedShare>, timestamp: i64) -> Self {
+    pub fn new(caller: String, resolved_share_opt: Option<ResolvedShare>, timestamp: i64) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
 
         Self {
+            caller,
             resolved_share_opt,
             timestamp,
             exp,
@@ -263,6 +273,52 @@ mod tests {
     fn jwt_validation_uses_hs256_only() {
         assert_eq!(VALIDATION.algorithms, vec![Algorithm::HS256]);
         assert_eq!(VALIDATION_ALLOW_EXPIRED.algorithms, vec![Algorithm::HS256]);
+    }
+
+    #[test]
+    fn claims_snapshot_round_trip_preserves_caller() {
+        use super::{ClaimsSnapshot, TokenType, decode_typed};
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let claims = ClaimsSnapshot::new("alice".to_string(), None, 1_700_000_000);
+        let token = claims.encode();
+        let decoded: ClaimsSnapshot = decode_typed(&token, &VALIDATION).expect("decode round-trip");
+        assert_eq!(decoded.caller, "alice");
+        assert_eq!(decoded.timestamp, 1_700_000_000);
+        assert_eq!(decoded.typ, TokenType::Snapshot);
+    }
+
+    #[test]
+    fn claims_snapshot_without_caller_rejected() {
+        use crate::model::config::APP_CONFIG;
+        use jsonwebtoken::{EncodingKey, Header, encode};
+        use serde::Serialize;
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LegacyNoCaller {
+            resolved_share_opt: Option<()>,
+            timestamp: i64,
+            exp: u64,
+            #[serde(rename = "typ")]
+            typ: super::TokenType,
+        }
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let key = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .get_jwt_secret_key();
+        let legacy = LegacyNoCaller {
+            resolved_share_opt: None,
+            timestamp: 1_700_000_000,
+            exp: 9_999_999_999,
+            typ: super::TokenType::Snapshot,
+        };
+        let token = encode(&Header::default(), &legacy, &EncodingKey::from_secret(&key))
+            .expect("encode legacy snapshot without caller");
+        let result: anyhow::Result<super::ClaimsSnapshot> =
+            super::decode_typed(&token, &super::VALIDATION);
+        assert!(result.is_err(), "snapshot without caller must be rejected");
     }
 
     #[test]
@@ -1218,6 +1274,53 @@ impl<'r> FromRequest<'r> for GuardHash {
                 AppError::new(ErrorKind::Auth, "Hash does not match"),
             ));
         }
+
+        // Bind the presenter to the token's caller/share (B5).
+        let presenter = match resolve_presenter(req) {
+            Ok(p) => p,
+            Err(err) => {
+                let status = err.http_status();
+                return Outcome::Error((status, err));
+            }
+        };
+        match &presenter.role {
+            Role::User { id, .. } => {
+                if *id != claims.caller {
+                    warn!(
+                        "Asset caller mismatch: presenter {} != token caller {}",
+                        id, claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+            }
+            Role::Share(boxed) => {
+                if !claims.caller.is_empty() {
+                    warn!(
+                        "Asset caller mismatch: share presenter requires empty caller, got {}",
+                        claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+                let token_share = claims.resolved_share_opt.as_ref();
+                let same = token_share.is_some_and(|s| {
+                    s.album_id == boxed.album_id && s.share.url == boxed.share.url
+                });
+                if !same {
+                    warn!("Asset share mismatch: presenter and token share differ");
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset share mismatch"),
+                    ));
+                }
+            }
+        }
+
         Outcome::Success(GuardHash)
     }
 }
@@ -1285,6 +1388,53 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
                 AppError::new(ErrorKind::Auth, "Asset ID does not match"),
             ));
         }
+
+        // Bind the presenter to the token's caller/share (B5).
+        let presenter = match resolve_presenter(req) {
+            Ok(p) => p,
+            Err(err) => {
+                let status = err.http_status();
+                return Outcome::Error((status, err));
+            }
+        };
+        match &presenter.role {
+            Role::User { id, .. } => {
+                if *id != claims.caller {
+                    warn!(
+                        "Asset caller mismatch: presenter {} != token caller {}",
+                        id, claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+            }
+            Role::Share(boxed) => {
+                if !claims.caller.is_empty() {
+                    warn!(
+                        "Asset caller mismatch: share presenter requires empty caller, got {}",
+                        claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset caller mismatch"),
+                    ));
+                }
+                let token_share = claims.resolved_share_opt.as_ref();
+                let same = token_share.is_some_and(|s| {
+                    s.album_id == boxed.album_id && s.share.url == boxed.share.url
+                });
+                if !same {
+                    warn!("Asset share mismatch: presenter and token share differ");
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Asset share mismatch"),
+                    ));
+                }
+            }
+        }
+
         Outcome::Success(GuardHashOriginal)
     }
 }
@@ -1340,6 +1490,7 @@ pub struct RenewHashTokenReturn {
     )
 ]
 #[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
+#[allow(clippy::too_many_lines)]
 pub async fn renew_hash_token(
     auth: GuardRenewHash,
     token_request: Json<RenewHashToken>,
@@ -1369,10 +1520,78 @@ pub async fn renew_hash_token(
             ));
         }
 
+        // Claim-equality (defense in depth): the asset token's caller/share
+        // must match the presenter snapshot's caller/share.
+        if claims.caller != auth.claims.caller {
+            warn!(
+                "Renewal caller mismatch: asset {} != presenter {}",
+                claims.caller, auth.claims.caller
+            );
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Caller mismatch",
+            ));
+        }
+        let share_same = match (&claims.resolved_share_opt, &auth.claims.resolved_share_opt) {
+            (Some(a), Some(b)) => a.album_id == b.album_id && a.share.url == b.share.url,
+            (None, None) => true,
+            _ => false,
+        };
+        if !share_same {
+            warn!("Renewal share mismatch: asset and presenter share differ");
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Share mismatch",
+            ));
+        }
+
         // Re-validate the presenter's share (if any) from the DB, so a share
         // that has since been disabled or expired stops renewing capabilities.
         if let Some(resolved) = &auth.claims.resolved_share_opt {
             revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
+        }
+
+        // Presenter-scope check on the asset being renewed.
+        let renewed_abstract_data =
+            crate::storage::asset_store::lookup_abstract_data_by_asset_id(claims.asset_id.as_str())
+                .map_err(|err| {
+                    AppError::from_err(ErrorKind::Database, err)
+                        .context("Failed to look up asset for renewal scope check")
+                })?;
+        let Some(renewed_abstract_data) = renewed_abstract_data else {
+            warn!(
+                "Renewal scope check failed: asset record not found for {}",
+                claims.asset_id
+            );
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Asset not found",
+            ));
+        };
+        if let Some(resolved) = &auth.claims.resolved_share_opt {
+            if renewed_abstract_data.album() != Some(resolved.album_id) {
+                warn!(
+                    "Renewal scope mismatch: asset album {:?} != share album {}",
+                    renewed_abstract_data.album(),
+                    resolved.album_id
+                );
+                return Err(AppError::new(
+                    ErrorKind::Auth,
+                    "Unauthorized: Asset out of scope",
+                ));
+            }
+        } else if let Some(path) = renewed_abstract_data.visibility_path()
+            && !crate::storage::files::visible_to(&auth.claims.caller, &path)
+        {
+            warn!(
+                "Renewal scope mismatch: asset path {} not visible to {}",
+                path.display(),
+                auth.claims.caller
+            );
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Unauthorized: Asset out of scope",
+            ));
         }
 
         let new_hash_claims = ClaimsAsset::new(
@@ -1380,6 +1599,8 @@ pub async fn renew_hash_token(
             claims.asset_id,
             claims.timestamp,
             claims.allow_original,
+            claims.caller.clone(),
+            claims.resolved_share_opt.clone(),
         );
         let new_hash_token = new_hash_claims.encode();
 
@@ -1445,6 +1666,32 @@ impl<'r> FromRequest<'r> for GuardMutate {
     }
 }
 
+/// Resolve the presenter for a request using the same helper chain as
+/// [`GuardPresenter`]: share headers → share query → JWT cookie (any live
+/// user). Returns the resolved [`ClaimsSession`] or an [`AppError`] on
+/// failure, so callers can map it to the appropriate status.
+pub fn resolve_presenter(req: &Request<'_>) -> Result<ClaimsSession, AppError> {
+    // headers
+    match try_resolve_share_from_headers(req) {
+        Ok(Some(claims)) => return Ok(claims),
+        Ok(None) => {}
+        Err(err) => return Err(err),
+    }
+
+    // query
+    match try_resolve_share_from_query(req) {
+        Ok(Some(claims)) => return Ok(claims),
+        Ok(None) => {}
+        Err(err) => return Err(err),
+    }
+
+    // Fall back to JWT cookie authentication (any live user, admin or not)
+    match try_jwt_cookie_user(req, &VALIDATION) {
+        Ok(claims) => Ok(claims),
+        Err(err) => Err(AppError::from_err(ErrorKind::Auth, err).context("Authentication error")),
+    }
+}
+
 pub struct GuardPresenter {
     pub claims: ClaimsSession,
 }
@@ -1489,6 +1736,10 @@ impl<'r> FromRequest<'r> for GuardPresenter {
 
 pub struct GuardSnapshot {
     pub claims: ClaimsSnapshot,
+    /// Resolved presenter (share headers → share query → JWT cookie) bound to
+    /// this snapshot at request time. Binding the presenter to the token's
+    /// `caller` is what prevents cross-user snapshot reuse.
+    pub presenter: ClaimsSession,
 }
 
 #[rocket::async_trait]
@@ -1544,7 +1795,55 @@ impl<'r> FromRequest<'r> for GuardSnapshot {
             ));
         }
 
-        Outcome::Success(GuardSnapshot { claims })
+        // Resolve the presenter with the same helper chain as GuardPresenter.
+        let presenter = match resolve_presenter(req) {
+            Ok(p) => p,
+            Err(err) => {
+                let status = err.http_status();
+                return Outcome::Error((status, err));
+            }
+        };
+
+        // Bind the presenter to the token's caller.
+        match &presenter.role {
+            Role::User { id, .. } => {
+                if *id != claims.caller {
+                    warn!(
+                        "Snapshot caller mismatch: presenter {} != token caller {}",
+                        id, claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Snapshot caller mismatch"),
+                    ));
+                }
+            }
+            Role::Share(boxed) => {
+                if !claims.caller.is_empty() {
+                    warn!(
+                        "Snapshot caller mismatch: share presenter requires empty caller, got {}",
+                        claims.caller
+                    );
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Snapshot caller mismatch"),
+                    ));
+                }
+                let token_share = claims.resolved_share_opt.as_ref();
+                let same = token_share.is_some_and(|s| {
+                    s.album_id == boxed.album_id && s.share.url == boxed.share.url
+                });
+                if !same {
+                    warn!("Snapshot share mismatch: presenter and token share differ");
+                    return Outcome::Error((
+                        Status::Unauthorized,
+                        AppError::new(ErrorKind::Auth, "Snapshot share mismatch"),
+                    ));
+                }
+            }
+        }
+
+        Outcome::Success(GuardSnapshot { claims, presenter })
     }
 }
 
@@ -1570,11 +1869,12 @@ pub struct RenewTimestampTokenReturn {
 /// with its original snapshot `timestamp` and resolved share intact, expiring
 /// 300 seconds later.
 ///
-/// A share presenter may only renew its own share's snapshot; the embedded
-/// share is also re-resolved from the DB before re-issue, so a share that has
-/// since been disabled or expired stops yielding refreshed tokens. An admin
-/// presenter may renew any snapshot, but the embedded share is still
-/// re-validated.
+/// A presenter may only renew a snapshot minted for themselves: a share
+/// presenter renews only its own share's snapshot (share-pair equality), and
+/// a user presenter renews only snapshots whose `caller` equals their user id.
+/// Admins are not exempt. The embedded share is also re-resolved from the DB
+/// before re-issue, so a share that has since been disabled or expired stops
+/// yielding refreshed tokens.
 ///
 /// Corner cases: Re-renewing keeps addressing the same snapshot, so only the
 /// expiry changes and the underlying data is not re-read.
@@ -1615,7 +1915,6 @@ pub async fn renew_timestamp_token(
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
     let presenter = auth?;
-    let presenter_share = presenter.claims.get_share();
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
         let claims: ClaimsSnapshot =
@@ -1630,19 +1929,37 @@ pub async fn renew_timestamp_token(
                 }
             };
 
-        // Bind the submitted token's share to the presenter's share: a share
-        // presenter may only renew its own snapshot. Admin presenters may
-        // renew any, but the embedded share is still re-validated below.
-        if let Some(presenter) = &presenter_share {
-            let same = claims.resolved_share_opt.as_ref().is_some_and(|s| {
-                s.album_id == presenter.album_id && s.share.url == presenter.share.url
-            });
-            if !same {
-                warn!("Renewal share mismatch: presenter and token share differ");
-                return Err(AppError::new(
-                    ErrorKind::Auth,
-                    "Unauthorized: Share mismatch",
-                ));
+        // Bind the submitted token's identity to the presenter's identity: a
+        // presenter may only renew a snapshot minted for themselves. For a
+        // share presenter this also requires share-pair equality; for a user
+        // presenter the token's `caller` must equal the presenter's user id.
+        // Admins are not exempt: they may only renew their own snapshots.
+        match &presenter.claims.role {
+            Role::User { id, .. } => {
+                if claims.caller != *id {
+                    warn!(
+                        "Renewal caller mismatch: presenter {} != token caller {}",
+                        id, claims.caller
+                    );
+                    return Err(AppError::new(
+                        ErrorKind::Auth,
+                        "Unauthorized: Caller mismatch",
+                    ));
+                }
+            }
+            Role::Share(presenter_share) => {
+                let same = claims.caller.is_empty()
+                    && claims.resolved_share_opt.as_ref().is_some_and(|s| {
+                        s.album_id == presenter_share.album_id
+                            && s.share.url == presenter_share.share.url
+                    });
+                if !same {
+                    warn!("Renewal share mismatch: presenter and token share differ");
+                    return Err(AppError::new(
+                        ErrorKind::Auth,
+                        "Unauthorized: Share mismatch",
+                    ));
+                }
             }
         }
 
@@ -1652,7 +1969,8 @@ pub async fn renew_timestamp_token(
             revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
         }
 
-        let new_claims = ClaimsSnapshot::new(claims.resolved_share_opt, claims.timestamp);
+        let new_claims =
+            ClaimsSnapshot::new(claims.caller, claims.resolved_share_opt, claims.timestamp);
         let new_token = new_claims.encode();
 
         Ok(Json(RenewTimestampTokenReturn { token: new_token }))

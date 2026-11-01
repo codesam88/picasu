@@ -528,4 +528,37 @@ mod tests {
         }
         assert_eq!(snapshot(), before, "rejected knobs must change nothing");
     }
+
+    #[test]
+    fn put_admin_config_ignores_unknown_personal_albums_enabled() {
+        let _g = lock();
+        let client = setup();
+        seed("pac-pa2", true, None);
+        // Ensure starting false.
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .write()
+            .expect("lock")
+            .personal_albums_enabled = false;
+        let status = client
+            .put("/put/admin/config")
+            .cookie(cookie("pac-pa2", true))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "personalAlbumsEnabled": true }).to_string())
+            .dispatch()
+            .status();
+        // PartialUpdateConfigRequest has no `personalAlbumsEnabled` field and no
+        // `deny_unknown_fields`, so serde ignores the unknown key (200).
+        assert_eq!(status, Status::Ok);
+        let cfg = crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .read()
+            .expect("lock");
+        assert!(
+            !cfg.personal_albums_enabled,
+            "unknown field must not change the switch"
+        );
+    }
 }

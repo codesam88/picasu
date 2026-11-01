@@ -65,8 +65,9 @@ pub async fn create_dir_album(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<CreateDirAlbumData>,
 ) -> AppResult<String> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     let data = json_data.into_inner();
     let parent_album_id = data.parent_album_id;
@@ -78,6 +79,10 @@ pub async fn create_dir_album(
 
     let parent_dir = get_dir_path_for_album(parent_album_id)
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Parent album not found"))?;
+
+    // Write gate: parent must be writable (refuses users_root and other users).
+    crate::storage::files::write_gate(&caller, None, Some(&parent_dir))
+        .map_err(|_| AppError::new(ErrorKind::PermissionDenied, "Parent album not writable"))?;
 
     let new_dir = parent_dir.join(&name);
 

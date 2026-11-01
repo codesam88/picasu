@@ -9,7 +9,8 @@ use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::TagInfo;
-use crate::storage::db::open_tree_snapshot_table;
+use crate::storage::db::{TREE, open_tree_snapshot_table};
+use crate::storage::files::write_gate;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -72,16 +73,28 @@ pub async fn edit_tag(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<EditTagsData>,
 ) -> AppResult<Json<Vec<TagInfo>>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
-    let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>, AppError> {
+    if json_data.timestamp < 0 {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid timestamp"));
+    }
+
+    let vec_caller = caller.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
             .map_err(SnapshotReadError::into_app_error)?;
 
         let mut edited: Vec<EditedItem> = Vec::new();
 
         for &index in &json_data.index_array {
+            if index > usize::MAX / 2 {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Index out of bounds",
+                ));
+            }
             let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
                 (
                     ErrorKind::Database,
@@ -95,6 +108,11 @@ pub async fn edit_tag(
             if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
             {
+                if let Some(path) = abstract_data.visibility_path() {
+                    write_gate(&vec_caller, Some(&path), None).map_err(|_| {
+                        AppError::new(ErrorKind::PermissionDenied, "Asset not writable")
+                    })?;
+                }
                 // Apply tag additions and removals (only regular tags)
                 let tags = abstract_data.tag_mut();
                 for tag in &json_data.add_tags_array {
@@ -122,8 +140,9 @@ pub async fn edit_tag(
                 .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))
         })?;
 
-        // Return TagInfo
-        crate::storage::cache::TreeSnapshot::read_tags().map_err(AppError::from)
+        // Caller-filtered census is read after the in-memory tree rebuild
+        // below, so the just-written tags are included.
+        Ok(())
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -137,5 +156,5 @@ pub async fn edit_tag(
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
 
-    Ok(Json(vec_tags_info))
+    Ok(Json(TREE.read_tags(&caller)))
 }

@@ -1,7 +1,7 @@
 <template>
   <PageTemplate>
     <template #content>
-      <GalleryMain :key="albumId" :basic-string="basicString" />
+      <GalleryMain :key="albumId" :basic-string="basicString" :include-personal="true" />
     </template>
   </PageTemplate>
 </template>

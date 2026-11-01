@@ -14,9 +14,7 @@ use serde_json::{Value, json};
 
 use crate::router::auth::{ClaimsSession, Role};
 use crate::tests::bootstrap::{cookie, decode, lock, login, seed, setup_image_home};
-use crate::tests::fixtures::authz::{
-    create_album, create_share, get_data_asset_token, get_data_rows, prefetch_as_share,
-};
+use crate::tests::fixtures::authz::{create_album, create_share, prefetch_as_share};
 use crate::tests::fixtures::test_password;
 
 fn role_of(claims: &ClaimsSession) -> (String, bool) {
@@ -171,13 +169,34 @@ fn guest_share_prefetch_get_data_and_serving() {
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album_id, &share_id, Some(&asset_id));
 
     // Anonymous get-data with the snapshot bearer token.
-    let rows = get_data_rows(&client, ts, &snapshot_token, 1);
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .header(Header::new("x-album-id", album_id.clone()))
+        .header(Header::new("x-share-id", share_id.clone()))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {snapshot_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "get-data");
+    let rows: Vec<Value> = resp.into_json().expect("get-data json");
     assert!(!rows.is_empty(), "share get-data must return rows");
 
     // Anonymous thumbnail serving: the compressed file is keyed by content
     // hash, so read it out of the asset token's `hash` claim and serve that
     // exact path with share headers + the per-asset token.
-    let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .header(Header::new("x-album-id", album_id.clone()))
+        .header(Header::new("x-share-id", share_id.clone()))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {snapshot_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "get-data");
+    let rows2: Vec<Value> = resp.into_json().expect("get-data json");
+    let asset_token = rows2[0]["token"].as_str().expect("row token").to_string();
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     let asset_claims: crate::router::auth::ClaimsAsset =
         crate::router::auth::decode_typed(&asset_token, &validation).expect("decode asset token");
@@ -295,7 +314,16 @@ fn viewer_reads_gallery_without_share_headers() {
     );
     let ts = body["prefetch"]["timestamp"].as_i64().expect("timestamp");
     let snapshot_token = body["token"].as_str().expect("token").to_string();
-    let rows = get_data_rows(&client, ts, &snapshot_token, 1);
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .cookie(viewer.clone())
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {snapshot_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "get-data");
+    let rows: Vec<Value> = resp.into_json().expect("get-data json");
     assert!(!rows.is_empty(), "viewer prefetch must yield rows");
 
     // Tag list: 200 array.

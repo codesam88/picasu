@@ -21,6 +21,10 @@ pub struct ConfigResponse {
     pub normalize_upload_filenames: bool,
     pub validate_upload_content: bool,
     pub use_client_timestamp_info: bool,
+    /// Whether per-user personal areas are enabled on this server.
+    /// Boolean only — the host path of the personal-users root is never
+    /// served (host-only setting), mirroring `uploadFolder` being relative.
+    pub personal_albums_enabled: bool,
 }
 
 /// Serve the client-visible server configuration.
@@ -28,7 +32,9 @@ pub struct ConfigResponse {
 /// Returns the values a client needs to drive the other operations:
 /// `uploadFolder` (relative to the image library root), `maxUploadSize`,
 /// `readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,
-/// `validateUploadContent` and `useClientTimestampInfo`.
+/// `validateUploadContent`, `useClientTimestampInfo` and
+/// `personalAlbumsEnabled` (boolean only — whether per-user personal areas
+/// are enabled; the host path of the personal-users root is never served).
 ///
 /// Corner cases: the host image path is never served here — it is a
 /// host-only setting (env/file) surfaced to admins through
@@ -69,6 +75,7 @@ pub fn get_config_handler(auth: GuardResult<GuardPresenter>) -> AppResult<Json<C
         normalize_upload_filenames: config.normalize_upload_filenames,
         validate_upload_content: config.validate_upload_content,
         use_client_timestamp_info: config.use_client_timestamp_info,
+        personal_albums_enabled: config.personal_albums_enabled && config.users_home.is_some(),
     });
     Ok(Json(response))
 }
@@ -117,6 +124,7 @@ pub fn export_config_handler(auth: GuardResult<GuardAdmin>) -> AppResult<(Conten
 #[cfg(test)]
 mod tests {
     use rocket::http::{ContentType, Status};
+    use serde_json::Value;
 
     use crate::tests::bootstrap::{cookie, lock, seed, setup};
 
@@ -156,5 +164,52 @@ mod tests {
             body.contains("uploadFolder"),
             "export must still carry the other fields, got: {body}"
         );
+    }
+
+    /// `GET /get/config` reports `personalAlbumsEnabled` as the effective
+    /// flag: true only when the runtime switch is on AND `users_home` is set.
+    #[test]
+    fn config_reports_personal_albums_enabled() {
+        let _g = lock();
+        let client = setup();
+        seed("cfg-pa", true, None);
+
+        let set_state = |switch: bool, home: bool| {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.personal_albums_enabled = switch;
+            c.users_home = if home {
+                Some(std::path::PathBuf::from("/tmp/picasu-users-home"))
+            } else {
+                None
+            };
+        };
+
+        let check = |expected: bool| {
+            let admin = cookie("cfg-pa", true);
+            let resp = client.get("/get/config").cookie(admin).dispatch();
+            assert_eq!(resp.status(), Status::Ok);
+            let body: Value = resp.into_json().expect("config json");
+            assert_eq!(
+                body.get("personalAlbumsEnabled"),
+                Some(&Value::Bool(expected)),
+                "expected {expected}, got: {body}"
+            );
+        };
+
+        set_state(false, false);
+        check(false);
+        set_state(false, true);
+        check(false);
+        set_state(true, false);
+        check(false);
+        set_state(true, true);
+        check(true);
+
+        // Restore defaults.
+        set_state(false, false);
     }
 }

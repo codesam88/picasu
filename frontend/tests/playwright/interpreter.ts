@@ -7,6 +7,12 @@ import { UiWhenItem, UiAssertItem, UiStep } from './types'
 import { GivenContext } from './executeGiven'
 import { CoverageTracer, assertionTarget } from './tracer'
 
+// Tiered action timeouts (ms). The E2E harness sets PICASU_WEAK_PWHASH=1, so
+// logins are fast; treat these as safety margins for local UI operations.
+// Values chosen from measured green runs; adjust only with stated evidence.
+export const SMALL_TIMEOUT_MS = 4000
+export const LARGE_TIMEOUT_MS = 8000
+
 /** Ping the backend health endpoint and throw a descriptive error if it is unreachable. */
 async function assertBackendAlive(backendUrl: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -38,8 +44,12 @@ async function resolveLocator(
 ): Promise<Locator> {
   const resolved = interpolate(roleLabel, vars)
   const slashIdx = resolved.indexOf('/')
+  if (slashIdx === -1) {
+    const role = resolved as any
+    return page.getByRole(role)
+  }
   const prefix = resolved.slice(0, slashIdx)
-  const name = slashIdx === -1 ? undefined : resolved.slice(slashIdx + 1) || undefined
+  const name = resolved.slice(slashIdx + 1) || undefined
   // testid/ is not an ARIA role — route to getByTestId instead.
   if (prefix === 'testid' && name) {
     return page.getByTestId(name)
@@ -73,7 +83,7 @@ export async function executeWhen(
   })
   for (const step of when) {
     if ('navigate' in step) {
-      await page.goto(interpolate(step.navigate, ctx.vars))
+      await page.goto(interpolate(step.navigate, ctx.vars), { timeout: LARGE_TIMEOUT_MS })
     } else if ('click' in step) {
       await (await resolveLocator(page, step.click, ctx.vars)).click()
     } else if ('fill' in step) {
@@ -106,7 +116,7 @@ export async function executeWhen(
       await tile.locator('#click-handler').dispatchEvent('click')
       // Wait for Vue Router navigation to complete.
       try {
-        await page.waitForURL((url) => url.href !== oldUrl, { timeout: 5000 })
+        await page.waitForURL((url) => url.href !== oldUrl, { timeout: LARGE_TIMEOUT_MS })
       } catch {
         // Navigation may not change the URL (e.g. same-page click). Continue.
       }
@@ -130,7 +140,7 @@ export async function executeWhen(
       for (let i = 0; i < 3; i++) {
         await page.locator('.desktop-small-image').first().click()
         try {
-          await page.waitForURL(/\/view\//, { timeout: 3000 })
+          await page.waitForURL(/\/view\//, { timeout: LARGE_TIMEOUT_MS })
           break
         } catch {
           if (i < 2) {
@@ -202,13 +212,13 @@ export async function executeWhen(
       }
     } else if ('login' in step) {
       const spec = step['login']
-      await page.goto('/login')
+      await page.goto('/login', { timeout: LARGE_TIMEOUT_MS })
       await page.getByPlaceholder('User ID').fill(interpolate(spec.user, ctx.vars))
       await page
         .getByPlaceholder('Password', { exact: true })
         .fill(interpolate(spec.password, ctx.vars))
       await page.getByRole('button', { name: 'Login' }).click()
-      await expect(page).toHaveURL(/\/timeline/)
+      await expect(page).toHaveURL(/\/timeline/, { timeout: LARGE_TIMEOUT_MS })
     } else if ('index' in step) {
       const album = interpolate(step['index'], ctx.vars)
       const start = await page.request.post(`${ctx.backendUrl}/post/index/album`, {
@@ -232,6 +242,20 @@ export async function executeWhen(
       if (!settled) throw new Error('Index step did not settle within 60s')
     } else if ('reload' in step) {
       await page.reload()
+    } else if ('capture' in step) {
+      const spec = step['capture']
+      const url = page.url()
+      let value = ''
+      try {
+        const u = new URL(url)
+        const segments = u.pathname.split('/').filter(Boolean)
+        if (segments.length > 0) {
+          value = segments[segments.length - 1]
+        }
+      } catch {
+        value = ''
+      }
+      ctx.vars[spec.id_as] = value
     } else if ('click.menu' in step) {
       const text = interpolate(step['click.menu'], ctx.vars)
       // Overlay menus (v-menu/v-dialog teleport to body) expose no stable
@@ -241,7 +265,7 @@ export async function executeWhen(
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload, click.menu`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload, capture, click.menu`
       )
     }
   }
@@ -275,6 +299,10 @@ async function clickTrigger(
     await page.getByTestId(trigger.slice('testid/'.length)).click()
     return
   }
+  if (trigger.startsWith('text/')) {
+    await page.getByText(trigger.slice('text/'.length), { exact: false }).first().click()
+    return
+  }
   await (await resolveLocator(page, trigger, vars)).click()
 }
 
@@ -288,7 +316,9 @@ export async function executeAssert(
     const target = assertionTarget(assertion)
     if ('ui.visible' in assertion) {
       tracer?.recordUI('ui.visible', target)
-      await expect(await resolveLocator(page, assertion['ui.visible'], ctx.vars)).toBeVisible()
+      await expect(await resolveLocator(page, assertion['ui.visible'], ctx.vars)).toBeVisible({
+        timeout: SMALL_TIMEOUT_MS
+      })
     } else if ('ui.hidden' in assertion) {
       tracer?.recordUI('ui.hidden', target)
       await expect(await resolveLocator(page, assertion['ui.hidden'], ctx.vars)).not.toBeVisible()
@@ -305,21 +335,25 @@ export async function executeAssert(
       )
     } else if ('ui.route' in assertion) {
       tracer?.recordUI('ui.route', target)
-      await expect(page).toHaveURL(new RegExp(interpolate(assertion['ui.route'], ctx.vars)))
+      await expect(page).toHaveURL(new RegExp(interpolate(assertion['ui.route'], ctx.vars)), {
+        timeout: LARGE_TIMEOUT_MS
+      })
     } else if ('ui.modal' in assertion) {
       tracer?.recordUI('ui.modal', target)
       const dialog = page.getByRole('dialog')
       if (assertion['ui.modal'] === 'open') {
-        await expect(dialog).toBeVisible()
+        await expect(dialog).toBeVisible({ timeout: SMALL_TIMEOUT_MS })
       } else {
-        await expect(dialog).not.toBeVisible()
+        await expect(dialog).not.toBeVisible({ timeout: SMALL_TIMEOUT_MS })
       }
     } else if ('ui.toast' in assertion) {
       tracer?.recordUI('ui.toast', target)
       const toastSpec = assertion['ui.toast']
       const snackbar = page.getByRole('status').or(page.locator('.v-snackbar'))
-      await expect(snackbar.first()).toBeVisible({ timeout: 15000 })
-      await expect(snackbar.first()).toContainText(interpolate(toastSpec.contains, ctx.vars))
+      await expect(snackbar.first()).toBeVisible({ timeout: LARGE_TIMEOUT_MS })
+      await expect(snackbar.first()).toContainText(interpolate(toastSpec.contains, ctx.vars), {
+        timeout: SMALL_TIMEOUT_MS
+      })
     } else if ('ui.aria_snapshot' in assertion) {
       tracer?.recordUI('ui.aria_snapshot', target)
       await expect(page.locator('body')).toMatchAriaSnapshot({
@@ -459,12 +493,12 @@ export async function executeAssert(
       }
       const readStatuses = () =>
         (ctx.httpStatuses ?? []).filter((r) => r.pathname === targetPath).map((r) => r.status)
-      await expect.poll(() => readStatuses(), { timeout: 15000 }).toEqual(spec.equals)
+      await expect.poll(() => readStatuses(), { timeout: LARGE_TIMEOUT_MS }).toEqual(spec.equals)
     } else if ('ui.text_visible' in assertion) {
       tracer?.recordUI('ui.text_visible', target)
       await expect(
         page.getByText(interpolate(assertion['ui.text_visible'], ctx.vars)).first()
-      ).toBeVisible()
+      ).toBeVisible({ timeout: SMALL_TIMEOUT_MS })
     } else if ('ui.text_hidden' in assertion) {
       tracer?.recordUI('ui.text_hidden', target)
       await expect(
@@ -476,7 +510,8 @@ export async function executeAssert(
     } else if ('ui.sidebar_visible' in assertion) {
       tracer?.recordUI('ui.sidebar_visible', target)
       await expect(page.locator('#abstractData-col')).toContainText(
-        interpolate(assertion['ui.sidebar_visible'], ctx.vars)
+        interpolate(assertion['ui.sidebar_visible'], ctx.vars),
+        { timeout: SMALL_TIMEOUT_MS }
       )
     } else if ('ui.chip_visible' in assertion) {
       tracer?.recordUI('ui.chip_visible', target)
@@ -485,7 +520,7 @@ export async function executeAssert(
           .locator('[id="album-chip"], [id="filename-chip"]')
           .filter({ hasText: interpolate(assertion['ui.chip_visible'], ctx.vars) })
           .first()
-      ).toBeVisible()
+      ).toBeVisible({ timeout: SMALL_TIMEOUT_MS })
     } else if ('ui.input_value' in assertion) {
       tracer?.recordUI('ui.input_value', target)
       await expect(await resolveLocator(page, assertion['ui.input_value'], ctx.vars)).toHaveValue(

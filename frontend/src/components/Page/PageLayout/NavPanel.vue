@@ -4,6 +4,13 @@
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
         <v-list-item slim prepend-icon="mdi-home" title="Home" :to="{ name: 'timeline' }" />
         <v-list-item slim prepend-icon="mdi-image-album" title="Albums" to="/albums" />
+        <v-list-item
+          v-if="showMyAlbums"
+          slim
+          prepend-icon="mdi-account-circle"
+          title="My Albums"
+          to="/my-albums"
+        />
         <v-list-item slim prepend-icon="mdi-tag-multiple" title="Tags" to="/tags" />
         <v-list-item slim prepend-icon="mdi-share-variant" title="Shares" to="/shares" />
       </v-list>
@@ -27,13 +34,25 @@
 import { computed, inject, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useInitializedStore } from '@/store/initializedStore'
+import { useConfigStore } from '@/store/configStore'
+import { onMounted } from 'vue'
 import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
+import { usePersonalAlbumsEnabled } from '@/script/utils/personalAlbumsEnabled'
 
 const showNavPanel = inject<Ref<boolean>>('showNavPanel')
 const route = useRoute()
 const initializedStore = useInitializedStore('mainId')
 const currentUser = useCurrentUser()
+const configStore = useConfigStore('mainId')
 const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
+
+const showMyAlbums = usePersonalAlbumsEnabled()
+
+onMounted(() => {
+  if (configStore.config === undefined) {
+    void configStore.fetchConfig()
+  }
+})
 </script>
 
 <style scoped>

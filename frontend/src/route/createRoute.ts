@@ -7,7 +7,16 @@ import 'vue-router'
 import ViewPage from '@/components/View/ViewPage.vue'
 
 type BaseName =
-  'timeline' | 'trashed' | 'albums' | 'videos' | 'album' | 'tags' | 'login' | 'share' | 'shares'
+  | 'timeline'
+  | 'trashed'
+  | 'albums'
+  | 'my-albums'
+  | 'videos'
+  | 'album'
+  | 'tags'
+  | 'login'
+  | 'share'
+  | 'shares'
 
 // ======================================
 // Define a Helper Function to Create Routes

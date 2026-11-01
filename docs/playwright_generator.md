@@ -121,6 +121,12 @@ are consolidated to the shared run directory:
 | `WORKER_NUM` | Deterministic worker index (port = `30000 + N*2`, path = `{TEST_DIR}/playwright-{N}`) |
 | `CI`         | When set, enables Playwright retries (`retries: 2`) and `forbidOnly`                  |
 
+### Timeouts and budgets
+
+- **Global cap:** `playwright.config.ts` sets a symmetric `globalTimeout` (20 min) as a hang-backstop only. Real enforcement is per-test: the 120s config default and tighter computed budgets for DSL scenarios. Timeout failures carry the guidance below.
+- **Per-scenario budget:** `interpreter.spec.ts` sets `testInfo.setTimeout(...)` per scenario using a formula scaled by login count (small allowance — the harness sets `PICASU_WEAK_PWHASH=1` so logins are fast) and step count, with a hard ceiling well below the global timeout. The formula and rationale are documented at the call site.
+- **Split, don't extend:** if a scenario times out, do **not** raise timeouts. Split into smaller per-user/per-area flows, shrink fixtures, or fix the stuck step. Local HTTP is fast — only KDF logins and small-fixture indexing are known-slow; a timeout indicates a stuck step or an oversized scenario. Timeout failures include guidance pointing to this rule.
+
 ## Components
 
 ### Scenario DSL (`scenarios/*.yaml`)

@@ -183,6 +183,9 @@ export async function startBackend(
     PICASU_DATA_HOME: paths.DATA_DIR,
     PICASU_CONFIG_HOME: paths.CONFIG_DIR,
     PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist'),
+    // Enable per-user personal areas in E2E so personal-home albums are
+    // provisioned; kept separate from IMAGE_HOME per S0.
+    PICASU_USERS_HOME: path.join(paths.DATA_DIR, 'users'),
     // E2E scenarios enroll the first admin through the bootstrap route
     // `POST /post/users/bootstrap`, which only responds while the bootstrap
     // window is open.

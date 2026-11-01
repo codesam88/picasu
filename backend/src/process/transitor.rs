@@ -223,6 +223,7 @@ pub fn cover_content_hash_from_data(abstract_data: &AbstractData) -> Option<Arra
     Some(record.content_hash.unwrap_or(record.asset_id))
 }
 
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
 pub fn abstract_data_to_timestamp_return(
     mut abstract_data: AbstractData,
     timestamp: i64,
@@ -230,6 +231,8 @@ pub fn abstract_data_to_timestamp_return(
     show_metadata: bool,
     asset_id: ArrayString<64>,
     cover_content_hash: Option<ArrayString<64>>,
+    caller: String,
+    resolved_share_opt: Option<crate::model::album::ResolvedShare>,
 ) -> DataBaseTimestampReturn {
     let result = DataBaseTimestampReturn::with_asset_id(
         abstract_data.clone(),
@@ -238,6 +241,8 @@ pub fn abstract_data_to_timestamp_return(
         show_download,
         asset_id,
         cover_content_hash,
+        caller.clone(),
+        resolved_share_opt.clone(),
     );
     clear_abstract_data_metadata(&mut abstract_data, show_metadata);
     DataBaseTimestampReturn {

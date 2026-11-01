@@ -8,6 +8,7 @@ use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
+use crate::storage::files::write_gate;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -69,9 +70,13 @@ pub async fn edit_rating(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<EditRatingData>,
 ) -> AppResult<Json<()>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
+    if json_data.timestamp < 0 {
+        return Err(AppError::new(ErrorKind::InvalidInput, "Invalid timestamp"));
+    }
     if let Some(r) = json_data.rating
         && r > 5
     {
@@ -88,6 +93,12 @@ pub async fn edit_rating(
         let mut edited: Vec<EditedItem> = Vec::new();
 
         for &index in &json_data.index_array {
+            if index > usize::MAX / 2 {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Index out of bounds",
+                ));
+            }
             let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
                 (
                     ErrorKind::Database,
@@ -98,6 +109,11 @@ pub async fn edit_rating(
             if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
             {
+                if let Some(path) = abstract_data.visibility_path() {
+                    write_gate(&caller, Some(&path), None).map_err(|_| {
+                        AppError::new(ErrorKind::PermissionDenied, "Asset not writable")
+                    })?;
+                }
                 abstract_data.set_rating(json_data.rating);
                 edited.push(EditedItem {
                     asset_id,

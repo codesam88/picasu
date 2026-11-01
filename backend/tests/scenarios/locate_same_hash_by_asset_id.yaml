@@ -38,7 +38,6 @@ when:
       - response.status: 200
   # Verify locate found it.
   - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
-    auth: false
     headers:
       Authorization: "Bearer ${token_a}"
   # Discover album B's copy asset_id via Path filter.
@@ -48,7 +47,6 @@ when:
       ts_b: response.prefetch.timestamp
       token_b: response.token
   - call: GET /get/get-data?timestamp=${ts_b}&start=0&end=1
-    auth: false
     headers:
       Authorization: "Bearer ${token_b}"
     capture:
@@ -65,7 +63,6 @@ when:
       - response.status: 200
   # Verify the located item is in album_b (not album_a).
   - call: GET /get/get-data?timestamp=${ts_b2}&start=${idx_b}&end=${end_b}
-    auth: false
     headers:
       Authorization: "Bearer ${token_b2}"
 then:

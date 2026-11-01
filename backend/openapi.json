@@ -150,8 +150,22 @@
               "null"
             ]
           },
+          "owner": {
+            "description": "Owner user id for personal albums; `None` for global albums.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "parentAlbumId": {
             "description": "Album ID of the direct parent directory album, or `None` for top-level\ndir albums and all user-created albums.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "root": {
+            "description": "Root namespace of the album: `\"global\"` for the public tree or\n`\"personal\"` for a per-user area. `None` when the album lives outside\nboth configured roots.",
             "type": [
               "string",
               "null"
@@ -286,6 +300,10 @@
             "description": "NFC-normalize uploaded filenames so macOS NFD names collapse onto\ntheir composed form. Optional (unlike the always-on sanitization tiers).",
             "type": "boolean"
           },
+          "personalAlbumsEnabled": {
+            "description": "Enable per-user personal albums. Host-only switch (env/file/restart);\neffective only when `users_home` is also configured. Default off.",
+            "type": "boolean"
+          },
           "port": {
             "format": "int32",
             "minimum": 0,
@@ -308,6 +326,12 @@
           "useClientTimestampInfo": {
             "description": "Trust the `lastModified` the upload client sends with each file. When\nenabled, the value is used as the stored file modification time but\nclamped to `[1970-01-01, now + 24h]` so a broken client clock cannot\npush an undated file (e.g. a screenshot) into year 1970 or the distant\nfuture. Disabled by default: the server uses `now()` instead of the\nprovided value, since a client's clock or timezone cannot be relied on.\nOnly affects files without embedded metadata: photos with a\n`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.\nSee `backend/src/router/post/post_upload.rs`\n(`resolve_upload_timestamp`).",
             "type": "boolean"
+          },
+          "usersHome": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "validateUploadContent": {
             "description": "Cross-check uploaded content against the type its declared\n`Content-Type` implies. The declared extension yields the expected\nformat from the supported-format table; the content is then identified\nand the two are compared. See `backend/src/process/format.rs`.\n\nContent that cannot be identified at all is always rejected, with or\nwithout this setting: there is no way to tell whether such bytes are\nwhat the extension claims. This setting governs only the mismatch case,\nwhere the content *is* identified but is not the type the extension\nclaims — for example a video uploaded with an image content type, or an\nimage named with the wrong extension. Enabled (the default) rejects\nthose with `400 InvalidInput`; disabling it stores the file anyway, which\nmisdescribes it and leaves the indexer trusting a wrong extension. Only\ndisable this to tolerate mislabeled files.",
@@ -441,6 +465,10 @@
           "normalizeUploadFilenames": {
             "type": "boolean"
           },
+          "personalAlbumsEnabled": {
+            "description": "Whether per-user personal areas are enabled on this server.\nBoolean only — the host path of the personal-users root is never\nserved (host-only setting), mirroring `uploadFolder` being relative.",
+            "type": "boolean"
+          },
           "readOnlyMode": {
             "type": "boolean"
           },
@@ -461,7 +489,8 @@
           "fsNotifyWatcher",
           "normalizeUploadFilenames",
           "validateUploadContent",
-          "useClientTimestampInfo"
+          "useClientTimestampInfo",
+          "personalAlbumsEnabled"
         ],
         "type": "object"
       },
@@ -780,6 +809,13 @@
           "clear": {
             "description": "When true, drop all asset tables (and clear the in-memory tree and the\ndirectory-album cache) before indexing, so the scan rebuilds from an\nempty state instead of merging into stale rows.",
             "type": "boolean"
+          },
+          "root": {
+            "description": "Optional scan root selector: `\"global\"`, `\"personal\"`, or\n`\"auto\"` (default) preserving the image-then-users probe order.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2050,7 +2086,7 @@
     },
     "/get/config": {
       "get": {
-        "description": "Returns the values a client needs to drive the other operations:\n`uploadFolder` (relative to the image library root), `maxUploadSize`,\n`readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,\n`validateUploadContent` and `useClientTimestampInfo`.\n\nCorner cases: the host image path is never served here — it is a\nhost-only setting (env/file) surfaced to admins through\n`GET /get/admin/config`. The signing key is never exposed in any form.\n`uploadFolder` is relative and visible to every admitted caller, so the\nresponse carries no per-tier fields at all and is identical for every\ncredential that passes the gate.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
+        "description": "Returns the values a client needs to drive the other operations:\n`uploadFolder` (relative to the image library root), `maxUploadSize`,\n`readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,\n`validateUploadContent`, `useClientTimestampInfo` and\n`personalAlbumsEnabled` (boolean only — whether per-user personal areas\nare enabled; the host path of the personal-users root is never served).\n\nCorner cases: the host image path is never served here — it is a\nhost-only setting (env/file) surfaced to admins through\n`GET /get/admin/config`. The signing key is never exposed in any form.\n`uploadFolder` is relative and visible to every admitted caller, so the\nresponse carries no per-tier fields at all and is identical for every\ncredential that passes the gate.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
         "operationId": "get_config_handler",
         "responses": {
           "200": {
@@ -2825,6 +2861,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Opt-in flag including the caller's own personal items in the timeline",
+            "in": "query",
+            "name": "include_personal",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "requestBody": {
@@ -3046,6 +3091,50 @@
           }
         },
         "summary": "Serve the SPA shell where the sign-in page is rendered.",
+        "tags": [
+          "pages"
+        ]
+      }
+    },
+    "/my-albums": {
+      "get": {
+        "description": "Returns the shared `index.html` shell for the `my-albums` client route. The\nalbum list itself comes from the albums API route, which reads the album\nindex, so this route performs no lookup of its own.",
+        "operationId": "my_albums",
+        "responses": {
+          "200": {
+            "description": "SPA page (HTML)"
+          }
+        },
+        "summary": "Serve the SPA shell for the my-albums page.",
+        "tags": [
+          "pages"
+        ]
+      }
+    },
+    "/my-albums/view/{path}": {
+      "get": {
+        "description": "Returns `index.html` for `/my-albums/view/<path..>` at any depth. The\ncaptured path is bound and discarded; the client router resolves the view\n(`view/:assetId`) from the URL, so the server performs no lookup.",
+        "operationId": "my_albums_view",
+        "parameters": [
+          {
+            "description": "View path below /my-albums/view/; served the SPA shell and resolved by the client router",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SPA page (HTML)"
+          },
+          "422": {
+            "description": "Unprocessable entity"
+          }
+        },
+        "summary": "Serve the SPA shell for a my-albums view path resolved by the client.",
         "tags": [
           "pages"
         ]
@@ -3408,6 +3497,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Album not found"
           },
@@ -3431,15 +3523,15 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "admin",
+          "admin": "any",
           "credentials": [
             "session"
           ],
           "effects": [
-            "manage"
+            "write"
           ],
           "guards": [
-            "GuardAdmin",
+            "GuardUser",
             "GuardMutate"
           ],
           "invariants": [
@@ -3725,7 +3817,7 @@
     },
     "/post/renew-timestamp-token": {
       "post": {
-        "description": "Accepts share credentials (`x-album-id` + `x-share-id` headers or\n`albumId` + `shareId` query parameters) or an admin JWT cookie. The\nsubmitted token is decoded with expiration checking disabled and reissued\nwith its original snapshot `timestamp` and resolved share intact, expiring\n300 seconds later.\n\nA share presenter may only renew its own share's snapshot; the embedded\nshare is also re-resolved from the DB before re-issue, so a share that has\nsince been disabled or expired stops yielding refreshed tokens. An admin\npresenter may renew any snapshot, but the embedded share is still\nre-validated.\n\nCorner cases: Re-renewing keeps addressing the same snapshot, so only the\nexpiry changes and the underlying data is not re-read.\n\nErrors: 400 only one of the share credential header or query pair given —\n401 missing or invalid credentials, a token whose share differs from the\npresenter's, an expired or removed embedded share, or an unverifiable token\nsignature — 500 internal failure.",
+        "description": "Accepts share credentials (`x-album-id` + `x-share-id` headers or\n`albumId` + `shareId` query parameters) or an admin JWT cookie. The\nsubmitted token is decoded with expiration checking disabled and reissued\nwith its original snapshot `timestamp` and resolved share intact, expiring\n300 seconds later.\n\nA presenter may only renew a snapshot minted for themselves: a share\npresenter renews only its own share's snapshot (share-pair equality), and\na user presenter renews only snapshots whose `caller` equals their user id.\nAdmins are not exempt. The embedded share is also re-resolved from the DB\nbefore re-issue, so a share that has since been disabled or expired stops\nyielding refreshed tokens.\n\nCorner cases: Re-renewing keeps addressing the same snapshot, so only the\nexpiry changes and the underlying data is not re-read.\n\nErrors: 400 only one of the share credential header or query pair given —\n401 missing or invalid credentials, a token whose share differs from the\npresenter's, an expired or removed embedded share, or an unverifiable token\nsignature — 500 internal failure.",
         "operationId": "renew_timestamp_token",
         "requestBody": {
           "content": {
@@ -4184,6 +4276,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Not found"
           },
@@ -4207,15 +4302,15 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "admin",
+          "admin": "any",
           "credentials": [
             "session"
           ],
           "effects": [
-            "manage"
+            "write"
           ],
           "guards": [
-            "GuardAdmin",
+            "GuardUser",
             "GuardMutate"
           ],
           "invariants": [
@@ -4386,6 +4481,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "404": {
             "description": "Not found"
           },
@@ -4409,15 +4507,15 @@
           "albums"
         ],
         "x-picasu-auth": {
-          "admin": "admin",
+          "admin": "any",
           "credentials": [
             "session"
           ],
           "effects": [
-            "manage"
+            "write"
           ],
           "guards": [
-            "GuardAdmin",
+            "GuardUser",
             "GuardMutate"
           ],
           "invariants": [

@@ -194,6 +194,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     "/upload?<presigned_album_id_opt>&<on_conflict>&<auto_rename>",
     data = "<form>"
 )]
+#[allow(clippy::too_many_lines)]
 pub async fn upload(
     auth: GuardResult<GuardUser>,
     mutation: GuardResult<GuardMutate>,
@@ -202,8 +203,9 @@ pub async fn upload(
     auto_rename: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     let mut inner_form = match form {
         Ok(f) => f.into_inner(),
@@ -235,6 +237,10 @@ pub async fn upload(
     }
 
     let target_dir = resolve_upload_target_dir(album_id)?;
+
+    // Write gate: target directory must be writable by caller.
+    crate::storage::files::write_gate(&caller, None, Some(&target_dir))
+        .map_err(|_| AppError::new(ErrorKind::PermissionDenied, "Upload target not writable"))?;
 
     let policy = read_upload_policy();
 
@@ -281,20 +287,21 @@ pub async fn upload(
         else {
             continue; // skip: dest already exists, nothing to index
         };
-        let image_root = get_resolved_image_home()
-            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured"))?;
-        let relative_src = Path::new(&final_path)
-            .strip_prefix(&image_root)
-            .map_err(|_| {
-                AppError::new(ErrorKind::Internal, "Uploaded file path outside IMAGE_HOME")
-            })?;
-        if let Err(index_error) = crate::workflow::index_image(relative_src).await {
+        let image_root = get_resolved_image_home();
+        let relative_src = if let Some(root) = image_root.as_ref() {
+            Path::new(&final_path)
+                .strip_prefix(root)
+                .map_or_else(|_| PathBuf::from(&final_path), Path::to_path_buf)
+        } else {
+            PathBuf::from(&final_path)
+        };
+        if let Err(index_error) = crate::workflow::index_image(Path::new(&final_path)).await {
             // A mid-pipeline failure can occur after a partial commit: the
             // uploaded file is only safely removable when no index record
             // references it. Only a content-decode failure guarantees that,
             // so check before deleting — otherwise the file would be removed
             // while a committed index record still points at it.
-            if record_exists_for(Path::new(&final_path), relative_src) {
+            if record_exists_for(Path::new(&final_path), &relative_src) {
                 error!("Uploaded file was indexed but the pipeline failed: {index_error}");
                 return Err(AppError::new(
                     ErrorKind::Internal,

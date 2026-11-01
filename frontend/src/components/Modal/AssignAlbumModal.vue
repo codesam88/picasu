@@ -152,6 +152,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
 import { useMessageStore } from '@/store/messageStore'
@@ -167,6 +168,7 @@ const isolationId = getIsolationIdByRoute(route)
 
 const modalStore = useModalStore('mainId')
 const albumStore = useAlbumStore('mainId')
+const currentUserId = computed(() => useSessionStore('mainId').profile?.userId ?? null)
 const collectionStore = useCollectionStore(isolationId)
 const dataStore = useDataStore(isolationId)
 const messageStore = useMessageStore('mainId')
@@ -274,9 +276,19 @@ function buildFlatTree(albums: Map<string, AlbumInfo>, query: string): FlatNode[
   return result
 }
 
+const visibleAlbums = computed<Map<string, AlbumInfo>>(() => {
+  const out = new Map<string, AlbumInfo>()
+  for (const [id, info] of albumStore.albums) {
+    // Defensive: never offer another user's personal album as a move target.
+    if (info.owner != null && info.owner !== currentUserId.value) continue
+    out.set(id, info)
+  }
+  return out
+})
+
 const flatTree = computed<FlatNode[]>(() => {
   if (!albumStore.fetched) return []
-  return buildFlatTree(albumStore.albums, search.value)
+  return buildFlatTree(visibleAlbums.value, search.value)
 })
 
 const visibleCount = computed(() => flatTree.value.filter((n) => n.visible).length)

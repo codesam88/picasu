@@ -26,7 +26,6 @@ when:
       as: $unknown_token
       timestamp: "${unknown_ts}"
   - call: GET /get/get-scroll-bar?timestamp=${unknown_ts}
-    auth: false
     headers:
       Authorization: "Bearer ${unknown_token}"
 then:

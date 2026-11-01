@@ -163,6 +163,7 @@ const baseTitleMap: Record<string, string> = {
   timeline: 'Timeline',
   trashed: 'Trash',
   albums: 'Albums',
+  'my-albums': 'My Albums',
   album: 'Album',
   tags: 'Tags',
   shares: 'Shares',

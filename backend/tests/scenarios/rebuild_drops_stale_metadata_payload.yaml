@@ -53,7 +53,6 @@ when:
       token0: response.token
       ts0: response.prefetch.timestamp
   - call: GET /get/metadata/${indexed_asset}?timestamp=${ts0}
-    auth: false
     headers:
       Authorization: "Bearer ${token0}"
     then:
@@ -90,7 +89,6 @@ when:
       token1: response.token
       ts1: response.prefetch.timestamp
   - call: GET /get/metadata/${rebuilt_asset}?timestamp=${ts1}
-    auth: false
     headers:
       Authorization: "Bearer ${token1}"
 then:

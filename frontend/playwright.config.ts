@@ -13,10 +13,16 @@ export default defineConfig({
   testMatch: ['interpreter.spec.ts', '*.test.ts'],
   fullyParallel: true,
   forbidOnly: isCI,
-  // Debug builds pay ~10s per PBKDF2 verify, so KDF-bound scenarios
-  // (notably UI login flows) need minutes, not seconds. Timeouts only
-  // bite on genuine failures.
+  // Default per-test timeout. The E2E harness sets PICASU_WEAK_PWHASH=1,
+  // so KDF logins are fast; the yaml-DSL scenarios use a tighter computed
+  // budget instead (see interpreter.spec.ts). This default only binds
+  // non-DSL test files. Timeouts only bite on genuine failures.
   timeout: 120_000,
+  // Overall cap as a hang-backstop only; per-test timeouts do the real
+  // enforcement (120s config default, tighter computed budgets for DSL
+  // scenarios). Sized generously so a full parallel suite plus CI retries
+  // never legitimately trips it; a run that hits this is stuck, not slow.
+  globalTimeout: 20 * 60 * 1000,
   retries: isCI ? 2 : 0,
   workers: undefined,
   outputDir: path.join(TEST_DIR, 'artifacts'),
@@ -26,8 +32,10 @@ export default defineConfig({
     ['html', { outputFolder: path.join(TEST_DIR, 'html-report'), open: 'never' }]
   ],
 
-  // KDF-bound actions (notably UI login: ~10s PBKDF2 verify in debug
-  // builds) legitimately exceed fast defaults; timeouts only bite on
+  // Fallback expect timeout where the interpreter passes no explicit
+  // tier. Most assertions carry SMALL/LARGE_TIMEOUT_MS explicitly; this
+  // only binds the remainder. The harness sets PICASU_WEAK_PWHASH=1, so
+  // even KDF-bound actions stay far below it; timeouts only bite on
   // genuine failures, so parity here costs passing runs nothing.
   expect: {
     timeout: 15_000

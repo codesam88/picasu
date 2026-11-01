@@ -74,7 +74,6 @@ when:
   # strips `response.`, not `response.json.` — so `response.description` here
   # reads the same field the final `response.json.description` assertion does.
   - call: GET /get/metadata/${first_asset}?timestamp=${ts1}
-    auth: false
     headers:
       Authorization: "Bearer ${token1}"
     capture:
@@ -96,7 +95,6 @@ when:
       token2: response.token
       ts2: response.prefetch.timestamp
   - call: GET /get/metadata/${second_asset}?timestamp=${ts2}
-    auth: false
     headers:
       Authorization: "Bearer ${token2}"
 then:

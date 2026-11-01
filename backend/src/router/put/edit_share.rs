@@ -3,11 +3,13 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
 use crate::openapi_components::Unauthorized;
+use crate::process::dir_album::get_dir_path_for_album;
 use crate::router::GuardResult;
-use crate::router::auth::GuardAdmin;
 use crate::router::auth::GuardMutate;
+use crate::router::auth::GuardUser;
 use crate::router::put::users_password::caller_identity;
 use crate::storage::db::TREE;
+use crate::storage::files::visible_to;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::{router::AppResult, storage::db::METADATA_TABLE};
@@ -44,11 +46,11 @@ pub struct EditShare {
         request_body = EditShare,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAdmin", "GuardMutate"],
+            "guards": ["GuardUser", "GuardMutate"],
             "credentials": ["session"],
-            "admin": "admin",
+            "admin": "any",
             "shareScope": "n-a",
-            "effects": ["manage"],
+            "effects": ["write"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
@@ -57,6 +59,7 @@ pub struct EditShare {
             (status = 404, description = "Not found"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -64,14 +67,23 @@ pub struct EditShare {
 ]
 #[put("/put/edit_share", format = "json", data = "<json_data>")]
 pub async fn edit_share(
-    auth: GuardResult<GuardAdmin>,
+    auth: GuardResult<GuardUser>,
     mutation: GuardResult<GuardMutate>,
     json_data: Json<EditShare>,
 ) -> AppResult<()> {
-    let GuardAdmin { claims } = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
-    let (creator, _) = caller_identity(&claims);
+    let (caller, _) = caller_identity(&claims);
+    // Ownership check on the target album before any write.
+    let album_id_for_check = json_data.album_id;
+    let album_dir = get_dir_path_for_album(album_id_for_check)
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?;
+    if !visible_to(&caller, &album_dir) {
+        return Err(AppError::new(ErrorKind::NotFound, "Album not found"));
+    }
+    let caller_for_task = caller.clone();
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        let json_data = json_data;
         let txn = TREE
             .in_disk
             .begin_write()
@@ -90,6 +102,19 @@ pub async fn edit_share(
                 });
 
             if let Some(mut album) = album_opt {
+                // Ownership of an existing share: only its creator may edit it.
+                let existing_created_by = album
+                    .share_list
+                    .get(&json_data.share.url)
+                    .map(|s| s.created_by.clone());
+                if let Some(cb) = existing_created_by
+                    && cb != caller_for_task
+                {
+                    return Err(AppError::new(
+                        ErrorKind::PermissionDenied,
+                        "Share not owned by caller",
+                    ));
+                }
                 // Password contract: absent or `null` keeps the stored
                 // secret, the empty string clears it, any other string
                 // replaces it. Album reads no longer disclose the value, so
@@ -111,10 +136,10 @@ pub async fn edit_share(
                 // Creator is server-assigned, never taken from the client:
                 // keep the stored creator across the full-object replace,
                 // falling back to the editor when the entry is absent.
-                share.created_by = album
-                    .share_list
-                    .get(&share.url)
-                    .map_or_else(|| creator.clone(), |existing| existing.created_by.clone());
+                share.created_by = album.share_list.get(&share.url).map_or_else(
+                    || caller_for_task.clone(),
+                    |existing| existing.created_by.clone(),
+                );
                 album.share_list.insert(share.url, share);
                 metadata_table
                     .insert(json_data.album_id.as_str(), MetadataRecord::Album(album))
@@ -162,11 +187,11 @@ pub struct DeleteShare {
         request_body = DeleteShare,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAdmin", "GuardMutate"],
+            "guards": ["GuardUser", "GuardMutate"],
             "credentials": ["session"],
-            "admin": "admin",
+            "admin": "any",
             "shareScope": "n-a",
-            "effects": ["manage"],
+            "effects": ["write"],
             "invariants": ["AUTH-11", "AUTH-12"]
         }))),
         responses(
@@ -175,6 +200,7 @@ pub struct DeleteShare {
             (status = 404, description = "Not found"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -182,13 +208,23 @@ pub struct DeleteShare {
 ]
 #[put("/put/delete_share", format = "json", data = "<json_data>")]
 pub async fn delete_share(
-    auth: GuardResult<GuardAdmin>,
+    auth: GuardResult<GuardUser>,
     mutation: GuardResult<GuardMutate>,
     json_data: Json<DeleteShare>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = caller_identity(&claims);
+    // Ownership check on the target album before any write / existence handling.
+    let album_id_for_check = json_data.album_id;
+    let album_dir = get_dir_path_for_album(album_id_for_check)
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?;
+    if !visible_to(&caller, &album_dir) {
+        return Err(AppError::new(ErrorKind::NotFound, "Album not found"));
+    }
+    let caller_for_task = caller.clone();
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        let json_data = json_data;
         let txn = TREE
             .in_disk
             .begin_write()
@@ -207,6 +243,16 @@ pub async fn delete_share(
                 });
 
             if let Some(mut album) = album_opt {
+                // Ownership of an existing share: only its creator may delete it.
+                // Missing shares stay a silent no-op.
+                if let Some(existing) = album.share_list.get(&json_data.share_id)
+                    && existing.created_by != caller_for_task
+                {
+                    return Err(AppError::new(
+                        ErrorKind::PermissionDenied,
+                        "Share not owned by caller",
+                    ));
+                }
                 album.share_list.remove(&json_data.share_id);
                 metadata_table
                     .insert(json_data.album_id.as_str(), MetadataRecord::Album(album))

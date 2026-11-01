@@ -15,6 +15,7 @@ use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use arrayvec::ArrayString;
+use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -120,8 +121,9 @@ pub async fn assign_album(
     mutation: GuardResult<GuardMutate>,
     json_data: Json<AssignAlbumData>,
 ) -> AppResult<Json<AssignResult>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
     let _ = mutation?;
+    let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
 
     let data = json_data.into_inner();
     let asset_id = data.asset_id;
@@ -142,8 +144,16 @@ pub async fn assign_album(
         ));
     }
 
+    // Write gate: destination album must be writable by the caller.
+    crate::storage::files::write_gate(&caller, None, Some(&album_dir)).map_err(|_| {
+        AppError::new(
+            ErrorKind::PermissionDenied,
+            "Destination album not writable",
+        )
+    })?;
+
     let outcome = tokio::task::spawn_blocking(move || {
-        move_asset_into_album(asset_id, album_id, &album_dir, on_conflict)
+        move_asset_into_album(asset_id, album_id, &album_dir, on_conflict, &caller)
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -178,6 +188,7 @@ fn move_asset_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    caller: &str,
 ) -> Result<AssignOutcome, AppError> {
     use crate::storage::asset_store;
 
@@ -188,7 +199,7 @@ fn move_asset_into_album(
 
     // Albums move as directory trees.
     if record.kind == crate::model::asset::AssetKind::Album {
-        return move_album_into_album(asset_id, album_id, album_dir, on_conflict);
+        return move_album_into_album(asset_id, album_id, album_dir, on_conflict, caller);
     }
 
     let source_path = PathBuf::from(&record.path);
@@ -199,6 +210,15 @@ fn move_asset_into_album(
         ));
     }
 
+    // Write gate: source must be writable by caller and not cross-owner vs dest.
+    crate::storage::files::write_gate(caller, Some(&source_path), Some(album_dir)).map_err(
+        |_| {
+            AppError::new(
+                ErrorKind::PermissionDenied,
+                "Source or destination not writable",
+            )
+        },
+    )?;
     let file_name = source_path
         .file_name()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "File has no name"))?;
@@ -273,6 +293,7 @@ fn move_album_into_album(
     target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
+    caller: &str,
 ) -> Result<AssignOutcome, AppError> {
     // The album directory path is identity — read it from AssetRecord.
     let record = crate::storage::asset_store::get_asset_by_id(&album_id)
@@ -296,6 +317,41 @@ fn move_album_into_album(
         ));
     }
 
+    // Refuse moves carrying foreign-owned shares before any filesystem mutation.
+    {
+        let read_txn = crate::storage::db::TREE
+            .in_disk
+            .begin_read()
+            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
+        let metadata_table = read_txn
+            .open_table(crate::storage::db::METADATA_TABLE)
+            .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+        if let Some(guard) = metadata_table
+            .get(album_id.as_str())
+            .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+            && let crate::model::metadata_record::MetadataRecord::Album(album_payload) =
+                guard.value()
+        {
+            for share in album_payload.share_list.values() {
+                if share.created_by != caller {
+                    return Err(AppError::new(
+                        ErrorKind::PermissionDenied,
+                        "Album has shares owned by other users",
+                    ));
+                }
+            }
+        }
+    }
+
+    // Write gate: source and destination must be writable by caller.
+    crate::storage::files::write_gate(caller, Some(&source_dir), Some(target_dir)).map_err(
+        |_| {
+            AppError::new(
+                ErrorKind::PermissionDenied,
+                "Source or destination not writable",
+            )
+        },
+    )?;
     let dir_name = source_dir
         .file_name()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album directory has no name"))?;

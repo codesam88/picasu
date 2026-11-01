@@ -280,6 +280,19 @@ describe('albumInfoSchema share entries', () => {
     expect(parsed.shareList.get('share-url')?.hasPassword).toBe(true)
   })
 
+  test('parses root and owner markers', () => {
+    const parsed = albumInfoSchema.parse({
+      albumId: 'album-2',
+      albumName: 'Personal',
+      shareList: {},
+      dirPath: 'users/u',
+      root: 'personal',
+      owner: 'alice'
+    })
+    expect(parsed.root).toBe('personal')
+    expect(parsed.owner).toBe('alice')
+  })
+
   test('rejects a share that only carries the legacy password field', () => {
     const legacy = {
       url: 'share-url',

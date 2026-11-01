@@ -20,6 +20,8 @@
               <v-row class="ma-0">
                 <StorageAndSync
                   :image-path="imagePath"
+                  :users-home-path="usersHomePath"
+                  :personal-albums-enabled="personalAlbumsEnabled"
                   v-model:upload-folder="localSettings.uploadFolder"
                   v-model:max-upload-size="localSettings.maxUploadSize"
                   v-model:fs-notify-watcher="localSettings.fsNotifyWatcher"
@@ -120,6 +122,8 @@ const loading = ref(false)
 const activeTab = ref('server')
 const allowRegistration = ref(false)
 const allowRegistrationSaving = ref(false)
+const personalAlbumsEnabled = ref(false)
+const usersHomePath = ref<string | null>(null)
 const exporting = ref(false)
 
 // Local State
@@ -148,9 +152,19 @@ const loadAdminConfig = async () => {
   if (field) {
     allowRegistration.value = field.value === true
   }
+  const paField = entries.find((e) => e.name === 'personal_albums_enabled')
+  if (paField) {
+    personalAlbumsEnabled.value = paField.value === true
+  }
   const imageHome = entries.find((e) => e.name === 'image_home')
   if (typeof imageHome?.value === 'string') {
     imagePath.value = imageHome.value
+  }
+  const usersHome = entries.find((e) => e.name === 'users_home')
+  if (typeof usersHome?.value === 'string') {
+    usersHomePath.value = usersHome.value
+  } else {
+    usersHomePath.value = null
   }
 }
 

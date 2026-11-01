@@ -53,7 +53,7 @@ pub struct TagInfo {
 }
 
 impl Tree {
-    pub fn read_tags(&'static self) -> Vec<TagInfo> {
+    pub fn read_tags(&'static self, caller: &str) -> Vec<TagInfo> {
         // ... (unchanged)
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
@@ -64,6 +64,14 @@ impl Tree {
             .par_bridge()
             .for_each(|database_timestamp| {
                 let abstract_data = &database_timestamp.abstract_data;
+
+                // Visibility: never count personal items owned by another user,
+                // nor the users root.
+                if let Some(path) = abstract_data.visibility_path()
+                    && !crate::storage::files::visible_to(caller, &path)
+                {
+                    return;
+                }
 
                 // Count regular tags only
                 for tag in abstract_data.tag() {

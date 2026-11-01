@@ -1,0 +1,73 @@
+name: Personal albums are isolated per user
+covers:
+  ui:
+    - route:/albums
+    - route:/my-albums
+    - route:/shares
+server:
+  bootstrap_admin: false
+given:
+  - cli_user:
+      user_id: admin
+      password: e2e_test_pwd
+      admin: true
+  - cli_user:
+      user_id: viewer
+      password: e2e_test_pwd
+  - dir_album: public-album
+  - photo: public-album/child.jpg
+  - index: '/'
+steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.text_visible: Public Album
+      - ui.text_hidden: Viewer
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.text_visible: Admin
+      - ui.text_hidden: Viewer
+  - when:
+      - navigate: /
+    assert:
+      - ui.visible: main/
+  - when:
+      - navigate: /shares
+    assert:
+      - ui.route: /shares
+
+  # Non-admin (viewer) sees only its own personal album plus the public one.
+  - when:
+      - navigate: /timeline
+      - click.icon: mdi-account-circle
+      - click.menu: Log out
+    assert:
+      - ui.route: /login
+  - when:
+      - login:
+          user: viewer
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.text_visible: Public Album
+      - ui.text_hidden: Viewer
+      - ui.text_hidden: Admin
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.text_visible: Viewer
+      - ui.text_hidden: Admin
+  - when:
+      - navigate: /shares
+    assert:
+      - ui.route: /shares

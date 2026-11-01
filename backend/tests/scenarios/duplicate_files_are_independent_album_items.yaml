@@ -35,7 +35,6 @@ when:
       ts: response.prefetch.timestamp
       end: response.prefetch.dataLength
   - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
   - call: POST /get/prefetch

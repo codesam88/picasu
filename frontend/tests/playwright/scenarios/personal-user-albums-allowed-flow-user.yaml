@@ -1,0 +1,308 @@
+name: Personal albums allowed flows for user
+covers:
+  ui:
+    - route:/albums
+    - route:/my-albums
+server:
+  bootstrap_admin: false
+given:
+  - cli_user:
+      user_id: admin
+      password: e2e_test_pwd
+      admin: true
+  - cli_user:
+      user_id: alice
+      password: e2e_test_pwd
+  - dir_album: public-album
+  - photo: public-album/seed.jpg
+  - source_file: admin-personal.jpg
+    format: jpeg
+    width: 64
+    height: 32
+    id_as: $admin_personal_src
+  - source_file: admin-public.jpg
+    format: jpeg
+    width: 32
+    height: 32
+    id_as: $admin_public_src
+  - source_file: alice-personal.jpg
+    format: jpeg
+    width: 48
+    height: 24
+    id_as: $alice_personal_src
+  - source_file: alice-public.jpg
+    format: jpeg
+    width: 24
+    height: 24
+    id_as: $alice_public_src
+  - index: '/'
+
+steps:
+  - when:
+      - login:
+          user: alice
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.text_visible: Alice
+      - ui.text_hidden: Admin
+
+  # Upload into own personal album
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${alice_personal_src}']
+    assert:
+      - ui.modal: open
+      - ui.text_visible: alice-personal.jpg
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Uploads
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Assign Album
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: option/Alice
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Alice
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # Edit own personal photo metadata (tags)
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.sidebar_visible: alice-personal
+
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Edit Tags
+    assert:
+      - ui.modal: open
+
+  - when:
+      - fill: combobox/Tags
+        value: alicetag
+      - keyboard: Tab
+      - click: button/OK
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully edited tags
+      - ui.sidebar_visible: alicetag
+
+  # Upload into a public album
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${alice_public_src}']
+    assert:
+      - ui.modal: open
+      - ui.text_visible: alice-public.jpg
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Uploads
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Assign Album
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: option/Public Album
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Public Album
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 2
+
+  # Move own personal <-> public both directions
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Alice
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Assign Album
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: option/Public Album
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: Public Album
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Alice
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 0
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Public Album
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Assign Album
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: option/Alice
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+
+  - when:
+      - navigate: /my-albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: Alice
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1

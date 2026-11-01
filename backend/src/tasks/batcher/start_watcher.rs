@@ -3,6 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::model::media::{MediaOutcome, classify_media_file, is_valid_media_file};
 use crate::storage::db::TREE;
 use crate::storage::files::get_resolved_image_home;
+use crate::storage::files::get_resolved_users_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -66,9 +67,13 @@ fn start_watcher_task_internal() -> Result<()> {
         return Ok(());
     }
 
-    let (fs_notify_watcher_enabled, raw_image_path) = {
+    let (fs_notify_watcher_enabled, raw_image_path, raw_users_path) = {
         let cfg = crate::model::config::with_config(crate::model::config::AppConfig::clone);
-        (cfg.fs_notify_watcher, cfg.image_home.clone())
+        (
+            cfg.fs_notify_watcher,
+            cfg.image_home.clone(),
+            cfg.users_home.clone(),
+        )
     };
 
     if !fs_notify_watcher_enabled {
@@ -95,6 +100,15 @@ fn start_watcher_task_internal() -> Result<()> {
         info!("Watching path {}", image_path.display());
     } else {
         error!("Path not found, skipped: {}", image_path.display());
+    }
+
+    if let Some(users_path) = raw_users_path
+        && users_path.exists()
+    {
+        watcher
+            .watch(&users_path, RecursiveMode::Recursive)
+            .map_err(|e| anyhow::anyhow!("Failed to watch path {}: {e}", users_path.display()))?;
+        info!("Watching path {}", users_path.display());
     }
 
     // Store it globally to keep it alive.
@@ -129,14 +143,13 @@ fn submit_to_debounce_pool(path: PathBuf) {
 
         let watcher_still_enabled = crate::model::config::with_config(|c| c.fs_notify_watcher);
 
-        if should_run
-            && watcher_still_enabled
-            && let Some(image_root) = get_resolved_image_home()
-            && let Ok(relative) = path.strip_prefix(&image_root)
-        {
+        let under_root = get_resolved_image_home().is_some_and(|r| path.starts_with(&r))
+            || get_resolved_users_home().is_some_and(|r| path.starts_with(&r));
+
+        if should_run && watcher_still_enabled && under_root {
             match classify_media_file(&path) {
                 MediaOutcome::Index => {
-                    if let Err(e) = crate::workflow::index_image(relative).await {
+                    if let Err(e) = crate::workflow::index_image(&path).await {
                         handle_error(e);
                     }
                 }

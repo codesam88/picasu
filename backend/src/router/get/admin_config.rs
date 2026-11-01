@@ -55,6 +55,7 @@ fn field_value(config: &crate::model::config::AppConfig, name: &str) -> serde_js
         "port" => serde_json::to_value(config.port).unwrap_or_default(),
         "data_home" => serde_json::to_value(&config.data_home).unwrap_or_default(),
         "image_home" => serde_json::to_value(&config.image_home).unwrap_or_default(),
+        "users_home" => serde_json::to_value(&config.users_home).unwrap_or_default(),
         "upload_folder" => serde_json::to_value(&config.upload_folder).unwrap_or_default(),
         "max_upload_size" => serde_json::to_value(&config.max_upload_size).unwrap_or_default(),
         "read_only_mode" => serde_json::to_value(config.read_only_mode).unwrap_or_default(),
@@ -69,6 +70,9 @@ fn field_value(config: &crate::model::config::AppConfig, name: &str) -> serde_js
             serde_json::to_value(config.use_client_timestamp_info).unwrap_or_default()
         }
         "allow_registration" => serde_json::to_value(config.allow_registration).unwrap_or_default(),
+        "personal_albums_enabled" => {
+            serde_json::to_value(config.personal_albums_enabled).unwrap_or_default()
+        }
         "trivial_passwords" => serde_json::to_value(config.trivial_passwords).unwrap_or_default(),
         "bootstrap_admin" => serde_json::to_value(config.bootstrap_admin).unwrap_or_default(),
         "trust_proxy_forwarded_for" => {
@@ -282,6 +286,7 @@ mod tests {
         let config = AppConfig {
             data_home: Some(PathBuf::from("/tmp/data")),
             image_home: Some(PathBuf::from("/tmp/images")),
+            users_home: Some(PathBuf::from("/tmp/users")),
             web_root: Some(PathBuf::from("/tmp/web")),
             auth_key: Some("key".to_string()),
             ..AppConfig::default()

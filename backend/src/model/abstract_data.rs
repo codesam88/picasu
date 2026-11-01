@@ -389,6 +389,24 @@ impl AbstractData {
 
     // Path helper methods
 
+    /// Path used for ownership/visibility classification: media files use
+    /// their stored file path, albums use their `dir_path`.
+    pub fn visibility_path(&self) -> Option<std::path::PathBuf> {
+        match self {
+            AbstractData::Image(img) => img
+                .metadata
+                .path
+                .as_ref()
+                .map(|e| std::path::PathBuf::from(&e.file)),
+            AbstractData::Video(vid) => vid
+                .metadata
+                .path
+                .as_ref()
+                .map(|e| std::path::PathBuf::from(&e.file)),
+            AbstractData::Album(alb) => Some(std::path::PathBuf::from(&alb.metadata.dir_path)),
+        }
+    }
+
     /// Get the source path string (the record's path; empty for
     /// albums and for records whose path has been pruned).
     pub fn source_path_string(&self) -> &str {

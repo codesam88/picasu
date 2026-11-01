@@ -1,4 +1,5 @@
 use crate::openapi_components::Unauthorized;
+use crate::router::put::users_password::caller_identity;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult, auth::GuardAdmin};
 use rocket::get;
 // use rocket::http::Status;
@@ -71,11 +72,13 @@ fn absolutize(p: &Path) -> PathBuf {
     )
 ]
 #[get("/get/path-completion?<path>")]
+#[allow(clippy::too_many_lines)]
 pub fn get_fs_completion(
     auth: GuardResult<GuardAdmin>,
     path: Option<String>,
 ) -> AppResult<Json<FsCompletion>> {
-    let _ = auth?;
+    let GuardAdmin { claims } = auth?;
+    let (caller, _) = caller_identity(&claims);
     let query = path.unwrap_or_default();
 
     // If empty, return roots separated from current directory contents
@@ -90,6 +93,7 @@ pub fn get_fs_completion(
             for entry in entries.filter_map(std::result::Result::ok) {
                 let path = entry.path();
                 if path.is_dir()
+                    && crate::storage::files::visible_to(&caller, &path)
                     && let Some(path_str) = path.to_str()
                 {
                     children.push(path_str.to_string());
@@ -136,7 +140,9 @@ pub fn get_fs_completion(
                 // 1. Search Roots
                 let roots = get_roots();
                 for root in roots {
-                    if root.to_lowercase().starts_with(&query.to_lowercase()) {
+                    if root.to_lowercase().starts_with(&query.to_lowercase())
+                        && crate::storage::files::visible_to(&caller, std::path::Path::new(&root))
+                    {
                         matches.push(root);
                     }
                 }
@@ -145,7 +151,7 @@ pub fn get_fs_completion(
                 if let Ok(entries) = fs::read_dir(absolute_cwd()) {
                     for entry in entries.filter_map(std::result::Result::ok) {
                         let path = entry.path();
-                        if path.is_dir() {
+                        if path.is_dir() && crate::storage::files::visible_to(&caller, &path) {
                             // Check prefix match
                             let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
                             if name.to_lowercase().starts_with(&query.to_lowercase())
@@ -190,7 +196,7 @@ pub fn get_fs_completion(
 
     for entry in entries.filter_map(std::result::Result::ok) {
         let path = entry.path();
-        if path.is_dir() {
+        if path.is_dir() && crate::storage::files::visible_to(&caller, &path) {
             // Check prefix match (case-insensitive for better UX)
             let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
             if name.to_lowercase().starts_with(&prefix.to_lowercase()) {

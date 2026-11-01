@@ -47,9 +47,10 @@ use std::path::Path;
 ]
 #[get("/get/get-tags")]
 pub async fn get_tags(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<TagInfo>>> {
-    let _ = auth?;
+    let GuardUser { claims } = auth?;
+    let (caller, _) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || {
-        let vec_tags_info = TREE.read_tags();
+        let vec_tags_info = TREE.read_tags(&caller);
         Ok(Json(vec_tags_info))
     })
     .await
@@ -64,6 +65,12 @@ pub struct AlbumInfo {
     #[schema(value_type = HashMap<String, ShareInfo>)]
     pub share_list: HashMap<ArrayString<64>, ShareInfo>,
     pub dir_path: Option<String>,
+    /// Root namespace of the album: `"global"` for the public tree or
+    /// `"personal"` for a per-user area. `None` when the album lives outside
+    /// both configured roots.
+    pub root: Option<String>,
+    /// Owner user id for personal albums; `None` for global albums.
+    pub owner: Option<String>,
     /// Album ID of the direct parent directory album, or `None` for top-level
     /// dir albums and all user-created albums.
     pub parent_album_id: Option<String>,
@@ -142,42 +149,73 @@ pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<Albu
     let (caller, _) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || {
         let image_home = crate::model::config::with_config(|c| c.image_home.clone());
+        let users_home = crate::storage::files::get_resolved_users_home();
 
         // Share ownership for this request: only the caller's own shares
         // are listed. The admin panel does not filter.
         let album_list = TREE
             .read_albums()
             .map_err(|e| e.context("Failed to read albums"))?;
-        let album_info_list = album_list
-            .into_iter()
-            .map(|album| {
-                // parent_album_id lookup uses the raw absolute path stored in the DB
-                let parent_album_id = get_parent_album_id(Path::new(&album.metadata.dir_path))
-                    .map(|id| id.to_string());
-                // Expose dir_path as a path relative to IMAGE_HOME so the frontend
-                // never needs to know or handle the absolute image library location.
-                let dir_path = Some({
+        let mut album_info_list = Vec::new();
+        for album in album_list {
+            let classification =
+                crate::storage::files::classify_path(Path::new(&album.metadata.dir_path));
+            // Never expose the users root itself, nor another user's personal
+            // albums.
+            match &classification {
+                crate::storage::files::PathClassification::UsersRoot => continue,
+                crate::storage::files::PathClassification::Personal { owner }
+                    if owner != &caller =>
+                {
+                    continue;
+                }
+                _ => {}
+            }
+
+            // parent_album_id lookup uses the raw absolute path stored in the DB
+            let parent_album_id =
+                get_parent_album_id(Path::new(&album.metadata.dir_path)).map(|id| id.to_string());
+
+            let (root, owner, dir_path) = match &classification {
+                crate::storage::files::PathClassification::Personal { owner } => {
+                    let rel = users_home
+                        .as_ref()
+                        .and_then(|root| {
+                            Path::new(&album.metadata.dir_path).strip_prefix(root).ok()
+                        })
+                        .map_or_else(
+                            || album.metadata.dir_path.clone(),
+                            |rel| rel.to_string_lossy().into_owned(),
+                        );
+                    (Some("personal".to_string()), Some(owner.clone()), Some(rel))
+                }
+                crate::storage::files::PathClassification::Public => {
                     let dir = &album.metadata.dir_path;
-                    image_home
+                    let rel = image_home
                         .as_ref()
                         .and_then(|root| Path::new(dir).strip_prefix(root).ok())
-                        .map_or_else(|| dir.clone(), |rel| rel.to_string_lossy().into_owned())
-                });
-                AlbumInfo {
-                    album_id: album.object.id.to_string(),
-                    album_name: album.metadata.title,
-                    share_list: album
-                        .metadata
-                        .share_list
-                        .iter()
-                        .filter(|(_, share)| share_visible_to(&caller, &share.created_by))
-                        .map(|(id, share)| (*id, ShareInfo::from(share)))
-                        .collect(),
-                    dir_path,
-                    parent_album_id,
+                        .map_or_else(|| dir.clone(), |rel| rel.to_string_lossy().into_owned());
+                    (Some("global".to_string()), None, Some(rel))
                 }
-            })
-            .collect();
+                _ => (None, None, Some(album.metadata.dir_path.clone())),
+            };
+
+            album_info_list.push(AlbumInfo {
+                album_id: album.object.id.to_string(),
+                album_name: album.metadata.title,
+                share_list: album
+                    .metadata
+                    .share_list
+                    .iter()
+                    .filter(|(_, share)| share_visible_to(&caller, &share.created_by))
+                    .map(|(id, share)| (*id, ShareInfo::from(share)))
+                    .collect(),
+                dir_path,
+                root,
+                owner,
+                parent_album_id,
+            });
+        }
         Ok(Json(album_info_list))
     })
     .await

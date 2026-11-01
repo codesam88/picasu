@@ -108,24 +108,3 @@ pub fn prefetch_as_share(
             .map(|v| usize::try_from(v).expect("prefetch locateTo fits in usize")),
     )
 }
-
-/// The rows of one `get-data` page.
-pub fn get_data_rows(client: &Client, ts: i64, snapshot_token: &str, end: usize) -> Vec<Value> {
-    let resp = client
-        .get(format!("/get/get-data?timestamp={ts}&start=0&end={end}"))
-        .header(Header::new(
-            "Authorization",
-            format!("Bearer {snapshot_token}"),
-        ))
-        .dispatch();
-    assert_eq!(resp.status(), Status::Ok, "get-data");
-    resp.into_json().expect("get-data json")
-}
-
-/// The per-asset `ClaimsAsset` token in the first `get-data` row.
-pub fn get_data_asset_token(client: &Client, ts: i64, snapshot_token: &str) -> String {
-    get_data_rows(client, ts, snapshot_token, 1)[0]["token"]
-        .as_str()
-        .expect("row token")
-        .to_string()
-}

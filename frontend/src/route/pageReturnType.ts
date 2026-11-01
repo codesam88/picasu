@@ -31,6 +31,7 @@ type BaseName =
   | 'timeline'
   | 'trashed'
   | 'albums'
+  | 'my-albums'
   | 'videos'
   | 'album'
   | 'tags'

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{model::abstract_data::AbstractData, router::auth::ClaimsAsset};
+use crate::{
+    model::abstract_data::AbstractData, model::album::ResolvedShare, router::auth::ClaimsAsset,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +52,7 @@ impl DataBaseTimestampReturn {
     /// `asset_id`.  It is used for the token's `hash` claim (`GuardHash`
     /// validation) and exposed to the frontend for compressed thumbnail URL
     /// construction.
+    #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
     pub fn with_asset_id(
         abstract_data: AbstractData,
         priority_list: &[&str],
@@ -57,15 +60,29 @@ impl DataBaseTimestampReturn {
         allow_original: bool,
         asset_id: arrayvec::ArrayString<64>,
         cover_content_hash: Option<arrayvec::ArrayString<64>>,
+        caller: String,
+        resolved_share_opt: Option<ResolvedShare>,
     ) -> Self {
         let timestamp = abstract_data.compute_timestamp(priority_list);
         let token = match &abstract_data {
-            AbstractData::Image(img) => {
-                ClaimsAsset::new(img.object.id, asset_id, token_timestamp, allow_original).encode()
-            }
-            AbstractData::Video(vid) => {
-                ClaimsAsset::new(vid.object.id, asset_id, token_timestamp, allow_original).encode()
-            }
+            AbstractData::Image(img) => ClaimsAsset::new(
+                img.object.id,
+                asset_id,
+                token_timestamp,
+                allow_original,
+                caller.clone(),
+                resolved_share_opt.clone(),
+            )
+            .encode(),
+            AbstractData::Video(vid) => ClaimsAsset::new(
+                vid.object.id,
+                asset_id,
+                token_timestamp,
+                allow_original,
+                caller.clone(),
+                resolved_share_opt.clone(),
+            )
+            .encode(),
             AbstractData::Album(album) => {
                 // Album cover compressed path uses the cover's content hash.
                 // The token must carry that hash so GuardHash can validate it.
@@ -74,7 +91,15 @@ impl DataBaseTimestampReturn {
                 // media asset, so original access would resolve to nothing.
                 let token_hash =
                     cover_content_hash.unwrap_or(album.metadata.cover.unwrap_or(asset_id));
-                ClaimsAsset::new(token_hash, asset_id, token_timestamp, false).encode()
+                ClaimsAsset::new(
+                    token_hash,
+                    asset_id,
+                    token_timestamp,
+                    false,
+                    caller.clone(),
+                    resolved_share_opt.clone(),
+                )
+                .encode()
             }
         };
         let cover_hash = cover_content_hash.map(|h| h.to_string());

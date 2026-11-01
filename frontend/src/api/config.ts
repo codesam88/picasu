@@ -11,6 +11,7 @@ export interface AppConfig {
   validateUploadContent?: boolean
   useClientTimestampInfo?: boolean
   allowRegistration?: boolean
+  personalAlbumsEnabled?: boolean
   // password is handled separately now
   authKey: string | null
   uploadFolder: string | null

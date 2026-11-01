@@ -263,6 +263,45 @@ pub async fn albums_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA shell for the my-albums page.
+///
+/// Returns the shared `index.html` shell for the `my-albums` client route. The
+/// album list itself comes from the albums API route, which reads the album
+/// index, so this route performs no lookup of its own.
+#[utoipa::path(
+        tag = "pages",
+        responses(
+            (status = 200, description = "SPA page (HTML)"),
+        )
+    )
+]
+#[get("/my-albums")]
+pub async fn my_albums() -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
+}
+
+/// Serve the SPA shell for a my-albums view path resolved by the client.
+///
+/// Returns `index.html` for `/my-albums/view/<path..>` at any depth. The
+/// captured path is bound and discarded; the client router resolves the view
+/// (`view/:assetId`) from the URL, so the server performs no lookup.
+#[utoipa::path(
+        tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "View path below /my-albums/view/; served the SPA shell and resolved by the client router"),
+        ),
+        responses(
+            (status = 200, description = "SPA page (HTML)"),
+            (status = 422, description = "Unprocessable entity"),
+        )
+    )
+]
+#[get("/my-albums/view/<path..>")]
+pub async fn my_albums_view(path: PathBuf) -> AppResult<FrontendResponse> {
+    let _ = path;
+    serve_file("index.html").await
+}
+
 /// Serve the SPA shell for a one-segment album path, 404 for anything else.
 ///
 /// The one-segment matcher returns `index.html` when the captured segment starts
