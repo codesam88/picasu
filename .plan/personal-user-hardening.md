@@ -39,6 +39,18 @@ universal. This task closes the gaps, with tests proving each one.
   otherwise disable someone else's share) would break expected behavior
   for the share's owner and holders. The move is refused; nothing is
   rewritten; the creator keeps full control of their share.
+- F8 (MyAlbums shows personal albums only): DECIDED personal-only
+  selector — MyAlbums lists only the caller's own personal roots
+  (user-decided 2026-11-01).
+- F7 (personal_albums_enabled switch): DECIDED — mirror IMAGE_HOME
+  (user-decided, re-confirmed 2026-11-01): the switch is removed
+  entirely (no gating anywhere); USERS_HOME defaults to
+  `<data_home>/users` on first launch and is backfilled once for
+  existing configs, persisted like IMAGE_HOME; boot aborts only on
+  explicit empty value or nested/equal roots (existing check stays).
+  No breaking change; personal areas effectively always on.
+  personalAlbumsEnabled stays as the public signal (always true at
+  runtime).
 - Verification: every fix ships with a failing-first test proving a
   second user cannot read/mutate the first user's personal data through
   the fixed path, plus the standard gates (`just check`, backend + frontend
@@ -49,12 +61,11 @@ universal. This task closes the gaps, with tests proving each one.
 - D1 (F6): export — scope/filter to caller-visible rows, or document an
   explicit operator carve-out? Secret redaction (share URLs, password
   hashes, absolute paths) happens either way.
-- D3 (F7): personal_albums_enabled semantics — wire the switch through
-  gating/provisioning/scan, or document users_home-alone semantics?
-- D4 (F8): MyAlbums — personal-only selector, or document "all visible
-  roots" (mirrors Albums global-only)?
 - D5: user deletion vs personal tree — purge/quarantine, refuse while data
   exists, or document-and-keep? (carried over; no challenger verdict)
+
+Deferred by user choice 2026-11-01 (decisions recorded, work not
+scheduled yet): F9 E2E honesty bundle, F10 docs claim corrections.
 
 ## Implementation steps
 
@@ -81,10 +92,16 @@ established style; do NOT change anything non-trivial — report it as a
 finding with a recommendation instead (non-trivial = unclear ownership
 semantics, behavior change, or ambiguous error contract).
 
-### F3 — get_metadata any-id on user sessions (S1)
+### F3 — get_metadata any-id on user sessions (S1, DONE via option B)
 
-`visible_to` check on the composed row (or album-scope session tokens).
-Practical via share-disclosed ids; add cross-user refusal test.
+Caller-bound snapshot tokens (user-decided direction 2026-11-01,
+commits B1–B6): `ClaimsSnapshot` carries the minting caller's id,
+`GuardSnapshot` binds the request's presenter to it, renewed tokens
+require caller equality (admins included), `get-metadata` checks
+`visible_to` for user sessions (404 canon), `ClaimsAsset` carries
+caller + share scope with presenter enforcement on serving, and
+renew-hash checks presenter scope + claim equality. Cross-user refusal
+tests pin each path.
 
 ### F4 — Tag census unfiltered in edit_tag response (S2)
 
@@ -136,6 +153,4 @@ statement to match what the suite actually pins.
   OpenAPI enum, toggle catch/rollback, pathless-gate probes, Outside
   fail-closed, cache-key share identity, VideosPage scope, delete
   UX notes) — batch when adjacent code is next touched.
-- Snapshot-token caller binding (reaffirmed canon deferral; value noted
-  as raised, no work scheduled).
 - Anything not listed above.
