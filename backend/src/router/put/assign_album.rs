@@ -15,6 +15,7 @@ use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use arrayvec::ArrayString;
+use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -314,6 +315,32 @@ fn move_album_into_album(
             ErrorKind::InvalidInput,
             "Cannot move an album into itself or one of its own sub-albums",
         ));
+    }
+
+    // Refuse moves carrying foreign-owned shares before any filesystem mutation.
+    {
+        let read_txn = crate::storage::db::TREE
+            .in_disk
+            .begin_read()
+            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
+        let metadata_table = read_txn
+            .open_table(crate::storage::db::METADATA_TABLE)
+            .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+        if let Some(guard) = metadata_table
+            .get(album_id.as_str())
+            .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+            && let crate::model::metadata_record::MetadataRecord::Album(album_payload) =
+                guard.value()
+        {
+            for share in album_payload.share_list.values() {
+                if share.created_by != caller {
+                    return Err(AppError::new(
+                        ErrorKind::PermissionDenied,
+                        "Album has shares owned by other users",
+                    ));
+                }
+            }
+        }
     }
 
     // Write gate: source and destination must be writable by caller.
