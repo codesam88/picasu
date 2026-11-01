@@ -59,8 +59,8 @@ describe('tokenStore', () => {
   // jwtDecode only reads the payload segment; the signature is never
   // verified client-side, so fixtures use a dummy '.sig' suffix.
   const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
-  const makeJwt = (exp: number, timestamp = 1700000000) =>
-    `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ timestamp, exp })}.sig`
+  const makeJwt = (exp: number, timestamp = 1700000000, caller = '') =>
+    `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ timestamp, exp, caller })}.sig`
 
   // Fixed wall clock so "seconds of validity left" is deterministic.
   const NOW_MS = 1_750_000_000_000

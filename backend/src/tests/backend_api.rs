@@ -1354,6 +1354,7 @@ fn process_mint_timestamp_token(call: &Value, vars: &mut HashMap<String, String>
     let exp = u64::try_from(chrono::Utc::now().timestamp() + exp_offset)
         .unwrap_or_else(|e| panic!("mint_timestamp_token.exp_offset out of range: {e}"));
     let claims = ClaimsSnapshot {
+        caller: "admin".to_string(),
         resolved_share_opt: None,
         timestamp,
         exp,

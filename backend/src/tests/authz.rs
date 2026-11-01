@@ -13,6 +13,7 @@ use rocket::local::blocking::Client;
 use serde_json::{Value, json};
 use snapfab::{PhotoSpec, generate_batch};
 
+use crate::router::auth::{ClaimsSnapshot, decode_typed};
 use crate::tests::bootstrap::{lock, setup_image_home, test_image_home};
 use crate::tests::fixtures::{
     auth_cookie, discover_album_id, discover_asset_id, wait_for_album_index,
@@ -481,4 +482,32 @@ fn renewal_revalidates_the_embedded_share() {
         Status::Unauthorized,
         "renewal must re-validate the embedded share"
     );
+}
+
+#[test]
+fn prefetch_snapshot_token_carries_caller() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (album, asset) = create_album(&client, "/caller_prefetch/album/photo.jpg");
+    let share = create_share(&client, &album, false, false);
+
+    // User prefetch: the snapshot token carries the requesting user's id.
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "prefetch as user");
+    let body: Value = resp.into_json().expect("prefetch json");
+    let user_token = body["token"].as_str().expect("token").to_string();
+    let decoded_user: ClaimsSnapshot =
+        decode_typed(&user_token, &crate::router::auth::VALIDATION).expect("decode user snapshot");
+    assert_eq!(decoded_user.caller, "admin");
+
+    // Share prefetch: the snapshot token carries an empty caller.
+    let (_, share_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
+    let decoded_share: ClaimsSnapshot =
+        decode_typed(&share_token, &crate::router::auth::VALIDATION)
+            .expect("decode share snapshot");
+    assert_eq!(decoded_share.caller, "");
 }
