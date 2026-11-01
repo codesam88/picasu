@@ -21,7 +21,6 @@ when:
     calc:
       end: "${idx}+1"
   - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:

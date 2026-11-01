@@ -19,7 +19,6 @@ when:
       token: response.token
       ts: response.prefetch.timestamp
   - call: GET /get/get-data?timestamp=${ts}&start=0&end=20
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:

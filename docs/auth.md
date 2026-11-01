@@ -261,11 +261,11 @@ do not decode.
 
 ### The three token types
 
-| Type             | ClaimsSession                                                        | TTL   | Minted by                        | Consumed by                                                   |
-| ---------------- | -------------------------------------------------------------------- | ----- | -------------------------------- | ------------------------------------------------------------- |
-| `ClaimsSession`  | `role` (User{id, admin} / Share(resolved)), `exp`, `typ: session`    | 14 d  | login, share resolution          | `GuardAdmin`, `GuardPresenter` (cookie fallback), `GuardUser` |
-| `ClaimsSnapshot` | `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`              | 300 s | `POST /get/prefetch`             | `GuardSnapshot`, `GuardRenewHash`                             |
-| `ClaimsAsset`    | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                              |
+| Type             | ClaimsSession                                                                                      | TTL   | Minted by                        | Consumed by                                                   |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ----- | -------------------------------- | ------------------------------------------------------------- |
+| `ClaimsSession`  | `role` (User{id, admin} / Share(resolved)), `exp`, `typ: session`                                  | 14 d  | login, share resolution          | `GuardAdmin`, `GuardPresenter` (cookie fallback), `GuardUser` |
+| `ClaimsSnapshot` | `caller`, `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`                                  | 300 s | `POST /get/prefetch`             | `GuardSnapshot`, `GuardRenewHash`                             |
+| `ClaimsAsset`    | `allowOriginal`, `hash`, `assetId`, `timestamp`, `caller`, `resolvedShareOpt`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                              |
 
 All three are plain JWTs signed with the same `auth_key`. Each carries a `typ`
 claim and is decoded through a typed entry point that rejects a mismatched
@@ -447,13 +447,13 @@ must.** A credential that the server keeps no state for can be checked on
 its own; a credential whose server-side record exists can be listed and
 revoked by id.
 
-| Credential                                               | Carries                                        | Server state about it                            |
-| -------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
-| identity token (`ClaimsSession` with `Role::User`, 14 d) | role, `exp`, `jti`, `ver`                      | the identity record + the revocation list        |
-| share token (`ClaimsSession` with `Role::Share`, 14 d)   | the share record and its album                 | the album's `shareList`                          |
-| snapshot token (`ClaimsSnapshot`, 300 s)                 | the share policy, the timestamp, `exp`         | none                                             |
-| serving token (`ClaimsAsset`, 300 s)                     | the hash, the asset id, `allowOriginal`, `exp` | none                                             |
-| invite token (128-bit bearer, 7 d by default)            | nothing — it _is_ the credential               | the invite record (hash-keyed, until it expires) |
+| Credential                                               | Carries                                                                     | Server state about it                            |
+| -------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
+| identity token (`ClaimsSession` with `Role::User`, 14 d) | role, `exp`, `jti`, `ver`                                                   | the identity record + the revocation list        |
+| share token (`ClaimsSession` with `Role::Share`, 14 d)   | the share record and its album                                              | the album's `shareList`                          |
+| snapshot token (`ClaimsSnapshot`, 300 s)                 | the caller, the share policy, the timestamp, `exp`                          | none                                             |
+| serving token (`ClaimsAsset`, 300 s)                     | the hash, the asset id, `allowOriginal`, the caller, the share scope, `exp` | none                                             |
+| invite token (128-bit bearer, 7 d by default)            | nothing — it _is_ the credential                                            | the invite record (hash-keyed, until it expires) |
 
 **The identity token is stateless.** The server keeps no session list: a
 token is accepted because it carries the role, the expiry and the user's

@@ -21,7 +21,6 @@ when:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
   - call: GET /get/metadata/${asset_id}?timestamp=${ts}
-    auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:

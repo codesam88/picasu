@@ -35,7 +35,6 @@ when:
   # Try to use photo_b's token to access photo_a's data at photo_a's timestamp.
   # This should fail because the token's timestamp doesn't match.
   - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
-    auth: false
     headers:
       Authorization: "Bearer ${token_b}"
 then:

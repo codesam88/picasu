@@ -77,9 +77,9 @@ A guard denotes a partial map from a request to the capability it establishes,
 | `GuardAdmin`        | `⊤` if the request carries a user identity with the admin role (cookie)                                                                                                                                                                                                                                                                                                                                                        |
 | `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                                                                                                                                                                                                                                                                                                                                       |
 | `GuardPresenter`    | the request's `User` identity if its cookie identity record is live (`⊤` under the admin role, the viewer identity otherwise); else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩`                                                                                                                                                                                                                                   |
-| `GuardSnapshot`     | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                                                                                                                                                                                                                                                                                                                                    |
-| `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                                                                                                                                                                                                                                                                                                                                  |
-| `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                                                                                                                                                                                                                                                                                                                                       |
+| `GuardSnapshot`     | `Snap(a,F,t)` if it decodes a snapshot token `⟨caller,a,F,t⟩`, `t` equals the query `timestamp`, and the resolved presenter's identity equals `caller` (user id) or the embedded share (share pair); `caller` is empty only for share-minted tokens                                                                                                                                                                            |
+| `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t,caller,sh⟩`, `hash(x)` equals the URL path segment, and the resolved presenter's identity equals `caller` (or the embedded share for share-minted tokens)                                                                                                                                                                                                                    |
+| `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t,caller,sh⟩` with `o = true`, `x` equals the URL path segment, and the resolved presenter's identity equals `caller` (or the embedded share)                                                                                                                                                                                                                                                 |
 | `GuardMutate`       | `⊤` if read-only mode is off                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `GuardReauth`       | `⊤`-with-proof if the request carries a live session identity of any role and the `X-Picasu-Password` header verifies (constant-time) against that caller's stored argon2id hash; `⊥` otherwise (401 for no/invalid session, 403 for missing/wrong password). Authority is not granted here — it comes from the route's other guards (lift = `GuardAdmin` ∩ re-auth, password change = `GuardUser` ∩ `GuardMutate` ∩ re-auth). |
 
@@ -130,9 +130,9 @@ AUTH-8). When `accepts` is false the request must be denied (AUTH-2, AUTH-3).
 Tokens are minted only along the delegation chain; each derivation attenuates.
 
 ```
-prefetch:   Share(a,F)          ⊢  Snap(a,F,t)          (scope(t)=a)
-get-data:   Snap(a,F,t)         ⊢  Asset(x, o := D∈F)   (x∈a)
-renew(t):   cap(t)              ⊢  t'                   (payload(t')=payload(t))
+prefetch:   Share(a,F)          ⊢  Snap(c,a,F,t)        (scope(t)=a; c = presenter id, or "" for a share)
+get-data:   Snap(c,a,F,t)       ⊢  Asset(x, o := D∈F, c, sh)   (x∈a)
+renew(t):   cap(t)              ⊢  t'                   (payload(t')=payload(t); caller equality per AUTH-10)
 ```
 
 **Attenuation (A1).** For every derivation `c ⊢ c'`:
@@ -260,8 +260,11 @@ token-embedded flag gates first).
 
 **AUTH-10 — Renewal preserves authority.** `renew(t) = t'` requires
 `payload(t') = payload(t)`, `bound(t') = bound(t)`, and a presenter capability
-`c ⊒ cap(t)`; the embedded share is live. Renewal can neither widen scope nor
-outlive the share's validity for new tokens.
+`c ⊒ cap(t)` whose identity equals the token's caller (a user presenter
+renews only snapshots whose `caller` is their user id; a share presenter
+renews only its own share's snapshot; admins are not exempt); the embedded
+share is live. Renewal can neither widen scope nor outlive the share's
+validity for new tokens.
 
 **AUTH-11 — Admin isolation.** If `manage ∈ needs(r)`, then `G(r)` establishes
 `⊤` and admits no share capability: the caller must be a user with the admin
@@ -381,12 +384,6 @@ Guard on shares: relaxed from `GuardAdmin` to `GuardUser` + ownership via
 
 Hardening dispositions (assessed, not implemented in S6):
 
-- Snapshot-token caller binding: accepted gap. Snapshot tokens carry no
-  caller identity by design (bearer semantics); replay across users is
-  bounded by session-cookie theft / direct API calls as the victim, and
-  the token is already album-scoped and short-lived. Implementing binding
-  would require a caller claim in `ClaimsSnapshot` plus validation and
-  renewal changes across `backend/src/router/auth.rs`; deferred.
 - CLI user provisioning: accepted gap. `picasu-cmd user add` writes the
   user store directly and does not call `ensure_personal_home`; users
   created this way are covered by the next admin Scan Now (which indexes
