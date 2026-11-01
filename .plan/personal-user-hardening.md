@@ -58,9 +58,13 @@ universal. This task closes the gaps, with tests proving each one.
 
 ## Open decisions (blocking their item; defaults apply if undecided)
 
-- D1 (F6): export — scope/filter to caller-visible rows, or document an
-  explicit operator carve-out? Secret redaction (share URLs, password
-  hashes, absolute paths) happens either way.
+- D1 (F6): DECIDED operator carve-out with censored admin visibility
+  (user direction 2026-11-01): export streams the same censored view
+  admins see — personal rows included, share bearer URLs and password
+  values redacted unconditionally, absolute paths redacted. Covered by
+  the share-token plan's S4 (export) — no separate F6 step.
+  Personal-content scoping beyond that is intentionally left to the
+  operator capability, documented as such.
 - D5: user deletion vs personal tree — purge/quarantine, refuse while data
   exists, or document-and-keep? (carried over; no challenger verdict)
 
@@ -116,10 +120,12 @@ filesystem effect (no partial rename). Tests: cross-user share on public
 album, then owner moves album into own personal tree → 4xx and tree
 unchanged; owner's own shares still move fine.
 
-### F6 — Export streams every personal row incl. share secrets (S2)
+### F6 — Export streams every personal row incl. share secrets (S2,
 
-Redact secrets (share URLs, password hashes, absolute paths) unconditionally.
-Scope vs carve-out per D1.
+DECIDED: covered by share-token plan S4)
+
+Redact secrets (share URLs, password hashes, absolute paths)
+unconditionally; scope per D1 decision above. No separate step.
 
 ### F7 — Switch semantics (S2)
 
