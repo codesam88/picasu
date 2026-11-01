@@ -118,9 +118,17 @@ fn prefetch_as_share(
 }
 
 /// The per-asset `ClaimsAsset` token carried in a `get-data` row.
-fn get_data_asset_token(client: &Client, ts: i64, snapshot_token: &str) -> String {
+fn get_data_asset_token(
+    client: &Client,
+    ts: i64,
+    snapshot_token: &str,
+    album: &str,
+    share: &str,
+) -> String {
     let resp = client
         .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .header(Header::new("x-album-id", album.to_string()))
+        .header(Header::new("x-share-id", share.to_string()))
         .header(Header::new(
             "Authorization",
             format!("Bearer {snapshot_token}"),
@@ -156,7 +164,7 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     let (album, asset) = create_album(&client, "/authz_asset_token/album/photo.jpg");
     let share = create_share(&client, &album, false, false);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
-    let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
+    let asset_token = get_data_asset_token(&client, ts, &snapshot_token, &album, &share);
 
     // Metadata: the confused token must not satisfy GuardSnapshot.
     let resp = client
@@ -245,6 +253,8 @@ fn a_valid_bearer_token_in_the_query_is_refused() {
 
     let resp = client
         .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .header(Header::new("x-album-id", album.clone()))
+        .header(Header::new("x-share-id", share.clone()))
         .header(Header::new(
             "Authorization",
             format!("Bearer {snapshot_token}"),
@@ -278,7 +288,7 @@ fn media_responses_are_not_shared_cacheable() {
     let (album, asset) = create_album(&client, "/authz_cache_header/album/photo.jpg");
     let share = create_share(&client, &album, true, true);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
-    let asset_token = get_data_asset_token(&client, ts, &snapshot_token);
+    let asset_token = get_data_asset_token(&client, ts, &snapshot_token, &album, &share);
 
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     let claims: crate::router::auth::ClaimsAsset =
@@ -349,6 +359,8 @@ fn metadata_is_scoped_to_the_shares_album() {
 
     let resp = client
         .get(format!("/get/metadata/{asset_a}?timestamp={ts}"))
+        .header(Header::new("x-album-id", album_b.clone()))
+        .header(Header::new("x-share-id", share_b.clone()))
         .header(Header::new("Authorization", format!("Bearer {token_b}")))
         .dispatch();
     assert_eq!(
@@ -510,4 +522,220 @@ fn prefetch_snapshot_token_carries_caller() {
         decode_typed(&share_token, &crate::router::auth::VALIDATION)
             .expect("decode share snapshot");
     assert_eq!(decoded_share.caller, "");
+}
+
+// ── B2: snapshot tokens are bound to the presenter (caller) ─────────
+
+/// Bob presenting his own session cannot reuse Alice's snapshot bearer.
+#[test]
+fn b2_cross_user_reuse_get_data_is_401() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (_album, _asset) = create_album(&client, "/b2_cross_data/album/photo.jpg");
+    crate::tests::bootstrap::seed("alice", false, None);
+    crate::tests::bootstrap::seed("bob", false, None);
+
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(crate::tests::bootstrap::cookie("alice", false))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "alice prefetch");
+    let body: Value = resp.into_json().expect("prefetch json");
+    let ts = body["prefetch"]["timestamp"].as_i64().expect("timestamp");
+    let alice_token = body["token"].as_str().expect("token").to_string();
+
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .cookie(crate::tests::bootstrap::cookie("bob", false))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {alice_token}"),
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "bob must not reuse alice's snapshot on get-data"
+    );
+}
+
+#[test]
+fn b2_cross_user_reuse_get_rows_and_scroll_bar_is_401() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (_album, _asset) = create_album(&client, "/b2_cross_rows/album/photo.jpg");
+    crate::tests::bootstrap::seed("alice", false, None);
+    crate::tests::bootstrap::seed("bob", false, None);
+
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(crate::tests::bootstrap::cookie("alice", false))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "alice prefetch");
+    let body: Value = resp.into_json().expect("prefetch json");
+    let ts = body["prefetch"]["timestamp"].as_i64().expect("timestamp");
+    let alice_token = body["token"].as_str().expect("token").to_string();
+
+    let resp = client
+        .get(format!("/get/get-rows?index=0&timestamp={ts}"))
+        .cookie(crate::tests::bootstrap::cookie("bob", false))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {alice_token}"),
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "bob must not reuse alice's snapshot on get-rows"
+    );
+
+    let resp = client
+        .get(format!("/get/get-scroll-bar?timestamp={ts}"))
+        .cookie(crate::tests::bootstrap::cookie("bob", false))
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {alice_token}"),
+        ))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "bob must not reuse alice's snapshot on get-scroll-bar"
+    );
+}
+
+#[test]
+fn b2_own_reuse_is_200() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (_album, _asset) = create_album(&client, "/b2_own/album/photo.jpg");
+    crate::tests::bootstrap::seed("alice", false, None);
+
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(crate::tests::bootstrap::cookie("alice", false))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "alice prefetch");
+    let body: Value = resp.into_json().expect("prefetch json");
+    let ts = body["prefetch"]["timestamp"].as_i64().expect("timestamp");
+    let alice_token = body["token"].as_str().expect("token").to_string();
+    let alice_cookie = crate::tests::bootstrap::cookie("alice", false);
+
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .cookie(alice_cookie.clone())
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {alice_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "own reuse get-data");
+
+    let resp = client
+        .get(format!("/get/get-rows?index=0&timestamp={ts}"))
+        .cookie(alice_cookie.clone())
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {alice_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "own reuse get-rows");
+
+    let resp = client
+        .get(format!("/get/get-scroll-bar?timestamp={ts}"))
+        .cookie(alice_cookie)
+        .header(Header::new(
+            "Authorization",
+            format!("Bearer {alice_token}"),
+        ))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "own reuse get-scroll-bar");
+}
+
+#[test]
+fn b2_share_holder_prefetch_roundtrip_still_200() {
+    let _g = lock();
+    let client = setup_image_home();
+    let (album, asset) = create_album(&client, "/b2_share/album/photo.jpg");
+    let share = create_share(&client, &album, true, true);
+    let (ts, token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
+
+    // get-data
+    let resp = client
+        .get(format!("/get/get-data?timestamp={ts}&start=0&end=1"))
+        .header(Header::new("x-album-id", album.clone()))
+        .header(Header::new("x-share-id", share.clone()))
+        .header(Header::new("Authorization", format!("Bearer {token}")))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "share get-data");
+
+    // get-rows
+    let resp = client
+        .get(format!("/get/get-rows?index=0&timestamp={ts}"))
+        .header(Header::new("x-album-id", album.clone()))
+        .header(Header::new("x-share-id", share.clone()))
+        .header(Header::new("Authorization", format!("Bearer {token}")))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "share get-rows");
+
+    // get-scroll-bar
+    let resp = client
+        .get(format!("/get/get-scroll-bar?timestamp={ts}"))
+        .header(Header::new("x-album-id", album.clone()))
+        .header(Header::new("x-share-id", share.clone()))
+        .header(Header::new("Authorization", format!("Bearer {token}")))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "share get-scroll-bar");
+}
+
+#[test]
+fn b2_admin_cannot_renew_another_users_snapshot() {
+    let _g = lock();
+    let client = setup_image_home();
+    crate::tests::bootstrap::seed("bob", false, None);
+
+    // bob prefetches a snapshot token (caller = "bob").
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(crate::tests::bootstrap::cookie("bob", false))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "bob prefetch");
+    let body: Value = resp.into_json().expect("prefetch json");
+    let bob_token = body["token"].as_str().expect("token").to_string();
+
+    // admin attempts to renew bob's snapshot -> 401.
+    let resp = client
+        .post("/post/renew-timestamp-token")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::JSON)
+        .body(json!({ "token": bob_token }).to_string())
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "admin must not renew another user's snapshot"
+    );
+
+    // admin renews own snapshot -> 200.
+    let resp = client
+        .post("/get/prefetch")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "admin prefetch");
+    let body: Value = resp.into_json().expect("prefetch json");
+    let admin_token = body["token"].as_str().expect("token").to_string();
+
+    let resp = client
+        .post("/post/renew-timestamp-token")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::JSON)
+        .body(json!({ "token": admin_token }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "admin must renew own snapshot");
 }

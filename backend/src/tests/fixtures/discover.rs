@@ -60,6 +60,7 @@ pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
         if data_length >= 1 {
             let data_resp = client
                 .get(format!("/get/get-data?timestamp={timestamp}&start=0&end=1"))
+                .cookie(cookie.clone())
                 .header(rocket::http::Header::new(
                     "Authorization",
                     format!("Bearer {token}"),
@@ -128,6 +129,7 @@ pub fn discover_asset_id(client: &Client, relative_path: &str) -> String {
         if data_length >= 1 {
             let data_resp = client
                 .get(format!("/get/get-data?timestamp={timestamp}&start=0&end=1"))
+                .cookie(cookie.clone())
                 .header(rocket::http::Header::new(
                     "Authorization",
                     format!("Bearer {token}"),
