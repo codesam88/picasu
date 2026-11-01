@@ -186,6 +186,7 @@ impl TokenKind for ClaimsAsset {
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ClaimsSnapshot {
+    pub caller: String,
     pub resolved_share_opt: Option<ResolvedShare>,
     pub timestamp: i64,
     pub exp: u64,
@@ -195,11 +196,12 @@ pub struct ClaimsSnapshot {
 }
 
 impl ClaimsSnapshot {
-    pub fn new(resolved_share_opt: Option<ResolvedShare>, timestamp: i64) -> Self {
+    pub fn new(caller: String, resolved_share_opt: Option<ResolvedShare>, timestamp: i64) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
 
         Self {
+            caller,
             resolved_share_opt,
             timestamp,
             exp,
@@ -263,6 +265,52 @@ mod tests {
     fn jwt_validation_uses_hs256_only() {
         assert_eq!(VALIDATION.algorithms, vec![Algorithm::HS256]);
         assert_eq!(VALIDATION_ALLOW_EXPIRED.algorithms, vec![Algorithm::HS256]);
+    }
+
+    #[test]
+    fn claims_snapshot_round_trip_preserves_caller() {
+        use super::{ClaimsSnapshot, TokenType, decode_typed};
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let claims = ClaimsSnapshot::new("alice".to_string(), None, 1_700_000_000);
+        let token = claims.encode();
+        let decoded: ClaimsSnapshot = decode_typed(&token, &VALIDATION).expect("decode round-trip");
+        assert_eq!(decoded.caller, "alice");
+        assert_eq!(decoded.timestamp, 1_700_000_000);
+        assert_eq!(decoded.typ, TokenType::Snapshot);
+    }
+
+    #[test]
+    fn claims_snapshot_without_caller_rejected() {
+        use crate::model::config::APP_CONFIG;
+        use jsonwebtoken::{EncodingKey, Header, encode};
+        use serde::Serialize;
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LegacyNoCaller {
+            resolved_share_opt: Option<()>,
+            timestamp: i64,
+            exp: u64,
+            #[serde(rename = "typ")]
+            typ: super::TokenType,
+        }
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let key = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .get_jwt_secret_key();
+        let legacy = LegacyNoCaller {
+            resolved_share_opt: None,
+            timestamp: 1_700_000_000,
+            exp: 9_999_999_999,
+            typ: super::TokenType::Snapshot,
+        };
+        let token = encode(&Header::default(), &legacy, &EncodingKey::from_secret(&key))
+            .expect("encode legacy snapshot without caller");
+        let result: anyhow::Result<super::ClaimsSnapshot> =
+            super::decode_typed(&token, &super::VALIDATION);
+        assert!(result.is_err(), "snapshot without caller must be rejected");
     }
 
     #[test]
@@ -1652,7 +1700,8 @@ pub async fn renew_timestamp_token(
             revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
         }
 
-        let new_claims = ClaimsSnapshot::new(claims.resolved_share_opt, claims.timestamp);
+        let new_claims =
+            ClaimsSnapshot::new(claims.caller, claims.resolved_share_opt, claims.timestamp);
         let new_token = new_claims.encode();
 
         Ok(Json(RenewTimestampTokenReturn { token: new_token }))

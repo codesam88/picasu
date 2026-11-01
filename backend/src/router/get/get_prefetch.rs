@@ -75,6 +75,7 @@ impl From<&DatabaseTimestamp> for ReducedData {
 fn check_query_cache(
     query_hash: u64,
     resolved_share_option: &mut Option<ResolvedShare>,
+    caller_id: &str,
 ) -> Option<Json<PrefetchReturn>> {
     let find_cache_start_time = Instant::now();
 
@@ -82,7 +83,11 @@ fn check_query_cache(
     if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
         let duration = format!("{:?}", find_cache_start_time.elapsed());
         debug!(duration = &*duration; "Query cache found");
-        let claims = ClaimsSnapshot::new(mem::take(resolved_share_option), prefetch.timestamp);
+        let claims = ClaimsSnapshot::new(
+            caller_id.to_string(),
+            mem::take(resolved_share_option),
+            prefetch.timestamp,
+        );
         return Some(Json(PrefetchReturn::new(
             prefetch,
             claims.encode(),
@@ -250,6 +255,7 @@ fn create_json_response(
     reduced_data_vector_length: usize,
     query_hash: u64,
     resolved_share_option: Option<ResolvedShare>,
+    caller_id: &str,
 ) -> Json<PrefetchReturn> {
     let json_start_time = Instant::now();
 
@@ -264,7 +270,11 @@ fn create_json_response(
     BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
 
     // Build response
-    let claims = ClaimsSnapshot::new(resolved_share_option, timestamp_millis);
+    let claims = ClaimsSnapshot::new(
+        caller_id.to_string(),
+        resolved_share_option,
+        timestamp_millis,
+    );
     let json = Json(PrefetchReturn::new(
         prefetch,
         claims.encode(),
@@ -301,7 +311,9 @@ fn execute_prefetch_logic(
     );
 
     // Step 2: Check if query cache is available
-    if let Some(cached_response) = check_query_cache(query_hash, &mut resolved_share_option) {
+    if let Some(cached_response) =
+        check_query_cache(query_hash, &mut resolved_share_option, &caller_id)
+    {
         return Ok(cached_response);
     }
 
@@ -327,6 +339,7 @@ fn execute_prefetch_logic(
         reduced_data_vector_length,
         query_hash,
         resolved_share_option,
+        &caller_id,
     );
 
     // Total elapsed time
