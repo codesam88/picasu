@@ -468,8 +468,9 @@ fn renewal_revalidates_the_embedded_share() {
     let (_, token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
 
     // Expire the share after the token was minted.
+    let share_fp = blake3::hash(share.as_bytes()).to_hex().to_string()[..16].to_string();
     let share_obj = json!({
-        "url": share,
+        "url": share_fp,
         "description": "authz test",
         "password": null,
         "showMetadata": true,
