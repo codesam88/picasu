@@ -53,5 +53,14 @@ accepted:
     check: content_type_conformance
     failure: UndefinedContentType
     bug: bug-spa-fallback-missing-param
+  # Same SPA-fallback shape on the new share-token endpoint: required query
+  # params missing -> catch-all answers 200 text/html. Handler itself is
+  # unaffected (its 200 correctly declares application/json).
+  - method: GET
+    path: /get/share/token
+    operation: "GET /get/share/token"
+    check: content_type_conformance
+    failure: UndefinedContentType
+    bug: bug-spa-fallback-missing-param
   # (bug-invite-expiry-overflow resolved: extreme expiresInHours is now a
   # 400 via MAX_EXPIRY_HOURS + checked arithmetic, so this entry was removed.)
