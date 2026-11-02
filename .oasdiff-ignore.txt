@@ -10,51 +10,6 @@
 # removals), and an entry for a non-failing finding gates nothing — dead
 # lines were removed 2026-10-26 by deletion-testing each entry.
 
-# 2026-10-26 (config field cleanup, decided): `GET /get/config` drops
-# `imagePath` (host-only; admin UI reads it from `GET /get/admin/config`),
-# `hasAuthKey` (no consumer; rotation feedback stays on the POST response)
-# and `disableImg` (frontend-only preference now, no backend setting).
-# `uploadFolder` is relative to the image path and visible to every tier,
-# so no redaction remains on the endpoint. `PUT /put/admin/config` and the
-# admin export lose the `disableImg` property the same way.
-# 2026-11-01 (share-token handles S4, decided: listings never carry
-# bearers): `GET /get/get-albums` replaces the share bearer `url` with the
-# non-secret `keyFingerprint` in `shareList` entries; creators reveal tokens
-# through the new `GET /get/share/token` instead.
-GET /get/get-albums removed the required property `items/shareList/additionalProperties/url` from the response with the `200` status
-GET /get/config removed the required property `hasAuthKey` from the response with the `200` status
-GET /get/config removed the required property `disableImg` from the response with the `200` status
-GET /get/admin/config/export removed the required property `config/disableImg` from the response with the `200` status
-PUT /put/admin/config removed the required property `config/disableImg` from the response with the `200` status
-GET /get/config/export removed the media type `text/plain` for the response with the status `200`
-
-# 2026-11-01 (share-token S5 follow-up, decided): `POST /post/create_share`
-# now answers a JSON object `{link, fingerprint}` instead of a bare bearer
-# string, so the `text/plain` media type is replaced by `application/json`.
-POST /post/create_share removed the media type `text/plain` for the response with the status `200`
-
-# 2026-10-31 (/links -> /shares rename, decided): the client route moved and
-# the frontend asserts no /links legacy, so the backend shell route moves
-# with it. Old /links bookmarks fall through to the JSON 404 like any other
-# unknown one-segment path.
-api path removed without deprecation in API GET /links
-
-# 2026-10-27 (contract correction, decided): `GET /get/admin/config` loosens
-# the entry `value` from `object` to `any`. The handler has always returned
-# scalars there (string/number/bool per tier); the object declaration was
-# wrong and failed response-schema validation, so the loosening is the fix
-# rather than a capability removal.
-GET /get/admin/config the `items/value` response's property `type` changed from `object` to `any` for status `200`
-
-# 2026-10-30 (share write removal, decided): `PUT /put/set_album_title`,
-# `PUT /put/set_user_defined_description` and `POST /upload` no longer
-# accept share credentials; shares are read-only and these writes require
-# a session. The `album_id AND share_id` scheme removal is the intended
-# capability drop, not an annotation slip.
-PUT /put/set_album_title the endpoint scheme security `album_id AND share_id` was removed from the API
-PUT /put/set_user_defined_description the endpoint scheme security `album_id AND share_id` was removed from the API
-POST /upload the endpoint scheme security `album_id AND share_id` was removed from the API
-
 # 2026-11-02 (verb-prefix convention, decided in bug-spa-fallback-missing-param
 # review): `POST /upload` was the only data API route outside the verb
 # prefixes, so every API miss under it fell outside the SPA-fallback guard's
