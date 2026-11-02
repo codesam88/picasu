@@ -63,7 +63,7 @@ impl ImageFormat {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum RenderMode {
     Circles,
@@ -97,8 +97,9 @@ const ACTIVE_MODES: &[RenderMode] = &[
 ];
 
 /// Render modes a caller may request through `--generators`, with their CLI
-/// names. `geometric` is selectable here but is not part of [`ACTIVE_MODES`],
-/// so it only appears when explicitly requested.
+/// names. `geometric` and `still_life` are selectable here but are not part of
+/// [`ACTIVE_MODES`], so they only appear when explicitly requested (or via
+/// `--fancy`).
 const SELECTABLE_MODES: &[(&str, RenderMode)] = &[
     ("circles", RenderMode::Circles),
     ("landscape", RenderMode::Landscape),
@@ -107,6 +108,19 @@ const SELECTABLE_MODES: &[(&str, RenderMode)] = &[
     ("mandelbrot", RenderMode::Mandelbrot),
     ("julia", RenderMode::Julia),
     ("geometric", RenderMode::Geometric),
+    ("still_life", RenderMode::StillLife),
+];
+
+/// All render modes, in [`MODE_NAMES`] order. Used by `--fancy`.
+const FULL_MODES: &[RenderMode] = &[
+    RenderMode::Circles,
+    RenderMode::Landscape,
+    RenderMode::Geometric,
+    RenderMode::WavyLines,
+    RenderMode::Mountains,
+    RenderMode::StillLife,
+    RenderMode::Mandelbrot,
+    RenderMode::Julia,
 ];
 
 fn parse_modes(s: &str) -> Result<Vec<RenderMode>, String> {
@@ -1447,9 +1461,15 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             #[arg(
                 short,
                 long,
-                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric); `help` or `list` prints available names. `geometric` is selectable but not a default."
+                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric,still_life); `help` or `list` prints available names. `geometric` and `still_life` are selectable but not defaults (fancy-only)."
             )]
             generators: Option<String>,
+            #[arg(
+                long,
+                conflicts_with = "generators",
+                help = "Include all render modes (adds geometric, still_life to defaults)"
+            )]
+            fancy: bool,
             #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
             minimal: bool,
         },
@@ -1460,9 +1480,15 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             #[arg(
                 short,
                 long,
-                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric); `help` or `list` prints available names. `geometric` is selectable but not a default."
+                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric,still_life); `help` or `list` prints available names. `geometric` and `still_life` are selectable but not defaults (fancy-only)."
             )]
             generators: Option<String>,
+            #[arg(
+                long,
+                conflicts_with = "generators",
+                help = "Include all render modes (adds geometric, still_life to defaults)"
+            )]
+            fancy: bool,
             #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
             minimal: bool,
         },
@@ -1486,20 +1512,27 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             #[arg(
                 short,
                 long,
-                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric); `help` or `list` prints available names. `geometric` is selectable but not a default."
+                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric,still_life); `help` or `list` prints available names. `geometric` and `still_life` are selectable but not defaults (fancy-only)."
             )]
             generators: Option<String>,
+            #[arg(
+                long,
+                conflicts_with = "generators",
+                help = "Include all render modes (adds geometric, still_life to defaults)"
+            )]
+            fancy: bool,
             #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
             minimal: bool,
         },
     }
 
-    let enabled = |g: &Option<String>| -> Vec<RenderMode> {
+    let enabled = |g: &Option<String>, fancy: bool| -> Vec<RenderMode> {
         match g {
             Some(s) => parse_modes(s).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }),
+            None if fancy => FULL_MODES.to_vec(),
             None => ACTIVE_MODES.to_vec(),
         }
     };
@@ -1509,6 +1542,8 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         for (name, mode) in SELECTABLE_MODES {
             let suffix = if ACTIVE_MODES.contains(mode) {
                 " (default)"
+            } else if *mode == RenderMode::Geometric || *mode == RenderMode::StillLife {
+                " (fancy-only)"
             } else {
                 ""
             };
@@ -1523,6 +1558,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         CliCommand::Single {
             out,
             generators,
+            fancy,
             minimal,
         } => {
             if let Some(g) = &generators
@@ -1539,7 +1575,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             }
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             let mut stats = PerfCounter::new();
-            let enabled = enabled(&generators);
+            let enabled = enabled(&generators, fancy);
             let mode = generate_photo_file(&spec, &out, &mut rng, &mut stats, &enabled)
                 .expect("write image");
             if verbose {
@@ -1549,6 +1585,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         CliCommand::Batch {
             manifest,
             generators,
+            fancy,
             minimal,
         } => {
             if let Some(g) = &generators
@@ -1573,7 +1610,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             }
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             let mut stats = PerfCounter::new();
-            let enabled = enabled(&generators);
+            let enabled = enabled(&generators, fancy);
             for spec in &specs {
                 let path = spec
                     .output
@@ -1601,6 +1638,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             count,
             seed,
             generators,
+            fancy,
             minimal,
         } => {
             if let Some(g) = &generators
@@ -1621,7 +1659,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                 }
             };
             let mut stats = PerfCounter::new();
-            let enabled = enabled(&generators);
+            let enabled = enabled(&generators, fancy);
 
             for file in generate_library(&dir, count, &mut rng, &mut stats, &enabled, minimal) {
                 if verbose {
@@ -2116,6 +2154,7 @@ mod tests {
             "mandelbrot",
             "julia",
             "geometric",
+            "still_life",
         ] {
             assert!(
                 stdout.contains(name),
@@ -3007,5 +3046,18 @@ mod tests {
             assert_eq!(img.width(), 100);
             assert_eq!(img.height(), 100);
         }
+    }
+
+    #[test]
+    fn parse_modes_accepts_still_life() {
+        let modes = parse_modes("still_life").expect("parse_modes should accept still_life");
+        assert_eq!(modes, vec![RenderMode::StillLife]);
+    }
+
+    #[test]
+    fn full_modes_contains_all_eight_render_modes() {
+        assert_eq!(FULL_MODES.len(), 8);
+        assert!(FULL_MODES.contains(&RenderMode::Geometric));
+        assert!(FULL_MODES.contains(&RenderMode::StillLife));
     }
 }
