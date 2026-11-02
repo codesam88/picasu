@@ -848,6 +848,12 @@ fn revalidate_share_record(album_id: &str, share_id: &str) -> Result<(), AppErro
         .share_list
         .remove(share_id)
         .ok_or_else(|| AppError::new(ErrorKind::Auth, "Share no longer exists"))?;
+    if !share.created_by.is_empty()
+        && let Ok(Some(record)) = crate::auth::users::user_record(&share.created_by)
+        && !record.shares_enabled
+    {
+        return Err(AppError::new(ErrorKind::Auth, "Share no longer exists"));
+    }
     if share.exp > 0 && Utc::now().timestamp_millis() / 1000 > share.exp {
         return Err(AppError::new(ErrorKind::Auth, "Share link expired"));
     }
@@ -890,12 +896,23 @@ fn resolve_share_internal(
         ));
     };
 
-    let mut share = album.share_list.remove(share_id).ok_or_else(|| {
+    let share = album.share_list.remove(share_id).ok_or_else(|| {
         AppError::new(
             ErrorKind::NotFound,
             format!("Share '{share_id}' not found in album '{album_id}'"),
         )
     })?;
+
+    // If the creator disabled sharing, treat the share as dead (indistinguishable
+    // from removed). No oracle, same status as a missing/removed share.
+    if !share.created_by.is_empty()
+        && let Ok(Some(record)) = crate::auth::users::user_record(&share.created_by)
+        && !record.shares_enabled
+    {
+        return Err(AppError::new(ErrorKind::Auth, "Share no longer exists"));
+    }
+
+    let mut share = share;
 
     // Keep the credential the caller presented so the resolved share can
     // echo it for the capability chain; at rest the stored value stays

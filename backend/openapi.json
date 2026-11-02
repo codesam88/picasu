@@ -1547,6 +1547,23 @@
         ],
         "type": "object"
       },
+      "SetUserSharingRequest": {
+        "additionalProperties": false,
+        "description": "Body for `PUT /put/users/sharing`.",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "enabled"
+        ],
+        "type": "object"
+      },
       "Share": {
         "properties": {
           "createdBy": {
@@ -1691,6 +1708,9 @@
             "type": "boolean"
           },
           "disabled": {
+            "type": "boolean"
+          },
+          "sharesEnabled": {
             "type": "boolean"
           },
           "userId": {
@@ -5266,6 +5286,72 @@
           "invariants": [
             "AUTH-12",
             "AUTH-15"
+          ],
+          "shareScope": "n-a"
+        }
+      }
+    },
+    "/put/users/sharing": {
+      "put": {
+        "description": "Admin-only. Sharing is not a liveness property, so no zero-enabled-admin\ncheck applies. A same-flag write is a no-op reporting success without an\naudit line.\n\nErrors: 400 invalid `userId` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 404 unknown `userId` — 405\nread-only mode — 500 storage failure.",
+        "operationId": "set_user_sharing_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserSharingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Account sharing state updated"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "422": {
+            "description": "Unprocessable entity"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
+        "summary": "Set a user's sharing flag.",
+        "tags": [
+          "auth"
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "credentials": [
+            "session"
+          ],
+          "effects": [
+            "manage"
+          ],
+          "guards": [
+            "GuardAdmin",
+            "GuardMutate"
+          ],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
           ],
           "shareScope": "n-a"
         }

@@ -94,7 +94,7 @@ describe('UserManagement grouped display', () => {
     expect(source).toMatch(/:text="deleteLabel\(user\)"/)
     expect(source).toMatch(/:aria-label="deleteLabel\(user\)"/)
     expect(source).toMatch(/Cannot delete admin - promote another user first/)
-    expect(source.match(/<span v-bind="props"/g)).toHaveLength(3)
+    expect(source.match(/<span v-bind="props"/g)).toHaveLength(4)
   })
 })
 

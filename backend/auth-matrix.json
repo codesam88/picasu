@@ -1893,6 +1893,41 @@
     }
   },
   {
+    "method": "PUT",
+    "modeled": true,
+    "operationId": "set_user_sharing_handler",
+    "path": "/put/users/sharing",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "credentials": [
+        "session"
+      ],
+      "effects": [
+        "manage"
+      ],
+      "fallback": [],
+      "guards": [
+        "GuardAdmin",
+        "GuardMutate"
+      ],
+      "invariants": [
+        "AUTH-11",
+        "AUTH-12"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "waivers": {}
+    }
+  },
+  {
     "method": "GET",
     "modeled": false,
     "operationId": "redirect_to_login",

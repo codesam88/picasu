@@ -14,6 +14,7 @@ pub mod rotate_image;
 pub mod users_admin;
 pub mod users_disabled;
 pub mod users_password;
+pub mod users_sharing;
 pub fn generate_put_routes() -> Vec<Route> {
     let r = routes![
         assign_album::assign_album,
@@ -30,6 +31,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         users_password::set_user_password_handler,
         users_admin::set_user_admin_handler,
         users_disabled::set_user_disabled_handler,
+        users_sharing::set_user_sharing_handler,
         rotate_image::rotate_image
     ];
     r

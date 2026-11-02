@@ -12,7 +12,7 @@ use crate::error::{AppError, ErrorKind};
 
 /// The identity record: the password hash fields plus the identity
 /// attributes, flattened into one row. Pre-change (hash-only) entries still
-/// deserialize because `admin`, `home` and `ver` default.
+/// deserialize because `admin`, `home`, `ver` and the sharing flag default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UserRecord {
     pub hash: Option<String>,
@@ -32,6 +32,17 @@ pub struct UserRecord {
     /// lenient deserializer.
     #[serde(default)]
     pub disabled: bool,
+    /// Whether the user may create and have shares used. Defaults to true;
+    /// disabling sharing keeps existing share rows but denies new creation and
+    /// resolves existing shares as dead (indistinguishable). Tolerated as absent
+    /// by the lenient deserializer.
+    #[serde(default = "default_shares_enabled")]
+    pub shares_enabled: bool,
+}
+
+#[allow(dead_code)]
+fn default_shares_enabled() -> bool {
+    true
 }
 
 impl<'de> serde::Deserialize<'de> for UserRecord {
@@ -57,6 +68,10 @@ impl<'de> serde::Deserialize<'de> for UserRecord {
             .get("disabled")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
+        let shares_enabled = obj
+            .get("shares_enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true);
         let hash = if obj.contains_key("salt") && obj.contains_key("iterations") {
             // Legacy flattened PBKDF2 row (salt/hash/iterations at top level).
             let legacy: PasswordHash =
@@ -82,6 +97,7 @@ impl<'de> serde::Deserialize<'de> for UserRecord {
             home,
             ver,
             disabled,
+            shares_enabled,
         })
     }
 }
@@ -250,6 +266,7 @@ pub fn provision(
                 home,
                 ver: 0,
                 disabled: false,
+                shares_enabled: true,
             },
         );
         Ok(id)
@@ -277,6 +294,7 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
                     home: None,
                     ver: 1,
                     disabled: false,
+                    shares_enabled: true,
                 },
             );
         }
@@ -356,6 +374,27 @@ pub fn set_disabled(path: &Path, id: &str, disabled: bool) -> Result<bool, AppEr
         if disabled {
             current.ver = current.ver.wrapping_add(1);
         }
+        users.insert(target, current);
+        Ok(true)
+    })
+}
+
+/// Set the `shares_enabled` flag of an existing user. Sharing is not a
+/// liveness property, so disabling the last admin is not refused and token
+/// versions are not bumped. Returns `Ok(false)` when the flag already had
+/// that value.
+pub fn set_sharing_enabled(path: &Path, id: &str, enabled: bool) -> Result<bool, AppError> {
+    let target = id.trim().to_string();
+    rmw(path, |users| {
+        let current = users
+            .get(&target)
+            .cloned()
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, format!("unknown user: {target}")))?;
+        if current.shares_enabled == enabled {
+            return Ok(false);
+        }
+        let mut current = current;
+        current.shares_enabled = enabled;
         users.insert(target, current);
         Ok(true)
     })
@@ -531,6 +570,9 @@ impl UserStore {
     }
     pub fn set_disabled(&self, id: &str, disabled: bool) -> Result<bool, AppError> {
         set_disabled(&self.path, id, disabled)
+    }
+    pub fn set_sharing_enabled(&self, id: &str, enabled: bool) -> Result<bool, AppError> {
+        set_sharing_enabled(&self.path, id, enabled)
     }
     pub fn delete(&self, id: &str) -> Result<bool, AppError> {
         delete(&self.path, id, false)
@@ -864,6 +906,7 @@ mod tests {
                     home: None,
                     ver: 0,
                     disabled: false,
+                    shares_enabled: true,
                 },
             );
             Ok(())
@@ -953,6 +996,7 @@ mod tests {
                         home: None,
                         ver: 0,
                         disabled: false,
+                        shares_enabled: true,
                     })
                     .expect("encode");
                     table.insert(id.as_str(), raw.as_str()).expect("insert");

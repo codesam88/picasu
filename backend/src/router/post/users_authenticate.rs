@@ -323,7 +323,8 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
     let profile = UserSummary {
         user_id: user_id.to_string(),
         admin,
-        disabled: false,
+        disabled: record.disabled,
+        shares_enabled: record.shares_enabled,
     };
     Ok((token, profile))
 }

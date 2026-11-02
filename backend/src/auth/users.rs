@@ -44,6 +44,7 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
                 home: None,
                 ver: 0,
                 disabled: false,
+                shares_enabled: true,
             },
         );
         Ok(())
@@ -125,6 +126,30 @@ pub fn set_disabled(id: &str, disabled: bool) -> Result<()> {
         anyhow::bail!("unknown user: {target}");
     }
     crate::auth::user_store::set_disabled(&user_store_path(), &target, disabled)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    Ok(())
+}
+
+/// Set the `shares_enabled` flag for an existing user. Returns `Ok(true)` when
+/// changed. Sharing is not a liveness property, so no zero-admin checks.
+pub fn set_sharing_enabled_role(id: &str, enabled: bool) -> Result<bool, AppError> {
+    let target = validate_user_id(id)?;
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
+    }
+    crate::auth::user_store::set_sharing_enabled(&user_store_path(), &target, enabled)
+}
+
+/// Set the `shares_enabled` flag for an existing user. Fails for unknown ids.
+pub fn set_sharing_enabled(id: &str, enabled: bool) -> Result<()> {
+    let target = validate_user_id(id)?;
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
+        anyhow::bail!("unknown user: {target}");
+    }
+    crate::auth::user_store::set_sharing_enabled(&user_store_path(), &target, enabled)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     Ok(())
 }
