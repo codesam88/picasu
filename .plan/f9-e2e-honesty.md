@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: chore
 priority: medium
 area: frontend
@@ -81,7 +81,7 @@ switch on (`ui.text_visible`) and disappears with it off
 Convert or delete every wait-then-shell-visible step in these
 scenarios; no bare `wait.ms` may remain as an assertion.
 
-### F9-3 — Assignment skip: justify or write it
+### F9-3 — Assignment skip: justify or write it (CLOSED 2026-11-02)
 
 Either write the UI smoke the skip comment avoids (log in as the
 non-owner, attempt assignment through the real dialog, assert the
@@ -90,19 +90,28 @@ backend-test pointers that pin assignment isolation, with file and
 test names. The comment as written — coverage claimed nowhere in
 particular — is not an option.
 
-### F9-4 — Positive-control sweep
+### F9-4 — Positive-control sweep (CLOSED 2026-11-02)
 
 For every remaining "must not see" assertion, add the neighboring
 "owner can see" assertion in the same run (own album visible in
 own MyAlbums, own photo present in own timeline opt-in), so a
 broken fixture can never make isolation pass vacuously.
 
-### F9-5 — Full verification and closeout
+### F9-5 — Full verification and closeout (CLOSED 2026-11-02)
 
 Target spec file(s) green, then the whole e2e UI suite green (or a
 documented subset if wall-clock forces it, with the reason
 recorded). Confirm no new `wait.ms` steps and no structural
 regressions. Mark this plan `done`.
+
+Result (2026-11-02): F9-3 replaced the assignment skip comment with exact
+backend test pointers (personal_reads.rs, authz.rs B4/B5, share_ownership.rs
+F5 cases). F9-4 added owner positive controls (alice album count, /albums
+and direct-album render checks) to previously negative-only steps. Verified:
+`just frontend-check` (pass), `just frontend-vitest` (354 passed),
+`npx playwright test --grep "Personal albums"` (4 passed). No bare wait.ms
+in personal-user-albums-isolation-flow.yaml. Grey frames during active scan
+are tracked separately (index-vs-move race) and not asserted here.
 
 ## Explicitly out of scope
 
