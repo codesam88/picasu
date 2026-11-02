@@ -2286,10 +2286,17 @@ mod tests {
         reachable.sort();
         reachable.dedup();
 
-        let expected: Vec<String> = crate::selection::randomizable_formats(manifest)
+        // `randomizable_formats` is ordered by format name, while `reachable` is
+        // sorted by extension above; the two orders only happen to coincide for
+        // today's extension set. Compare them as sets (sorted vecs) so a future
+        // format whose extension sorts differently from its format name cannot
+        // make this assertion fail for the wrong reason.
+        let mut expected: Vec<String> = crate::selection::randomizable_formats(manifest)
             .into_iter()
             .map(|format| format.extension)
             .collect();
+        expected.sort();
+        expected.dedup();
         assert_eq!(
             reachable, expected,
             "a library run must reach every randomizable format's extension"

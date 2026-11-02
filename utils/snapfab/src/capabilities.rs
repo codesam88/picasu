@@ -247,9 +247,13 @@ pub fn validate_manifest(manifest: &CapabilityManifest) -> Result<(), Capability
             if sources.is_empty() {
                 return validation_error("metadata fields must map to at least one source");
             }
+            let mut sources_seen = HashSet::new();
             for source in sources {
                 if !METADATA_SOURCES.contains(&source.as_str()) {
                     return validation_error("metadata source is not recognized");
+                }
+                if !sources_seen.insert(source.as_str()) {
+                    return validation_error("metadata sources must be unique");
                 }
                 if !field_carries_source(field, source) {
                     return validation_error(&format!(
@@ -262,9 +266,13 @@ pub fn validate_manifest(manifest: &CapabilityManifest) -> Result<(), Capability
         if entry.expected_failure_classes.is_empty() {
             return validation_error("expected failure classes must not be empty");
         }
+        let mut failure_classes_seen = HashSet::new();
         for failure_class in &entry.expected_failure_classes {
             if !FAILURE_CLASSES.contains(&failure_class.as_str()) {
                 return validation_error("expected failure class is not recognized");
+            }
+            if !failure_classes_seen.insert(failure_class.as_str()) {
+                return validation_error("expected failure classes must be unique");
             }
         }
         let mut unsupported_seen = HashSet::new();
@@ -2138,6 +2146,24 @@ mod tests {
                 "{format} pins the fixtures its claims and recorded exclusions rest on"
             );
         }
+    }
+
+    #[test]
+    fn duplicate_metadata_sources_are_rejected() {
+        let entry = valid_entry().replace(
+            r#"{"exif": ["embedded"]}"#,
+            r#"{"exif": ["embedded", "embedded"]}"#,
+        );
+        assert_validation_error(&[&entry]);
+    }
+
+    #[test]
+    fn duplicate_expected_failure_classes_are_rejected() {
+        let entry = valid_entry().replace(
+            r#""expectedFailureClasses": ["none"]"#,
+            r#""expectedFailureClasses": ["none", "none"]"#,
+        );
+        assert_validation_error(&[&entry]);
     }
 
     #[test]
