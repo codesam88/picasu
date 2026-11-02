@@ -4,6 +4,7 @@ import { z } from 'zod'
 export interface UserSummary {
   userId: string
   admin: boolean
+  disabled?: boolean
 }
 
 export const listUsers = async (): Promise<UserSummary[]> => {
@@ -51,8 +52,17 @@ export const setUserAdmin = async (userId: string, admin: boolean): Promise<void
   })
 }
 
-export const deleteUser = async (userId: string): Promise<void> => {
-  await axios.delete(`/delete/users/${encodeURIComponent(userId)}`)
+export const deleteUser = async (userId: string, reauthPassword: string): Promise<void> => {
+  await axios.delete(`/delete/users/${encodeURIComponent(userId)}`, {
+    headers: { 'X-Picasu-Password': reauthPassword }
+  })
+}
+
+export const setUserDisabled = async (userId: string, disabled: boolean): Promise<void> => {
+  await axios.put('/put/users/disabled', {
+    userId,
+    disabled
+  })
 }
 
 /// Change a user's password via `PUT /put/users/password`. The caller's own

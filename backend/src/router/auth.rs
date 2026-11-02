@@ -710,8 +710,8 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
             .flatten()
             .unwrap_or(false);
         match crate::auth::users::user_record(id)? {
-            Some(record) if passwd_admin => {
-                if record.ver != claims.ver {
+            Some(record) if passwd_admin && !record.disabled => {
+                if record.ver != claims.ver || record.disabled {
                     return Err(anyhow!("User is not an admin"));
                 }
                 if crate::auth::revocations::is_revoked(&crate::auth::revocations::session_key(
@@ -751,7 +751,7 @@ pub fn try_jwt_cookie_user(req: &Request<'_>, validation: &Validation) -> Result
     };
     let id = id.clone();
     match crate::auth::users::user_record(&id)? {
-        Some(record) if record.ver == claims.ver => {
+        Some(record) if record.ver == claims.ver && !record.disabled => {
             if crate::auth::revocations::is_revoked(&crate::auth::revocations::session_key(
                 &claims.jti,
             )) {
@@ -1053,7 +1053,7 @@ impl<'r> FromRequest<'r> for GuardUser {
                 ));
             }
         };
-        if record.ver != claims.ver {
+        if record.ver != claims.ver || record.disabled {
             return denied("Invalid token version");
         }
         // A revoked session (this device logged out) is dead even though its

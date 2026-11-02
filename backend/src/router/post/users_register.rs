@@ -16,6 +16,8 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 pub struct UserSummary {
     pub user_id: String,
     pub admin: bool,
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 /// Body for `POST /post/users/register`. There is deliberately no `admin`
@@ -152,6 +154,7 @@ fn register_user_sync(
         return Ok(UserSummary {
             user_id: id,
             admin: false,
+            disabled: false,
         });
     }
     let token = req
@@ -174,5 +177,6 @@ fn register_user_sync(
     Ok(UserSummary {
         user_id: id,
         admin: false,
+        disabled: false,
     })
 }

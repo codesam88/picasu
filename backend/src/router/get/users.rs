@@ -49,6 +49,7 @@ pub fn list_users_handler(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Vec<U
             .map(|(user_id, record)| UserSummary {
                 user_id,
                 admin: record.admin,
+                disabled: record.disabled,
             })
             .collect(),
     ))
@@ -84,10 +85,12 @@ mod tests {
                 UserSummary {
                     user_id: "s4c-bob".to_string(),
                     admin: false,
+                    disabled: false,
                 },
                 UserSummary {
                     user_id: "s4c-root".to_string(),
                     admin: true,
+                    disabled: false,
                 },
             ]
         );
