@@ -254,9 +254,14 @@ authorizes exactly one asset.
 the DB (`GuardPresenter` requires a live share). Minted capabilities are immutable
 and remain valid until `exp`; revoking a share prevents new identity and renewal
 but does not retract outstanding tokens. A renewal re-validates the embedded
-share before re-issue. For users the role is re-read per request: demotion or
-removal takes effect before expiry, while promotion requires re-login (the
-token-embedded flag gates first).
+share before re-issue. For users the role is re-read per request: demotion,
+disable, or removal takes effect before expiry (disable bumps the token
+version so outstanding sessions die at once; login of a disabled user is
+rejected exactly like a wrong password). Promotion requires re-login (the
+token-embedded flag gates first). Sharing is an independent per-user flag:
+disabling sharing prevents new share creation and denies resolution of that
+user's shares like a dead share (401, indistinguishable from removed) while
+existing share rows remain.
 
 **AUTH-10 — Renewal preserves authority.** `renew(t) = t'` requires
 `payload(t') = payload(t)`, `bound(t') = bound(t)`, and a presenter capability
@@ -350,7 +355,7 @@ the tests are witnesses.
 | AUTH-5    | test        | flag-preservation tests                                                                                                                                     |
 | AUTH-6    | static+test | C1 scope clause; principal × scope tests                                                                                                                    |
 | AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                                                                                                          |
-| AUTH-9    | test        | disabled/expired-share tests, including renewal                                                                                                             |
+| AUTH-9    | test        | disabled/expired-share tests, disabled-user login/session denial, share-disable create/resolve/renew tests, including renewal                               |
 | AUTH-10   | static+test | renewal binding rule; transition tests                                                                                                                      |
 | AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAdmin` and no share guard                                                                                  |
 | AUTH-12   | static      | guard-completeness: every mutating route carries `GuardMutate`, except the read-only lift (`disable-read-only`), which carries `GuardAdmin` ∩ `GuardReauth` |
