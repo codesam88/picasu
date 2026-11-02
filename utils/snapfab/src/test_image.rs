@@ -246,10 +246,10 @@ pub fn generate_photo(
 
     let width = spec
         .width
-        .unwrap_or_else(|| rng.sample(Uniform::new(80u32, 401).unwrap()));
+        .unwrap_or_else(|| rng.sample(Uniform::new(80u32, 401).expect("valid range")));
     let height = spec
         .height
-        .unwrap_or_else(|| rng.sample(Uniform::new(80u32, 401).unwrap()));
+        .unwrap_or_else(|| rng.sample(Uniform::new(80u32, 401).expect("valid range")));
 
     if width == 0 || width > 10_000 {
         panic!("invalid photo width `{width}`: must be between 1 and 10000");
@@ -261,13 +261,15 @@ pub fn generate_photo(
     let minimal = spec.minimal || (width <= 4 && height <= 4);
 
     let (img, render_mode, start) = if minimal {
-        let idx = rng.sample(Uniform::new(0u32, enabled_modes.len() as u32).unwrap()) as usize;
+        let idx = rng.sample(Uniform::new(0u32, enabled_modes.len() as u32).expect("valid range"))
+            as usize;
         let mode = enabled_modes[idx];
         let start = Instant::now();
         let img = RgbImage::from_pixel(2, 2, image::Rgb([128, 128, 128]));
         (img, mode, start)
     } else {
-        let idx = rng.sample(Uniform::new(0u32, enabled_modes.len() as u32).unwrap()) as usize;
+        let idx = rng.sample(Uniform::new(0u32, enabled_modes.len() as u32).expect("valid range"))
+            as usize;
         let mode = enabled_modes[idx];
         let start = Instant::now();
         let img = match mode {
@@ -320,8 +322,9 @@ pub fn generate_photo(
     };
     // A title and a caption are the app's `title` and `description` fields.
     let (title, caption) = if tagged_jpeg {
-        let title = TITLES[rng.sample(Uniform::new(0usize, TITLES.len()).unwrap())];
-        let caption = CAPTIONS[rng.sample(Uniform::new(0usize, CAPTIONS.len()).unwrap())];
+        let title = TITLES[rng.sample(Uniform::new(0usize, TITLES.len()).expect("valid range"))];
+        let caption =
+            CAPTIONS[rng.sample(Uniform::new(0usize, CAPTIONS.len()).expect("valid range"))];
         (Some(title), Some(caption))
     } else {
         (None, None)
@@ -395,23 +398,24 @@ struct CameraFields {
 
 impl CameraFields {
     fn random(rng: &mut SmallRng) -> Self {
-        let make = match rng.sample(Uniform::new(0u32, 4).unwrap()) {
+        let make = match rng.sample(Uniform::new(0u32, 4).expect("valid range")) {
             0 => "Canon",
             1 => "Nikon",
             2 => "Sony",
             _ => "Fujifilm",
         };
-        let model = match rng.sample(Uniform::new(0u32, 4).unwrap()) {
+        let model = match rng.sample(Uniform::new(0u32, 4).expect("valid range")) {
             0 => "EOS R5",
             1 => "Z8",
             2 => "A7 IV",
             _ => "XT-5",
         };
-        let iso = rng.sample(Uniform::new(100u32, 6401).unwrap());
-        let f_number = rng.sample(Uniform::new(1.4f64, 22.0).unwrap());
-        let exposure_time = 1.0 / rng.sample(Uniform::new_inclusive(30.0f64, 4000.0).unwrap());
-        let user_comment =
-            USER_COMMENTS[rng.sample(Uniform::new(0usize, USER_COMMENTS.len()).unwrap())];
+        let iso = rng.sample(Uniform::new(100u32, 6401).expect("valid range"));
+        let f_number = rng.sample(Uniform::new(1.4f64, 22.0).expect("valid range"));
+        let exposure_time =
+            1.0 / rng.sample(Uniform::new_inclusive(30.0f64, 4000.0).expect("valid range"));
+        let user_comment = USER_COMMENTS
+            [rng.sample(Uniform::new(0usize, USER_COMMENTS.len()).expect("valid range"))];
         Self {
             make,
             model,
@@ -576,11 +580,11 @@ const PALETTE_WARM: &[[u8; 3]] = &[
 const ALL_PALETTES: &[&[[u8; 3]]] = &[PALETTE_MUTED, PALETTE_VIVID, PALETTE_PASTEL, PALETTE_WARM];
 
 fn pick_palette(rng: &mut SmallRng) -> &'static [[u8; 3]] {
-    ALL_PALETTES[rng.sample(Uniform::new(0usize, ALL_PALETTES.len()).unwrap())]
+    ALL_PALETTES[rng.sample(Uniform::new(0usize, ALL_PALETTES.len()).expect("valid range"))]
 }
 
 fn gradient_colors(rng: &mut SmallRng, palette: &[[u8; 3]]) -> [[u8; 3]; 2] {
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
     [
         palette[rng.sample(idx_range)],
         palette[rng.sample(idx_range)],
@@ -626,16 +630,16 @@ fn gradient_pixel(
 fn render_circles(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
     let bg_colors = gradient_colors(rng, palette);
-    let bg_dir = rng.sample(Uniform::new(0u32, 4).unwrap());
+    let bg_dir = rng.sample(Uniform::new(0u32, 4).expect("valid range"));
 
-    let n = rng.sample(Uniform::new_inclusive(3u32, 4).unwrap());
+    let n = rng.sample(Uniform::new_inclusive(3u32, 4).expect("valid range"));
     let mut circles = Vec::with_capacity(n as usize);
     let max_r = width.min(height) / 4;
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
     for _ in 0..n {
-        let cx = rng.sample(Uniform::new(0u32, width).unwrap());
-        let cy = rng.sample(Uniform::new(0u32, height).unwrap());
-        let r = rng.sample(Uniform::new(max_r / 4, max_r + 1).unwrap());
+        let cx = rng.sample(Uniform::new(0u32, width).expect("valid range"));
+        let cy = rng.sample(Uniform::new(0u32, height).expect("valid range"));
+        let r = rng.sample(Uniform::new(max_r / 4, max_r + 1).expect("valid range"));
         let color = palette[rng.sample(idx_range)];
         circles.push((cx, cy, r, color));
     }
@@ -655,26 +659,27 @@ fn render_circles(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 
 fn render_landscape(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
 
     let sky_top = palette[rng.sample(idx_range)];
     let sky_bot = palette[rng.sample(idx_range)];
     let ground_top = palette[rng.sample(idx_range)];
     let ground_bot = palette[rng.sample(idx_range)];
 
-    let horizon = rng.sample(Uniform::new(height / 3, height * 2 / 3 + 1).unwrap());
+    let horizon = rng.sample(Uniform::new(height / 3, height * 2 / 3 + 1).expect("valid range"));
 
-    let n_hills = rng.sample(Uniform::new_inclusive(1u32, 3).unwrap());
+    let n_hills = rng.sample(Uniform::new_inclusive(1u32, 3).expect("valid range"));
     let mut hills = Vec::with_capacity(n_hills as usize);
     for _ in 0..n_hills {
-        let peak = rng.sample(Uniform::new_inclusive(0u32, height / 6).unwrap());
+        let peak = rng.sample(Uniform::new_inclusive(0u32, height / 6).expect("valid range"));
         let color = palette[rng.sample(idx_range)];
-        let n_waves = rng.sample(Uniform::new_inclusive(1u32, 2).unwrap());
+        let n_waves = rng.sample(Uniform::new_inclusive(1u32, 2).expect("valid range"));
         let mut waves = Vec::with_capacity(n_waves as usize);
         for _ in 0..n_waves {
-            let amp =
-                rng.sample(Uniform::new_inclusive(1u32, (height / 10).max(2)).unwrap()) as f64;
-            let freq = rng.sample(Uniform::new_inclusive(1u32, 3).unwrap()) as f64;
+            let amp = rng
+                .sample(Uniform::new_inclusive(1u32, (height / 10).max(2)).expect("valid range"))
+                as f64;
+            let freq = rng.sample(Uniform::new_inclusive(1u32, 3).expect("valid range")) as f64;
             let phase = rng.random::<f64>() * std::f64::consts::TAU;
             waves.push((amp, freq, phase));
         }
@@ -708,19 +713,20 @@ fn render_landscape(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 
 fn render_geometric(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
-    let cols = rng.sample(Uniform::new_inclusive(2u32, 3).unwrap()) as usize;
-    let rows = rng.sample(Uniform::new_inclusive(2u32, 3).unwrap()) as usize;
+    let cols = rng.sample(Uniform::new_inclusive(2u32, 3).expect("valid range")) as usize;
+    let rows = rng.sample(Uniform::new_inclusive(2u32, 3).expect("valid range")) as usize;
     let gap = 3u32;
 
     let cell_w = (width.saturating_sub((cols as u32 - 1) * gap)) / cols as u32;
     let cell_h = (height.saturating_sub((rows as u32 - 1) * gap)) / rows as u32;
     let n = cols * rows;
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
 
-    let filled_count = rng.sample(Uniform::new_inclusive(2u32, (n - 1) as u32).unwrap()) as usize;
+    let filled_count =
+        rng.sample(Uniform::new_inclusive(2u32, (n - 1) as u32).expect("valid range")) as usize;
     let mut filled = Vec::new();
     while filled.len() < filled_count {
-        let c = rng.sample(Uniform::new(0usize, n).unwrap());
+        let c = rng.sample(Uniform::new(0usize, n).expect("valid range"));
         if !filled.contains(&c) {
             filled.push(c);
         }
@@ -747,17 +753,19 @@ fn render_geometric(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 fn render_wavy_lines(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
     let bg_colors = gradient_colors(rng, palette);
-    let bg_dir = rng.sample(Uniform::new(0u32, 4).unwrap());
+    let bg_dir = rng.sample(Uniform::new(0u32, 4).expect("valid range"));
 
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
-    let n = rng.sample(Uniform::new_inclusive(2u32, 4).unwrap());
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
+    let n = rng.sample(Uniform::new_inclusive(2u32, 4).expect("valid range"));
     let mut lines = Vec::with_capacity(n as usize);
     for _ in 0..n {
-        let y_base = rng.sample(Uniform::new(0u32, height).unwrap()) as f64;
-        let amp = rng.sample(Uniform::new_inclusive(1u32, (height / 4).max(1)).unwrap()) as f64;
-        let freq = rng.sample(Uniform::new_inclusive(1u32, 3).unwrap()) as f64;
+        let y_base = rng.sample(Uniform::new(0u32, height).expect("valid range")) as f64;
+        let amp = rng
+            .sample(Uniform::new_inclusive(1u32, (height / 4).max(1)).expect("valid range"))
+            as f64;
+        let freq = rng.sample(Uniform::new_inclusive(1u32, 3).expect("valid range")) as f64;
         let phase = rng.random::<f64>() * std::f64::consts::TAU;
-        let thickness = rng.sample(Uniform::new_inclusive(40u32, 100).unwrap());
+        let thickness = rng.sample(Uniform::new_inclusive(40u32, 100).expect("valid range"));
         let color = palette[rng.sample(idx_range)];
         lines.push((y_base, amp, freq, phase, thickness, color));
     }
@@ -778,23 +786,24 @@ fn render_wavy_lines(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 
 fn render_mountains(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
 
     let sky_top = palette[rng.sample(idx_range)];
     let sky_bot = palette[rng.sample(idx_range)];
 
-    let n_layers = rng.sample(Uniform::new_inclusive(1u32, 3).unwrap());
+    let n_layers = rng.sample(Uniform::new_inclusive(1u32, 3).expect("valid range"));
     let mut layers = Vec::with_capacity(n_layers as usize);
     for li in 0..n_layers {
         let t = (li + 1) as f64 / (n_layers + 1) as f64;
         let base = height as f64 * (0.25 + t * 0.5);
         let color = palette[rng.sample(idx_range)];
-        let n_waves = rng.sample(Uniform::new_inclusive(2u32, 3).unwrap());
+        let n_waves = rng.sample(Uniform::new_inclusive(2u32, 3).expect("valid range"));
         let mut waves = Vec::with_capacity(n_waves as usize);
         for _ in 0..n_waves {
             let max_amp = (height / 6).max(3);
-            let amp = rng.sample(Uniform::new_inclusive(1u32, max_amp).unwrap()) as f64;
-            let freq = rng.sample(Uniform::new_inclusive(1u32, 4).unwrap()) as f64;
+            let amp =
+                rng.sample(Uniform::new_inclusive(1u32, max_amp).expect("valid range")) as f64;
+            let freq = rng.sample(Uniform::new_inclusive(1u32, 4).expect("valid range")) as f64;
             let phase = rng.random::<f64>() * std::f64::consts::TAU;
             waves.push((amp, freq, phase));
         }
@@ -802,10 +811,10 @@ fn render_mountains(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     }
 
     let sun = if rng.random::<f64>() < 0.5 {
-        let sx = rng.sample(Uniform::new(width / 5, width * 4 / 5 + 1).unwrap());
-        let sy = rng.sample(Uniform::new(height / 8, height * 3 / 5).unwrap());
+        let sx = rng.sample(Uniform::new(width / 5, width * 4 / 5 + 1).expect("valid range"));
+        let sy = rng.sample(Uniform::new(height / 8, height * 3 / 5).expect("valid range"));
         let max_sr = width.min(height) / 10 + 1;
-        let sr = rng.sample(Uniform::new(6u32.min(max_sr), max_sr + 1).unwrap());
+        let sr = rng.sample(Uniform::new(6u32.min(max_sr), max_sr + 1).expect("valid range"));
         Some((sx, sy, sr))
     } else {
         None
@@ -844,20 +853,21 @@ fn render_mountains(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 
 fn render_still_life(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
 
     let wall = palette[rng.sample(idx_range)];
     let table = palette[rng.sample(idx_range)];
     let table_h = height * 3 / 10;
 
-    let n_objects = rng.sample(Uniform::new_inclusive(2u32, 4).unwrap());
+    let n_objects = rng.sample(Uniform::new_inclusive(2u32, 4).expect("valid range"));
     let mut objects = Vec::with_capacity(n_objects as usize);
     for _ in 0..n_objects {
-        let obj_type: u32 = rng.sample(Uniform::new(0u32, 4).unwrap());
+        let obj_type: u32 = rng.sample(Uniform::new(0u32, 4).expect("valid range"));
         let color = palette[rng.sample(idx_range)];
-        let ox = rng.sample(Uniform::new(width / 6, width * 5 / 6 + 1).unwrap());
-        let oy = height
-            .saturating_sub(rng.sample(Uniform::new(table_h / 3, table_h * 3 / 4 + 1).unwrap()));
+        let ox = rng.sample(Uniform::new(width / 6, width * 5 / 6 + 1).expect("valid range"));
+        let oy = height.saturating_sub(
+            rng.sample(Uniform::new(table_h / 3, table_h * 3 / 4 + 1).expect("valid range")),
+        );
         objects.push((obj_type, color, ox, oy));
     }
 
@@ -916,7 +926,7 @@ fn render_still_life(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 
 fn render_mandelbrot(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
     let color_a = palette[rng.sample(idx_range)];
     let color_b = palette[rng.sample(idx_range)];
 
@@ -937,8 +947,8 @@ fn render_mandelbrot(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
         (0.3, 0.0, 2.0),
     ];
     let (center_x, center_y, zoom_base) =
-        spots[rng.sample(Uniform::new(0usize, spots.len()).unwrap())];
-    let zoom_mult = rng.sample(Uniform::new(0.8f64, 1.8).unwrap());
+        spots[rng.sample(Uniform::new(0usize, spots.len()).expect("valid range"))];
+    let zoom_mult = rng.sample(Uniform::new(0.8f64, 1.8).expect("valid range"));
     let zoom = zoom_base * zoom_mult;
 
     let range = 2.5 / zoom;
@@ -990,7 +1000,7 @@ fn render_mandelbrot(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 
 fn render_julia(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
     let palette = pick_palette(rng);
-    let idx_range = Uniform::new(0usize, palette.len()).unwrap();
+    let idx_range = Uniform::new(0usize, palette.len()).expect("valid range");
     let color_a = palette[rng.sample(idx_range)];
     let color_b = palette[rng.sample(idx_range)];
 
@@ -1010,8 +1020,9 @@ fn render_julia(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
         (0.4, 0.4),
         (-0.624, 0.435),
     ];
-    let (const_cx, const_cy) = spots[rng.sample(Uniform::new(0usize, spots.len()).unwrap())];
-    let zoom = rng.sample(Uniform::new(1.0f64, 3.0).unwrap());
+    let (const_cx, const_cy) =
+        spots[rng.sample(Uniform::new(0usize, spots.len()).expect("valid range"))];
+    let zoom = rng.sample(Uniform::new(1.0f64, 3.0).expect("valid range"));
 
     let range = 2.0 / zoom;
     let aspect = width as f64 / height as f64;
@@ -1063,12 +1074,12 @@ fn render_julia(width: u32, height: u32, rng: &mut SmallRng) -> RgbImage {
 fn random_date(rng: &mut SmallRng) -> String {
     format!(
         "{:04}:{:02}:{:02} {:02}:{:02}:{:02}",
-        rng.sample(Uniform::new(2000u32, 2030).unwrap()),
-        rng.sample(Uniform::new_inclusive(1u32, 12).unwrap()),
-        rng.sample(Uniform::new_inclusive(1u32, 28).unwrap()),
-        rng.sample(Uniform::new(0u32, 24).unwrap()),
-        rng.sample(Uniform::new(0u32, 60).unwrap()),
-        rng.sample(Uniform::new(0u32, 60).unwrap()),
+        rng.sample(Uniform::new(2000u32, 2030).expect("valid range")),
+        rng.sample(Uniform::new_inclusive(1u32, 12).expect("valid range")),
+        rng.sample(Uniform::new_inclusive(1u32, 28).expect("valid range")),
+        rng.sample(Uniform::new(0u32, 24).expect("valid range")),
+        rng.sample(Uniform::new(0u32, 60).expect("valid range")),
+        rng.sample(Uniform::new(0u32, 60).expect("valid range")),
     )
 }
 
@@ -1438,7 +1449,8 @@ fn generate_library(
 
     let mut written = Vec::with_capacity(count as usize);
     for i in 0..count {
-        let idx = rng.sample(Uniform::new(0u32, formats.len() as u32).unwrap()) as usize;
+        let idx =
+            rng.sample(Uniform::new(0u32, formats.len() as u32).expect("valid range")) as usize;
         let selected = &formats[idx];
         let filename = format!("photo_{:04}.{}", i + 1, selected.extension);
         let path = dir.join(&filename);
@@ -2171,7 +2183,9 @@ mod tests {
             .map(str::to_owned),
         );
         assert_eq!(
-            std::fs::read_dir(dir.path()).unwrap().count(),
+            std::fs::read_dir(dir.path())
+                .expect("read temp dir")
+                .count(),
             1,
             "seed-omitted verbose run should still write its file"
         );
@@ -2195,7 +2209,9 @@ mod tests {
                 .map(str::to_owned),
             );
             assert_eq!(
-                std::fs::read_dir(empty.path()).unwrap().count(),
+                std::fs::read_dir(empty.path())
+                    .expect("read temp dir")
+                    .count(),
                 0,
                 "generators={value} must skip generation"
             );
@@ -2392,14 +2408,20 @@ mod tests {
             );
         }
         assert!(
-            ["Canon", "Nikon", "Sony", "Fujifilm"]
-                .contains(&tag(&record, "IFD0:Make").unwrap().as_str()),
+            ["Canon", "Nikon", "Sony", "Fujifilm"].contains(
+                &tag(&record, "IFD0:Make")
+                    .expect("make tag present")
+                    .as_str()
+            ),
             "the fixture must look like a photograph: {:?}",
             record.get("IFD0:Make")
         );
         assert!(
-            ["EOS R5", "Z8", "A7 IV", "XT-5"]
-                .contains(&tag(&record, "IFD0:Model").unwrap().as_str()),
+            ["EOS R5", "Z8", "A7 IV", "XT-5"].contains(
+                &tag(&record, "IFD0:Model")
+                    .expect("model tag present")
+                    .as_str()
+            ),
             "{:?}",
             record.get("IFD0:Model")
         );

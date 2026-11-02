@@ -22,3 +22,6 @@ clap = { version = "4", features = ["derive"] }
 rayon = "1"
 exiftool = "0.3.1"
 tempfile = "3"
+
+[lints]
+workspace = true
