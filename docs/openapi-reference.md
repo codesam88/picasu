@@ -10276,6 +10276,7 @@ read.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data by timestamp range                                                                    | Inline                                      |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responseschema">Response Schema</h3>
@@ -10681,6 +10682,7 @@ index is out of bounds.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Row data                                                                                   | [Row](#schemarow)                           |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="warning">
@@ -10882,6 +10884,7 @@ mismatched prefetch token.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Scroll bar data                                                                            | Inline                                      |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Not found                                                                                  | None                                        |
 
 <h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responseschema">Response Schema</h3>
 
@@ -11360,14 +11363,14 @@ File upload
 
 ```shell
 # You can also use wget
-curl -X POST /upload \
+curl -X POST /post/upload \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json'
 
 ```
 
 ```http
-POST /upload HTTP/1.1
+POST /post/upload HTTP/1.1
 
 Content-Type: multipart/form-data
 Accept: application/json
@@ -11381,7 +11384,7 @@ const headers = {
   Accept: "application/json",
 };
 
-fetch("/upload", {
+fetch("/post/upload", {
   method: "POST",
   body: inputBody,
   headers: headers,
@@ -11403,7 +11406,7 @@ headers = {
   'Accept' => 'application/json'
 }
 
-result = RestClient.post '/upload',
+result = RestClient.post '/post/upload',
   params: {
   }, headers: headers
 
@@ -11418,7 +11421,7 @@ headers = {
   'Accept': 'application/json'
 }
 
-r = requests.post('/upload', headers = headers)
+r = requests.post('/post/upload', headers = headers)
 
 print(r.json())
 
@@ -11440,7 +11443,7 @@ $client = new \GuzzleHttp\Client();
 $request_body = array();
 
 try {
-    $response = $client->request('POST','/upload', array(
+    $response = $client->request('POST','/post/upload', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -11457,7 +11460,7 @@ try {
 ```
 
 ```java
-URL obj = new URL("/upload");
+URL obj = new URL("/post/upload");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 con.setRequestMethod("POST");
 int responseCode = con.getResponseCode();
@@ -11489,7 +11492,7 @@ func main() {
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/upload", data)
+    req, err := http.NewRequest("POST", "/post/upload", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -11499,7 +11502,7 @@ func main() {
 
 ```
 
-`POST /upload`
+`POST /post/upload`
 
 With a target album the files land in that album's own directory; without
 one they land in the configured `uploadFolder` below `imagePath`, which
@@ -14945,11 +14948,16 @@ with `album/` is checked first: the remainder must be an existing album
 record in the metadata database.
 
 Corner cases: Rank 11 puts this route last, so the page routes and the API
-routes take precedence over it. The album check covers the `album/` prefix
-only; any other multi-segment path gets the shell without a database read.
+routes take precedence over it. Paths under the API and asset prefixes
+(`get/`, `post/`, `put/`, `delete/`, `object/`, `assets/`) are refused
+before the shell: they are forwarded API misses (e.g. a missing required
+query param), not page navigations. The album check covers the `album/`
+prefix only; any other multi-segment path gets the shell without a
+database read.
 
-Errors: 404 `/album/<album-id>` names no album record — 500 metadata
-database read, blocking task, or shell file failure.
+Errors: 404 path under an API or asset prefix, or `/album/<album-id>`
+names no album record — 500 metadata database read, blocking task, or
+shell file failure.
 
 <h3 id="serve-the-spa-shell-for-unmatched-paths,-verifying-album-paths-first.-parameters">Parameters</h3>
 
