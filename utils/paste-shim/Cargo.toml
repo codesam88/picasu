@@ -7,3 +7,6 @@ publish = false
 
 [dependencies]
 pastey = "0.2"
+
+[lints]
+workspace = true

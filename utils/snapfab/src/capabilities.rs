@@ -1996,7 +1996,10 @@ mod tests {
             let fixture = valid_fixture();
             let start = fixture.find(&format!("\"{field}\"")).expect("field exists");
             let value_start = start + field.len() + 3;
-            let value_end = value_start + fixture[value_start..].find([',', '\n']).unwrap();
+            let value_end = value_start
+                + fixture[value_start..]
+                    .find([',', '\n'])
+                    .expect("delimiter present");
             let mut out = fixture.clone();
             out.replace_range(value_start..value_end, literal);
             out

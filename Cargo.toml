@@ -25,3 +25,6 @@ libraries = [{ path = "utils/dylint-lints/*" }]
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+[workspace.lints.clippy]
+unwrap_used = { level = "warn", priority = 0 }
