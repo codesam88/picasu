@@ -298,6 +298,14 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     };
+    if record.disabled {
+        // Disabled accounts fail exactly like a wrong password: same status,
+        // same dummy KDF work, no new oracle.
+        let _ = run_dummy_verify();
+        return Err(
+            AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
+        );
+    }
     let store = UserStore::load(&users::user_store_path())
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
     #[cfg(test)]
@@ -315,6 +323,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
     let profile = UserSummary {
         user_id: user_id.to_string(),
         admin,
+        disabled: false,
     };
     Ok((token, profile))
 }

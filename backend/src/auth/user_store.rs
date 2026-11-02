@@ -26,6 +26,12 @@ pub struct UserRecord {
     /// role) and by an explicit invalidation.
     #[serde(default)]
     pub ver: u64,
+    /// Whether the account is disabled (locked). Disabled users cannot log in
+    /// and their outstanding sessions are invalidated; personal data and shares
+    /// are untouched. Defaults to false and is tolerated as absent by the
+    /// lenient deserializer.
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 impl<'de> serde::Deserialize<'de> for UserRecord {
@@ -47,6 +53,10 @@ impl<'de> serde::Deserialize<'de> for UserRecord {
             .get("ver")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
+        let disabled = obj
+            .get("disabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
         let hash = if obj.contains_key("salt") && obj.contains_key("iterations") {
             // Legacy flattened PBKDF2 row (salt/hash/iterations at top level).
             let legacy: PasswordHash =
@@ -71,6 +81,7 @@ impl<'de> serde::Deserialize<'de> for UserRecord {
             admin,
             home,
             ver,
+            disabled,
         })
     }
 }
@@ -238,6 +249,7 @@ pub fn provision(
                 admin,
                 home,
                 ver: 0,
+                disabled: false,
             },
         );
         Ok(id)
@@ -264,6 +276,7 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
                     admin: false,
                     home: None,
                     ver: 1,
+                    disabled: false,
                 },
             );
         }
@@ -310,6 +323,39 @@ pub fn set_admin(path: &Path, id: &str, admin: bool) -> Result<bool, AppError> {
         let mut current = current;
         current.admin = admin;
         current.ver = current.ver.wrapping_add(1);
+        users.insert(target, current);
+        Ok(true)
+    })
+}
+
+/// Set the disabled flag of an existing user. Disabling bumps the token
+/// version so outstanding sessions die at once; re-enabling clears the flag
+/// without touching `ver`. Disabling the last enabled admin is refused.
+/// Returns `Ok(false)` when the flag already had that value.
+pub fn set_disabled(path: &Path, id: &str, disabled: bool) -> Result<bool, AppError> {
+    let target = id.trim().to_string();
+    rmw(path, |users| {
+        let current = users
+            .get(&target)
+            .cloned()
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, format!("unknown user: {target}")))?;
+        if current.disabled == disabled {
+            return Ok(false);
+        }
+        if disabled && current.admin {
+            let enabled_admins = users.values().filter(|e| e.admin && !e.disabled).count();
+            if enabled_admins <= 1 {
+                return Err(AppError::new(
+                    ErrorKind::Conflict,
+                    "disabling would leave zero enabled admins",
+                ));
+            }
+        }
+        let mut current = current;
+        current.disabled = disabled;
+        if disabled {
+            current.ver = current.ver.wrapping_add(1);
+        }
         users.insert(target, current);
         Ok(true)
     })
@@ -482,6 +528,9 @@ impl UserStore {
     }
     pub fn set_admin(&self, id: &str, admin: bool) -> Result<bool, AppError> {
         set_admin(&self.path, id, admin)
+    }
+    pub fn set_disabled(&self, id: &str, disabled: bool) -> Result<bool, AppError> {
+        set_disabled(&self.path, id, disabled)
     }
     pub fn delete(&self, id: &str) -> Result<bool, AppError> {
         delete(&self.path, id, false)
@@ -814,6 +863,7 @@ mod tests {
                     admin: false,
                     home: None,
                     ver: 0,
+                    disabled: false,
                 },
             );
             Ok(())
@@ -902,6 +952,7 @@ mod tests {
                         admin: false,
                         home: None,
                         ver: 0,
+                        disabled: false,
                     })
                     .expect("encode");
                     table.insert(id.as_str(), raw.as_str()).expect("insert");

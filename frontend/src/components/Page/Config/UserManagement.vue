@@ -74,6 +74,22 @@
                   </span>
                 </template>
               </v-tooltip>
+              <v-tooltip location="top" :text="lockLabel(user)">
+                <template #activator="{ props }">
+                  <span v-bind="props" class="d-inline-flex">
+                    <v-btn
+                      :icon="user.disabled ? 'mdi-lock' : 'mdi-lock-open-variant-outline'"
+                      variant="text"
+                      size="small"
+                      :color="user.disabled ? 'warning' : undefined"
+                      :aria-label="lockLabel(user)"
+                      :aria-pressed="!!user.disabled"
+                      :disabled="isRowLocked(user) || saving"
+                      @click="onToggleDisabled(user, !user.disabled)"
+                    ></v-btn>
+                  </span>
+                </template>
+              </v-tooltip>
               <v-tooltip location="top" :text="deleteLabel(user)">
                 <template #activator="{ props }">
                   <span v-bind="props" class="d-inline-flex">
@@ -121,7 +137,16 @@
       <v-dialog v-model="deleteConfirmOpen" max-width="480">
         <v-card>
           <v-card-title class="font-weight-bold">Delete user?</v-card-title>
-          <v-card-text> Delete {{ pendingDelete?.userId }}? This cannot be undone. </v-card-text>
+          <v-card-text>
+            Delete {{ pendingDelete?.userId }}? This cannot be undone.
+            <v-text-field
+              v-model="deletePassword"
+              type="password"
+              label="Your password"
+              class="mt-2"
+              @keyup.enter="confirmDelete"
+            ></v-text-field>
+          </v-card-text>
           <v-card-actions class="justify-end">
             <v-btn variant="text" @click="cancelDelete">Cancel</v-btn>
             <v-btn color="error" variant="flat" :loading="saving" @click="confirmDelete">
@@ -172,7 +197,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { listUsers, setUserAdmin, deleteUser, createUser, setUserPassword } from '@/api/users'
+import {
+  listUsers,
+  setUserAdmin,
+  setUserDisabled,
+  deleteUser,
+  createUser,
+  setUserPassword
+} from '@/api/users'
 import type { UserSummary } from '@/api/users'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -192,6 +224,7 @@ const pendingTarget = ref<UserSummary | null>(null)
 const pendingAdmin = ref<boolean | null>(null)
 const deleteConfirmOpen = ref(false)
 const pendingDelete = ref<UserSummary | null>(null)
+const deletePassword = ref('')
 const newUsername = ref('')
 const newPassword = ref('')
 const creating = ref(false)
@@ -224,6 +257,9 @@ const deleteLabel = (user: UserSummary): string => {
   return 'Delete user'
 }
 
+const lockLabel = (user: UserSummary): string =>
+  user.disabled === true ? 'Enable account' : 'Disable account'
+
 // --- Actions ---
 const refreshUsers = async () => {
   await tryWithMessageStore('mainId', async () => {
@@ -255,6 +291,29 @@ const applyRoleChange = async (target: UserSummary, admin: boolean) => {
   }
 }
 
+const applyDisabledChange = async (target: UserSummary, disabled: boolean) => {
+  const previous = !disabled
+  saving.value = true
+  try {
+    await setUserDisabled(target.userId, disabled)
+    messageStore.success(disabled ? `${target.userId} disabled` : `${target.userId} enabled`)
+    await refreshUsers()
+  } catch (error: unknown) {
+    target.disabled = previous
+    if (!axios.isAxiosError(error) || error.response === undefined) {
+      messageStore.error(errorDisplay(error))
+    }
+    await refreshUsers()
+  } finally {
+    saving.value = false
+  }
+}
+
+const onToggleDisabled = (user: UserSummary, disabled: boolean) => {
+  user.disabled = disabled
+  void applyDisabledChange(user, disabled)
+}
+
 const onToggle = (user: UserSummary, admin: boolean) => {
   // Both directions stage the confirm dialog: granting admin hands over
   // full access, so it is never applied optimistically.
@@ -282,12 +341,14 @@ const confirmRoleChange = async () => {
 
 const askDelete = (user: UserSummary) => {
   pendingDelete.value = user
+  deletePassword.value = ''
   deleteConfirmOpen.value = true
 }
 
 const cancelDelete = () => {
   deleteConfirmOpen.value = false
   pendingDelete.value = null
+  deletePassword.value = ''
 }
 
 const confirmDelete = async () => {
@@ -295,9 +356,11 @@ const confirmDelete = async () => {
   deleteConfirmOpen.value = false
   pendingDelete.value = null
   if (target === null) return
+  const password = deletePassword.value
+  deletePassword.value = ''
   saving.value = true
   try {
-    await deleteUser(target.userId)
+    await deleteUser(target.userId, password)
     messageStore.success(`${target.userId} deleted`)
     await refreshUsers()
   } catch (error: unknown) {

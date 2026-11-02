@@ -1824,6 +1824,41 @@
   {
     "method": "PUT",
     "modeled": true,
+    "operationId": "set_user_disabled_handler",
+    "path": "/put/users/disabled",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "auth"
+    ],
+    "x-picasu-auth": {
+      "admin": "admin",
+      "credentials": [
+        "session"
+      ],
+      "effects": [
+        "manage"
+      ],
+      "fallback": [],
+      "guards": [
+        "GuardAdmin",
+        "GuardMutate"
+      ],
+      "invariants": [
+        "AUTH-11",
+        "AUTH-12"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "waivers": {}
+    }
+  },
+  {
+    "method": "PUT",
+    "modeled": true,
     "operationId": "set_user_password_handler",
     "path": "/put/users/password",
     "security": [

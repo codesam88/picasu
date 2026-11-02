@@ -7,7 +7,9 @@ import {
   login,
   logout,
   setUserAdmin,
-  setUserPassword
+  setUserPassword,
+  setUserDisabled,
+  deleteUser
 } from './users'
 
 vi.mock('axios')
@@ -16,6 +18,7 @@ const mockedAxios = axios as unknown as {
   get: ReturnType<typeof vi.fn>
   put: ReturnType<typeof vi.fn>
   post: ReturnType<typeof vi.fn>
+  delete: ReturnType<typeof vi.fn>
 }
 
 beforeEach(() => {
@@ -144,6 +147,27 @@ describe('setUserPassword', () => {
         headers: { 'X-Picasu-Password': 'reauth-secret' }
       }
     )
+  })
+})
+
+describe('setUserDisabled', () => {
+  test('puts the disabled flag to /put/users/disabled', async () => {
+    mockedAxios.put = vi.fn().mockResolvedValue({ data: '' })
+    await setUserDisabled('bob', true)
+    expect(mockedAxios.put).toHaveBeenCalledWith('/put/users/disabled', {
+      userId: 'bob',
+      disabled: true
+    })
+  })
+})
+
+describe('deleteUser', () => {
+  test('deletes with re-auth password header', async () => {
+    mockedAxios.delete = vi.fn().mockResolvedValue({ data: '' })
+    await deleteUser('bob', 'reauth-secret')
+    expect(mockedAxios.delete).toHaveBeenCalledWith('/delete/users/bob', {
+      headers: { 'X-Picasu-Password': 'reauth-secret' }
+    })
   })
 })
 

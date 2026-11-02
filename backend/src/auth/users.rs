@@ -43,6 +43,7 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
                 admin,
                 home: None,
                 ver: 0,
+                disabled: false,
             },
         );
         Ok(())
@@ -100,6 +101,30 @@ pub fn set_admin(id: &str, admin: bool) -> Result<()> {
         anyhow::bail!("unknown user: {target}");
     }
     crate::auth::user_store::set_admin(&user_store_path(), &target, admin)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    Ok(())
+}
+
+/// Set the disabled flag for an existing user, refusing the change when it
+/// would leave zero enabled admins. Returns `Ok(true)` when changed.
+pub fn set_disabled_role(id: &str, disabled: bool) -> Result<bool, AppError> {
+    let target = validate_user_id(id)?;
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
+    }
+    crate::auth::user_store::set_disabled(&user_store_path(), &target, disabled)
+}
+
+/// Set the disabled flag for an existing user. Fails for unknown ids.
+pub fn set_disabled(id: &str, disabled: bool) -> Result<()> {
+    let target = validate_user_id(id)?;
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
+        anyhow::bail!("unknown user: {target}");
+    }
+    crate::auth::user_store::set_disabled(&user_store_path(), &target, disabled)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     Ok(())
 }

@@ -1507,6 +1507,23 @@
         ],
         "type": "object"
       },
+      "SetUserDisabledRequest": {
+        "additionalProperties": false,
+        "description": "Body for `PUT /put/users/disabled`.",
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "disabled"
+        ],
+        "type": "object"
+      },
       "SetUserPasswordRequest": {
         "additionalProperties": false,
         "description": "Body for `PUT /put/users/password`.",
@@ -1671,6 +1688,9 @@
         "description": "Summary of a user record. Password hashes are never exported.",
         "properties": {
           "admin": {
+            "type": "boolean"
+          },
+          "disabled": {
             "type": "boolean"
           },
           "userId": {
@@ -5090,6 +5110,74 @@
           }
         ],
         "summary": "Grant or revoke a user's admin role.",
+        "tags": [
+          "auth"
+        ],
+        "x-picasu-auth": {
+          "admin": "admin",
+          "credentials": [
+            "session"
+          ],
+          "effects": [
+            "manage"
+          ],
+          "guards": [
+            "GuardAdmin",
+            "GuardMutate"
+          ],
+          "invariants": [
+            "AUTH-11",
+            "AUTH-12"
+          ],
+          "shareScope": "n-a"
+        }
+      }
+    },
+    "/put/users/disabled": {
+      "put": {
+        "operationId": "set_user_disabled_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserDisabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Account disabled state updated"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "409": {
+            "description": "Disabling would leave zero enabled admins"
+          },
+          "422": {
+            "description": "Unprocessable entity"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
+        "summary": "Lock or unlock a user account (admin-only).",
         "tags": [
           "auth"
         ],

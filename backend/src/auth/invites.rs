@@ -450,6 +450,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
                 admin: false,
                 home: None,
                 ver: 0,
+                disabled: false,
             },
         );
         Ok(())
@@ -591,6 +592,7 @@ mod tests {
                     admin: false,
                     home: None,
                     ver: 0,
+                    disabled: false,
                 },
             );
             Ok(())

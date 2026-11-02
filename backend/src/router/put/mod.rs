@@ -12,6 +12,7 @@ pub mod edit_tag;
 pub mod regenerate_thumbnail;
 pub mod rotate_image;
 pub mod users_admin;
+pub mod users_disabled;
 pub mod users_password;
 pub fn generate_put_routes() -> Vec<Route> {
     let r = routes![
@@ -28,6 +29,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         admin_config::update_admin_config_handler,
         users_password::set_user_password_handler,
         users_admin::set_user_admin_handler,
+        users_disabled::set_user_disabled_handler,
         rotate_image::rotate_image
     ];
     r
