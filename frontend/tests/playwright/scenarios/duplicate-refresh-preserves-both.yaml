@@ -1,7 +1,7 @@
 name: duplicate files survive page refresh independently
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - GET /get/get-data
   ui:
     - .desktop-small-image

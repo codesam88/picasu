@@ -711,7 +711,7 @@ fn execute_upload<'c>(
     let (body, boundary) =
         build_upload_multipart(&file_data, &filename, last_modified, &content_type);
 
-    let mut url = "/upload".to_string();
+    let mut url = "/post/upload".to_string();
     let mut query_parts: Vec<String> = Vec::new();
 
     if let Some(album) = upload["target_album"].as_str() {

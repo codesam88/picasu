@@ -2367,6 +2367,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "404": {
+            "description": "Not found"
+          },
           "500": {
             "description": "Internal error"
           }
@@ -2486,6 +2489,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "404": {
+            "description": "Not found"
+          },
           "500": {
             "description": "Internal error"
           }
@@ -2552,6 +2558,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
           }
         },
         "security": [
@@ -4030,6 +4039,97 @@
             "AUTH-10"
           ],
           "shareScope": "album"
+        }
+      }
+    },
+    "/post/upload": {
+      "post": {
+        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand indexed before the response returns.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that\npart without writing or indexing it, and any other value is a 400. Every\npart is validated before the first file is written, so a rejected name, an\nextension outside the image or video whitelist, or a\n`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves\nnothing behind. The stored extension always comes from the part's\n`Content-Type` rather than the client filename, and a file the indexing\npipeline cannot decode is removed again and reported as a 400.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, count mismatch, missing `imagePath`, or an undecodable\nfile — 401 missing or invalid session — 405 read-only\nmode — 500 storage failure.",
+        "operationId": "upload",
+        "parameters": [
+          {
+            "description": "Target album id (at most 64 bytes); without it files land in the configured upload folder",
+            "in": "query",
+            "name": "presigned_album_id_opt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Conflict policy for an existing target file: rename (default; suffixes -001, -002, …) or skip; any other value is a 400",
+            "in": "query",
+            "name": "on_conflict",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error.",
+            "in": "query",
+            "name": "auto_rename",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Upload successful"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "cookie_jwt": []
+          }
+        ],
+        "summary": "Upload media files into an album or the upload folder and index each one.",
+        "tags": [
+          "upload"
+        ],
+        "x-picasu-auth": {
+          "admin": "any",
+          "credentials": [
+            "session"
+          ],
+          "effects": [
+            "write"
+          ],
+          "guards": [
+            "GuardUser",
+            "GuardMutate"
+          ],
+          "invariants": [
+            "AUTH-12"
+          ],
+          "shareScope": "n-a"
         }
       }
     },
@@ -5605,97 +5705,6 @@
         "tags": [
           "pages"
         ]
-      }
-    },
-    "/upload": {
-      "post": {
-        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand indexed before the response returns.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that\npart without writing or indexing it, and any other value is a 400. Every\npart is validated before the first file is written, so a rejected name, an\nextension outside the image or video whitelist, or a\n`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves\nnothing behind. The stored extension always comes from the part's\n`Content-Type` rather than the client filename, and a file the indexing\npipeline cannot decode is removed again and reported as a 400.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, count mismatch, missing `imagePath`, or an undecodable\nfile — 401 missing or invalid session — 405 read-only\nmode — 500 storage failure.",
-        "operationId": "upload",
-        "parameters": [
-          {
-            "description": "Target album id (at most 64 bytes); without it files land in the configured upload folder",
-            "in": "query",
-            "name": "presigned_album_id_opt",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Conflict policy for an existing target file: rename (default; suffixes -001, -002, …) or skip; any other value is a 400",
-            "in": "query",
-            "name": "on_conflict",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error.",
-            "in": "query",
-            "name": "auto_rename",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Upload successful"
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "405": {
-            "description": "Read-only mode"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        },
-        "security": [
-          {
-            "cookie_jwt": []
-          }
-        ],
-        "summary": "Upload media files into an album or the upload folder and index each one.",
-        "tags": [
-          "upload"
-        ],
-        "x-picasu-auth": {
-          "admin": "any",
-          "credentials": [
-            "session"
-          ],
-          "effects": [
-            "write"
-          ],
-          "guards": [
-            "GuardUser",
-            "GuardMutate"
-          ],
-          "invariants": [
-            "AUTH-12"
-          ],
-          "shareScope": "n-a"
-        }
       }
     },
     "/videos": {

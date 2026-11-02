@@ -16,7 +16,7 @@ name: JPEG upload renders in the gallery, shows metadata, and deletes
 # backend's job (unit tests and API-layer scenarios), not this flow's.
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - PUT /put/edit_flags
     - DELETE /delete/delete-data
   ui:

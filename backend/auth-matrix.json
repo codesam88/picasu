@@ -1280,6 +1280,40 @@
   {
     "method": "POST",
     "modeled": true,
+    "operationId": "upload",
+    "path": "/post/upload",
+    "security": [
+      {
+        "cookie_jwt": []
+      }
+    ],
+    "tags": [
+      "upload"
+    ],
+    "x-picasu-auth": {
+      "admin": "any",
+      "credentials": [
+        "session"
+      ],
+      "effects": [
+        "write"
+      ],
+      "fallback": [],
+      "guards": [
+        "GuardUser",
+        "GuardMutate"
+      ],
+      "invariants": [
+        "AUTH-12"
+      ],
+      "public": false,
+      "shareScope": "n-a",
+      "waivers": {}
+    }
+  },
+  {
+    "method": "POST",
+    "modeled": true,
     "operationId": "authenticate",
     "path": "/post/users/authenticate",
     "security": [
@@ -2069,40 +2103,6 @@
       "pages"
     ],
     "x-picasu-auth": null
-  },
-  {
-    "method": "POST",
-    "modeled": true,
-    "operationId": "upload",
-    "path": "/upload",
-    "security": [
-      {
-        "cookie_jwt": []
-      }
-    ],
-    "tags": [
-      "upload"
-    ],
-    "x-picasu-auth": {
-      "admin": "any",
-      "credentials": [
-        "session"
-      ],
-      "effects": [
-        "write"
-      ],
-      "fallback": [],
-      "guards": [
-        "GuardUser",
-        "GuardMutate"
-      ],
-      "invariants": [
-        "AUTH-12"
-      ],
-      "public": false,
-      "shareScope": "n-a",
-      "waivers": {}
-    }
   },
   {
     "method": "GET",

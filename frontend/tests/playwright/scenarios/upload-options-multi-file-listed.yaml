@@ -1,7 +1,7 @@
 name: Multi-file pick lists every file in the options dialog and uploads
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
   ui:
     - toast:success:Files uploaded successfully
 given:

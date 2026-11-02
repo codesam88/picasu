@@ -1,7 +1,7 @@
 name: Upload with auto-rename off rejects an unsafe filename with an error toast
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
   ui:
     - toast:error:Set auto_rename=true to allow the server to rename it.
 given:

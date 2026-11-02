@@ -26,7 +26,7 @@ name: MP4 upload renders in the gallery, shows metadata, and deletes
 # would freeze an unsettled behaviour.
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - PUT /put/edit_flags
     - DELETE /delete/delete-data
   ui:

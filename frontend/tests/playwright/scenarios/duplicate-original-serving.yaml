@@ -1,7 +1,7 @@
 name: duplicate files serve original content independently
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
   ui:
     - route:/view/
     - testid/photo-menu
