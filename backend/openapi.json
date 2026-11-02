@@ -5155,6 +5155,7 @@
     },
     "/put/users/disabled": {
       "put": {
+        "description": "Locked accounts cannot log in and their outstanding sessions die;\npersonal data and shares are untouched, and re-enabling restores\naccess with a fresh login.",
         "operationId": "set_user_disabled_handler",
         "requestBody": {
           "content": {

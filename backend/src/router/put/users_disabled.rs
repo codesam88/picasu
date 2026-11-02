@@ -38,6 +38,10 @@ fn set_disabled_sync(actor_id: &str, target_user_id: &str, disabled: bool) -> Ap
 }
 
 /// Lock or unlock a user account (admin-only).
+///
+/// Locked accounts cannot log in and their outstanding sessions die;
+/// personal data and shares are untouched, and re-enabling restores
+/// access with a fresh login.
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserDisabledRequest,
