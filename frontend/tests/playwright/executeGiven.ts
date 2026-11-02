@@ -88,9 +88,27 @@ function qualifyPath(relativePath: string, ns?: string): string {
 
 function runTestImageBatch(manifest: PhotoManifestEntry[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('cargo', ['run', '-p', 'snapfab', '--quiet', '--', 'batch', '-'], {
-      stdio: ['pipe', 'inherit', 'inherit']
-    })
+    // Pre-build snapfab once (just frontend-playwright sets SNAPFAB_BINARY)
+    // instead of `cargo run` per scenario: avoids the per-spawn cargo check
+    // overhead (~23% measured saving).
+    const snapfabBinary = process.env.SNAPFAB_BINARY
+    const usePrebuilt =
+      typeof snapfabBinary === 'string' &&
+      snapfabBinary.length > 0 &&
+      fs.existsSync(snapfabBinary) &&
+      (() => {
+        try {
+          fs.accessSync(snapfabBinary, fs.constants.X_OK)
+          return true
+        } catch {
+          return false
+        }
+      })()
+    const proc = usePrebuilt
+      ? spawn(snapfabBinary as string, ['batch', '-'], { stdio: ['pipe', 'inherit', 'inherit'] })
+      : spawn('cargo', ['run', '-p', 'snapfab', '--quiet', '--', 'batch', '-'], {
+          stdio: ['pipe', 'inherit', 'inherit']
+        })
     proc.on('error', (err) => reject(new Error(`snapfab batch: ${err.message}`)))
     proc.on('exit', (code) => {
       if (code === 0) resolve()
