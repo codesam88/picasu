@@ -126,17 +126,20 @@ already there. Scan Now re-walks the tree and indexes every media file it
 finds — identity is by path, and a content hash is computed per file only
 for duplicate grouping. Safe to re-run routinely.
 
-### Enabling `users_home` on an existing install
+### Personal areas (`users_home`)
 
-`users_home` defaults to unset, so enabling it changes nothing until it is
-set. When you point it at a directory:
+Fresh installs resolve `users_home` to `<data_home>/users` on first
+launch; existing configs without it are backfilled once at startup and
+persisted. Personal areas are therefore on unless the key was explicitly
+emptied (rejected at boot) or the install predates the default. To use a
+custom directory:
 
 - Nothing under the existing `image_home` moves; public albums, assets, and
   shares stay exactly as they are.
 - Set the env var (or `gallery.users_home` in `config.toml`) and restart.
   The two roots must not equal or nest in either direction; boot rejects a
   bad combination with an error.
-- Pre-existing users created before `users_home` was enabled (and users
+- Pre-existing users created while `users_home` was unset (and users
   created via the offline CLI) have no personal home yet. The next admin
   **Scan Now** walks the global root plus all personal subtrees and creates
   dir-album records for empty directories, so personal trees appear

@@ -157,15 +157,19 @@ acting on data, identical to a non-admin user of the same id). Anonymous
 share holders and snapshot bearers have no personal area and no ownership
 (`caller = ""`).
 
-**Ownership derivation.** Configured roots: `image_home` (public) and an
-optional `users_home` (personal). `classify_path(canonical)` returns
+**Ownership derivation.** Configured roots: `image_home` (public) and
+`users_home` (personal). Personal areas are on by default: fresh installs
+resolve `users_home` to `<data_home>/users` on first launch and existing
+configs without it are backfilled once at startup and persisted (an
+explicit empty value or equal/nested roots still fail boot). `users_home`
+is unset only in tests and offline CLI flows. `classify_path(canonical)` returns
 `Public`, `Personal { owner }`, `UsersRoot`, or `Outside`. `owner` is the
 first path segment directly under `users_home` after canonicalization;
 the path is otherwise uninterpreted. The filesystem is the source of truth:
 no stored owner column exists, and moving or renaming directories changes
 ownership accordingly, so a rebuild from disk preserves it. When
 `users_home` is unset, every path classifies as `Public` or `Outside` and
-all gates pass through (feature disabled). `users_home` must not equal or
+the personal gates pass through. `users_home` must not equal or
 nest `image_home` in either direction (rejected at boot). The root itself
 is never an album, addressable, movable, shareable, or scannable.
 
@@ -181,7 +185,17 @@ is never an album, addressable, movable, shareable, or scannable.
   owns them; other users' rows are already excluded by visibility. The
   flag defaults to `false` and is enforced server-side regardless of any
   client-supplied filter or `basicString`; the cache key includes the
-  caller and the flag.
+  caller and the flag. The only UI for the flag is the "Include personal
+  items in timeline" switch in Settings → Display (`FrontendConfig`,
+  off by default and persisted per browser in localStorage); the timeline
+  route sends whatever the switch holds while every other view sends an
+  explicit value. When the flag is on and the query selects root albums
+  (the MyAlbums view), only the caller's own personal roots are returned —
+  global roots are dropped. Pinned by `prefetch_include_personal_toggle_is_server_enforced`,
+  `prefetch_root_albums_respect_include_personal_flag`, and
+  `prefetch_my_albums_personal_only_excludes_global_root` in
+  `backend/src/tests/personal_reads.rs`, plus the toggle on/off steps in
+  `frontend/tests/playwright/scenarios/personal-user-albums-isolation-flow.yaml`.
 - _Writes_ (create/move/assign/delete/upload/flags): `write_gate(caller,
 source, dest)` refuses `UsersRoot`, foreign personal paths, and
   cross-owner pairs, with no partial effect (refusal happens before the
@@ -195,7 +209,9 @@ source, dest)` refuses `UsersRoot`, foreign personal paths, and
   per the `root` selector (`"global"`, `"personal"`, `"auto"`); the
   `users_home` root itself never gains an album record and is pruned if
   one exists. An unknown selector is a 400; requesting `"personal"` while
-  disabled is a 400.
+  `users_home` is unset is a 400. Known limitation: moving files while a
+  scan is running can race the background indexer, leaving error noise
+  and grey placeholder rows; moving after the scan finishes is fine.
 
 **404-vs-403 (no oracle).** Management of a foreign personal album's
 shares and any operation naming an invisible personal album returns 404
@@ -203,10 +219,10 @@ shares and any operation naming an invisible personal album returns 404
 read paths simply omit the row.
 
 **Home provisioning.** `ensure_personal_home(id)` creates
-`<users_home>/<id>` and its dir-album record when the feature is enabled;
-it is a best-effort no-op when disabled or when the id is invalid. It runs on the two user-creation paths (`create_user` and
+`<users_home>/<id>` and its dir-album record when `users_home` is set;
+it is a best-effort no-op when unset. It runs on the two user-creation paths (`create_user` and
 `provision_user_with_home`); admin role changes do not re-provision.
-Users created before `users_home` was enabled (or via the offline CLI) are
+Users created before `users_home` was set (or via the offline CLI) are
 covered by the next admin Scan Now, which also indexes empty directories.
 
 ## 7. Invariants
@@ -311,7 +327,12 @@ equal `owner`; a path classified `UsersRoot` is never returned, read, or
 counted. A non-owner observes absence (omitted row / empty result), never
 a 403, so existence is not leaked. Pinned by the `get-albums` filtering
 in `backend/src/router/get/get_list.rs` and `row_visible` in
-`backend/src/router/get/get_prefetch.rs`.
+`backend/src/router/get/get_prefetch.rs`, witnessed by
+`get_albums_omits_other_users_personal_album`,
+`b3_bob_snapshot_cannot_read_alice_personal_metadata`, and
+`b3_alice_reads_own_personal_metadata_ok` in
+`backend/src/tests/personal_reads.rs` and the B4/B5 renewal/serving cases
+in `backend/src/tests/authz.rs`.
 
 **AUTH-18 — Personal write isolation.** For any mutation with source
 `s` and/or destination `d`, `write_gate(caller, s, d)` must accept;
@@ -319,7 +340,9 @@ otherwise the request is refused before any filesystem or DB effect, and
 the affected target is left unchanged. Refused cases: either path is
 `UsersRoot`; either personal path's owner differs from `caller`; or both
 are personal with differing owners. Admins receive no exception. Pinned
-by `write_gate` in `backend/src/storage/files.rs` and the per-op tests.
+by `write_gate` in `backend/src/storage/files.rs` and the per-op tests,
+including `cross_user_personal_writes_refused_and_target_unchanged` in
+`backend/src/tests/user_writes.rs`.
 
 **AUTH-19 — Share creator-ownership.** A share may be created, edited, or
 deleted on an album only when `visible_to(caller, album path)` holds; for
@@ -331,14 +354,22 @@ revealable only by the creator through `GET /get/share/token`, which answers
 404 to everyone else, including admins. Management addresses the entry by
 its fingerprint; an invisible album returns 404, not 403. Pinned by
 `create_share`, `edit_share`, `delete_share`, `get_share_token`, and
-`share_visible_to`.
+`share_visible_to`, witnessed by the creator-scoping and refusal cases in
+`backend/src/tests/share_ownership.rs` (`listings_scope_shares_to_their_creator`,
+the `s2_`/`s3_`/`s4_` cases, and the foreign-share move refusals
+`move_album_with_foreign_share_refused_and_tree_unchanged` and
+`admin_moving_album_with_another_users_share_refused`).
 
 **AUTH-20 — Timeline personal opt-in.** Personal rows (media and albums)
 appear in prefetch/timeline results only when `include_personal = true`
 and the caller owns them. The flag defaults to `false` and is enforced
 server-side independent of any client filter; the cache key includes the
 caller and the flag. Pinned by `row_visible` in
-`backend/src/router/get/get_prefetch.rs`.
+`backend/src/router/get/get_prefetch.rs`, witnessed by
+`prefetch_include_personal_toggle_is_server_enforced` and
+`prefetch_my_albums_personal_only_excludes_global_root` in
+`backend/src/tests/personal_reads.rs` and the toggle on/off steps in
+`frontend/tests/playwright/scenarios/personal-user-albums-isolation-flow.yaml`.
 
 ## 8. From the model to executable checks
 
@@ -346,27 +377,27 @@ The model is not executable as written; each invariant is discharged by one of
 three means. The static rules are decision procedures for a syntactic fragment;
 the tests are witnesses.
 
-| Invariant | Means       | Derived artifact                                                                                                                                            |
-| --------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AUTH-1    | static      | decode-agreement: each guard's decode target equals `expected(g)`                                                                                           |
-| AUTH-2    | static      | rejection-propagation: every `GuardResult` binding consumed (`?`)                                                                                           |
-| AUTH-3    | static      | no `Outcome::Forward` in a guard impl (route-variant exceptions recorded)                                                                                   |
-| AUTH-4    | static+test | witness-consumption rule; principal × scope tests asserting absence of effect                                                                               |
-| AUTH-5    | test        | flag-preservation tests                                                                                                                                     |
-| AUTH-6    | static+test | C1 scope clause; principal × scope tests                                                                                                                    |
-| AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                                                                                                          |
-| AUTH-9    | test        | disabled/expired-share tests, disabled-user login/session denial, share-disable create/resolve/renew tests, including renewal                               |
-| AUTH-10   | static+test | renewal binding rule; transition tests                                                                                                                      |
-| AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAdmin` and no share guard                                                                                  |
-| AUTH-12   | static      | guard-completeness: every mutating route carries `GuardMutate`, except the read-only lift (`disable-read-only`), which carries `GuardAdmin` ∩ `GuardReauth` |
-| AUTH-13   | static      | secret-handling rules                                                                                                                                       |
-| AUTH-14   | review      | recorded constraint; no executable check                                                                                                                    |
-| AUTH-15   | static+test | privileged-route guard sets include `GuardReauth`; re-auth pins in `users_password.rs` and `admin_config.rs`                                                |
-| AUTH-16   | test        | zero-admin refusal on delete and demote (Conflict), including concurrency                                                                                   |
-| AUTH-17   | static+test | personal read isolation: `get-albums`/prefetch omit foreign personal rows and `UsersRoot`; `visible_to` gate                                                |
-| AUTH-18   | static+test | personal write isolation: `write_gate` refuses `UsersRoot`/foreign/cross-owner; target unchanged on refusal                                                 |
-| AUTH-19   | static+test | share creator-ownership: `visible_to` on create/edit/delete; `share_visible_to` on listing; 404 on invisible                                                |
-| AUTH-20   | test        | timeline personal opt-in: `row_visible` gated on `include_personal`; cache key includes caller + flag                                                       |
+| Invariant | Means       | Derived artifact                                                                                                                                              |
+| --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AUTH-1    | static      | decode-agreement: each guard's decode target equals `expected(g)`                                                                                             |
+| AUTH-2    | static      | rejection-propagation: every `GuardResult` binding consumed (`?`)                                                                                             |
+| AUTH-3    | static      | no `Outcome::Forward` in a guard impl (route-variant exceptions recorded)                                                                                     |
+| AUTH-4    | static+test | witness-consumption rule; principal × scope tests asserting absence of effect                                                                                 |
+| AUTH-5    | test        | flag-preservation tests                                                                                                                                       |
+| AUTH-6    | static+test | C1 scope clause; principal × scope tests                                                                                                                      |
+| AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                                                                                                            |
+| AUTH-9    | test        | disabled/expired-share tests, disabled-user login/session denial, share-disable create/resolve/renew tests, including renewal                                 |
+| AUTH-10   | static+test | renewal binding rule; transition tests                                                                                                                        |
+| AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAdmin` and no share guard                                                                                    |
+| AUTH-12   | static      | guard-completeness: every mutating route carries `GuardMutate`, except the read-only lift (`disable-read-only`), which carries `GuardAdmin` ∩ `GuardReauth`   |
+| AUTH-13   | static      | secret-handling rules                                                                                                                                         |
+| AUTH-14   | review      | recorded constraint; no executable check                                                                                                                      |
+| AUTH-15   | static+test | privileged-route guard sets include `GuardReauth`; re-auth pins in `users_password.rs` and `admin_config.rs`                                                  |
+| AUTH-16   | test        | zero-admin refusal on delete and demote (Conflict), including concurrency                                                                                     |
+| AUTH-17   | test        | personal read isolation: `get-albums`/prefetch omit foreign personal rows and `UsersRoot`; `visible_to` gate (`personal_reads.rs`, B4/B5 in `authz.rs`)       |
+| AUTH-18   | test        | personal write isolation: `write_gate` refuses `UsersRoot`/foreign/cross-owner; target unchanged on refusal (`user_writes.rs`)                                |
+| AUTH-19   | test        | share creator-ownership: `visible_to` on create/edit/delete; `share_visible_to` on listing; 404 on invisible (`share_ownership.rs`)                           |
+| AUTH-20   | test        | timeline personal opt-in: `row_visible` gated on `include_personal`; cache key includes caller + flag (`personal_reads.rs` + isolation-flow e2e toggle steps) |
 
 A new route, guard, or token type is classified against every invariant before
 it can merge. A property is not "done" until its derived artifact exists and
