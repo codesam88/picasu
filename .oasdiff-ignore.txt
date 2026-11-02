@@ -54,3 +54,10 @@ GET /get/admin/config the `items/value` response's property `type` changed from 
 PUT /put/set_album_title the endpoint scheme security `album_id AND share_id` was removed from the API
 PUT /put/set_user_defined_description the endpoint scheme security `album_id AND share_id` was removed from the API
 POST /upload the endpoint scheme security `album_id AND share_id` was removed from the API
+
+# 2026-11-02 (verb-prefix convention, decided in bug-spa-fallback-missing-param
+# review): `POST /upload` was the only data API route outside the verb
+# prefixes, so every API miss under it fell outside the SPA-fallback guard's
+# boundary. The route moves to `POST /post/upload` with no contract change
+# besides the path; old `/upload` callers get a JSON 404 like any unknown path.
+api path removed without deprecation in API POST /upload

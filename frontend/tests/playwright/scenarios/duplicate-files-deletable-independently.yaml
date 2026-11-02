@@ -1,7 +1,7 @@
 name: duplicate files can be deleted independently
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - PUT /put/edit_flags
   ui:
     - .desktop-small-image

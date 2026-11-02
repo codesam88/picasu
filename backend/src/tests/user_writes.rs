@@ -118,7 +118,7 @@ fn upload(client: &rocket::local::blocking::Client, cookie: Option<Cookie<'stati
     let file_data =
         std::fs::read(test_image_home().join("writes/photo.jpg")).expect("seeded photo bytes");
     let (body, boundary) = upload_multipart(&file_data, "second.jpg");
-    let mut req = client.post("/upload").header(ContentType::new(
+    let mut req = client.post("/post/upload").header(ContentType::new(
         "multipart",
         format!("form-data; boundary={boundary}"),
     ));
@@ -142,7 +142,7 @@ fn viewer_upload_assign_and_create_dir() {
         asset_id,
     } = viewer_setup();
 
-    anon_denied(upload(&anon, None), "POST /upload");
+    anon_denied(upload(&anon, None), "POST /post/upload");
     assert_eq!(
         upload(&client, Some(viewer.clone())),
         Status::Ok,

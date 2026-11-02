@@ -144,7 +144,7 @@ test.describe('UI scenarios', () => {
           // `login:` step. The harness no longer auto-enrolls or auto-logs-in.
           const seeded = await executeGiven(request, given, ctx, tracer, activePaths)
 
-          // Record backend API calls the browser makes (e.g. POST /upload) so
+          // Record backend API calls the browser makes (e.g. POST /post/upload) so
           // `covers.api` entries exercised from the frontend count as covered.
           activePage.on('request', (req) => {
             const url = new URL(req.url())

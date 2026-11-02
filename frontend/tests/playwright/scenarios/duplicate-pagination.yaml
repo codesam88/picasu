@@ -1,7 +1,7 @@
 name: pagination loads duplicate items across batches
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - GET /get/get-data
   ui:
     - .desktop-small-image

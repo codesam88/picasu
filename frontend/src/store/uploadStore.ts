@@ -14,7 +14,7 @@ export function buildUploadUrl(albumId: string | undefined, autoRename: boolean)
     params.push(`presigned_album_id_opt=${encodeURIComponent(albumId)}`)
   }
   params.push(`auto_rename=${autoRename}`)
-  return params.length > 0 ? `/upload?${params.join('&')}` : '/upload'
+  return params.length > 0 ? `/post/upload?${params.join('&')}` : '/post/upload'
 }
 
 export const useUploadStore = (isolationId: IsolationId) =>

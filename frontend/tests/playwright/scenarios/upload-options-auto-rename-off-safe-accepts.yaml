@@ -1,7 +1,7 @@
 name: Upload with auto-rename off accepts a safe filename and succeeds
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
   ui:
     - toast:success:Files uploaded successfully
 given:

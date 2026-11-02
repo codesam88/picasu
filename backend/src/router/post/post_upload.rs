@@ -191,7 +191,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     )
 ]
 #[post(
-    "/upload?<presigned_album_id_opt>&<on_conflict>&<auto_rename>",
+    "/post/upload?<presigned_album_id_opt>&<on_conflict>&<auto_rename>",
     data = "<form>"
 )]
 #[allow(clippy::too_many_lines)]

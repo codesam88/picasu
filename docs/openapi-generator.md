@@ -403,12 +403,12 @@ operations by, so the vocabulary stays small and subject-oriented.
 | `index`    | Filesystem indexing jobs and full rebuild                                           | `POST /post/index/album`           |
 | `serving`  | Media byte delivery (compressed and original files)                                 | `GET /object/imported/{file_path}` |
 | `timeline` | Grid/list data: prefetch, rows, scrollbar, tag list, export                         | `GET /get/get-data`                |
-| `upload`   | File upload                                                                         | `POST /upload`                     |
+| `upload`   | File upload                                                                         | `POST /post/upload`                |
 | `pages`    | SPA HTML page routes served from `router/get/get_page.rs`                           | `GET /login`                       |
 | `internal` | Operations outside the published API (stripped from this document)                  | `GET /get/test/record/{asset_id}`  |
 
 `pages` is reserved for the SPA page routes in `router/get/get_page.rs`; the data
-API lives under `/delete/`, `/get/`, `/object/`, `/post/`, `/put/` and `/upload`
+API lives under `/delete/`, `/get/`, `/object/`, `/post/` and `/put/`
 and takes a subject from the table.
 
 This table **is** a checked rule: A3 of the source gate holds every annotation to

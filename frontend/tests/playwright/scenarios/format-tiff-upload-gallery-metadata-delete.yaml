@@ -15,7 +15,7 @@ name: TIFF upload renders in the gallery, shows metadata, and deletes
 # (tiff_metadata_exif_dimensions_thumbnail and its negative control).
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - PUT /put/edit_flags
     - DELETE /delete/delete-data
   ui:

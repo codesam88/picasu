@@ -1,7 +1,7 @@
 name: identical uploaded files remain independently visible after refresh
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
   ui:
     - .desktop-small-image
 

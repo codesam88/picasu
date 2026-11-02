@@ -1,7 +1,7 @@
 name: duplicate files can be moved to album independently
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
     - PUT /put/assign_album
   ui:
     - .desktop-small-image

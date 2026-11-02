@@ -1,7 +1,7 @@
 name: duplicate files can be selected independently
 covers:
   api:
-    - POST /upload
+    - POST /post/upload
   ui:
     - .desktop-small-image
     - route:/view/
