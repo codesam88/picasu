@@ -5773,7 +5773,7 @@
     },
     "/{path}": {
       "get": {
-        "description": "Returns `index.html` for every path no other route matches. A path starting\nwith `album/` is checked first: the remainder must be an existing album\nrecord in the metadata database.\n\nCorner cases: Rank 11 puts this route last, so the page routes and the API\nroutes take precedence over it. The album check covers the `album/` prefix\nonly; any other multi-segment path gets the shell without a database read.\n\nErrors: 404 `/album/<album-id>` names no album record — 500 metadata\ndatabase read, blocking task, or shell file failure.",
+        "description": "Returns `index.html` for every path no other route matches. A path starting\nwith `album/` is checked first: the remainder must be an existing album\nrecord in the metadata database.\n\nCorner cases: Rank 11 puts this route last, so the page routes and the API\nroutes take precedence over it. Paths under the API and asset prefixes\n(`get/`, `post/`, `put/`, `delete/`, `object/`, `assets/`) are refused\nbefore the shell: they are forwarded API misses (e.g. a missing required\nquery param), not page navigations. The album check covers the `album/`\nprefix only; any other multi-segment path gets the shell without a\ndatabase read.\n\nErrors: 404 path under an API or asset prefix, or `/album/<album-id>`\nnames no album record — 500 metadata database read, blocking task, or\nshell file failure.",
         "operationId": "spa_fallback",
         "parameters": [
           {

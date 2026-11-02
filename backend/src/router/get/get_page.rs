@@ -603,14 +603,32 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
 /// record in the metadata database.
 ///
 /// Corner cases: Rank 11 puts this route last, so the page routes and the API
-/// routes take precedence over it. The album check covers the `album/` prefix
-/// only; any other multi-segment path gets the shell without a database read.
+/// routes take precedence over it. Paths under the API and asset prefixes
+/// (`get/`, `post/`, `put/`, `delete/`, `object/`, `assets/`) are refused
+/// before the shell: they are forwarded API misses (e.g. a missing required
+/// query param), not page navigations. The album check covers the `album/`
+/// prefix only; any other multi-segment path gets the shell without a
+/// database read.
 ///
-/// Errors: 404 `/album/<album-id>` names no album record — 500 metadata
-/// database read, blocking task, or shell file failure.
+/// Errors: 404 path under an API or asset prefix, or `/album/<album-id>`
+/// names no album record — 500 metadata database read, blocking task, or
+/// shell file failure.
 #[get("/<path..>", rank = 11)]
 pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
     let path_str = path.display().to_string();
+
+    // API and asset paths never get the SPA shell: a forwarded API request
+    // (e.g. a missing required query param, which Rocket forwards as 422)
+    // would otherwise match this catch-all and answer HTML instead of the
+    // documented 4xx JSON. Refuse them here with a JSON 404.
+    if let Some(first) = path_str.split('/').next()
+        && matches!(
+            first,
+            "get" | "post" | "put" | "delete" | "object" | "assets"
+        )
+    {
+        return Err(AppError::new(ErrorKind::NotFound, "Not found"));
+    }
 
     if let Some(album_id) = path_str.strip_prefix("album/") {
         let album_id = album_id.to_string();
@@ -649,6 +667,7 @@ pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
 #[cfg(test)]
 mod tests {
     use crate::tests::bootstrap::{TEST_ENV, build_test_rocket};
+    use rocket::local::blocking::Client;
 
     /// Every client page route needs a backend shell route, or a browser
     /// reload on that path answers 404 (the `/register` page shipped
@@ -679,6 +698,74 @@ mod tests {
         assert!(
             !mounted.iter().any(|uri| uri == "/links"),
             "GET /links must be gone with the rename"
+        );
+    }
+
+    /// API routes with a missing required query param must not fall through
+    /// to the SPA shell. `GET /get/get-data?timestamp=1` (no `start`/`end`)
+    /// forwards off the `get_data` route; without the guard below the rank-11
+    /// fallback serves `index.html` (200 HTML in production; 500 IO JSON in
+    /// tests where no `web_root` exists). Either is wrong: the contract is 4xx
+    /// JSON.
+    #[test]
+    fn api_missing_query_is_json_4xx_not_spa_shell() {
+        let _ = &*TEST_ENV;
+        let client = Client::tracked(build_test_rocket()).expect("valid rocket");
+        let resp = client.get("/get/get-data?timestamp=1").dispatch();
+        let status = resp.status().code;
+        assert!(
+            (400..500).contains(&status),
+            "missing query on /get/get-data must be 4xx, got {status}"
+        );
+        let content_type = resp
+            .content_type()
+            .map(|ct| ct.to_string())
+            .unwrap_or_default();
+        assert!(
+            content_type.contains("application/json"),
+            "missing query must answer JSON, got content-type {content_type:?}"
+        );
+        let body = resp.into_string().unwrap_or_default();
+        assert!(
+            !body.to_lowercase().contains("<html"),
+            "missing query must not serve the SPA shell"
+        );
+    }
+
+    /// Unknown API paths must answer JSON 404, not the SPA shell.
+    #[test]
+    fn api_unknown_path_is_json_404() {
+        let _ = &*TEST_ENV;
+        let client = Client::tracked(build_test_rocket()).expect("valid rocket");
+        for uri in ["/get/does-not-exist", "/object/does-not-exist"] {
+            let resp = client.get(uri).dispatch();
+            assert_eq!(
+                resp.status().code,
+                404,
+                "unknown API path {uri} must be 404"
+            );
+            let content_type = resp
+                .content_type()
+                .map(|ct| ct.to_string())
+                .unwrap_or_default();
+            assert!(
+                content_type.contains("application/json"),
+                "unknown API path {uri} must answer JSON, got {content_type:?}"
+            );
+        }
+    }
+
+    /// The guard must leave page paths alone: `/timeline` still falls through
+    /// to `serve_file` (500 IO JSON in tests where no `web_root` exists; 200
+    /// HTML in production) and must not become the guard's 404.
+    #[test]
+    fn page_path_still_falls_through_to_shell() {
+        let _ = &*TEST_ENV;
+        let client = Client::tracked(build_test_rocket()).expect("valid rocket");
+        let resp = client.get("/timeline").dispatch();
+        assert!(
+            resp.status().code != 404,
+            "page path /timeline must not be intercepted by the API guard"
         );
     }
 }
