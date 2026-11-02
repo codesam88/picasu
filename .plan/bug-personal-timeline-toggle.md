@@ -38,18 +38,27 @@ them; the persisted flag matches the switch position.
    on must make a seeded personal photo appear in the timeline grid
    (content assertion, not shell visibility); off must remove it.
    The current code fails the ON half.
-2. Fix at the handler: read the new value from the model instead of
-   the `change` event (e.g. `@update:modelValue`, or read the
-   `includePersonal` ref after the model updates) — one-line-class
-   fix, no new plumbing.
+2. Fix at the handler and relocate the control: move the "Include
+   personal items in timeline" switch out of its prominent timeline
+   position into the settings UI next to the "Show Filename Chip"
+   toggle (same pattern, same place users manage display
+   preferences), wired with `@update:model-value` — the event the
+   component actually emits with the new boolean (verified in the
+   installed Vuetify source: `VSelectionControl` declares only
+   `update:*` emits, so `@change` falls through to a native DOM
+   listener and the handler receives an `Event`, for which
+   `=== true` / `=== 'true'` is always false and
+   `setIncludePersonal(false)` runs on every flip). The handler's
+   `boolean | string | null` signature then receives what it was
+   written for; keep `v-model` for the visual state as today.
 3. Re-run the toggle e2e steps green, then the full personal-albums
    e2e set plus `just frontend-check` / `just frontend-vitest`.
 
 ## Out of scope
 
-Grid filename chips default off (separate observation from the same
-F9 pass; test-design constraint, not a product defect — filename
-`text_visible`/`text_hidden` assertions on tiles are vacuous either
-way until chips are enabled, so F9 toggle assertions must use a
-signal that actually renders, e.g. tile presence via `ui.count`, or
-enable chips through the real settings UI in-test).
+Grid filename chips default off — that needs no production change:
+it is a pure frontend preference with a real switch in the frontend
+config UI (`FrontendConfig.vue`, correctly wired via
+`@update:model-value`), so honest e2e assertions enable chips
+through the settings UI in-test and then assert on the rendered
+filename. No default change, no new signal needed.
