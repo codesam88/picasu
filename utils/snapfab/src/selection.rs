@@ -186,6 +186,27 @@ fn classify(
         }
     };
 
+    // A pinned fixture's intended failure class has to agree with the format's
+    // declared expected classes: a fixture that is expected to fail (truncated,
+    // say) cannot back a format whose contract says it never does, and the
+    // reverse holds too. This keeps a mismatched pinned fixture out of the
+    // randomizable set instead of copying bytes that contradict the format.
+    for id in &entry.pinned_fixtures {
+        let Some(fixture) = manifest.fixture_by_id(id) else {
+            continue;
+        };
+        if !entry
+            .expected_failure_classes
+            .contains(&fixture.intended_failure_class)
+        {
+            return Err(format!(
+                "{} pins fixture {id} whose intended failure class {} is not among \
+                 its expected failure classes {:?}",
+                entry.format, fixture.intended_failure_class, entry.expected_failure_classes
+            ));
+        }
+    }
+
     let extension = entry.extensions.first().ok_or_else(|| {
         format!(
             "{} declares no extension, so a scenario would have no filename",
@@ -686,6 +707,34 @@ mod tests {
         assert!(
             !line.contains("fixture="),
             "a generated format has no fixture to name: {line}"
+        );
+    }
+
+    /// A pinned fixture whose intended failure class is not among its parent
+    /// format's expected classes cannot back a positive flow, so the format is
+    /// excluded from the randomizable set. The generated `png` entry is the
+    /// positive control.
+    #[test]
+    fn a_pinned_format_whose_fixture_intended_class_is_not_expected_is_not_randomizable() {
+        let truncated_fixture = valid_fixture().replace(
+            r#""intendedFailureClass": "none""#,
+            r#""intendedFailureClass": "truncated""#,
+        );
+        let manifest = parse_manifest(&manifest_with_fixtures(
+            &[&truncated_fixture],
+            &[&entry(), &pinned_entry()],
+        ))
+        .expect("structurally valid");
+
+        let eligible = randomizable_formats(&manifest);
+        assert_eq!(
+            eligible
+                .iter()
+                .map(|format| format.format.as_str())
+                .collect::<Vec<_>>(),
+            ["png"],
+            "a format whose pinned fixture's intended class is not expected must not \
+             be randomizable"
         );
     }
 
