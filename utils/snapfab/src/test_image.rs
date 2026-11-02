@@ -63,7 +63,7 @@ impl ImageFormat {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum RenderMode {
     Circles,
@@ -96,16 +96,28 @@ const ACTIVE_MODES: &[RenderMode] = &[
     RenderMode::Julia,
 ];
 
+/// Render modes a caller may request through `--generators`, with their CLI
+/// names. `geometric` is selectable here but is not part of [`ACTIVE_MODES`],
+/// so it only appears when explicitly requested.
+const SELECTABLE_MODES: &[(&str, RenderMode)] = &[
+    ("circles", RenderMode::Circles),
+    ("landscape", RenderMode::Landscape),
+    ("wavy", RenderMode::WavyLines),
+    ("mountains", RenderMode::Mountains),
+    ("mandelbrot", RenderMode::Mandelbrot),
+    ("julia", RenderMode::Julia),
+    ("geometric", RenderMode::Geometric),
+];
+
 fn parse_modes(s: &str) -> Result<Vec<RenderMode>, String> {
     s.split(',')
-        .map(|name| match name.trim() {
-            "circles" => Ok(RenderMode::Circles),
-            "landscape" => Ok(RenderMode::Landscape),
-            "wavy" => Ok(RenderMode::WavyLines),
-            "mountains" => Ok(RenderMode::Mountains),
-            "mandelbrot" => Ok(RenderMode::Mandelbrot),
-            "julia" => Ok(RenderMode::Julia),
-            other => Err(format!("unknown generator: {other}")),
+        .map(|name| {
+            let name = name.trim();
+            SELECTABLE_MODES
+                .iter()
+                .find(|(candidate, _)| *candidate == name)
+                .map(|(_, mode)| *mode)
+                .ok_or_else(|| format!("unknown generator: {name}"))
         })
         .collect()
 }
@@ -416,7 +428,6 @@ pub fn generate_batch(specs: &[PhotoSpec]) -> std::io::Result<()> {
             .expect("each batch entry must have an output path");
         generate_photo_file(spec, Path::new(path), &mut rng, &mut stats, ACTIVE_MODES)?;
     }
-    stats.report();
     Ok(())
 }
 
@@ -1416,6 +1427,13 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         about = "Generate test images with EXIF/XMP/IPTC metadata"
     )]
     struct Cli {
+        #[arg(
+            short,
+            long,
+            global = true,
+            help = "Print per-file progress, perf stats, and summaries"
+        )]
+        verbose: bool,
         #[command(subcommand)]
         command: CliCommand,
     }
@@ -1426,7 +1444,11 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         Single {
             #[arg(short, long, help = "Output file path")]
             out: PathBuf,
-            #[arg(short, long, help = "Comma-separated render modes to enable")]
+            #[arg(
+                short,
+                long,
+                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric); `help` or `list` prints available names. `geometric` is selectable but not a default."
+            )]
             generators: Option<String>,
             #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
             minimal: bool,
@@ -1435,7 +1457,11 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         Batch {
             #[arg(help = "Manifest file path, or '-' for stdin")]
             manifest: String,
-            #[arg(short, long, help = "Comma-separated render modes to enable")]
+            #[arg(
+                short,
+                long,
+                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric); `help` or `list` prints available names. `geometric` is selectable but not a default."
+            )]
             generators: Option<String>,
             #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
             minimal: bool,
@@ -1454,11 +1480,14 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             #[arg(
                 short,
                 long,
-                default_value = "42",
-                help = "RNG seed for reproducibility"
+                help = "RNG seed for reproducibility; when omitted, drawn fresh from system RNG"
             )]
-            seed: u64,
-            #[arg(short, long, help = "Comma-separated render modes to enable")]
+            seed: Option<u64>,
+            #[arg(
+                short,
+                long,
+                help = "Comma-separated render modes to enable (circles,landscape,wavy,mountains,mandelbrot,julia,geometric); `help` or `list` prints available names. `geometric` is selectable but not a default."
+            )]
             generators: Option<String>,
             #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
             minimal: bool,
@@ -1475,12 +1504,33 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         }
     };
 
-    match Cli::parse_from(args).command {
+    fn print_generator_list() {
+        println!("Available generators:");
+        for (name, mode) in SELECTABLE_MODES {
+            let suffix = if ACTIVE_MODES.contains(mode) {
+                " (default)"
+            } else {
+                ""
+            };
+            println!("  {name}{suffix}");
+        }
+    }
+
+    let cli = Cli::parse_from(args);
+    let verbose = cli.verbose;
+
+    match cli.command {
         CliCommand::Single {
             out,
             generators,
             minimal,
         } => {
+            if let Some(g) = &generators
+                && (g == "help" || g == "list")
+            {
+                print_generator_list();
+                return;
+            }
             let mut input = String::new();
             std::io::stdin().read_line(&mut input).expect("read stdin");
             let mut spec: PhotoSpec = serde_json::from_str(&input).expect("invalid JSON spec");
@@ -1492,13 +1542,21 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             let enabled = enabled(&generators);
             let mode = generate_photo_file(&spec, &out, &mut rng, &mut stats, &enabled)
                 .expect("write image");
-            eprintln!("{:12} {}", MODE_NAMES[mode as usize], out.display());
+            if verbose {
+                eprintln!("{:12} {}", MODE_NAMES[mode as usize], out.display());
+            }
         }
         CliCommand::Batch {
             manifest,
             generators,
             minimal,
         } => {
+            if let Some(g) = &generators
+                && (g == "help" || g == "list")
+            {
+                print_generator_list();
+                return;
+            }
             let json = if manifest == "-" {
                 let mut buf = String::new();
                 std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf).expect("read stdin");
@@ -1529,10 +1587,14 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                     &enabled,
                 )
                 .expect("write image");
-                eprintln!("{:12} {}", MODE_NAMES[mode as usize], path);
+                if verbose {
+                    eprintln!("{:12} {}", MODE_NAMES[mode as usize], path);
+                }
             }
-            stats.report();
-            eprintln!("Generated {} images", specs.len());
+            if verbose {
+                stats.report();
+                eprintln!("Generated {} images", specs.len());
+            }
         }
         CliCommand::Library {
             dir,
@@ -1541,19 +1603,40 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             generators,
             minimal,
         } => {
+            if let Some(g) = &generators
+                && (g == "help" || g == "list")
+            {
+                print_generator_list();
+                return;
+            }
             std::fs::create_dir_all(&dir).expect("create output dir");
-            let mut rng = SmallRng::seed_from_u64(seed);
+            let mut rng = match seed {
+                Some(s) => SmallRng::seed_from_u64(s),
+                None => {
+                    let drawn = rand::rng().random::<u64>();
+                    if verbose {
+                        eprintln!("seed={drawn}");
+                    }
+                    SmallRng::seed_from_u64(drawn)
+                }
+            };
             let mut stats = PerfCounter::new();
             let enabled = enabled(&generators);
 
             for file in generate_library(&dir, count, &mut rng, &mut stats, &enabled, minimal) {
-                match &file.fixture {
-                    Some(id) => eprintln!("{:12} {} (pinned fixture {id})", file.label, file.name),
-                    None => eprintln!("{:12} {}", file.label, file.name),
+                if verbose {
+                    match &file.fixture {
+                        Some(id) => {
+                            eprintln!("{:12} {} (pinned fixture {id})", file.label, file.name)
+                        }
+                        None => eprintln!("{:12} {}", file.label, file.name),
+                    }
                 }
             }
-            stats.report();
-            eprintln!("Generated {} images in {}", count, dir.display());
+            if verbose {
+                stats.report();
+                eprintln!("Generated {} images in {}", count, dir.display());
+            }
         }
     }
 }
@@ -1862,6 +1945,192 @@ mod tests {
             .collect();
         produced.sort_by(|left, right| left.0.cmp(&right.0));
         produced
+    }
+
+    /// `generate_batch` is a library entry point used by backend tests; it must
+    /// not print per-file progress or a perf table (library code never writes
+    /// to stderr).
+    #[test]
+    fn generate_batch_does_not_panic_or_print() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("batch.jpg");
+        let spec = PhotoSpec {
+            output: Some(path.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            exif_date: None,
+            tags: None,
+            minimal: true,
+        };
+        generate_batch(&[spec]).expect("generate_batch");
+        assert!(path.exists());
+    }
+
+    /// In-process exercise of the CLI parsing for the new flags and the omitted
+    /// seed, plus the `help`/`list` generator values.
+    #[test]
+    fn cli_accepts_verbose_seed_omission_and_help_values() {
+        // seed omitted + verbose
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dirstr = dir.path().to_string_lossy().into_owned();
+        run_cli(
+            [
+                "snapfab",
+                "library",
+                "--dir",
+                &dirstr,
+                "--count",
+                "1",
+                "--verbose",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "seed-omitted verbose run should still write its file"
+        );
+
+        // help and list values exit without generating
+        for value in ["help", "list"] {
+            let empty = tempfile::tempdir().expect("tempdir");
+            let emptystr = empty.path().to_string_lossy().into_owned();
+            run_cli(
+                [
+                    "snapfab",
+                    "library",
+                    "--dir",
+                    &emptystr,
+                    "--count",
+                    "1",
+                    "--generators",
+                    value,
+                ]
+                .into_iter()
+                .map(str::to_owned),
+            );
+            assert_eq!(
+                std::fs::read_dir(empty.path()).unwrap().count(),
+                0,
+                "generators={value} must skip generation"
+            );
+        }
+    }
+
+    /// Same seed yields byte-identical library output.
+    #[test]
+    fn library_minimal_run_is_reproducible_by_seed() {
+        let a = run_library_cli(99, 4);
+        let b = run_library_cli(99, 4);
+        assert_eq!(a, b, "same seed must produce identical bytes");
+    }
+
+    /// Captured-output check: quiet is the default.
+    #[test]
+    fn quiet_library_run_prints_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut bin = std::env::current_exe().expect("current exe");
+        bin.pop(); // deps
+        bin.pop(); // debug
+        bin.push("snapfab");
+        let output = std::process::Command::new(&bin)
+            .args([
+                "library",
+                "--dir",
+                dir.path().to_str().expect("dir"),
+                "--count",
+                "2",
+            ])
+            .output()
+            .expect("run snapfab");
+        assert!(output.status.success(), "quiet run failed: {output:?}");
+        assert!(
+            output.stdout.is_empty(),
+            "quiet stdout was: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "quiet stderr was: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// Captured-output check: --verbose restores the progress output.
+    #[test]
+    fn verbose_library_run_prints_progress() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut bin = std::env::current_exe().expect("current exe");
+        bin.pop(); // deps
+        bin.pop(); // debug
+        bin.push("snapfab");
+        let output = std::process::Command::new(&bin)
+            .args([
+                "library",
+                "--dir",
+                dir.path().to_str().expect("dir"),
+                "--count",
+                "2",
+                "--verbose",
+            ])
+            .output()
+            .expect("run snapfab");
+        assert!(output.status.success(), "verbose run failed: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("Generated 2 images in"),
+            "verbose stderr missing summary: {stderr}"
+        );
+    }
+
+    /// `help`/`list` print available names (including which are default) to
+    /// stdout and exit 0.
+    #[test]
+    fn generators_help_lists_names_and_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut bin = std::env::current_exe().expect("current exe");
+        bin.pop(); // deps
+        bin.pop(); // debug
+        bin.push("snapfab");
+        let output = std::process::Command::new(&bin)
+            .args([
+                "library",
+                "--dir",
+                dir.path().to_str().expect("dir"),
+                "--count",
+                "1",
+                "--generators",
+                "help",
+            ])
+            .output()
+            .expect("run snapfab");
+        assert!(output.status.success(), "help run failed: {output:?}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for name in [
+            "circles",
+            "landscape",
+            "wavy",
+            "mountains",
+            "mandelbrot",
+            "julia",
+            "geometric",
+        ] {
+            assert!(
+                stdout.contains(name),
+                "help output missing {name}: {stdout}"
+            );
+        }
+        assert!(
+            stdout.contains("default"),
+            "help output missing default marker: {stdout}"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "help should not print to stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     /// The library path must materialise **every** randomizable draw, not just
