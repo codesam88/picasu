@@ -76,6 +76,11 @@ frontend-playwright filter="": frontend-build-maybe
     # Skipped when PICASU_BINARY is already set (e.g. test-release supplies the release binary).
     [ -n "${PICASU_BINARY:-}" ] || cargo build --bin picasu
     export PICASU_BINARY="${PICASU_BINARY:-$(pwd)/target/debug/picasu}"
+    # Pre-build snapfab once so e2e scenarios spawn the binary directly instead
+    # of `cargo run` per scenario (avoids per-spawn cargo check overhead).
+    # Skipped when SNAPFAB_BINARY is already set.
+    [ -n "${SNAPFAB_BINARY:-}" ] || cargo build -p snapfab
+    export SNAPFAB_BINARY="${SNAPFAB_BINARY:-$(pwd)/target/debug/snapfab}"
     # Each worker runs a browser and a backend, so half the cores is the
     # ceiling that keeps the runner from thrashing; the count follows the
     # machine (a 4-core CI runner gets 2 workers, an 8-core dev box 4).
