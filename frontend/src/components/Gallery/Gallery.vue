@@ -163,14 +163,17 @@ watch(
 onMounted(() => {
   prefetchStore.filterBasicString = props.basicString
   filterStore.searchString = props.searchString
+  // The timeline honors the user's "include personal" toggle (localStorage);
+  // every other view passes an explicit value. Vue coerces a missing boolean
+  // prop to `false`, so the route — not the (possibly coerced) prop — decides.
+  const includePersonalOverride =
+    route.meta.baseName === 'timeline' ? undefined : props.includePersonal
   usePrefetch(
     filterStore.generateFilterJsonString(props.basicString),
     windowWidth,
     route,
     props.isolationId,
-    // The toggle is only the unscoped-timeline switch; album-scoped and
-    // recovery views are always complete (visibility alone rules elsewhere).
-    props.includePersonal
+    includePersonalOverride
   )
   useInitializeScrollPosition(
     imageContainerRef,

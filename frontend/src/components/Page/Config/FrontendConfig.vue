@@ -51,7 +51,7 @@
         <template #append>
           <v-switch
             data-testid="frontend-include-personal-switch"
-            v-model="includePersonal"
+            :model-value="includePersonal"
             @update:model-value="onToggle"
             color="primary"
             inset
