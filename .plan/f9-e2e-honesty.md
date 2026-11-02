@@ -55,15 +55,22 @@ file(s) green as a baseline (`npx playwright test --grep "Personal
 albums"` or the repo's equivalent filter) and record the
 transcript. No scenario edits in this step.
 
-### F9-1 — Route assertions on direct navigations
+### F9-1 — Route assertions on direct navigations (done 2026-11-02)
 
 For each direct navigation to another user's album (bob leg and
 admin leg): first verify what the app actually does (stays, bounces
 to login, renders empty) and assert that exact route alongside the
-existing content assertions. If actual behavior looks wrong, stop
-and file it as a finding instead of asserting around it.
+existing content assertions. Done: route assertions added on all
+direct navigations; full personal-albums e2e set green
+(`9c48d38b`). Review also fixed an interpolation bug the new
+assertions stepped around at first (`/album/${$alice_album}` never
+interpolates — the interpreter only substitutes single-`$` names —
+so both forbidden-nav steps were loading a literal garbage URL; now
+`${alice_album}`, with the asserted route naming the real id).
 
-### F9-2 — Real toggle on/off assertions
+### F9-2 — Real toggle on/off assertions (BLOCKED on
+
+`.plan/bug-personal-timeline-toggle.md`)
 
 Drive the timeline's "Include personal items in timeline" switch as
 the owning user: assert the personal photo's name appears with the
