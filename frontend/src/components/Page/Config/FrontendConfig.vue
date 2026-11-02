@@ -25,13 +25,34 @@
       <v-divider></v-divider>
 
       <v-list-item
+        data-testid="frontend-show-filename-chip"
         title="Show Filename Chip"
         @click="onShowFilenameChipUpdate(!showFilenameChipValue)"
       >
         <template #append>
           <v-switch
+            data-testid="frontend-show-filename-chip-switch"
             :model-value="showFilenameChipValue"
             @update:model-value="onShowFilenameChipUpdate"
+            color="primary"
+            inset
+            hide-details
+            @click.stop
+          ></v-switch>
+        </template>
+      </v-list-item>
+
+      <v-list-item
+        v-if="personalAlbumsEnabled"
+        data-testid="frontend-include-personal"
+        title="Include personal items in timeline"
+        @click="onToggle(!includePersonal)"
+      >
+        <template #append>
+          <v-switch
+            data-testid="frontend-include-personal-switch"
+            v-model="includePersonal"
+            @update:model-value="onToggle"
             color="primary"
             inset
             hide-details
@@ -57,10 +78,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useConstStore } from '@/store/constStore'
+import { useConfigStore } from '@/store/configStore'
+import { getIncludePersonal, setIncludePersonal } from '@/script/utils/personalTimelineToggle'
+import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
 
 const constStore = useConstStore('mainId')
+const configStore = useConfigStore('mainId')
+const route = useRoute()
+
+const includePersonal = ref(getIncludePersonal())
+const personalAlbumsEnabled = computed(() => configStore.config?.personalAlbumsEnabled === true)
+
+onMounted(() => {
+  if (configStore.config === undefined) {
+    void configStore.fetchConfig()
+  }
+})
+
+async function onToggle(value: boolean | string | null) {
+  includePersonal.value = value === true || value === 'true'
+  setIncludePersonal(includePersonal.value)
+  await refreshGalleryAfterMutation('mainId', route)
+}
 
 const subRowHeightScaleValue = computed<number>({
   get: () => constStore.subRowHeightScale,

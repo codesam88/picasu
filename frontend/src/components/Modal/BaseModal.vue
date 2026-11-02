@@ -22,6 +22,7 @@
               <template #activator="{ props: btnProps }">
                 <v-btn
                   v-bind="btnProps"
+                  data-testid="modal-close"
                   icon="mdi-close"
                   variant="text"
                   density="comfortable"

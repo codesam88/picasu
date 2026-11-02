@@ -13,7 +13,13 @@
           >
             {{ currentUser?.isAdmin ? 'Admin' : 'Standard' }}
           </v-chip>
-          <v-btn icon="mdi-close" variant="text" density="comfortable" @click="show = false" />
+          <v-btn
+            data-testid="modal-close"
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            @click="show = false"
+          />
         </template>
       </v-toolbar>
     </template>
