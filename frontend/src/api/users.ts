@@ -5,6 +5,7 @@ export interface UserSummary {
   userId: string
   admin: boolean
   disabled?: boolean
+  sharesEnabled?: boolean
 }
 
 export const listUsers = async (): Promise<UserSummary[]> => {
@@ -62,6 +63,13 @@ export const setUserDisabled = async (userId: string, disabled: boolean): Promis
   await axios.put('/put/users/disabled', {
     userId,
     disabled
+  })
+}
+
+export const setUserSharing = async (userId: string, enabled: boolean): Promise<void> => {
+  await axios.put('/put/users/sharing', {
+    userId,
+    enabled
   })
 }
 

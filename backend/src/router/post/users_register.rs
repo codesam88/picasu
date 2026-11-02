@@ -10,6 +10,23 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::{GuardAdmin, GuardMutate};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
+trait UserRecordExt {
+    fn unwrap_or_default_record(&self) -> crate::auth::user_store::UserRecord;
+}
+
+impl UserRecordExt for Option<crate::auth::user_store::UserRecord> {
+    fn unwrap_or_default_record(&self) -> crate::auth::user_store::UserRecord {
+        self.clone().unwrap_or(crate::auth::user_store::UserRecord {
+            hash: None,
+            admin: false,
+            home: None,
+            ver: 0,
+            disabled: false,
+            shares_enabled: true,
+        })
+    }
+}
+
 /// Summary of a user record. Password hashes are never exported.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +35,12 @@ pub struct UserSummary {
     pub admin: bool,
     #[serde(default)]
     pub disabled: bool,
+    #[serde(default = "default_shares_enabled_summary")]
+    pub shares_enabled: bool,
+}
+
+fn default_shares_enabled_summary() -> bool {
+    true
 }
 
 /// Body for `POST /post/users/register`. There is deliberately no `admin`
@@ -151,10 +174,12 @@ fn register_user_sync(
         // validates, inserts the user record, and stores the password hash.
         users::provision_user(&id, &canonical, false)?;
         log::info!("enrollment: registered user {id}");
+        let record = UserRecordExt::unwrap_or_default_record(&users::user_record(&id)?);
         return Ok(UserSummary {
             user_id: id,
             admin: false,
-            disabled: false,
+            disabled: record.disabled,
+            shares_enabled: record.shares_enabled,
         });
     }
     let token = req
@@ -174,9 +199,11 @@ fn register_user_sync(
     // `redeem_invite` for the crash-window semantics).
     invites::redeem_invite(&id, token, &canonical)?;
     log::info!("enrollment: registered user {id}");
+    let record = UserRecordExt::unwrap_or_default_record(&users::user_record(&id)?);
     Ok(UserSummary {
         user_id: id,
         admin: false,
-        disabled: false,
+        disabled: record.disabled,
+        shares_enabled: record.shares_enabled,
     })
 }

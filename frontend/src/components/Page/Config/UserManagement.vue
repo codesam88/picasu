@@ -90,6 +90,24 @@
                   </span>
                 </template>
               </v-tooltip>
+              <v-tooltip location="top" :text="shareLabel(user)">
+                <template #activator="{ props }">
+                  <span v-bind="props" class="d-inline-flex">
+                    <v-btn
+                      :icon="
+                        user.sharesEnabled !== false ? 'mdi-share-variant' : 'mdi-share-off-variant'
+                      "
+                      variant="text"
+                      size="small"
+                      :color="user.sharesEnabled !== false ? undefined : 'warning'"
+                      :aria-label="shareLabel(user)"
+                      :aria-pressed="user.sharesEnabled !== false"
+                      :disabled="isRowLocked(user) || saving"
+                      @click="onToggleSharing(user, !(user.sharesEnabled !== false))"
+                    ></v-btn>
+                  </span>
+                </template>
+              </v-tooltip>
               <v-tooltip location="top" :text="deleteLabel(user)">
                 <template #activator="{ props }">
                   <span v-bind="props" class="d-inline-flex">
@@ -201,6 +219,7 @@ import {
   listUsers,
   setUserAdmin,
   setUserDisabled,
+  setUserSharing,
   deleteUser,
   createUser,
   setUserPassword
@@ -260,6 +279,9 @@ const deleteLabel = (user: UserSummary): string => {
 const lockLabel = (user: UserSummary): string =>
   user.disabled === true ? 'Enable account' : 'Disable account'
 
+const shareLabel = (user: UserSummary): string =>
+  user.sharesEnabled !== false ? 'Disable sharing' : 'Enable sharing'
+
 // --- Actions ---
 const refreshUsers = async () => {
   await tryWithMessageStore('mainId', async () => {
@@ -312,6 +334,31 @@ const applyDisabledChange = async (target: UserSummary, disabled: boolean) => {
 const onToggleDisabled = (user: UserSummary, disabled: boolean) => {
   user.disabled = disabled
   void applyDisabledChange(user, disabled)
+}
+
+const applySharingChange = async (target: UserSummary, enabled: boolean) => {
+  const previous = target.sharesEnabled !== false
+  saving.value = true
+  try {
+    await setUserSharing(target.userId, enabled)
+    messageStore.success(
+      enabled ? `${target.userId} sharing enabled` : `${target.userId} sharing disabled`
+    )
+    await refreshUsers()
+  } catch (error: unknown) {
+    target.sharesEnabled = previous
+    if (!axios.isAxiosError(error) || error.response === undefined) {
+      messageStore.error(errorDisplay(error))
+    }
+    await refreshUsers()
+  } finally {
+    saving.value = false
+  }
+}
+
+const onToggleSharing = (user: UserSummary, enabled: boolean) => {
+  user.sharesEnabled = enabled
+  void applySharingChange(user, enabled)
 }
 
 const onToggle = (user: UserSummary, admin: boolean) => {

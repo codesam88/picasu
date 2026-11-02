@@ -96,6 +96,14 @@ pub async fn create_share(
     let GuardUser { claims } = auth?;
     let _ = mutation?;
     let (creator, _) = caller_identity(&claims);
+    if let Ok(Some(record)) = crate::auth::users::user_record(&creator)
+        && !record.shares_enabled
+    {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Sharing disabled",
+        ));
+    }
     let create_share_inner = create_share.into_inner();
     // Ownership check on the target album before any write: the album's
     // directory must be visible to the caller (public or own personal).

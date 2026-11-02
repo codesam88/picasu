@@ -4,7 +4,7 @@
 
 #![cfg(test)]
 
-use rocket::http::{ContentType, Status};
+use rocket::http::{ContentType, Header, Status};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -916,4 +916,40 @@ fn s3_delete_unknown_fingerprint_is_noop() {
         .body(json!({ "albumId": album_id, "shareId": "0123456789abcdef" }).to_string())
         .dispatch();
     assert_eq!(delete.status(), Status::Ok, "unknown fingerprint no-op");
+}
+
+#[test]
+fn d53_disabled_creator_cannot_create_share() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/d53create/photo.jpg");
+    seed("d53creator", false, None);
+    crate::auth::users::set_sharing_enabled("d53creator", false).expect("disable sharing");
+    let resp = client
+        .post("/post/create_share")
+        .cookie(cookie("d53creator", false))
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "description": "x", "password": null, "showMetadata": true, "showDownload": false, "showUpload": false, "exp": 0 }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Forbidden);
+}
+
+#[test]
+fn d53_disabled_sharing_denies_like_dead_share() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, _asset_id) = create_album(&client, "/d53dead/photo.jpg");
+    seed("d53owner", false, None);
+    let (share_id, _) = create_share_as(&client, "d53owner", false, &album_id);
+
+    // control: nonexistent/dead-like prefetch
+    crate::auth::users::set_sharing_enabled("d53owner", false).expect("disable sharing");
+
+    let resp = client
+        .post("/get/prefetch")
+        .header(Header::new("x-album-id", album_id.clone()))
+        .header(Header::new("x-share-id", share_id.clone()))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Unauthorized);
 }

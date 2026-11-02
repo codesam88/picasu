@@ -179,3 +179,15 @@ describe('logout', () => {
     expect(mockedAxios.post).toHaveBeenCalledWith('/post/logout')
   })
 })
+
+describe('setUserSharing', () => {
+  test('puts the sharing flag to /put/users/sharing', async () => {
+    mockedAxios.put = vi.fn().mockResolvedValue({ data: '' })
+    const { setUserSharing } = await import('@/api/users')
+    await setUserSharing('bob', false)
+    expect(mockedAxios.put).toHaveBeenCalledWith('/put/users/sharing', {
+      userId: 'bob',
+      enabled: false
+    })
+  })
+})

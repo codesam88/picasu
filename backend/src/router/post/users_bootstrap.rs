@@ -60,6 +60,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
         user_id: id,
         admin: true,
         disabled: false,
+        shares_enabled: true,
     })
 }
 

@@ -451,6 +451,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
                 home: None,
                 ver: 0,
                 disabled: false,
+                shares_enabled: true,
             },
         );
         Ok(())
@@ -593,6 +594,7 @@ mod tests {
                     home: None,
                     ver: 0,
                     disabled: false,
+                    shares_enabled: true,
                 },
             );
             Ok(())

@@ -50,6 +50,7 @@ pub fn list_users_handler(auth: GuardResult<GuardAdmin>) -> AppResult<Json<Vec<U
                 user_id,
                 admin: record.admin,
                 disabled: record.disabled,
+                shares_enabled: record.shares_enabled,
             })
             .collect(),
     ))
@@ -86,11 +87,13 @@ mod tests {
                     user_id: "s4c-bob".to_string(),
                     admin: false,
                     disabled: false,
+                    shares_enabled: true,
                 },
                 UserSummary {
                     user_id: "s4c-root".to_string(),
                     admin: true,
                     disabled: false,
+                    shares_enabled: true,
                 },
             ]
         );
