@@ -15,7 +15,6 @@ pub enum ImageFormat {
 }
 
 impl ImageFormat {
-    #[allow(dead_code)]
     pub fn from_path(path: &str) -> Option<Self> {
         let ext = path.rsplit('.').next()?.to_lowercase();
         let format = &crate::capabilities::capabilities()
@@ -24,20 +23,11 @@ impl ImageFormat {
         Self::from_name(format)
     }
 
-    #[allow(dead_code)]
     pub fn from_name(format: &str) -> Option<Self> {
         match format {
             "jpeg" => Some(Self::Jpeg),
             "png" => Some(Self::Png),
             _ => None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn mime_type(&self) -> &str {
-        match self {
-            Self::Jpeg => "image/jpeg",
-            Self::Png => "image/png",
         }
     }
 
@@ -64,7 +54,6 @@ impl ImageFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum RenderMode {
     Circles,
     Landscape,
@@ -185,6 +174,7 @@ impl PerfCounter {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PhotoSpec {
     #[serde(default)]
     pub output: Option<String>,
@@ -211,11 +201,31 @@ pub fn generate_photo(
     let fmt = match spec.format.as_deref() {
         Some(format) => ImageFormat::from_name(format)
             .unwrap_or_else(|| panic!("manifest format `{format}` is not generatable by snapfab")),
-        None => spec
-            .output
-            .as_deref()
-            .and_then(ImageFormat::from_path)
-            .unwrap_or(ImageFormat::Jpeg),
+        None => match spec.output.as_deref().and_then(ImageFormat::from_path) {
+            Some(format) => format,
+            None => {
+                // An extension the manifest knows about but snapfab cannot
+                // encode (webp, tiff, mp4, mov, ...) must not be silently
+                // replaced with JPEG bytes: surface it as a programming error.
+                if let Some(output) = spec.output.as_deref() {
+                    let ext = output
+                        .rsplit('.')
+                        .next()
+                        .map(str::to_lowercase)
+                        .unwrap_or_default();
+                    if !ext.is_empty()
+                        && crate::capabilities::capabilities()
+                            .capability_for_extension(&ext)
+                            .is_some()
+                    {
+                        panic!(
+                            "output extension `{ext}` is not generatable by snapfab; use an explicit format or a pinned fixture"
+                        );
+                    }
+                }
+                ImageFormat::Jpeg
+            }
+        },
     };
 
     let width = spec
@@ -224,6 +234,13 @@ pub fn generate_photo(
     let height = spec
         .height
         .unwrap_or_else(|| rng.sample(Uniform::new(80u32, 401).unwrap()));
+
+    if width == 0 || width > 10_000 {
+        panic!("invalid photo width `{width}`: must be between 1 and 10000");
+    }
+    if height == 0 || height > 10_000 {
+        panic!("invalid photo height `{height}`: must be between 1 and 10000");
+    }
 
     let minimal = spec.minimal || (width <= 4 && height <= 4);
 
@@ -1945,6 +1962,82 @@ mod tests {
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
         generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid photo width")]
+    fn test_generate_rejects_zero_width() {
+        let spec = PhotoSpec {
+            output: None,
+            format: Some("jpeg".into()),
+            width: Some(0),
+            height: Some(4),
+            exif_date: None,
+            tags: None,
+            minimal: false,
+        };
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid photo height")]
+    fn test_generate_rejects_huge_height() {
+        let spec = PhotoSpec {
+            output: None,
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(10_001),
+            exif_date: None,
+            tags: None,
+            minimal: false,
+        };
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+    }
+
+    #[test]
+    #[should_panic(expected = "not generatable by snapfab")]
+    fn test_generate_rejects_non_encodable_output_extension() {
+        let spec = PhotoSpec {
+            output: Some("/tmp/a.webp".into()),
+            format: None,
+            width: Some(4),
+            height: Some(4),
+            exif_date: None,
+            tags: None,
+            minimal: false,
+        };
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+    }
+
+    #[test]
+    fn test_generate_infers_jpeg_from_jpg_output() {
+        let spec = PhotoSpec {
+            output: Some("/tmp/a.jpg".into()),
+            format: None,
+            width: Some(4),
+            height: Some(4),
+            exif_date: None,
+            tags: None,
+            minimal: false,
+        };
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        let (bytes, _mode) = generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+        assert_eq!(bytes[0], 0xFF);
+        assert_eq!(bytes[1], 0xD8);
+    }
+
+    #[test]
+    fn test_photospec_rejects_unknown_field() {
+        let json = r#"{"widht": 4}"#;
+        let result: Result<PhotoSpec, _> = serde_json::from_str(json);
+        assert!(result.is_err());
     }
 
     /// Drive the real `snapfab library` CLI arm once per seed and report what it
