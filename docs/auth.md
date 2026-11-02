@@ -124,13 +124,12 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    new role appears at the next sign-in.
 5. Users are managed through `GET /get/users`,
    `POST /post/users/register`, `PUT /put/users/password`,
-   `PUT /put/users/admin`, and `DELETE /delete/users/{user_id}`
+   `PUT /put/users/admin`, `PUT /put/users/disabled`,
+   `PUT /put/users/sharing`, and `DELETE /delete/users/{user_id}`
    (admin-only). The first administrator is enrolled only by
    `POST /post/users/bootstrap` (`--bootstrap-admin` ∧ empty store, forced
    admin); `register` always creates non-admin accounts — elevation is
-   `PUT /put/users/admin` alone. Deletion refuses to leave zero admins
-   (the same invariant as demotion); with other admins present,
-   self-delete is allowed.
+   `PUT /put/users/admin` alone.
 
 **Credential-guess throttling (brute-force resistance):** two endpoints
 verify passwords, each with its own throttle instance so guesses on one
@@ -259,6 +258,60 @@ via the bootstrap route on an empty store or the `picasu-cmd` CLI.
 Tokens predating the `jti` claim or the `Role::User { id, admin }` shape
 do not decode.
 
+### Account states and deletion
+
+Account state is the 2×2 matrix formed by two independent flags on the user
+record: `disabled` and `shares_enabled` (both default active when absent;
+tolerated by the lenient deserializer).
+
+| State                      | Login                                                                         | Outstanding sessions                                                         | Listing                     | Share creation (by user)                                                                                           | Share resolution (to user's shares)                                                                                                             |
+| -------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| active, sharing-enabled    | allowed                                                                       | live per token rules                                                         | shown                       | allowed                                                                                                            | allowed                                                                                                                                         |
+| active, sharing-disabled   | allowed                                                                       | live per token rules                                                         | shown with share toggle off | refused with 403                                                                                                   | denied like a dead share (401, indistinguishable from removed); existing share rows kept                                                        |
+| disabled, sharing-enabled  | refused exactly like a wrong password (same status and dummy work; no oracle) | die on disable (token version bumped on disable; guards enforce per request) | shown with disabled flag    | refused with 403 where reached; in practice sessions die on disable (401 at the guard), so create is never reached | share resolution checks the flag too, but anonymous holders present old tokens whose version no longer matches — denied like a dead share (401) |
+| disabled, sharing-disabled | refused exactly like a wrong password                                         | die on disable                                                               | shown with both flags off   | refused with 403                                                                                                   | denied like a dead share (401)                                                                                                                  |
+
+Toggles are independent: disabling the account does not change
+`shares_enabled`, and toggling sharing does not change `disabled`.
+Re-enabling clears `disabled` without touching the token version;
+re-enabling sharing restores access instantly to existing share rows.
+
+Admin endpoints (GuardAdmin, GuardMutate): `PUT /put/users/disabled`
+(`{userId, disabled}`) and `PUT /put/users/sharing` (`{userId, enabled}`).
+Disabling the last enabled admin is refused with 409. Sharing has no
+last-admin rule. Both require an admin session; audit logging follows the
+same shape as the admin-role endpoint.
+
+#### Deletion runbook (admin remediation)
+
+`DELETE /delete/users/{user_id}` is admin-only and requires
+re-authentication via the `X-Picasu-Password` header (GuardReauth: 401 if no
+session or bad session, 403 if missing or wrong password). Read-only mode
+returns 405. The operation refuses to leave zero admins (409), mirroring
+the zero-admin invariant.
+
+Preconditions and behavior:
+
+- Refuses with 409 if the user still has any personal media files under the
+  user's personal home (trashed files included; any indexable media file
+  counts). Global uploads are not attributable to a user and do not block.
+- The 409 response for remaining photos names the remedy in its message:
+  _lock the account and remove/revoke the shares; to delete manually, remove
+  the files from the host filesystem under `USERS_HOME/<username>`, then
+  retry the delete_. This is operator procedure, not API behavior.
+- Owned shares are cascade-deleted first (all albums' `share_list` entries
+  with `created_by` equal to the target across every album). Deletion order
+  is shares first, then the identity record, so a crash between the two
+  leaves no orphaned bearer behind and the operation is retryable.
+- On successful delete with no photos, the now-empty personal album record
+  is pruned if present.
+- A disabled user with photos still cannot be deleted (disable is not a
+  purge shortcut).
+
+If photos remain and cannot be removed via the API, remove the files from
+the host filesystem under `USERS_HOME/<username>` (manual host-FS fallback),
+then retry the delete.
+
 ### The three token types
 
 | Type             | ClaimsSession                                                                                      | TTL   | Minted by                        | Consumed by                                                   |
@@ -385,12 +438,12 @@ and stays as is — no user/self rework.
 
 **Stays admin-only (21 routes).** Each row names the reason.
 
-| Group              | Routes                                                                                                                                                                                      | Why admin-only                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity admin     | `GET /get/users`, `PUT /put/users/admin`, `POST /post/invites`, `GET /get/invites`, `DELETE /delete/invites/*`, `POST /post/users/bootstrap`, `DELETE /delete/users/{user_id}`              | User enumeration, role elevation, invite mint/revoke, first-admin enrollment, user-record destruction/remediation authority. Bootstrap is admin-by-construction (flag ∧ empty store, forced admin). |
-| Config and secrets | `PUT /put/admin/config`, `GET /get/admin/config`, `GET /get/admin/config/export`, `GET /get/config/export`, `POST /post/config/auth-key/reset`, `POST /post/admin/config/disable-read-only` | Global config write/read, full export, signing-secret rotation (kills every session), kill-switch lift (AUTH-12 exception).                                                                         |
-| Repository jobs    | `POST /post/index/album`, `POST /post/index/cancel`, `GET /get/index/status`                                                                                                                | Filesystem-wide scan control and progress; viewers never trigger scans.                                                                                                                             |
-| Host disclosure    | `GET /get/path-completion`, `GET /get/test/*` probes                                                                                                                                        | Absolute server paths; test internals.                                                                                                                                                              |
+| Group              | Routes                                                                                                                                                                                                                              | Why admin-only                                                                                                                                                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity admin     | `GET /get/users`, `PUT /put/users/admin`, `PUT /put/users/disabled`, `PUT /put/users/sharing`, `POST /post/invites`, `GET /get/invites`, `DELETE /delete/invites/*`, `POST /post/users/bootstrap`, `DELETE /delete/users/{user_id}` | User enumeration, role elevation, account disable/enable, per-user share toggle, invite mint/revoke, first-admin enrollment, user-record destruction/remediation authority. Bootstrap is admin-by-construction (flag ∧ empty store, forced admin). |
+| Config and secrets | `PUT /put/admin/config`, `GET /get/admin/config`, `GET /get/admin/config/export`, `GET /get/config/export`, `POST /post/config/auth-key/reset`, `POST /post/admin/config/disable-read-only`                                         | Global config write/read, full export, signing-secret rotation (kills every session), kill-switch lift (AUTH-12 exception).                                                                                                                        |
+| Repository jobs    | `POST /post/index/album`, `POST /post/index/cancel`, `GET /get/index/status`                                                                                                                                                        | Filesystem-wide scan control and progress; viewers never trigger scans.                                                                                                                                                                            |
+| Host disclosure    | `GET /get/path-completion`, `GET /get/test/*` probes                                                                                                                                                                                | Absolute server paths; test internals.                                                                                                                                                                                                             |
 
 **Demote to user-level (any live authenticated user).** Each row names the
 prerequisite that makes the demotion safe.
