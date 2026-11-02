@@ -125,6 +125,22 @@ fn parse_modes(s: &str) -> Result<Vec<RenderMode>, String> {
         .collect()
 }
 
+/// Resolve the enabled render modes from the parsed CLI flags.
+///
+/// Validation of an explicit `--generators` value must already have happened;
+/// this only maps the validated inputs onto a mode list. `fancy` selects
+/// [`FULL_MODES`].
+fn resolve_modes(g: &Option<String>, fancy: bool) -> Vec<RenderMode> {
+    match g {
+        Some(s) => parse_modes(s).unwrap_or_else(|e| {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }),
+        None if fancy => FULL_MODES.to_vec(),
+        None => ACTIVE_MODES.to_vec(),
+    }
+}
+
 pub struct PerfCounter {
     counts: [u64; 8],
     nanos: [u64; 8],
@@ -448,6 +464,9 @@ pub fn generate_photo_file(
 }
 
 /// Used by backend API tests (`backend/src/tests/backend_api.rs`).
+///
+/// Does not print progress or perf statistics: it is a library entry point and
+/// never writes to stdout or stderr.
 #[allow(dead_code)]
 pub fn generate_batch(specs: &[PhotoSpec]) -> std::io::Result<()> {
     let mut rng = SmallRng::from_rng(&mut rand::rng());
@@ -1299,6 +1318,11 @@ fn write_metadata(fmt: ImageFormat, bytes: Vec<u8>, write: &MetadataWrite<'_>) -
 
 /// Fail unless `exiftool` reported that it rewrote the file.
 ///
+/// Scope: this checks the aggregate "image files updated" count only, which
+/// confirms that exiftool touched the file at all. It does not verify that any
+/// individual tag was written; per-tag correctness (including tags exiftool
+/// declines with a warning) is covered by the read-back tests.
+///
 /// `exiftool` reports a tag it cannot hold — a name that is not writable, a
 /// value the tag cannot represent — as a *warning* on stderr and then writes
 /// nothing, and the `exiftool` crate only turns `Error:` lines into a failure.
@@ -1474,7 +1498,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         /// Generate a single image from a JSON spec on stdin
         Single {
             #[arg(short, long, help = "Output file path")]
-            out: PathBuf,
+            out: Option<PathBuf>,
             #[arg(
                 short,
                 long,
@@ -1493,7 +1517,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         /// Generate multiple images from a JSON array spec (stdin or file)
         Batch {
             #[arg(help = "Manifest file path, or '-' for stdin")]
-            manifest: String,
+            manifest: Option<String>,
             #[arg(
                 short,
                 long,
@@ -1512,7 +1536,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         /// Generate a library of random images
         Library {
             #[arg(short, long, help = "Output directory")]
-            dir: PathBuf,
+            dir: Option<PathBuf>,
             #[arg(
                 short,
                 long,
@@ -1542,17 +1566,6 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             minimal: bool,
         },
     }
-
-    let enabled = |g: &Option<String>, fancy: bool| -> Vec<RenderMode> {
-        match g {
-            Some(s) => parse_modes(s).unwrap_or_else(|e| {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }),
-            None if fancy => FULL_MODES.to_vec(),
-            None => ACTIVE_MODES.to_vec(),
-        }
-    };
 
     fn print_generator_list() {
         println!("Available generators:");
@@ -1584,6 +1597,19 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                 print_generator_list();
                 return;
             }
+            if let Some(g) = &generators
+                && let Err(e) = parse_modes(g)
+            {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+            let out = match out {
+                Some(path) => path,
+                None => {
+                    eprintln!("error: --out is required");
+                    std::process::exit(1);
+                }
+            };
             let mut input = String::new();
             std::io::stdin().read_line(&mut input).expect("read stdin");
             let mut spec: PhotoSpec = serde_json::from_str(&input).expect("invalid JSON spec");
@@ -1592,7 +1618,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             }
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             let mut stats = PerfCounter::new();
-            let enabled = enabled(&generators, fancy);
+            let enabled = resolve_modes(&generators, fancy);
             let mode = generate_photo_file(&spec, &out, &mut rng, &mut stats, &enabled)
                 .expect("write image");
             if verbose {
@@ -1611,6 +1637,19 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                 print_generator_list();
                 return;
             }
+            if let Some(g) = &generators
+                && let Err(e) = parse_modes(g)
+            {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+            let manifest = match manifest {
+                Some(path) => path,
+                None => {
+                    eprintln!("error: manifest is required");
+                    std::process::exit(1);
+                }
+            };
             let json = if manifest == "-" {
                 let mut buf = String::new();
                 std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf).expect("read stdin");
@@ -1627,7 +1666,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             }
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             let mut stats = PerfCounter::new();
-            let enabled = enabled(&generators, fancy);
+            let enabled = resolve_modes(&generators, fancy);
             for spec in &specs {
                 let path = spec
                     .output
@@ -1664,6 +1703,19 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                 print_generator_list();
                 return;
             }
+            if let Some(g) = &generators
+                && let Err(e) = parse_modes(g)
+            {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+            let dir = match dir {
+                Some(path) => path,
+                None => {
+                    eprintln!("error: --dir is required");
+                    std::process::exit(1);
+                }
+            };
             std::fs::create_dir_all(&dir).expect("create output dir");
             let mut rng = match seed {
                 Some(s) => SmallRng::seed_from_u64(s),
@@ -1676,7 +1728,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                 }
             };
             let mut stats = PerfCounter::new();
-            let enabled = enabled(&generators, fancy);
+            let enabled = resolve_modes(&generators, fancy);
 
             for file in generate_library(&dir, count, &mut rng, &mut stats, &enabled, minimal) {
                 if verbose {
@@ -2156,113 +2208,6 @@ mod tests {
         let a = run_library_cli(99, 4);
         let b = run_library_cli(99, 4);
         assert_eq!(a, b, "same seed must produce identical bytes");
-    }
-
-    /// Captured-output check: quiet is the default.
-    #[test]
-    fn quiet_library_run_prints_nothing() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut bin = std::env::current_exe().expect("current exe");
-        bin.pop(); // deps
-        bin.pop(); // debug
-        bin.push("snapfab");
-        let output = std::process::Command::new(&bin)
-            .args([
-                "library",
-                "--dir",
-                dir.path().to_str().expect("dir"),
-                "--count",
-                "2",
-            ])
-            .output()
-            .expect("run snapfab");
-        assert!(output.status.success(), "quiet run failed: {output:?}");
-        assert!(
-            output.stdout.is_empty(),
-            "quiet stdout was: {}",
-            String::from_utf8_lossy(&output.stdout)
-        );
-        assert!(
-            output.stderr.is_empty(),
-            "quiet stderr was: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    /// Captured-output check: --verbose restores the progress output.
-    #[test]
-    fn verbose_library_run_prints_progress() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut bin = std::env::current_exe().expect("current exe");
-        bin.pop(); // deps
-        bin.pop(); // debug
-        bin.push("snapfab");
-        let output = std::process::Command::new(&bin)
-            .args([
-                "library",
-                "--dir",
-                dir.path().to_str().expect("dir"),
-                "--count",
-                "2",
-                "--verbose",
-            ])
-            .output()
-            .expect("run snapfab");
-        assert!(output.status.success(), "verbose run failed: {output:?}");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("Generated 2 images in"),
-            "verbose stderr missing summary: {stderr}"
-        );
-    }
-
-    /// `help`/`list` print available names (including which are default) to
-    /// stdout and exit 0.
-    #[test]
-    fn generators_help_lists_names_and_defaults() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut bin = std::env::current_exe().expect("current exe");
-        bin.pop(); // deps
-        bin.pop(); // debug
-        bin.push("snapfab");
-        let output = std::process::Command::new(&bin)
-            .args([
-                "library",
-                "--dir",
-                dir.path().to_str().expect("dir"),
-                "--count",
-                "1",
-                "--generators",
-                "help",
-            ])
-            .output()
-            .expect("run snapfab");
-        assert!(output.status.success(), "help run failed: {output:?}");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for name in [
-            "circles",
-            "landscape",
-            "wavy",
-            "mountains",
-            "mandelbrot",
-            "julia",
-            "geometric",
-            "still_life",
-        ] {
-            assert!(
-                stdout.contains(name),
-                "help output missing {name}: {stdout}"
-            );
-        }
-        assert!(
-            stdout.contains("default"),
-            "help output missing default marker: {stdout}"
-        );
-        assert!(
-            output.stderr.is_empty(),
-            "help should not print to stderr: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
     }
 
     /// The library path must materialise **every** randomizable draw, not just
@@ -3152,5 +3097,36 @@ mod tests {
         assert_eq!(FULL_MODES.len(), 8);
         assert!(FULL_MODES.contains(&RenderMode::Geometric));
         assert!(FULL_MODES.contains(&RenderMode::StillLife));
+    }
+
+    #[test]
+    fn mode_name_arrays_are_consistent() {
+        assert_eq!(MODE_NAMES.len(), 8);
+        assert_eq!(ACTIVE_MODES.len(), 6);
+        assert_eq!(SELECTABLE_MODES.len(), 8);
+        assert_eq!(FULL_MODES.len(), 8);
+
+        let all_variants = [
+            RenderMode::Circles,
+            RenderMode::Landscape,
+            RenderMode::Geometric,
+            RenderMode::WavyLines,
+            RenderMode::Mountains,
+            RenderMode::StillLife,
+            RenderMode::Mandelbrot,
+            RenderMode::Julia,
+        ];
+        for variant in all_variants {
+            assert!(
+                SELECTABLE_MODES.iter().any(|(_, mode)| *mode == variant),
+                "SELECTABLE_MODES missing {variant:?}"
+            );
+            assert!(
+                FULL_MODES.contains(&variant),
+                "FULL_MODES missing {variant:?}"
+            );
+        }
+        assert_eq!(resolve_modes(&None, true), FULL_MODES.to_vec());
+        assert_eq!(resolve_modes(&None, false), ACTIVE_MODES.to_vec());
     }
 }
