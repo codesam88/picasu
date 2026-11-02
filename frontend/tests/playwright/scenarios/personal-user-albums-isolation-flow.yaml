@@ -37,9 +37,18 @@ steps:
 
   # alice's personal photo is seeded under her personal home (see given:)
 
-  # Skip direct assignment UI flow if UI behaves differently; rely on API-level isolation coverage
-  # (no UI assertion here; backend tests pin assignment isolation)
-
+  # Assignment isolation is pinned at the API layer rather than driven through the
+  # move dialog here; see backend/src/tests/personal_reads.rs
+  # (get_albums_omits_other_users_personal_album,
+  # prefetch_include_personal_toggle_is_server_enforced,
+  # b3_bob_snapshot_cannot_read_alice_personal_metadata,
+  # b3_alice_reads_own_personal_metadata_ok) and
+  # backend/src/tests/authz.rs (b4_bob_cannot_renew_alices_personal_asset_token,
+  # b4_alice_renews_own_expired_asset_token, b5_bob_cannot_serve_alices_personal_asset).
+  # Album-move refusal for foreign-owned shares: backend/src/tests/share_ownership.rs
+  # (move_album_with_foreign_share_refused_and_tree_unchanged,
+  # admin_moving_album_with_another_users_share_refused,
+  # move_album_with_own_shares_succeeds).
   # Timeline toggle behavior: personal photo appears only when opted in.
   - when:
       - navigate: /timeline
@@ -86,6 +95,13 @@ steps:
     assert:
       - ui.text_hidden: alice-secret
 
+  # Positive control: alice's personal album is reachable in her own album list.
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.route: /albums
+      - ui.visible: main/
+
   # Capture alice's personal album id from URL
   - when:
       - navigate: /my-albums
@@ -105,13 +121,19 @@ steps:
     assert:
       - ui.visible: main/
 
+  # Positive control: owner can open her own personal album; it contains her photo.
+  - when:
+      - navigate: /album/${alice_album}
+    assert:
+      - ui.route: /album/
+      - ui.count: .desktop-small-image
+        equals: 1
   - when:
       - navigate: /timeline
       - click.icon: mdi-account-circle
       - click.menu: Log out
     assert:
       - ui.route: /login
-
   # ── Non-admin attacker (bob) against alice's personal album ─────────────
   - when:
       - login:
@@ -132,6 +154,7 @@ steps:
       - navigate: /albums
     assert:
       - ui.route: /albums
+      - ui.visible: main/
       - ui.text_hidden: Alice
 
   # Direct navigation to alice's personal album - must not render alice's items
@@ -139,6 +162,7 @@ steps:
       - navigate: /album/${alice_album}
     assert:
       - ui.route: /album/${alice_album}
+      - ui.visible: main/
       - ui.text_hidden: alice-secret.jpg
 
   # Bob should not see Alice's album/asset in assignable/share contexts
@@ -179,6 +203,7 @@ steps:
       - navigate: /albums
     assert:
       - ui.route: /albums
+      - ui.visible: main/
       - ui.text_hidden: Alice
 
   # Direct navigation to alice's personal album - admin must not see alice's items
@@ -186,6 +211,7 @@ steps:
       - navigate: /album/${alice_album}
     assert:
       - ui.route: /album/${alice_album}
+      - ui.visible: main/
       - ui.text_hidden: alice-secret.jpg
 
   - when:
