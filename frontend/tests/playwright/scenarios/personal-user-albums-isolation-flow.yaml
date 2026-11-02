@@ -65,6 +65,7 @@ steps:
   - when:
       - navigate: /timeline
     assert:
+      - ui.route: /timeline
       - ui.visible: main/
 
   - when:
@@ -81,6 +82,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.text_visible: Alice
 
   - when:
@@ -113,6 +115,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.text_visible: Bob
       - ui.text_hidden: Alice
       - ui.text_hidden: Admin
@@ -120,18 +123,21 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.text_hidden: Alice
 
   # Direct navigation to alice's personal album - must not render alice's items
   - when:
-      - navigate: /album/${$alice_album}
+      - navigate: /album/${alice_album}
     assert:
+      - ui.route: /album/${alice_album}
       - ui.text_hidden: alice-secret.jpg
 
   # Bob should not see Alice's album/asset in assignable/share contexts
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
 
   - when:
@@ -157,18 +163,21 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.text_visible: Admin
       - ui.text_hidden: Alice
 
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.text_hidden: Alice
 
   # Direct navigation to alice's personal album - admin must not see alice's items
   - when:
-      - navigate: /album/${$alice_album}
+      - navigate: /album/${alice_album}
     assert:
+      - ui.route: /album/${alice_album}
       - ui.text_hidden: alice-secret.jpg
 
   - when:

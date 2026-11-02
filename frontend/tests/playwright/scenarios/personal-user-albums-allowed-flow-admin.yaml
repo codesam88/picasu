@@ -49,6 +49,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.visible: main/
 
   # Upload into own personal album (via upload -> move to personal)
@@ -71,6 +72,7 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
   - when:
       - click.text: Uploads
@@ -106,6 +108,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.visible: main/
   - when:
       - click.text: Admin
@@ -147,6 +150,7 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
   - when:
       - upload.files:
@@ -167,6 +171,7 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
   - when:
       - click.text: Uploads
@@ -202,6 +207,7 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
   - when:
       - click.text: Public Album
@@ -213,6 +219,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.visible: main/
   - when:
       - click.text: Admin
@@ -246,6 +253,7 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
   - when:
       - click.text: Public Album
@@ -256,6 +264,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.visible: main/
   - when:
       - click.text: Admin
@@ -267,6 +276,7 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.route: /albums
       - ui.visible: main/
   - when:
       - click.text: Public Album
@@ -300,6 +310,7 @@ steps:
   - when:
       - navigate: /my-albums
     assert:
+      - ui.route: /my-albums
       - ui.visible: main/
   - when:
       - click.text: Admin
