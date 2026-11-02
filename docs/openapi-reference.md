@@ -27,6 +27,19 @@ Self-hosted photo gallery API. This document is generated from the `#[utoipa::pa
 Web: <a href="https://github.com/codesam88/picasu">picasu</a>
 License: MIT
 
+# Authentication
+
+- API Key (album_id)
+  - Parameter Name: **x-album-id**, in: header.
+
+* HTTP Authentication, scheme: bearer
+
+- API Key (cookie_jwt)
+  - Parameter Name: **jwt**, in: cookie.
+
+- API Key (share_id)
+  - Parameter Name: **x-share-id**, in: header.
+
 <h1 id="picasu-auth">auth</h1>
 
 Authentication and token renewal
@@ -211,8 +224,205 @@ id — 405 read-only mode — 500 storage failure.
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
+</aside>
+
+## Delete a user account (admin remediation).
+
+<a id="opIddelete_user_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X DELETE /delete/users/{user_id} \
+  -H 'Accept: application/json'
+
+```
+
+```http
+DELETE /delete/users/{user_id} HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/delete/users/{user_id}", {
+  method: "DELETE",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.delete '/delete/users/{user_id}',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.delete('/delete/users/{user_id}', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('DELETE','/delete/users/{user_id}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/delete/users/{user_id}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("DELETE");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("DELETE", "/delete/users/{user_id}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`DELETE /delete/users/{user_id}`
+
+Admin-only: a non-admin, share, or missing credential is denied at
+dispatch with 401. The deletion refuses to leave zero admins; deleting
+the sole admin is therefore impossible, while self-delete with another
+admin present succeeds. The identity record (including its password
+hash) is removed in one store write.
+
+Requires re-authentication via the `X-Picasu-Password` header (403 when
+it is missing or wrong). Refuses with 409 while the user still has
+personal photos.
+
+Corner cases: Unknown `user_id` names no user. An invalid id (empty or
+over 64 chars) is a 400. Read-only mode refuses with 405.
+
+Errors: 400 invalid `user_id` — 401 missing or invalid credentials,
+non-admin caller, or share credentials — 403 missing or wrong
+re-authentication password — 404 unknown `user_id` — 405 read-only mode
+— 409 deletion would leave zero admins, or the user still has personal
+photos — 500 storage failure.
+
+<h3 id="delete-a-user-account-(admin-remediation).-parameters">Parameters</h3>
+
+| Name    | In   | Type   | Required | Description       |
+| ------- | ---- | ------ | -------- | ----------------- |
+| user_id | path | string | true     | User id to delete |
+
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="delete-a-user-account-(admin-remediation).-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | User deleted                                                                               | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown user id                                                                            | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Deletion would leave zero admins or user still has personal photos                         | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## List invite tokens' metadata.
@@ -416,8 +626,188 @@ Status Code **200**
 | » usedBy    | string,null                       | false    | none         | none                                                                                                                   |
 | » username  | string,null                       | false    | none         | none                                                                                                                   |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
+</aside>
+
+## Report the invite creation limits the admin console enforces.
+
+<a id="opIdinvite_limits_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/invites/limits \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/invites/limits HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/invites/limits", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/invites/limits',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/invites/limits', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/invites/limits', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/invites/limits");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/invites/limits", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/invites/limits`
+
+Admin-only. The console fetches this when building the invite panel so
+the client-side expiry parser validates against the same bound the
+server enforces, instead of hard-coding policy.
+
+Errors: 401 missing or invalid admin credentials.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "maxExpiryHours": 0
+}
+```
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="report-the-invite-creation-limits-the-admin-console-enforces.-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description                                                                                | Schema                                      |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Invite creation limits                                                                     | [InviteLimits](#schemainvitelimits)         |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Read the caller's own identity from the user store.
@@ -602,8 +992,9 @@ users; 404 unknown user; 500 storage failure.
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                              |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                              |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Report anonymous enrollment state for boot routing.
@@ -778,8 +1169,9 @@ Errors: 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Enrollment state | [ServerInfo](#schemaserverinfo) |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error   | None                            |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+None
 </aside>
 
 ## List all users as `{ userId, admin }` pairs ordered by id.
@@ -937,6 +1329,8 @@ accepted — 500 storage failure.
 [
   {
     "admin": true,
+    "disabled": true,
+    "sharesEnabled": true,
     "userId": "string"
   }
 ]
@@ -964,14 +1358,17 @@ accepted — 500 storage failure.
 
 Status Code **200**
 
-| Name        | Type                                | Required | Restrictions | Description                                                     |
-| ----------- | ----------------------------------- | -------- | ------------ | --------------------------------------------------------------- |
-| _anonymous_ | [[UserSummary](#schemausersummary)] | false    | none         | [Summary of a user record. Password hashes are never exported.] |
-| » admin     | boolean                             | true     | none         | none                                                            |
-| » userId    | string                              | true     | none         | none                                                            |
+| Name            | Type                                | Required | Restrictions | Description                                                     |
+| --------------- | ----------------------------------- | -------- | ------------ | --------------------------------------------------------------- |
+| _anonymous_     | [[UserSummary](#schemausersummary)] | false    | none         | [Summary of a user record. Password hashes are never exported.] |
+| » admin         | boolean                             | true     | none         | none                                                            |
+| » disabled      | boolean                             | false    | none         | none                                                            |
+| » sharesEnabled | boolean                             | false    | none         | none                                                            |
+| » userId        | string                              | true     | none         | none                                                            |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Create a single-use invite token.
@@ -1140,8 +1537,9 @@ Listing, expiry, use and revoke are handled by
 `GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional
 `username` binds the invite to that user id (403 on mismatch at redeem).
 
-Errors: 400 negative `expiresInHours` or invalid `username` — 401 missing or invalid admin
-credentials — 405 read-only mode — 500 storage failure.
+Errors: 400 negative or over-limit `expiresInHours` (max one year) or
+invalid `username` — 401 missing or invalid admin credentials — 405
+read-only mode — 500 storage failure.
 
 > Body parameter
 
@@ -1194,10 +1592,12 @@ credentials — 405 read-only mode — 500 storage failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)         |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                                |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                                |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Clear the session cookie.
@@ -1329,8 +1729,9 @@ valid; the cookie is always cleared and the answer is always 204.
 | ------ | --------------------------------------------------------------- | ---------------------- | ------ |
 | 204    | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | Session cookie cleared | None   |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+None
 </aside>
 
 ## Exchange an expired image-serving token for a freshly issued one.
@@ -1343,7 +1744,8 @@ This operation does not require authentication
 # You can also use wget
 curl -X POST /post/renew-hash-token \
   -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
 
 ```
 
@@ -1361,7 +1763,8 @@ const inputBody = '{
 }';
 const headers = {
   'Content-Type':'application/json',
-  'Accept':'application/json'
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
 };
 
 fetch('/post/renew-hash-token',
@@ -1384,7 +1787,8 @@ require 'json'
 
 headers = {
   'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'Authorization' => 'Bearer {access-token}'
 }
 
 result = RestClient.post '/post/renew-hash-token',
@@ -1399,7 +1803,8 @@ p JSON.parse(result)
 import requests
 headers = {
   'Content-Type': 'application/json',
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'Authorization': 'Bearer {access-token}'
 }
 
 r = requests.post('/post/renew-hash-token', headers = headers)
@@ -1416,6 +1821,7 @@ require 'vendor/autoload.php';
 $headers = array(
     'Content-Type' => 'application/json',
     'Accept' => 'application/json',
+    'Authorization' => 'Bearer {access-token}',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -1470,6 +1876,7 @@ func main() {
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
         "Accept": []string{"application/json"},
+        "Authorization": []string{"Bearer {access-token}"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -1539,10 +1946,13 @@ failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Hash token renewed                                                                         | [RenewHashTokenReturn](#schemarenewhashtokenreturn) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)         |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                                |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                                |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+bearer_token
 </aside>
 
 ## Exchange an expired prefetch timestamp token for a freshly issued one.
@@ -1555,7 +1965,9 @@ This operation does not require authentication
 # You can also use wget
 curl -X POST /post/renew-timestamp-token \
   -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'x-album-id: API_KEY' \
+  -H 'x-share-id: API_KEY'
 
 ```
 
@@ -1573,7 +1985,9 @@ const inputBody = '{
 }';
 const headers = {
   'Content-Type':'application/json',
-  'Accept':'application/json'
+  'Accept':'application/json',
+  'x-album-id':'API_KEY',
+  'x-share-id':'API_KEY'
 };
 
 fetch('/post/renew-timestamp-token',
@@ -1596,7 +2010,9 @@ require 'json'
 
 headers = {
   'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'x-album-id' => 'API_KEY',
+  'x-share-id' => 'API_KEY'
 }
 
 result = RestClient.post '/post/renew-timestamp-token',
@@ -1611,7 +2027,9 @@ p JSON.parse(result)
 import requests
 headers = {
   'Content-Type': 'application/json',
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'x-album-id': 'API_KEY',
+  'x-share-id': 'API_KEY'
 }
 
 r = requests.post('/post/renew-timestamp-token', headers = headers)
@@ -1628,6 +2046,8 @@ require 'vendor/autoload.php';
 $headers = array(
     'Content-Type' => 'application/json',
     'Accept' => 'application/json',
+    'x-album-id' => 'API_KEY',
+    'x-share-id' => 'API_KEY',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -1682,6 +2102,8 @@ func main() {
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
         "Accept": []string{"application/json"},
+        "x-album-id": []string{"API_KEY"},
+        "x-share-id": []string{"API_KEY"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -1703,11 +2125,12 @@ submitted token is decoded with expiration checking disabled and reissued
 with its original snapshot `timestamp` and resolved share intact, expiring
 300 seconds later.
 
-A share presenter may only renew its own share's snapshot; the embedded
-share is also re-resolved from the DB before re-issue, so a share that has
-since been disabled or expired stops yielding refreshed tokens. An admin
-presenter may renew any snapshot, but the embedded share is still
-re-validated.
+A presenter may only renew a snapshot minted for themselves: a share
+presenter renews only its own share's snapshot (share-pair equality), and
+a user presenter renews only snapshots whose `caller` equals their user id.
+Admins are not exempt. The embedded share is also re-resolved from the DB
+before re-issue, so a share that has since been disabled or expired stops
+yielding refreshed tokens.
 
 Corner cases: Re-renewing keeps addressing the same snapshot, so only the
 expiry changes and the underlying data is not re-read.
@@ -1758,10 +2181,13 @@ signature — 500 internal failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Timestamp token renewed                                                                    | [RenewTimestampTokenReturn](#schemarenewtimestamptokenreturn) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                                          |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                                          |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+album_id & share_id, cookie_jwt
 </aside>
 
 ## Sign in and issue the session cookie (`HttpOnly`).
@@ -1965,6 +2391,8 @@ throttle — for fuzzing runs — while the failure logging stays.
 ```json
 {
   "admin": true,
+  "disabled": true,
+  "sharesEnabled": true,
   "userId": "string"
 }
 ```
@@ -1986,11 +2414,13 @@ throttle — for fuzzing runs — while the failure logging stays.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary)           |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 429    | [Too Many Requests](https://tools.ietf.org/html/rfc6585#section-4)         | Too many login attempts; see Retry-After                                                   | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+None
 </aside>
 
 ## Enroll the first administrator.
@@ -2181,6 +2611,8 @@ the bootstrap window is closed (flag off, or the store is non-empty) —
 ```json
 {
   "admin": true,
+  "disabled": true,
+  "sharesEnabled": true,
   "userId": "string"
 }
 ```
@@ -2204,10 +2636,12 @@ the bootstrap window is closed (flag off, or the store is non-empty) —
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists                                                                        | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Register a new user account.
@@ -2408,6 +2842,8 @@ mismatch — 404 unknown or revoked invite token — 405 read-only mode —
 ```json
 {
   "admin": true,
+  "disabled": true,
+  "sharesEnabled": true,
   "userId": "string"
 }
 ```
@@ -2433,10 +2869,12 @@ mismatch — 404 unknown or revoked invite token — 405 read-only mode —
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown or revoked invite token                                                            | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists or invite already used                                                 | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Grant or revoke a user's admin role.
@@ -2643,10 +3081,214 @@ failure.
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Demotion would leave zero admins                                                           | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
+</aside>
+
+## Lock or unlock a user account (admin-only).
+
+<a id="opIdset_user_disabled_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X PUT /put/users/disabled \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+PUT /put/users/disabled HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "disabled": true,
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/put/users/disabled',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.put '/put/users/disabled',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.put('/put/users/disabled', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('PUT','/put/users/disabled', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/put/users/disabled");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("PUT");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("PUT", "/put/users/disabled", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`PUT /put/users/disabled`
+
+Locked accounts cannot log in and their outstanding sessions die;
+personal data and shares are untouched, and re-enabling restores
+access with a fresh login.
+
+> Body parameter
+
+```json
+{
+  "disabled": true,
+  "userId": "string"
+}
+```
+
+<h3 id="lock-or-unlock-a-user-account-(admin-only).-parameters">Parameters</h3>
+
+| Name | In   | Type                                                    | Required | Description |
+| ---- | ---- | ------------------------------------------------------- | -------- | ----------- |
+| body | body | [SetUserDisabledRequest](#schemasetuserdisabledrequest) | true     | none        |
+
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="lock-or-unlock-a-user-account-(admin-only).-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Account disabled state updated                                                             | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Disabling would leave zero enabled admins                                                  | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Change a user's password.
@@ -2814,6 +3456,9 @@ rules — see `auth::password::check_strength`).
 Corner cases: Any authenticated user reaches this route (share tokens
 are rejected); unauthenticated callers are denied at dispatch.
 
+Requires re-authentication via the `X-Picasu-Password` header (403 when
+it is missing or wrong).
+
 Errors: 400 invalid `userId`, `newPassword` violating the password
 policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
 targeting another user — 404 unknown `userId` — 405 read-only mode —
@@ -2859,10 +3504,217 @@ session after the (ip, jti) guess budget is spent.
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
+</aside>
+
+## Set a user's sharing flag.
+
+<a id="opIdset_user_sharing_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X PUT /put/users/sharing \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+PUT /put/users/sharing HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "enabled": true,
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/put/users/sharing',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.put '/put/users/sharing',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.put('/put/users/sharing', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('PUT','/put/users/sharing', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/put/users/sharing");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("PUT");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("PUT", "/put/users/sharing", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`PUT /put/users/sharing`
+
+Admin-only. Sharing is not a liveness property, so no zero-enabled-admin
+check applies. A same-flag write is a no-op reporting success without an
+audit line.
+
+Errors: 400 invalid `userId` — 401 missing or invalid credentials,
+non-admin caller, or share credentials — 404 unknown `userId` — 405
+read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "enabled": true,
+  "userId": "string"
+}
+```
+
+<h3 id="set-a-user's-sharing-flag.-parameters">Parameters</h3>
+
+| Name | In   | Type                                                  | Required | Description |
+| ---- | ---- | ----------------------------------------------------- | -------- | ----------- |
+| body | body | [SetUserSharingRequest](#schemasetusersharingrequest) | true     | none        |
+
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="set-a-user's-sharing-flag.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Account sharing state updated                                                              | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 <h1 id="picasu-albums">albums</h1>
@@ -3018,7 +3870,9 @@ so clients never handle the absolute library location, falling back to the
 absolute path for albums outside that root; `parentAlbumId` names the direct
 parent directory album and is `null` for top-level dir albums and all
 manually created albums. Share entries carry `hasPassword` presence only —
-the stored password is never returned by an album read.
+the stored password is never returned by an album read. Each album's
+`shareList` is scoped to the caller: only shares they created are listed
+(see [`crate::storage::db::share_visible_to`]).
 
 Errors: 401 missing, invalid or share-role session — 403 no enrolled
 users — 500 storage failure.
@@ -3033,25 +3887,27 @@ users — 500 storage failure.
     "albumId": "string",
     "albumName": "string",
     "dirPath": "string",
+    "owner": "string",
     "parentAlbumId": "string",
+    "root": "string",
     "shareList": {
       "property1": {
         "description": "string",
         "exp": 0,
         "hasPassword": true,
+        "keyFingerprint": "string",
         "showDownload": true,
         "showMetadata": true,
-        "showUpload": true,
-        "url": "string"
+        "showUpload": true
       },
       "property2": {
         "description": "string",
         "exp": 0,
         "hasPassword": true,
+        "keyFingerprint": "string",
         "showDownload": true,
         "showMetadata": true,
-        "showUpload": true,
-        "url": "string"
+        "showUpload": true
       }
     }
   }
@@ -3081,25 +3937,224 @@ users — 500 storage failure.
 
 Status Code **200**
 
-| Name                        | Type                            | Required | Restrictions | Description                                                                                                       |
-| --------------------------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| _anonymous_                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                              |
-| » albumId                   | string                          | true     | none         | none                                                                                                              |
-| » albumName                 | string,null                     | false    | none         | none                                                                                                              |
-| » dirPath                   | string,null                     | false    | none         | none                                                                                                              |
-| » parentAlbumId             | string,null                     | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
-| » shareList                 | object                          | true     | none         | none                                                                                                              |
-| »» **additionalProperties** | [ShareInfo](#schemashareinfo)   | false    | none         | One album's share entry as served to clients: the policy plus presence of<br>a password, never the secret itself. |
-| »»» description             | string                          | true     | none         | none                                                                                                              |
-| »»» exp                     | integer(int64)                  | true     | none         | none                                                                                                              |
-| »»» hasPassword             | boolean                         | true     | none         | Whether a share password is configured; the stored secret never<br>leaves the backend through an album read.      |
-| »»» showDownload            | boolean                         | true     | none         | none                                                                                                              |
-| »»» showMetadata            | boolean                         | true     | none         | none                                                                                                              |
-| »»» showUpload              | boolean                         | true     | none         | none                                                                                                              |
-| »»» url                     | string                          | true     | none         | none                                                                                                              |
+| Name                        | Type                            | Required | Restrictions | Description                                                                                                                                                       |
+| --------------------------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                                                                              |
+| » albumId                   | string                          | true     | none         | none                                                                                                                                                              |
+| » albumName                 | string,null                     | false    | none         | none                                                                                                                                                              |
+| » dirPath                   | string,null                     | false    | none         | none                                                                                                                                                              |
+| » owner                     | string,null                     | false    | none         | Owner user id for personal albums; `None` for global albums.                                                                                                      |
+| » parentAlbumId             | string,null                     | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums.                                                 |
+| » root                      | string,null                     | false    | none         | Root namespace of the album: `"global"` for the public tree or<br>`"personal"` for a per-user area. `None` when the album lives outside<br>both configured roots. |
+| » shareList                 | object                          | true     | none         | none                                                                                                                                                              |
+| »» **additionalProperties** | [ShareInfo](#schemashareinfo)   | false    | none         | One album's share entry as served to clients: the policy plus presence of<br>a password, never the secret itself.                                                 |
+| »»» description             | string                          | true     | none         | none                                                                                                                                                              |
+| »»» exp                     | integer(int64)                  | true     | none         | none                                                                                                                                                              |
+| »»» hasPassword             | boolean                         | true     | none         | Whether a share password is configured; the stored secret never<br>leaves the backend through an album read.                                                      |
+| »»» keyFingerprint          | string                          | true     | none         | Non-secret handle for the share (blake3 of the bearer token, first<br>16 hex chars). Listings never carry the bearer itself.                                      |
+| »»» showDownload            | boolean                         | true     | none         | none                                                                                                                                                              |
+| »»» showMetadata            | boolean                         | true     | none         | none                                                                                                                                                              |
+| »»» showUpload              | boolean                         | true     | none         | none                                                                                                                                                              |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
+</aside>
+
+## Reveal the bearer token for one of an album's shares.
+
+<a id="opIdget_share_token"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/share/token?album_id=string&fingerprint=string \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/share/token?album_id=string&fingerprint=string HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/share/token?album_id=string&fingerprint=string", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/share/token',
+  params: {
+  'album_id' => 'string',
+'fingerprint' => 'string'
+}, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/share/token', params={
+  'album_id': 'string',  'fingerprint': 'string'
+}, headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/share/token', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/share/token?album_id=string&fingerprint=string");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/share/token", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/share/token`
+
+The album must be visible to the caller (invisible albums answer 404,
+same no-oracle canon as the other share endpoints). The entry is then
+located by its non-secret fingerprint; the bearer is returned only when
+the entry's `created_by` equals the caller. Any other case — unknown
+fingerprint, foreign creator, including an admin who did not create the
+share — answers 404 with the same message, so existence is never
+disclosed to non-creators. Retrieval is logged at info level without
+the token value.
+
+<h3 id="reveal-the-bearer-token-for-one-of-an-album's-shares.-parameters">Parameters</h3>
+
+| Name        | In    | Type   | Required | Description                                    |
+| ----------- | ----- | ------ | -------- | ---------------------------------------------- |
+| album_id    | query | string | true     | Album holding the share                        |
+| fingerprint | query | string | true     | 16-char blake3 fingerprint of the share bearer |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "token": "string"
+}
+```
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="reveal-the-bearer-token-for-one-of-an-album's-shares.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share bearer token                                                                         | [ShareTokenReturn](#schemasharetokenreturn) |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Create a subdirectory under a dir-album and register it as an album.
@@ -3309,11 +4364,14 @@ could not be created or the album not registered.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Create a share for an album and return its generated id.
@@ -3326,7 +4384,7 @@ This operation does not require authentication
 # You can also use wget
 curl -X POST /post/create_share \
   -H 'Content-Type: application/json' \
-  -H 'Accept: text/plain'
+  -H 'Accept: application/json'
 
 ```
 
@@ -3334,7 +4392,7 @@ curl -X POST /post/create_share \
 POST /post/create_share HTTP/1.1
 
 Content-Type: application/json
-Accept: text/plain
+Accept: application/json
 
 ```
 
@@ -3350,7 +4408,7 @@ const inputBody = '{
 }';
 const headers = {
   'Content-Type':'application/json',
-  'Accept':'text/plain'
+  'Accept':'application/json'
 };
 
 fetch('/post/create_share',
@@ -3373,7 +4431,7 @@ require 'json'
 
 headers = {
   'Content-Type' => 'application/json',
-  'Accept' => 'text/plain'
+  'Accept' => 'application/json'
 }
 
 result = RestClient.post '/post/create_share',
@@ -3388,7 +4446,7 @@ p JSON.parse(result)
 import requests
 headers = {
   'Content-Type': 'application/json',
-  'Accept': 'text/plain'
+  'Accept': 'application/json'
 }
 
 r = requests.post('/post/create_share', headers = headers)
@@ -3404,7 +4462,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
-    'Accept' => 'text/plain',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -3458,7 +4516,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
-        "Accept": []string{"text/plain"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -3483,7 +4541,9 @@ requests carrying the share may do.
 
 Corner cases: The id is generated, never supplied by the caller, so a
 second share for the same album is a separate entry. Nothing is written
-unless the album exists.
+unless the album exists. The caller's user id is recorded as the share's
+owner in the same transaction, which is what per-caller album listings
+filter on.
 
 Errors: 400 unusable request body — 401 missing or invalid credentials —
 404 `albumId` names no album — 405 read-only mode — 500 storage failure.
@@ -3512,8 +4572,11 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 
 > 200 Response
 
-```
-"string"
+```json
+{
+  "fingerprint": "string",
+  "link": "string"
+}
 ```
 
 > 401 Response
@@ -3528,17 +4591,20 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 
 <h3 id="create-a-share-for-an-album-and-return-its-generated-id.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share link created                                                                         | string                                      |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Album not found                                                                            | None                                        |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                            |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share link created                                                                         | [CreateShareResponse](#schemacreateshareresponse) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                              |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)       |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                              |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Album not found                                                                            | None                                              |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                              |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                              |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                              |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Move one asset, or one album directory, into another album.
@@ -3761,11 +4827,14 @@ mode — 500 storage failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input or item not found                                                            | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Remove one share from an album.
@@ -3967,11 +5036,15 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share deleted                                                                              | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Create or replace one of an album's share entries.
@@ -4000,6 +5073,7 @@ Accept: application/json
 const inputBody = '{
   "albumId": "string",
   "share": {
+    "createdBy": "string",
     "description": "string",
     "exp": 0,
     "password": "string",
@@ -4155,6 +5229,7 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 {
   "albumId": "string",
   "share": {
+    "createdBy": "string",
     "description": "string",
     "exp": 0,
     "password": "string",
@@ -4191,11 +5266,15 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share updated                                                                              | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Set the cover image of an album.
@@ -4401,10 +5480,12 @@ names no record — 405 read-only mode — 500 storage failure.
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Set the display title of an album.
@@ -4569,9 +5650,8 @@ Corner cases: `title: null` clears `custom_title` and falls `title` back to
 the directory-derived default, so a cleared title leaves no empty string
 behind.
 
-Errors: 400 malformed body — 401 missing or invalid admin or share
-credentials — 403 a share targeting an album other than its own —
-405 read-only mode — 500 storage failure.
+Errors: 400 malformed body — 401 missing or invalid session —
+403 no enrolled user — 405 read-only mode — 500 storage failure.
 
 > Body parameter
 
@@ -4607,12 +5687,15 @@ credentials — 403 a share targeting an album other than its own —
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album title updated                                                                        | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album                                                              | None                                        |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Set or clear the user-defined description of an asset.
@@ -4777,15 +5860,13 @@ the in-memory tree is rebuilt before the call returns. Share credentials
 (`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted
 alongside the admin JWT cookie.
 
-Corner cases: the share's `showMetadata` flag is not consulted, so a share
-without metadata rights may still write a description, but a share may only
-target assets that belong to its own album — any other asset is refused. An
-index whose asset record no longer exists is skipped and still answers 200,
-and a failed sidecar write is logged rather than failing the request.
+Corner cases: an index whose asset record no longer exists is skipped
+and still answers 200, and a failed sidecar write is logged rather than
+failing the request.
 
-Errors: 400 malformed body — 401 missing or invalid admin or share
-credentials — 403 a share targeting another album's asset — 405 read-only
-mode — 500 unknown snapshot, out-of-range index, or storage failure.
+Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
+session — 403 no enrolled user — 405 read-only mode — 500 out-of-range
+index or storage failure.
 
 > Body parameter
 
@@ -4822,12 +5903,15 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Description updated                                                                        | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album's asset                                                      | None                                        |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 <h1 id="picasu-assets">assets</h1>
@@ -5041,10 +6125,12 @@ or invalid credentials — 404 an ID names no asset — 405 read-only mode —
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Asset not found                                                                            | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Serve the full metadata of a single asset.
@@ -5056,7 +6142,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X GET /get/metadata/{asset_id}?timestamp=0 \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
 
 ```
 
@@ -5070,6 +6157,7 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  Authorization: "Bearer {access-token}",
 };
 
 fetch("/get/metadata/{asset_id}?timestamp=0", {
@@ -5090,7 +6178,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'Authorization' => 'Bearer {access-token}'
 }
 
 result = RestClient.get '/get/metadata/{asset_id}',
@@ -5105,7 +6194,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'Authorization': 'Bearer {access-token}'
 }
 
 r = requests.get('/get/metadata/{asset_id}', params={
@@ -5123,6 +6213,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'Authorization' => 'Bearer {access-token}',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -5176,6 +6267,7 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "Authorization": []string{"Bearer {access-token}"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -5237,8 +6329,9 @@ composed.
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown asset_id                                                                           | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+bearer_token
 </aside>
 
 ## Set or clear the trash flag on the listed assets.
@@ -5411,9 +6504,9 @@ accepted and ignored rather than rejected, and an absent `isTrashed` leaves
 every flag as it was. An index whose asset record no longer exists is
 skipped and still answers 200.
 
-Errors: 400 malformed body — 401 missing or invalid credentials; share
-tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
-out-of-range index, or storage failure.
+Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
+credentials; share tokens are not accepted — 405 read-only mode — 500
+out-of-range index or storage failure.
 
 > Body parameter
 
@@ -5451,11 +6544,14 @@ out-of-range index, or storage failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Rate the listed assets 0–5, or clear the rating.
@@ -5624,9 +6720,9 @@ one bad value fails the whole batch. An index whose asset record no longer
 exists is skipped and still answers 200, and a failed sidecar write is
 logged rather than failing the request.
 
-Errors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing
-or invalid credentials; share tokens are not accepted — 405 read-only
-mode — 500 unknown snapshot, out-of-range index, or storage failure.
+Errors: 400 `rating` above 5, malformed body, or unknown snapshot id —
+401 missing or invalid credentials; share tokens are not accepted —
+405 read-only mode — 500 out-of-range index or storage failure.
 
 > Body parameter
 
@@ -5664,11 +6760,14 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Add and remove tags on the listed assets and return the resulting tag list.
@@ -5843,9 +6942,9 @@ Corner cases: a tag that sanitizes to empty is skipped on add but still
 serves as the removal key, and an index whose asset record no longer exists
 is skipped and still answers 200.
 
-Errors: 400 malformed body — 401 missing or invalid credentials; share
-tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
-out-of-range index, or storage failure.
+Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
+credentials; share tokens are not accepted — 405 read-only mode — 500
+out-of-range index or storage failure.
 
 > Body parameter
 
@@ -5895,7 +6994,9 @@ out-of-range index, or storage failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="add-and-remove-tags-on-the-listed-assets-and-return-the-resulting-tag-list.-responseschema">Response Schema</h3>
@@ -5908,8 +7009,9 @@ Status Code **200**
 | » number    | integer                     | true     | none         | none        |
 | » tag       | string                      | true     | none         | none        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Replace an asset's compressed thumbnail with an uploaded frame.
@@ -6114,8 +7216,9 @@ decode, or storage failure.
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Rotate an image 90° counter-clockwise and rebuild its derivatives.
@@ -6320,10 +7423,12 @@ thumbnail write, or storage failure.
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 <h1 id="picasu-config">config</h1>
@@ -6489,7 +7594,7 @@ Errors: 401 missing or invalid admin credentials.
     "requiresRestart": true,
     "source": "string",
     "tier": "string",
-    "value": {},
+    "value": null,
     "writable": true
   }
 ]
@@ -6523,11 +7628,12 @@ Status Code **200**
 | » requiresRestart | boolean                                       | true     | none         | none                                                                        |
 | » source          | string                                        | true     | none         | none                                                                        |
 | » tier            | string                                        | true     | none         | none                                                                        |
-| » value           | object                                        | true     | none         | none                                                                        |
+| » value           | any                                           | true     | none         | The live value: scalars for every tier — the schema must not pin a type.    |
 | » writable        | boolean                                       | true     | none         | none                                                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Export the runtime-tier configuration as a versioned envelope.
@@ -6715,8 +7821,9 @@ Errors: 401 missing or invalid admin credentials.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Exported runtime configuration                                                             | [AdminConfigExportResponse](#schemaadminconfigexportresponse) |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Serve the client-visible server configuration.
@@ -6728,7 +7835,9 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X GET /get/config \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'x-album-id: API_KEY' \
+  -H 'x-share-id: API_KEY'
 
 ```
 
@@ -6742,6 +7851,8 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  "x-album-id": "API_KEY",
+  "x-share-id": "API_KEY",
 };
 
 fetch("/get/config", {
@@ -6762,7 +7873,9 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'x-album-id' => 'API_KEY',
+  'x-share-id' => 'API_KEY'
 }
 
 result = RestClient.get '/get/config',
@@ -6776,7 +7889,9 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'x-album-id': 'API_KEY',
+  'x-share-id': 'API_KEY'
 }
 
 r = requests.get('/get/config', headers = headers)
@@ -6792,6 +7907,8 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'x-album-id' => 'API_KEY',
+    'x-share-id' => 'API_KEY',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -6845,6 +7962,8 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "x-album-id": []string{"API_KEY"},
+        "x-share-id": []string{"API_KEY"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -6863,7 +7982,9 @@ func main() {
 Returns the values a client needs to drive the other operations:
 `uploadFolder` (relative to the image library root), `maxUploadSize`,
 `readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,
-`validateUploadContent` and `useClientTimestampInfo`.
+`validateUploadContent`, `useClientTimestampInfo` and
+`personalAlbumsEnabled` (boolean only — whether per-user personal areas
+are enabled; the host path of the personal-users root is never served).
 
 Corner cases: the host image path is never served here — it is a
 host-only setting (env/file) surfaced to admins through
@@ -6884,6 +8005,7 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
   "fsNotifyWatcher": true,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
+  "personalAlbumsEnabled": true,
   "readOnlyMode": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
@@ -6908,9 +8030,11 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Public configuration                                                                       | [ConfigResponse](#schemaconfigresponse)     |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Not found                                                                                  | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+album_id & share_id, cookie_jwt
 </aside>
 
 ## Export the full server configuration as JSON.
@@ -6922,20 +8046,20 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X GET /get/config/export \
-  -H 'Accept: text/plain'
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 GET /get/config/export HTTP/1.1
 
-Accept: text/plain
+Accept: application/json
 
 ```
 
 ```javascript
 const headers = {
-  Accept: "text/plain",
+  Accept: "application/json",
 };
 
 fetch("/get/config/export", {
@@ -6956,7 +8080,7 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'text/plain'
+  'Accept' => 'application/json'
 }
 
 result = RestClient.get '/get/config/export',
@@ -6970,7 +8094,7 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'text/plain'
+  'Accept': 'application/json'
 }
 
 r = requests.get('/get/config/export', headers = headers)
@@ -6985,7 +8109,7 @@ print(r.json())
 require 'vendor/autoload.php';
 
 $headers = array(
-    'Accept' => 'text/plain',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -7038,7 +8162,7 @@ import (
 func main() {
 
     headers := map[string][]string{
-        "Accept": []string{"text/plain"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -7065,8 +8189,38 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 
 > 200 Response
 
-```
-"string"
+```json
+{
+  "address": "string",
+  "allowRegistration": true,
+  "authKey": "string",
+  "bootstrapAdmin": true,
+  "dataHome": "string",
+  "fsNotifyWatcher": true,
+  "imagePath": "string",
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
+  "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
+  "port": 0,
+  "readOnlyMode": true,
+  "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "usersHome": "string",
+  "validateUploadContent": true
+}
 ```
 
 > 401 Response
@@ -7083,12 +8237,13 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                      |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Exported configuration                                                                     | string                                      |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Exported configuration                                                                     | [AppConfig](#schemaappconfig)               |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Complete a filesystem directory path for the path-completion field.
@@ -7284,8 +8439,9 @@ matched no directory — 500 the directory could not be read.
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Lift the read-only kill-switch.
@@ -7430,10 +8586,12 @@ func main() {
 `POST /post/admin/config/disable-read-only`
 
 Clears `readOnlyMode` and persists the change. Admin-only and deliberately
-NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable
-while it is on; the L3 confirm lives client-side.
+NOT gated by `GuardMutate`: lifting the kill-switch must be callable
+while it is on. Requires re-authentication via the `X-Picasu-Password`
+header (403 when it is missing or wrong).
 
-Errors: 401 missing or invalid admin credentials — 500 config write failure.
+Errors: 401 missing or invalid admin credentials — 403 missing or wrong
+re-authentication password — 500 config write failure.
 
 > Example responses
 
@@ -7453,10 +8611,12 @@ Errors: 401 missing or invalid admin credentials — 500 config write failure.
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Read-only mode disabled                                                                    | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Rotate the JWT signing key.
@@ -7606,8 +8766,8 @@ stop verifying, so every session is invalidated by construction.
 Overrides from `PICASU_AUTH_KEY` still win at the next boot (they are
 never persisted).
 
-Errors: 401 missing or invalid admin credentials — 500 the new key
-could not be stored.
+Errors: 401 missing or invalid admin credentials — 405 read-only mode —
+500 the new key could not be stored.
 
 > Example responses
 
@@ -7635,10 +8795,12 @@ could not be stored.
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Signing key rotated                                                                        | [AuthKeyResetResponse](#schemaauthkeyresetresponse) |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)         |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                                |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Patch the runtime-tier configuration.
@@ -7903,10 +9065,12 @@ mode — 500 config write failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                                          |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                                          |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 <h1 id="picasu-index">index</h1>
@@ -8102,8 +9266,9 @@ Errors: 401 no valid admin credentials.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Album index status                                                                         | [AlbumIndexStatus](#schemaalbumindexstatus) |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Index every media file under a directory tree in the background.
@@ -8131,7 +9296,8 @@ Accept: application/json
 ```javascript
 const inputBody = '{
   "album": "string",
-  "clear": true
+  "clear": true,
+  "root": "string"
 }';
 const headers = {
   'Content-Type':'application/json',
@@ -8277,7 +9443,8 @@ credentials — 405 read-only mode — 409 an index job is already running.
 ```json
 {
   "album": "string",
-  "clear": true
+  "clear": true,
+  "root": "string"
 }
 ```
 
@@ -8301,16 +9468,18 @@ credentials — 405 read-only mode — 409 an index job is already running.
 
 <h3 id="index-every-media-file-under-a-directory-tree-in-the-background.-responses">Responses</h3>
 
-| Status | Meaning                                                                 | Description                                                                                | Schema                                      |
-| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)           | Album indexing started                                                                     | None                                        |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None                                        |
-| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)           | An index job is already running                                                            | None                                        |
+| Status | Meaning                                                                  | Description                                                                                | Schema                                      |
+| ------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)            | Album indexing started                                                                     | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)         | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)          | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)  | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)            | An index job is already running                                                            | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity                                                                       | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Request cancellation of the running album index job.
@@ -8486,8 +9655,9 @@ Errors: 400 malformed request — 401 missing or invalid credentials —
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | No active index job                                                                        | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 <h1 id="picasu-serving">serving</h1>
@@ -8503,7 +9673,9 @@ Media byte delivery (compressed and original files)
 ```shell
 # You can also use wget
 curl -X GET /object/compressed/{file_path} \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'x-album-id: API_KEY' \
+  -H 'x-share-id: API_KEY'
 
 ```
 
@@ -8517,6 +9689,8 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  "x-album-id": "API_KEY",
+  "x-share-id": "API_KEY",
 };
 
 fetch("/object/compressed/{file_path}", {
@@ -8537,7 +9711,9 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'x-album-id' => 'API_KEY',
+  'x-share-id' => 'API_KEY'
 }
 
 result = RestClient.get '/object/compressed/{file_path}',
@@ -8551,7 +9727,9 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'x-album-id': 'API_KEY',
+  'x-share-id': 'API_KEY'
 }
 
 r = requests.get('/object/compressed/{file_path}', headers = headers)
@@ -8567,6 +9745,8 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'x-album-id' => 'API_KEY',
+    'x-share-id' => 'API_KEY',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -8620,6 +9800,8 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "x-album-id": []string{"API_KEY"},
+        "x-share-id": []string{"API_KEY"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -8673,10 +9855,13 @@ compressed file could not be opened.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Compressed file                                                                            | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+album_id & share_id, cookie_jwt, bearer_token
 </aside>
 
 ## Serve the original file from its current location under `imagePath`.
@@ -8688,7 +9873,9 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X GET /object/imported/{file_path} \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'x-album-id: API_KEY' \
+  -H 'x-share-id: API_KEY'
 
 ```
 
@@ -8702,6 +9889,8 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  "x-album-id": "API_KEY",
+  "x-share-id": "API_KEY",
 };
 
 fetch("/object/imported/{file_path}", {
@@ -8722,7 +9911,9 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'x-album-id' => 'API_KEY',
+  'x-share-id' => 'API_KEY'
 }
 
 result = RestClient.get '/object/imported/{file_path}',
@@ -8736,7 +9927,9 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'x-album-id': 'API_KEY',
+  'x-share-id': 'API_KEY'
 }
 
 r = requests.get('/object/imported/{file_path}', headers = headers)
@@ -8752,6 +9945,8 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'x-album-id' => 'API_KEY',
+    'x-share-id' => 'API_KEY',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -8805,6 +10000,8 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "x-album-id": []string{"API_KEY"},
+        "x-share-id": []string{"API_KEY"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -8859,10 +10056,12 @@ share credentials, or no image-serving token granting original access —
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+album_id & share_id, cookie_jwt, bearer_token
 </aside>
 
 <h1 id="picasu-timeline">timeline</h1>
@@ -8878,7 +10077,8 @@ Grid/list data: prefetch, rows, scrollbar, tag list, export
 ```shell
 # You can also use wget
 curl -X GET /get/get-data?timestamp=0&start=0&end=0 \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
 
 ```
 
@@ -8892,6 +10092,7 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  Authorization: "Bearer {access-token}",
 };
 
 fetch("/get/get-data?timestamp=0&start=0&end=0", {
@@ -8912,7 +10113,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'Authorization' => 'Bearer {access-token}'
 }
 
 result = RestClient.get '/get/get-data',
@@ -8929,7 +10131,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'Authorization': 'Bearer {access-token}'
 }
 
 r = requests.get('/get/get-data', params={
@@ -8947,6 +10150,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'Authorization' => 'Bearer {access-token}',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -9000,6 +10204,7 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "Authorization": []string{"Bearer {access-token}"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -9086,8 +10291,9 @@ Status Code **200**
 | » timestamp    | integer(int64)                                              | true     | none         | none                                                                                                                                                                      |
 | » token        | string                                                      | true     | none         | none                                                                                                                                                                      |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+bearer_token
 </aside>
 
 ## Export the whole tree as JSON.
@@ -9264,8 +10470,9 @@ could not be opened.
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Serve the display layout of one batched row of a snapshot.
@@ -9277,7 +10484,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X GET /get/get-rows?index=0&timestamp=0 \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
 
 ```
 
@@ -9291,6 +10499,7 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  Authorization: "Bearer {access-token}",
 };
 
 fetch("/get/get-rows?index=0&timestamp=0", {
@@ -9311,7 +10520,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'Authorization' => 'Bearer {access-token}'
 }
 
 result = RestClient.get '/get/get-rows',
@@ -9327,7 +10537,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'Authorization': 'Bearer {access-token}'
 }
 
 r = requests.get('/get/get-rows', params={
@@ -9345,6 +10556,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'Authorization' => 'Bearer {access-token}',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -9398,6 +10610,7 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "Authorization": []string{"Bearer {access-token}"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -9470,8 +10683,9 @@ index is out of bounds.
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+bearer_token
 </aside>
 
 ## Serve the scroll bar positions of a snapshot.
@@ -9483,7 +10697,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X GET /get/get-scroll-bar?timestamp=0 \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
 
 ```
 
@@ -9497,6 +10712,7 @@ Accept: application/json
 ```javascript
 const headers = {
   Accept: "application/json",
+  Authorization: "Bearer {access-token}",
 };
 
 fetch("/get/get-scroll-bar?timestamp=0", {
@@ -9517,7 +10733,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'Authorization' => 'Bearer {access-token}'
 }
 
 result = RestClient.get '/get/get-scroll-bar',
@@ -9532,7 +10749,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'Authorization': 'Bearer {access-token}'
 }
 
 r = requests.get('/get/get-scroll-bar', params={
@@ -9550,6 +10768,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Accept' => 'application/json',
+    'Authorization' => 'Bearer {access-token}',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -9603,6 +10822,7 @@ func main() {
 
     headers := map[string][]string{
         "Accept": []string{"application/json"},
+        "Authorization": []string{"Bearer {access-token}"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -9674,8 +10894,9 @@ Status Code **200**
 | » month     | integer                                 | true     | none         | none        |
 | » year      | integer                                 | true     | none         | none        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+bearer_token
 </aside>
 
 ## List every tag in the tree with the number of assets carrying it.
@@ -9872,8 +11093,9 @@ Status Code **200**
 | » number    | integer                     | true     | none         | none        |
 | » tag       | string                      | true     | none         | none        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 ## Evaluate a list query, snapshot its result, and return the snapshot id.
@@ -9886,7 +11108,9 @@ This operation does not require authentication
 # You can also use wget
 curl -X POST /get/prefetch \
   -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
+  -H 'Accept: application/json' \
+  -H 'x-album-id: API_KEY' \
+  -H 'x-share-id: API_KEY'
 
 ```
 
@@ -9903,6 +11127,8 @@ const inputBody = "null";
 const headers = {
   "Content-Type": "application/json",
   Accept: "application/json",
+  "x-album-id": "API_KEY",
+  "x-share-id": "API_KEY",
 };
 
 fetch("/get/prefetch", {
@@ -9924,7 +11150,9 @@ require 'json'
 
 headers = {
   'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
+  'Accept' => 'application/json',
+  'x-album-id' => 'API_KEY',
+  'x-share-id' => 'API_KEY'
 }
 
 result = RestClient.post '/get/prefetch',
@@ -9939,7 +11167,9 @@ p JSON.parse(result)
 import requests
 headers = {
   'Content-Type': 'application/json',
-  'Accept': 'application/json'
+  'Accept': 'application/json',
+  'x-album-id': 'API_KEY',
+  'x-share-id': 'API_KEY'
 }
 
 r = requests.post('/get/prefetch', headers = headers)
@@ -9956,6 +11186,8 @@ require 'vendor/autoload.php';
 $headers = array(
     'Content-Type' => 'application/json',
     'Accept' => 'application/json',
+    'x-album-id' => 'API_KEY',
+    'x-share-id' => 'API_KEY',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -10010,6 +11242,8 @@ func main() {
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
         "Accept": []string{"application/json"},
+        "x-album-id": []string{"API_KEY"},
+        "x-share-id": []string{"API_KEY"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -10053,10 +11287,11 @@ null
 
 <h3 id="evaluate-a-list-query,-snapshot-its-result,-and-return-the-snapshot-id.-parameters">Parameters</h3>
 
-| Name   | In    | Type   | Required | Description                                  |
-| ------ | ----- | ------ | -------- | -------------------------------------------- |
-| locate | query | string | false    | Asset whose row index comes back as locateTo |
-| body   | body  | any    | true     | none                                         |
+| Name             | In    | Type    | Required | Description                                                           |
+| ---------------- | ----- | ------- | -------- | --------------------------------------------------------------------- |
+| locate           | query | string  | false    | Asset whose row index comes back as locateTo                          |
+| include_personal | query | boolean | false    | Opt-in flag including the caller's own personal items in the timeline |
+| body             | body  | any     | true     | none                                                                  |
 
 > Example responses
 
@@ -10073,6 +11308,7 @@ null
     "albumId": "string",
     "albumTitle": "string",
     "share": {
+      "createdBy": "string",
       "description": "string",
       "exp": 0,
       "password": "string",
@@ -10103,10 +11339,13 @@ null
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Prefetch result                                                                            | [PrefetchReturn](#schemaprefetchreturn)     |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)   | Unprocessable entity                                                                       | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+album_id & share_id, cookie_jwt
 </aside>
 
 <h1 id="picasu-upload">upload</h1>
@@ -10281,7 +11520,7 @@ pipeline cannot decode is removed again and reported as a 400.
 
 Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
 rejected filename, count mismatch, missing `imagePath`, or an undecodable
-file — 401 missing or invalid admin or share credentials — 405 read-only
+file — 401 missing or invalid session — 405 read-only
 mode — 500 storage failure.
 
 > Body parameter
@@ -10318,11 +11557,13 @@ mode — 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Upload successful                                                                          | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
-<aside class="success">
-This operation does not require authentication
+<aside class="warning">
+To perform this operation, you must be authenticated by means of one of the following methods:
+cookie_jwt
 </aside>
 
 <h1 id="picasu-pages">pages</h1>
@@ -10729,9 +11970,10 @@ one the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-an-albums-view-path-resolved-by-the-client.-responses">Responses</h3>
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+| Status | Meaning                                                                  | Description          | Schema |
+| ------ | ------------------------------------------------------------------------ | -------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                  | SPA page (HTML)      | None   |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -11004,137 +12246,6 @@ Errors: 404 frontend build without the embedded asset — 500 open of
 This operation does not require authentication
 </aside>
 
-## Serve the SPA shell for the links page.
-
-<a id="opIdlinks"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /links
-
-```
-
-```http
-GET /links HTTP/1.1
-
-```
-
-```javascript
-fetch("/links", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/links',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/links')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/links', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/links");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/links", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /links`
-
-Returns the shared `index.html` shell for the `links` client route. The path
-is fixed and carries no parameters, so this route performs no lookup of its
-own.
-
-<h3 id="serve-the-spa-shell-for-the-links-page.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Serve the SPA shell where the sign-in page is rendered.
 
 <a id="opIdlogin"></a>
@@ -11262,6 +12373,275 @@ with the same shell it gives an anonymous one.
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the my-albums page.
+
+<a id="opIdmy_albums"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /my-albums
+
+```
+
+```http
+GET /my-albums HTTP/1.1
+
+```
+
+```javascript
+fetch("/my-albums", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/my-albums',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/my-albums')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/my-albums', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/my-albums");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/my-albums", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /my-albums`
+
+Returns the shared `index.html` shell for the `my-albums` client route. The
+album list itself comes from the albums API route, which reads the album
+index, so this route performs no lookup of its own.
+
+<h3 id="serve-the-spa-shell-for-the-my-albums-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for a my-albums view path resolved by the client.
+
+<a id="opIdmy_albums_view"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /my-albums/view/{path}
+
+```
+
+```http
+GET /my-albums/view/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/my-albums/view/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/my-albums/view/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/my-albums/view/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/my-albums/view/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/my-albums/view/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/my-albums/view/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /my-albums/view/{path}`
+
+Returns `index.html` for `/my-albums/view/<path..>` at any depth. The
+captured path is bound and discarded; the client router resolves the view
+(`view/:assetId`) from the URL, so the server performs no lookup.
+
+<h3 id="serve-the-spa-shell-for-a-my-albums-view-path-resolved-by-the-client.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description                                                                              |
+| ---- | ---- | ------ | -------- | ---------------------------------------------------------------------------------------- |
+| path | path | string | true     | View path below /my-albums/view/; served the SPA shell and resolved by the client router |
+
+<h3 id="serve-the-spa-shell-for-a-my-albums-view-path-resolved-by-the-client.-responses">Responses</h3>
+
+| Status | Meaning                                                                  | Description          | Schema |
+| ------ | ------------------------------------------------------------------------ | -------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                  | SPA page (HTML)      | None   |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -12070,6 +13450,138 @@ client router cannot split into an album and share id.
 
 <h3 id="serve-the-spa-shell-for-a-share-path.-responses">Responses</h3>
 
+| Status | Meaning                                                                  | Description          | Schema |
+| ------ | ------------------------------------------------------------------------ | -------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                  | SPA page (HTML)      | None   |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the shares page.
+
+<a id="opIdshares"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /shares
+
+```
+
+```http
+GET /shares HTTP/1.1
+
+```
+
+```javascript
+fetch("/shares", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/shares',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/shares')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/shares', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/shares");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/shares", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /shares`
+
+Returns the shared `index.html` shell for the `shares` client route. The path
+is fixed and carries no parameters, so this route performs no lookup of its
+own.
+
+<h3 id="serve-the-spa-shell-for-the-shares-page.-responses">Responses</h3>
+
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
@@ -12474,9 +13986,10 @@ one the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-timeline-view-path-resolved-by-the-client.-responses">Responses</h3>
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+| Status | Meaning                                                                  | Description          | Schema |
+| ------ | ------------------------------------------------------------------------ | -------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                  | SPA page (HTML)      | None   |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -12745,9 +14258,10 @@ the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-trash-view-path-resolved-by-the-client.-responses">Responses</h3>
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+| Status | Meaning                                                                  | Description          | Schema |
+| ------ | ------------------------------------------------------------------------ | -------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                  | SPA page (HTML)      | None   |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -13154,9 +14668,10 @@ the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-videos-view-path-resolved-by-the-client.-responses">Responses</h3>
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+| Status | Meaning                                                                  | Description          | Schema |
+| ------ | ------------------------------------------------------------------------ | -------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                  | SPA page (HTML)      | None   |
+| 422    | [Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3) | Unprocessable entity | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -13594,25 +15109,27 @@ This operation does not require authentication
   "albumId": "string",
   "albumName": "string",
   "dirPath": "string",
+  "owner": "string",
   "parentAlbumId": "string",
+  "root": "string",
   "shareList": {
     "property1": {
       "description": "string",
       "exp": 0,
       "hasPassword": true,
+      "keyFingerprint": "string",
       "showDownload": true,
       "showMetadata": true,
-      "showUpload": true,
-      "url": "string"
+      "showUpload": true
     },
     "property2": {
       "description": "string",
       "exp": 0,
       "hasPassword": true,
+      "keyFingerprint": "string",
       "showDownload": true,
       "showMetadata": true,
-      "showUpload": true,
-      "url": "string"
+      "showUpload": true
     }
   }
 }
@@ -13620,14 +15137,91 @@ This operation does not require authentication
 
 ### Properties
 
-| Name                       | Type                          | Required | Restrictions | Description                                                                                                       |
-| -------------------------- | ----------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| albumId                    | string                        | true     | none         | none                                                                                                              |
-| albumName                  | string,null                   | false    | none         | none                                                                                                              |
-| dirPath                    | string,null                   | false    | none         | none                                                                                                              |
-| parentAlbumId              | string,null                   | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
-| shareList                  | object                        | true     | none         | none                                                                                                              |
-| » **additionalProperties** | [ShareInfo](#schemashareinfo) | false    | none         | One album's share entry as served to clients: the policy plus presence of<br>a password, never the secret itself. |
+| Name                       | Type                          | Required | Restrictions | Description                                                                                                                                                       |
+| -------------------------- | ----------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albumId                    | string                        | true     | none         | none                                                                                                                                                              |
+| albumName                  | string,null                   | false    | none         | none                                                                                                                                                              |
+| dirPath                    | string,null                   | false    | none         | none                                                                                                                                                              |
+| owner                      | string,null                   | false    | none         | Owner user id for personal albums; `None` for global albums.                                                                                                      |
+| parentAlbumId              | string,null                   | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums.                                                 |
+| root                       | string,null                   | false    | none         | Root namespace of the album: `"global"` for the public tree or<br>`"personal"` for a per-user area. `None` when the album lives outside<br>both configured roots. |
+| shareList                  | object                        | true     | none         | none                                                                                                                                                              |
+| » **additionalProperties** | [ShareInfo](#schemashareinfo) | false    | none         | One album's share entry as served to clients: the policy plus presence of<br>a password, never the secret itself.                                                 |
+
+<h2 id="tocS_AppConfig">AppConfig</h2>
+<!-- backwards compatibility -->
+<a id="schemaappconfig"></a>
+<a id="schema_AppConfig"></a>
+<a id="tocSappconfig"></a>
+<a id="tocsappconfig"></a>
+
+```json
+{
+  "address": "string",
+  "allowRegistration": true,
+  "authKey": "string",
+  "bootstrapAdmin": true,
+  "dataHome": "string",
+  "fsNotifyWatcher": true,
+  "imagePath": "string",
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
+  "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
+  "port": 0,
+  "readOnlyMode": true,
+  "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "usersHome": "string",
+  "validateUploadContent": true
+}
+```
+
+### Properties
+
+| Name                     | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| address                  | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| allowRegistration        | boolean        | false    | none         | Allow self-registration via `POST /post/users/register` without an<br>invite token. Default off: registration then requires a valid invite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| authKey                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| bootstrapAdmin           | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin; until then `POST /post/users/authenticate` takes<br>the unknown-user path and every guarded route refuses with<br>`No administrator enrolled` (the refusal names the bootstrap<br>endpoint while the window is open). Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-cmd` CLI). Enabling<br>the flag against an existing user store makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                            |
+| dataHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| imagePath                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| loginIpBaseBanSecs       | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpLongBaseBanSecs   | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongMaxBanSecs    | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongMaxFailures   | integer(int32) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongWindowSecs    | integer(int64) | false    | none         | Login throttle IP-long daily bucket: paced spraying ceiling across<br>many usernames from one source. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpMaxBanSecs        | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpMaxFailures       | integer(int32) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpWindowSecs        | integer(int64) | false    | none         | Login throttle IP-short burst bucket: `login_ip_max_failures`<br>failures within `login_ip_window_secs` open a ban of<br>`login_ip_base_ban_secs`, doubling per further pair of failures up<br>to `login_ip_max_ban_secs`. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginUserLongBaseBanSecs | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongMaxBanSecs  | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongMaxFailures | integer(int32) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongWindowSecs  | integer(int64) | false    | none         | Login throttle user-long daily bucket: per-account ceiling catching<br>low-and-slow attacks, keyed on the claimed name even when unknown.<br>Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| maxUploadSize            | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| normalizeUploadFilenames | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| port                     | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| readOnlyMode             | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| trivialPasswords         | boolean        | false    | none         | Disable the default password-strength checks (length floor/ceiling,<br>blocklist, user-id and pattern rules) for new passwords. Default<br>off. Only for development, throwaway installs, or tests that must<br>use weak fixtures — the bypass is warn-logged at first use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| trustProxyForwardedFor   | boolean        | false    | none         | Trust the `X-Forwarded-For` header when keying the login throttle<br>(leftmost entry, only when it parses as an IP address). Default off:<br>the header is client-spoofable, so only a reverse-proxy deployment<br>that strips or overwrites it may enable this. Host-only (restart<br>required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| uploadFolder             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| useClientTimestampInfo   | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`).                                                                                                                                                                                                                                                                   |
+| usersHome                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| validateUploadContent    | boolean        | false    | none         | Cross-check uploaded content against the type its declared<br>`Content-Type` implies. The declared extension yields the expected<br>format from the supported-format table; the content is then identified<br>and the two are compared. See `backend/src/process/format.rs`.<br><br>Content that cannot be identified at all is always rejected, with or<br>without this setting: there is no way to tell whether such bytes are<br>what the extension claims. This setting governs only the mismatch case,<br>where the content _is_ identified but is not the type the extension<br>claims — for example a video uploaded with an image content type, or an<br>image named with the wrong extension. Enabled (the default) rejects<br>those with `400 InvalidInput`; disabling it stores the file anyway, which<br>misdescribes it and leaves the indexer trusting a wrong extension. Only<br>disable this to tolerate mislabeled files. |
 
 <h2 id="tocS_AssignAlbumData">AssignAlbumData</h2>
 <!-- backwards compatibility -->
@@ -13788,7 +15382,7 @@ _None_
   "requiresRestart": true,
   "source": "string",
   "tier": "string",
-  "value": {},
+  "value": null,
   "writable": true
 }
 ```
@@ -13797,14 +15391,14 @@ One annotated configuration field as returned by `GET /get/admin/config`.
 
 ### Properties
 
-| Name            | Type    | Required | Restrictions | Description |
-| --------------- | ------- | -------- | ------------ | ----------- |
-| name            | string  | true     | none         | none        |
-| requiresRestart | boolean | true     | none         | none        |
-| source          | string  | true     | none         | none        |
-| tier            | string  | true     | none         | none        |
-| value           | object  | true     | none         | none        |
-| writable        | boolean | true     | none         | none        |
+| Name            | Type    | Required | Restrictions | Description                                                              |
+| --------------- | ------- | -------- | ------------ | ------------------------------------------------------------------------ |
+| name            | string  | true     | none         | none                                                                     |
+| requiresRestart | boolean | true     | none         | none                                                                     |
+| source          | string  | true     | none         | none                                                                     |
+| tier            | string  | true     | none         | none                                                                     |
+| value           | any     | true     | none         | The live value: scalars for every tier — the schema must not pin a type. |
+| writable        | boolean | true     | none         | none                                                                     |
 
 <h2 id="tocS_ConfigResponse">ConfigResponse</h2>
 <!-- backwards compatibility -->
@@ -13818,6 +15412,7 @@ One annotated configuration field as returned by `GET /get/admin/config`.
   "fsNotifyWatcher": true,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
+  "personalAlbumsEnabled": true,
   "readOnlyMode": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
@@ -13827,15 +15422,16 @@ One annotated configuration field as returned by `GET /get/admin/config`.
 
 ### Properties
 
-| Name                     | Type    | Required | Restrictions | Description |
-| ------------------------ | ------- | -------- | ------------ | ----------- |
-| fsNotifyWatcher          | boolean | true     | none         | none        |
-| maxUploadSize            | string  | true     | none         | none        |
-| normalizeUploadFilenames | boolean | true     | none         | none        |
-| readOnlyMode             | boolean | true     | none         | none        |
-| uploadFolder             | string  | true     | none         | none        |
-| useClientTimestampInfo   | boolean | true     | none         | none        |
-| validateUploadContent    | boolean | true     | none         | none        |
+| Name                     | Type    | Required | Restrictions | Description                                                                                                                                                                                             |
+| ------------------------ | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fsNotifyWatcher          | boolean | true     | none         | none                                                                                                                                                                                                    |
+| maxUploadSize            | string  | true     | none         | none                                                                                                                                                                                                    |
+| normalizeUploadFilenames | boolean | true     | none         | none                                                                                                                                                                                                    |
+| personalAlbumsEnabled    | boolean | true     | none         | Whether per-user personal areas are enabled on this server.<br>Boolean only — the host path of the personal-users root is never<br>served (host-only setting), mirroring `uploadFolder` being relative. |
+| readOnlyMode             | boolean | true     | none         | none                                                                                                                                                                                                    |
+| uploadFolder             | string  | true     | none         | none                                                                                                                                                                                                    |
+| useClientTimestampInfo   | boolean | true     | none         | none                                                                                                                                                                                                    |
+| validateUploadContent    | boolean | true     | none         | none                                                                                                                                                                                                    |
 
 <h2 id="tocS_CreateDirAlbumData">CreateDirAlbumData</h2>
 <!-- backwards compatibility -->
@@ -13876,10 +15472,10 @@ Body for `POST /post/invites`.
 
 ### Properties
 
-| Name           | Type           | Required | Restrictions | Description                                                                                                                                                      |
-| -------------- | -------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| expiresInHours | integer(int64) | true     | none         | Lifetime of the invite in hours, required: `0` means the invite<br>never expires. Negative values are rejected. Pass 168 for the<br>conventional 7-day lifetime. |
-| username       | string,null    | false    | none         | Optional user id the invite is bound to. Trimmed; empty or<br>missing means unbound. Validated as a user id.                                                     |
+| Name           | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                |
+| -------------- | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| expiresInHours | integer(int64) | true     | none         | Lifetime of the invite in hours, required: `0` means the invite<br>never expires, `1`–`8760` (one year) lands on that deadline.<br>Negative values and values past one year are rejected. Pass 168 for<br>the conventional 7-day lifetime. |
+| username       | string,null    | false    | none         | Optional user id the invite is bound to. Trimmed; empty or<br>missing means unbound. Validated as a user id.                                                                                                                               |
 
 <h2 id="tocS_CreateInviteResponse">CreateInviteResponse</h2>
 <!-- backwards compatibility -->
@@ -13941,6 +15537,32 @@ Response for `POST /post/invites`.
 | showDownload | boolean        | true     | none         | none        |
 | showMetadata | boolean        | true     | none         | none        |
 | showUpload   | boolean        | true     | none         | none        |
+
+<h2 id="tocS_CreateShareResponse">CreateShareResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemacreateshareresponse"></a>
+<a id="schema_CreateShareResponse"></a>
+<a id="tocScreateshareresponse"></a>
+<a id="tocscreateshareresponse"></a>
+
+```json
+{
+  "fingerprint": "string",
+  "link": "string"
+}
+```
+
+Response payload for `POST /post/create_share`: the freshly minted bearer
+(`link`) plus its non-secret fingerprint (`fingerprint`). The bearer is
+used to build/show the share link; the fingerprint is the management
+handle for edit/delete/reveal.
+
+### Properties
+
+| Name        | Type   | Required | Restrictions | Description |
+| ----------- | ------ | -------- | ------------ | ----------- |
+| fingerprint | string | true     | none         | none        |
+| link        | string | true     | none         | none        |
 
 <h2 id="tocS_DataBaseTimestampReturn">DataBaseTimestampReturn</h2>
 <!-- backwards compatibility -->
@@ -14089,6 +15711,7 @@ Response for `POST /post/invites`.
 {
   "albumId": "string",
   "share": {
+    "createdBy": "string",
     "description": "string",
     "exp": 0,
     "password": "string",
@@ -14165,16 +15788,39 @@ Response for `POST /post/invites`.
 ```json
 {
   "album": "string",
-  "clear": true
+  "clear": true,
+  "root": "string"
 }
 ```
 
 ### Properties
 
-| Name  | Type    | Required | Restrictions | Description                                                                                                                                                                                       |
-| ----- | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| album | string  | true     | none         | none                                                                                                                                                                                              |
-| clear | boolean | false    | none         | When true, drop all asset tables (and clear the in-memory tree and the<br>directory-album cache) before indexing, so the scan rebuilds from an<br>empty state instead of merging into stale rows. |
+| Name  | Type        | Required | Restrictions | Description                                                                                                                                                                                       |
+| ----- | ----------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| album | string      | true     | none         | none                                                                                                                                                                                              |
+| clear | boolean     | false    | none         | When true, drop all asset tables (and clear the in-memory tree and the<br>directory-album cache) before indexing, so the scan rebuilds from an<br>empty state instead of merging into stale rows. |
+| root  | string,null | false    | none         | Optional scan root selector: `"global"`, `"personal"`, or<br>`"auto"` (default) preserving the image-then-users probe order.                                                                      |
+
+<h2 id="tocS_InviteLimits">InviteLimits</h2>
+<!-- backwards compatibility -->
+<a id="schemainvitelimits"></a>
+<a id="schema_InviteLimits"></a>
+<a id="tocSinvitelimits"></a>
+<a id="tocsinvitelimits"></a>
+
+```json
+{
+  "maxExpiryHours": 0
+}
+```
+
+Invite creation limits for the admin console.
+
+### Properties
+
+| Name           | Type           | Required | Restrictions | Description                                                                                                                |
+| -------------- | -------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| maxExpiryHours | integer(int64) | true     | none         | Longest `expiresInHours` `POST /post/invites` accepts (one year).<br>Larger values are 400; `0` still means never expires. |
 
 <h2 id="tocS_InviteView">InviteView</h2>
 <!-- backwards compatibility -->
@@ -14372,6 +16018,7 @@ existing destination untouched (the source stays put, outcome `skipped`);
     "albumId": "string",
     "albumTitle": "string",
     "share": {
+      "createdBy": "string",
       "description": "string",
       "exp": 0,
       "password": "string",
@@ -14525,6 +16172,7 @@ field: registration always creates standard users; elevation is
   "albumId": "string",
   "albumTitle": "string",
   "share": {
+    "createdBy": "string",
     "description": "string",
     "exp": 0,
     "password": "string",
@@ -14857,6 +16505,29 @@ Body for `PUT /put/users/admin`.
 | index       | integer        | true     | none         | none        |
 | timestamp   | integer(int64) | true     | none         | none        |
 
+<h2 id="tocS_SetUserDisabledRequest">SetUserDisabledRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemasetuserdisabledrequest"></a>
+<a id="schema_SetUserDisabledRequest"></a>
+<a id="tocSsetuserdisabledrequest"></a>
+<a id="tocssetuserdisabledrequest"></a>
+
+```json
+{
+  "disabled": true,
+  "userId": "string"
+}
+```
+
+Body for `PUT /put/users/disabled`.
+
+### Properties
+
+| Name     | Type    | Required | Restrictions | Description |
+| -------- | ------- | -------- | ------------ | ----------- |
+| disabled | boolean | true     | none         | none        |
+| userId   | string  | true     | none         | none        |
+
 <h2 id="tocS_SetUserPasswordRequest">SetUserPasswordRequest</h2>
 <!-- backwards compatibility -->
 <a id="schemasetuserpasswordrequest"></a>
@@ -14882,6 +16553,29 @@ Body for `PUT /put/users/password`.
 | oldPassword | string,null | false    | none         | none        |
 | userId      | string      | true     | none         | none        |
 
+<h2 id="tocS_SetUserSharingRequest">SetUserSharingRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemasetusersharingrequest"></a>
+<a id="schema_SetUserSharingRequest"></a>
+<a id="tocSsetusersharingrequest"></a>
+<a id="tocssetusersharingrequest"></a>
+
+```json
+{
+  "enabled": true,
+  "userId": "string"
+}
+```
+
+Body for `PUT /put/users/sharing`.
+
+### Properties
+
+| Name    | Type    | Required | Restrictions | Description |
+| ------- | ------- | -------- | ------------ | ----------- |
+| enabled | boolean | true     | none         | none        |
+| userId  | string  | true     | none         | none        |
+
 <h2 id="tocS_Share">Share</h2>
 <!-- backwards compatibility -->
 <a id="schemashare"></a>
@@ -14891,6 +16585,7 @@ Body for `PUT /put/users/password`.
 
 ```json
 {
+  "createdBy": "string",
   "description": "string",
   "exp": 0,
   "password": "string",
@@ -14903,15 +16598,16 @@ Body for `PUT /put/users/password`.
 
 ### Properties
 
-| Name         | Type           | Required | Restrictions | Description |
-| ------------ | -------------- | -------- | ------------ | ----------- |
-| description  | string         | true     | none         | none        |
-| exp          | integer(int64) | true     | none         | none        |
-| password     | string,null    | false    | none         | none        |
-| showDownload | boolean        | true     | none         | none        |
-| showMetadata | boolean        | true     | none         | none        |
-| showUpload   | boolean        | true     | none         | none        |
-| url          | string         | true     | none         | none        |
+| Name         | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                |
+| ------------ | -------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| createdBy    | string         | false    | none         | User id that created the share. Server-assigned on create and<br>preserved on edit — never taken from the client, so listings can<br>scope shares to their creator. Defaults empty for payloads that<br>predate the field; every write path overwrites it. |
+| description  | string         | true     | none         | none                                                                                                                                                                                                                                                       |
+| exp          | integer(int64) | true     | none         | none                                                                                                                                                                                                                                                       |
+| password     | string,null    | false    | none         | Share password: an argon2id PHC string for passwords set through the<br>API, or a legacy plaintext value for rows written before hashing.                                                                                                                  |
+| showDownload | boolean        | true     | none         | none                                                                                                                                                                                                                                                       |
+| showMetadata | boolean        | true     | none         | none                                                                                                                                                                                                                                                       |
+| showUpload   | boolean        | true     | none         | none                                                                                                                                                                                                                                                       |
+| url          | string         | true     | none         | none                                                                                                                                                                                                                                                       |
 
 <h2 id="tocS_ShareInfo">ShareInfo</h2>
 <!-- backwards compatibility -->
@@ -14925,10 +16621,10 @@ Body for `PUT /put/users/password`.
   "description": "string",
   "exp": 0,
   "hasPassword": true,
+  "keyFingerprint": "string",
   "showDownload": true,
   "showMetadata": true,
-  "showUpload": true,
-  "url": "string"
+  "showUpload": true
 }
 ```
 
@@ -14937,15 +16633,34 @@ a password, never the secret itself.
 
 ### Properties
 
-| Name         | Type           | Required | Restrictions | Description                                                                                                  |
-| ------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
-| description  | string         | true     | none         | none                                                                                                         |
-| exp          | integer(int64) | true     | none         | none                                                                                                         |
-| hasPassword  | boolean        | true     | none         | Whether a share password is configured; the stored secret never<br>leaves the backend through an album read. |
-| showDownload | boolean        | true     | none         | none                                                                                                         |
-| showMetadata | boolean        | true     | none         | none                                                                                                         |
-| showUpload   | boolean        | true     | none         | none                                                                                                         |
-| url          | string         | true     | none         | none                                                                                                         |
+| Name           | Type           | Required | Restrictions | Description                                                                                                                  |
+| -------------- | -------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| description    | string         | true     | none         | none                                                                                                                         |
+| exp            | integer(int64) | true     | none         | none                                                                                                                         |
+| hasPassword    | boolean        | true     | none         | Whether a share password is configured; the stored secret never<br>leaves the backend through an album read.                 |
+| keyFingerprint | string         | true     | none         | Non-secret handle for the share (blake3 of the bearer token, first<br>16 hex chars). Listings never carry the bearer itself. |
+| showDownload   | boolean        | true     | none         | none                                                                                                                         |
+| showMetadata   | boolean        | true     | none         | none                                                                                                                         |
+| showUpload     | boolean        | true     | none         | none                                                                                                                         |
+
+<h2 id="tocS_ShareTokenReturn">ShareTokenReturn</h2>
+<!-- backwards compatibility -->
+<a id="schemasharetokenreturn"></a>
+<a id="schema_ShareTokenReturn"></a>
+<a id="tocSsharetokenreturn"></a>
+<a id="tocssharetokenreturn"></a>
+
+```json
+{
+  "token": "string"
+}
+```
+
+### Properties
+
+| Name  | Type   | Required | Restrictions | Description |
+| ----- | ------ | -------- | ------------ | ----------- |
+| token | string | true     | none         | none        |
 
 <h2 id="tocS_TagInfo">TagInfo</h2>
 <!-- backwards compatibility -->
@@ -15009,6 +16724,8 @@ handler body.
 ```json
 {
   "admin": true,
+  "disabled": true,
+  "sharesEnabled": true,
   "userId": "string"
 }
 ```
@@ -15017,7 +16734,9 @@ Summary of a user record. Password hashes are never exported.
 
 ### Properties
 
-| Name   | Type    | Required | Restrictions | Description |
-| ------ | ------- | -------- | ------------ | ----------- |
-| admin  | boolean | true     | none         | none        |
-| userId | string  | true     | none         | none        |
+| Name          | Type    | Required | Restrictions | Description |
+| ------------- | ------- | -------- | ------------ | ----------- |
+| admin         | boolean | true     | none         | none        |
+| disabled      | boolean | false    | none         | none        |
+| sharesEnabled | boolean | false    | none         | none        |
+| userId        | string  | true     | none         | none        |
