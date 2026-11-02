@@ -14,15 +14,16 @@ given:
   - cli_user:
       user_id: alice
       password: e2e_test_pwd
+  - config:
+      fs_notify_watcher: false
   - cli_user:
       user_id: bob
       password: e2e_test_pwd
-  - source_file: alice-secret.jpg
+  - photo: seed.jpg
+  - photo: ../users/alice/alice-secret.jpg
     format: jpeg
     width: 16
     height: 16
-    id_as: $alice_secret_src
-  - photo: seed.jpg
   - index: '/'
 
 steps:
@@ -34,34 +35,12 @@ steps:
     assert:
       - ui.route: /timeline
 
-  - when:
-      - upload.files:
-          trigger: icon/mdi-upload
-          files: ['${alice_secret_src}']
-    assert:
-      - ui.modal: open
-      - ui.text_visible: alice-secret.jpg
-
-  - when:
-      - click: button/Upload
-    assert:
-      - ui.toast:
-          type: success
-          contains: Files uploaded successfully
-      - ui.modal: closed
-
-  - when:
-      - wait.ms: 500
-    assert:
-      - ui.visible: main/
+  # alice's personal photo is seeded under her personal home (see given:)
 
   # Skip direct assignment UI flow if UI behaves differently; rely on API-level isolation coverage
-  - when:
-      - wait.ms: 1000
-    assert:
-      - ui.visible: main/
+  # (no UI assertion here; backend tests pin assignment isolation)
 
-  # Timeline toggle behavior
+  # Timeline toggle behavior: personal photo appears only when opted in.
   - when:
       - navigate: /timeline
     assert:
@@ -69,14 +48,43 @@ steps:
       - ui.visible: main/
 
   - when:
-      - wait.ms: 500
+      - click.icon: mdi-account-circle
+      - click.menu: Settings
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click.testid: frontend-show-filename-chip-switch
     assert:
       - ui.visible: main/
 
   - when:
-      - wait.ms: 500
+      - click.testid: frontend-include-personal-switch
+      - click.testid: modal-close
     assert:
-      - ui.visible: main/
+      - ui.modal: closed
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.text_visible: alice-secret
+
+  - when:
+      - click.icon: mdi-account-circle
+      - click.menu: Settings
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click.testid: frontend-include-personal-switch
+      - click.testid: modal-close
+    assert:
+      - ui.modal: closed
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.text_hidden: alice-secret
 
   # Capture alice's personal album id from URL
   - when:

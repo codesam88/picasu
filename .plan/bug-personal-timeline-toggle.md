@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: high
 area: frontend
@@ -53,6 +53,18 @@ them; the persisted flag matches the switch position.
    written for; keep `v-model` for the visual state as today.
 3. Re-run the toggle e2e steps green, then the full personal-albums
    e2e set plus `just frontend-check` / `just frontend-vitest`.
+
+## Result (2026-11-02)
+
+Fixed production binding: `FrontendConfig.vue` now uses `:model-value` + a single
+`@update:model-value="onToggle"` handler (owning ref update, persist, and
+refresh). `TimelinePage` had no stale toggle; the real blocker was that `Gallery.vue`
+passed the coerced boolean `false` for `includePersonal` on the timeline route,
+overriding localStorage. The timeline now passes `undefined` on the timeline route
+so `getIncludePersonal()` (localStorage) governs. F9-2 scenario converted to real
+toggle assertions (filename chip enabled, alice-secret visible on / hidden off).
+`just frontend-check`, `just frontend-vitest`, and the isolation Playwright
+scenario pass.
 
 ## Out of scope
 
