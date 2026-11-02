@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: backend
@@ -80,6 +80,12 @@ universal. This task closes the gaps, with tests proving each one.
 
 Deferred by user choice 2026-11-01 (decisions recorded, work not
 scheduled yet): F9 E2E honesty bundle, F10 docs claim corrections.
+
+## Closeout 2026-11-02
+
+F1–F8 done, F9-0–F9-5 done, F10 done. F6 folded into share-token
+plan; index-move race tracked separately in
+.plan/index-move-scan-race.md.
 
 ## Implementation steps
 
