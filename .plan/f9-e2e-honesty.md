@@ -68,9 +68,11 @@ interpolates — the interpreter only substitutes single-`$` names —
 so both forbidden-nav steps were loading a literal garbage URL; now
 `${alice_album}`, with the asserted route naming the real id).
 
-### F9-2 — Real toggle on/off assertions (BLOCKED on
+### F9-2 — Real toggle on/off assertions (CLOSED 2026-11-02)
 
-`.plan/bug-personal-timeline-toggle.md`)
+Production fix in `FrontendConfig.vue` + `Gallery.vue`; scenario converted to real
+toggle assertions (alice-secret visible on / hidden off). Isolation Playwright
+scenario green.
 
 Drive the timeline's "Include personal items in timeline" switch as
 the owning user: assert the personal photo's name appears with the
