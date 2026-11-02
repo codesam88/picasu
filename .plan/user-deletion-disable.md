@@ -1,11 +1,19 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
 ---
 
 ## Notes
+
+Completed 2026-11-02: D5-1 (delete guards + re-auth + cascade share
+removal, `1a915887`), D5-2 (account disable/enable with session kill,
+`e625e64d`), operation descriptions (`e0f7f1e6`), D5-3 (per-user share
+toggle with enforcement, `804b1e69`), D5-4 (runbook + account-state
+docs, `d3844cf2`). Full gates green at each commit (backend nextest
+suites incl. 915-test full run earlier in the branch, frontend
+45/351 vitest, fuzz-matrix 26/26, openapi/auth-matrix/env-var/docs).
 
 The working spec for the task: problem, goal, implementation steps. Refine
 these sections in place as understanding changes; append only short dated lines
