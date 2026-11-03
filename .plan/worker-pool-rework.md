@@ -141,14 +141,29 @@ Design (reviewed 2026-11-03, detail in worker report):
   coordinator hops, writer message instead of detached flush).
 - Slices: (1) runtime consolidation (`runtime.rs`, `tasks/mod.rs`,
   `lib.rs` bootstrap, import-only edits elsewhere; both coordinators
-  kept, repointed); (2) intake + queue (new `tasks/queue/*`,
-  `workflow/mod.rs`, delete 7 `Task` structs keeping stage fns,
-  walk sends to intake, watcher/looper enqueue; `INDEX_COORDINATOR`
-  deleted); (3) writer (flush/snapshot/update/expire `BatchTask`
-  impls deleted, dispatch sites to writer/queue APIs;
+  kept, repointed; single shutdown path, Rayon init order pinned);
+  (2) intake + queue (new `tasks/queue/*`, `workflow/mod.rs`, delete 7
+  `Task` structs keeping stage fns, walk sends to intake,
+  watcher/looper enqueue; `INDEX_COORDINATOR` deleted; Rayon
+  admittance + lanes land here); (3) writer (flush/snapshot/update/expire
+  `BatchTask` impls deleted, dispatch sites to writer/queue APIs;
   `BATCH_COORDINATOR` and `mini_executor` removed).
 - Budget: sustained busy CPU `<= N-1`, Rocket headroom via idle
-  workers + Interactive priority; OS nice opportunistic only.
+  workers + Interactive priority; OS nice opportunistic only
+  (follow-up Step 10). `spawn_blocking` kept only for short I/O on
+  allowlisted paths (`tasks/runtime.rs` + `tasks/queue/*` dispatch
+  sites); CPU work migrates to Rayon. Budget counts busy CPU only
+  (blocking I/O excluded); inventory delta reports
+  `spawn_blocking`/blocking-pool use before/after.
+- Rayon admittance: semaphore with permits `≈` Rayon threads, permit
+  held across the oneshot await (`acquire_owned` when moved into the
+  task); superseded intake items never dispatched via cancellation
+  tokens + generation check, and a dropped handle discards the result
+  while the task may keep running (documented). Interactive lane uses
+  `spawn_fifo` (FIFO fairness), bulk scan uses LIFO `spawn`, or
+  separate admission queues with weighted round-robin + aging feed one
+  pool. Request-path `par_iter` scoped via `pool.install`, never
+  direct on the hot path.
 - Expected inventory delta: runtimes 3→1, rayon pools 2→1,
   coordinators 2→0, `Task` 7→0, `BatchTask` 7→0, unbounded channels
   replaced by bounded intake/writer mpsc + Notify/watch.
@@ -193,13 +208,15 @@ cancellation (cancel queued, finish running chunk).
   Direct spawn bypass is faster but evades priority, budget, drain.
   Direction: queue; one documented bypass only if baselines show the
   hop matters.
-- (6) Scan-done: intake drained plus barrier acked. Counters
-  redefined at queue edges (scanned=enqueued, matched=started,
-  processed=writer-acked); status-poll tests updated to the new
-  meanings rather than preserving join-era fiction.
-- (7) Nice: follow-up behind `cfg(unix)`. N-1 budget plus priority
-  lanes carry correctness; nice only reorders within a budget and is
-  untestable in CI. Direction: defer.
+- (6) Scan-done: intake drained plus barrier acked plus sweep
+  ordered. Order pinned as flush→sweep→flush→drain before Completed.
+  Counters redefined at queue edges (scanned=enqueued,
+  matched=started, processed=writer-acked); status-poll and
+  completed/failed tests updated to the new meanings rather than
+  preserving join-era fiction.
+- (7) Nice: follow-up behind `cfg(unix)` in Step 10. N-1 budget
+  plus priority lanes carry correctness; nice only reorders within a
+  budget and is untestable in CI. Direction: defer.
 - Discipline enforcement (layers, existing infra): types first
   (private runtime handles, sealed `Job` trait, only
   `spawn_async`/`spawn_cpu`/`spawn_io` plus
@@ -207,42 +224,62 @@ cancellation (cancel queued, finish running chunk).
   (`picasu-discipline`, on pinned `cargo-dylint`, warn then gate)
   flagging `tokio::spawn`/`spawn_blocking`/`rayon::spawn`/
   `std::thread::spawn`/`tokio_rayon` outside
-  `tasks/runtime.rs` + `tasks/queue/*`; architecture test alongside
-  `openapi-sanity` grepping the same allowlist for a fast local
-  signal. No external executor framework: ~150 lines of queue plus
+  `tasks/runtime.rs` + `tasks/queue/*`, and an architecture test
+  alongside `openapi-sanity` grepping the same allowlist, both land
+  in follow-up Step 10 and do not gate Slices 1-3. No external
+  executor framework: ~150 lines of queue plus
   handles, value is in the narrow API.
 
 ### Step 5 — Refactor slice 1: runtime consolidation
 
 Scope: `runtime.rs`, `tasks/mod.rs`, bootstrap wiring only. Collapse to
 one orchestration runtime + one `rayon(N-1)` pool, rewire deleted
-statics and coordinators minimally. Done when `just backend-check`
-passes and startup/dispatch tests pass. No intake or writer changes.
+statics and coordinators minimally; collapse the two signal handlers
+to one and set grace/mercy/force with an `on_shutdown` drain for
+queue/writer/Rayon. Done when `just backend-check` passes,
+`build_global(N-1)` runs before any rayon touch (including
+`CURRENT_NUM_THREADS` deref) with `Err` treated as already-initialized
+plus `current_num_threads()` verification (`RAYON_NUM_THREADS`
+alternative documented), startup/dispatch tests pass, busy-CPU budget
+(`<= N-1`, blocking I/O excluded) holds, and harness A reruns for a
+p95 fetch check (dedicated-Rocket revisit trigger). No intake or
+writer changes.
 
 ### Step 6 — Refactor slice 2: bounded intake and priority queue
 
 Scope: `tasks/actor/*`, batcher dispatch surface, `looper/mod.rs` per
 Step-4 list. Replace per-file spawn fan-out with bounded intake and
-shared priority queue with cancellation. Done when `just backend-check`
-and scan/watcher/expire tests pass, with removed `Task`/`BatchTask`
-types reported. No writer internals.
+shared priority queue with cancellation; add Rayon admittance
+(semaphore permits `≈` threads held across await), Interactive
+`spawn_fifo` vs scan LIFO lanes (or weighted admission queues +
+aging), `pool.install` scoping on the request path, and
+cancel/generation discard of superseded work. Done when
+`just backend-check` and scan/watcher/expire tests pass, with removed
+`Task`/`BatchTask` types reported. No writer internals.
 
 ### Step 7 — Refactor slice 3: single serial DB writer
 
 Scope: `batcher/flush_tree.rs`, snapshots, `update_tree.rs`,
 `update_expire.rs` plus writer edge. Serialize mutations, remove
 detached spawns and overlapping batches, keep backpressure end to end.
-Done when `just backend-check` and flush/expire tests pass, with
+Kept stage fns stay in `actor/*` (computation); only runtime/queue
+dispatch sites join the `spawn_blocking` allowlist. Done when
+`just backend-check` and flush/expire tests pass, with
 channel inventory delta reported.
 
 ### Step 8 — Re-measure, compare, record summary
 
 Scope: rerun Steps 1–3 tooling unmodified; raw to
 `bench-after-*`/`complexity-after.*`; append comparison tables to this
-plan. Same versions, script, manifests, machine. Done when after-raw
-files parse and the plan holds before/after deltas (scan wall, fetch,
-complexity per function/module, removed runtimes/pools/channels/tasks);
-`just plan-lint` passes. Flag regressions explicitly.
+plan. Same versions, script, manifests, machine. Collect writer queue
+depth and ack latency under the 1000-image scan; upload/mutation hop
+latency stays an unprobed gap (noted, not compared). Update
+status-poll and completed/failed tests to the redefined counters;
+timed-out 1000-cell partial progress is not comparable across eras.
+Done when after-raw files parse and the plan holds before/after
+deltas (scan wall, fetch, complexity per function/module, removed
+runtimes/pools/channels/tasks); `just plan-lint` passes. Flag
+regressions explicitly.
 
 ### Step 9 — Docs update and final review
 
@@ -250,6 +287,13 @@ Scope: threading-model docs plus plan status alignment, no behavior
 changes. Document final state, reconcile stale comments, set `done`
 only if Steps 5–8 held else `blocked` with gap noted. Done when
 `just check` and `just plan-lint` pass and diff/status inspected.
+
+### Step 10 — Follow-up hardening (dylint gate, arch-test grep, nice)
+
+Scope: `picasu-discipline` dylint gate, arch-test allowlist grep, and
+`cfg(unix)` OS-nice only; separate worker invocation after Slices 1–3
+land. Does not gate Steps 5–8. Done when warn-then-gate is wired and
+`just check` passes.
 
 ## Benchmark results
 
