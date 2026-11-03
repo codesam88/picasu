@@ -6,7 +6,7 @@ use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::queue::{submit_watcher_index, submit_watcher_remove};
 use crate::tasks::runtime::spawn;
 use anyhow::Result;
 use log::{error, info, warn};
@@ -149,7 +149,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
         if should_run && watcher_still_enabled && under_root {
             match classify_media_file(&path) {
                 MediaOutcome::Index => {
-                    if let Err(e) = crate::workflow::index_image(&path).await {
+                    if let Err(e) = submit_watcher_index(path).await {
                         handle_error(e);
                     }
                 }
@@ -166,22 +166,13 @@ fn submit_to_debounce_pool(path: PathBuf) {
 /// record + thumbnail.
 fn submit_removal_to_watcher(path: PathBuf) {
     spawn(async move {
-        if let Err(e) = tokio::task::spawn_blocking(move || handle_removed_file(&path)).await {
-            warn!("Join error in removal handler: {e}");
-        }
-        let _ = BATCH_COORDINATOR
-            .execute_batch_waiting(FlushTreeTask::insert(vec![]))
-            .await;
-        if let Err(e) = BATCH_COORDINATOR
-            .execute_batch_waiting(UpdateTreeTask)
-            .await
-        {
-            warn!("Failed to update tree after file removal: {e}");
+        if let Err(e) = submit_watcher_remove(path).await {
+            warn!("removal submit failed: {e:#}");
         }
     });
 }
 
-fn handle_removed_file(removed: &Path) {
+pub(crate) fn handle_removed_file(removed: &Path) {
     use crate::process::path::prune_asset_path;
 
     // Scan in-memory tree to find the record that owns this path.

@@ -16,10 +16,10 @@ use crate::router::auth::GuardReauth;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
+use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
+use crate::tasks::queue::submit_interactive_album;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::future::try_join_all;
@@ -132,13 +132,15 @@ pub async fn delete_data(
         all_affected_album_ids
             .into_iter()
             .map(|album_id| async move {
-                INDEX_COORDINATOR
-                    .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-                    .await
+                submit_interactive_album(album_id).await.map_err(|e| {
+                    AppError::new(
+                        ErrorKind::Internal,
+                        format!("Failed to update affected album: {e:#}"),
+                    )
+                })
             }),
     )
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to update affected albums"))?;
+    .await?;
     Ok(())
 }
 

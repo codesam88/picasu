@@ -1,8 +1,7 @@
 use crate::constant::SNAPSHOT_MAX_LIFETIME_MS;
+use crate::tasks::queue::submit_expire_check;
 use crate::tasks::runtime::spawn;
 
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::expire_check::ExpireCheckTask;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
@@ -26,9 +25,12 @@ pub fn start_expire_check_loop() {
 
             tokio::select! {
                 () = sleep_future => {
-                    // Timeout reached, execute the check task
-                    debug!("Timeout reached, executing the check task");
-                    BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
+                    // Timeout reached, enqueue the check on the Expire lane;
+                    // a queue worker runs it and re-arms this timer.
+                    log::debug!("Timeout reached, enqueueing the expire check");
+                    if let Err(err) = submit_expire_check().await {
+                        log::debug!("expire check submit failed: {err:#}");
+                    }
                 }
                 _ = rx.recv() => {
                     // Received reset signal, restart the timer

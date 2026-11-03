@@ -14,9 +14,8 @@ use crate::process::xmp::extract_xmp_data_from_file;
 /// The single entry point for "derive this asset's metadata and its derived
 /// data": the EXIF read, the sidecar-precedence XMP read, dimension fix-ups,
 /// perceptual hashes and the on-disk thumbnail. Both orchestration modes go
-/// through here — the incremental indexer in
-/// [`crate::tasks::actor::index::IndexTask`] and the filesystem rebuild via
-/// [`crate::workflow::index_media_file`] — so there is one implementation of
+/// through here — the incremental indexer in `crate::workflow`'s index stage
+/// and the filesystem rebuild via [`crate::workflow::index_media_file`] — so there is one implementation of
 /// that pipeline and no path where a rebuilt asset is described by different
 /// rules than an indexed one.
 ///

@@ -4,34 +4,12 @@ use anyhow::anyhow;
 use log::{debug, error, warn};
 
 use crate::{
-    error::handle_error,
     model::abstract_data::AbstractData,
     process::index::process_media_info,
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
-use mini_executor::Task;
 
-pub struct IndexTask {
-    pub abstract_data: AbstractData,
-}
-
-impl IndexTask {
-    pub fn new(abstract_data: AbstractData) -> Self {
-        Self { abstract_data }
-    }
-}
-
-impl Task for IndexTask {
-    type Output = Result<AbstractData>;
-
-    async fn run(self) -> Self::Output {
-        tokio_rayon::spawn(move || index_task_match(self.abstract_data))
-            .await
-            .map_err(|err| handle_error(err.context("Failed to run index task")))
-    }
-}
-
-fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
+pub(crate) fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
     let hash = abstract_data.hash();
     match index_task(abstract_data) {
         Ok(data) => {

@@ -11,9 +11,8 @@ use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::INDEX_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::queue::submit_interactive_album;
 use arrayvec::ArrayString;
 use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
@@ -170,11 +169,9 @@ pub async fn assign_album(
     // frontend request.)
     VERSION_COUNT_TIMESTAMP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-    INDEX_COORDINATOR
-        .execute_waiting(AlbumSelfUpdateTask::new(album_id))
+    submit_interactive_album(album_id)
         .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update album stats"))?
-        .map_err(|e| AppError::new(ErrorKind::Internal, format!("Album update failed: {e}")))?;
+        .map_err(|e| AppError::new(ErrorKind::Internal, format!("Album update failed: {e:#}")))?;
 
     Ok(Json(AssignResult { outcome }))
 }

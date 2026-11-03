@@ -3,13 +3,12 @@ use crate::process::dir_album::{get_album_id_for_dir, get_or_create_dir_album};
 use crate::process::index::process_media_info;
 use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
-use crate::tasks::{
-    INDEX_COORDINATOR,
-    actor::{
-        deduplicate::DeduplicateTask, hash::HashTask, index::IndexTask, open_file::OpenFileTask,
-        video::VideoTask,
-    },
-};
+use crate::tasks::actor::deduplicate::deduplicate_task;
+use crate::tasks::actor::hash::hash_task;
+use crate::tasks::actor::index::index_task_match;
+use crate::tasks::actor::open_file::open_file_task;
+use crate::tasks::actor::video::video_task;
+use crate::tasks::queue::bridge::{run_cpu, run_io};
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use log::warn;
@@ -55,8 +54,8 @@ async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64
 ///
 /// This is the rebuild side of that pipeline's two orchestration modes. The
 /// incremental index (`index_image`) resolves identity through the
-/// open/hash/deduplicate tasks and reaches the same [`process_media_info`] call
-/// via [`IndexTask`]; the filesystem rebuild resolves identity from its own
+/// open/hash/dedup stages and reaches the same [`process_media_info`] call
+/// via the index stage; the filesystem rebuild resolves identity from its own
 /// filesystem walk and comes through here. What differs between the modes is
 /// only how identity is obtained and how the result is persisted — the EXIF
 /// read, the sidecar precedence rules and the hash/thumbnail derivation exist
@@ -64,8 +63,8 @@ async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64
 /// indexed one.
 ///
 /// A video is marked `pending`: this pipeline produces its thumbnail, hashes and
-/// EXIF, but not its compressed form, which is the separate [`VideoTask`]. That
-/// matches what [`IndexTask`] does, so a rebuilt video carries the same state an
+/// EXIF, but not its compressed form, which is the separate video stage. That
+/// matches what the index stage does, so a rebuilt video carries the same state an
 /// indexed one does; the compressed form is left to the normal video path.
 #[allow(dead_code)]
 pub fn index_media_file(
@@ -94,9 +93,9 @@ pub fn index_media_file(
 /// `src` — path relative to `IMAGE_HOME`. The album is resolved from `src`'s
 /// parent directory.
 ///
-/// Direct (inline) entry point for request-path and watcher callers. The
-/// walk-driven scan instead enqueues via [`submit_index`] and lets intake
-/// workers run [`process_file`].
+/// Direct (inline) entry point for request-path callers. The walk-driven
+/// scan instead enqueues via [`submit_index`], the watcher debounce via the
+/// Watcher intake lane, and intake workers run [`process_file`] for both.
 ///
 /// If the content hash is already known, the file still gets its own
 /// path-primary record — records are never merged. Duplicate content is
@@ -139,9 +138,10 @@ pub async fn submit_index(src: &Path, job_id: u64) -> Result<()> {
 
 /// Index one already-resolved file: Open → Hash → Dedup → Index → Video.
 ///
-/// Each stage runs through the `INDEX_COORDINATOR` hops, which stay the
-/// execution backend in this slice; only the per-file `tokio::spawn`
-/// fan-out moved into the intake worker pool.
+/// Each stage runs through the queue bridges in
+/// `tasks::queue::bridge`: short blocking I/O (open, dedup) on the Tokio
+/// blocking pool, CPU work (hash, index, video) on the shared Rayon pool
+/// behind the N-1 admittance semaphore.
 pub async fn process_file(path: PathBuf) -> Result<()> {
     let album_id_opt = match path.parent().and_then(get_album_id_for_dir) {
         Some(id) => Some(id),
@@ -165,41 +165,33 @@ pub async fn process_file(path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// Open stage: read the file handle off the blocking pool.
+/// Open stage: read the file handle on the blocking pool.
 async fn stage_open(path: &Path) -> Result<File> {
-    INDEX_COORDINATOR
-        .execute_waiting(OpenFileTask::new(path.to_path_buf()))
-        .await?
+    let owned = path.to_path_buf();
+    run_io(move || open_file_task(&owned)).await
 }
 
-/// Hash stage: content-hash the open file.
+/// Hash stage: content-hash the open file on the Rayon pool.
 async fn stage_hash(file: File) -> Result<ArrayString<64>> {
-    INDEX_COORDINATOR
-        .execute_waiting(HashTask::new(file))
-        .await?
+    run_cpu(move || hash_task(file)).await
 }
 
-/// Dedup stage: build the path-primary record for this file.
+/// Dedup stage: build the path-primary record for this file on the blocking
+/// pool (identity reads plus dir-album registration).
 async fn stage_dedup(
     path: PathBuf,
     hash: ArrayString<64>,
     album_id_opt: Option<ArrayString<64>>,
 ) -> Result<Option<AbstractData>> {
-    INDEX_COORDINATOR
-        .execute_waiting(DeduplicateTask::new(path, hash, album_id_opt))
-        .await?
+    run_io(move || deduplicate_task(&path, hash, album_id_opt)).await
 }
 
-/// Index stage: metadata pipeline plus thumbnail derivation.
+/// Index stage: metadata pipeline plus thumbnail derivation on the Rayon pool.
 async fn stage_index(abstract_data: AbstractData) -> Result<AbstractData> {
-    INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(abstract_data))
-        .await?
+    run_cpu(move || index_task_match(abstract_data)).await
 }
 
-/// Video stage: compressed form for video assets.
+/// Video stage: compressed form for video assets on the Rayon pool.
 async fn stage_video(abstract_data: AbstractData) -> Result<()> {
-    INDEX_COORDINATOR
-        .execute_waiting(VideoTask::new(abstract_data))
-        .await?
+    run_cpu(move || video_task(abstract_data)).await
 }

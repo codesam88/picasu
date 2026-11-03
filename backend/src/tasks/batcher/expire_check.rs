@@ -1,10 +1,9 @@
 use crate::model::response::Prefetch;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
-use crate::{storage::cache::EXPIRE, tasks::INDEX_COORDINATOR};
+use crate::{storage::cache::EXPIRE, tasks::looper::reset_expire_check_timer};
 
-use crate::tasks::actor::remove_tree_snapshot::RemoveTask;
-use crate::tasks::looper::reset_expire_check_timer;
+use crate::tasks::actor::remove_tree_snapshot::remove_task;
 use mini_executor::BatchTask;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
@@ -22,7 +21,7 @@ impl BatchTask for ExpireCheckTask {
     }
 }
 
-fn expire_check_task() {
+pub(crate) fn expire_check_task() {
     let write_txn = QUERY_SNAPSHOT
         .in_disk
         .begin_write()
@@ -64,8 +63,7 @@ fn expire_check_task() {
                             .collect();
 
                         for timestamp in tree_snapshot_delete_queue {
-                            #[allow(clippy::let_underscore_future)]
-                            let _ = INDEX_COORDINATOR.execute_detached(RemoveTask::new(timestamp));
+                            remove_task(timestamp);
                         }
                     }
                     Ok(false) => {

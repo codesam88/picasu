@@ -6,8 +6,7 @@ use crate::process::dir_album::{
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::INDEX_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
+use crate::tasks::queue::submit_interactive_album;
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
@@ -108,10 +107,14 @@ pub async fn create_dir_album(
     .await
     .or_raise(|| (ErrorKind::Internal, "Task failed"))??;
 
-    INDEX_COORDINATOR
-        .execute_waiting(AlbumSelfUpdateTask::new(parent_album_id))
+    submit_interactive_album(parent_album_id)
         .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update parent album"))??;
+        .map_err(|e| {
+            AppError::new(
+                ErrorKind::Internal,
+                format!("Failed to update parent album: {e:#}"),
+            )
+        })?;
 
     Ok(new_album_id.to_string())
 }
