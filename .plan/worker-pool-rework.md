@@ -285,9 +285,15 @@ never `spawn_blocking`, which would evade the N-1 budget),
 `get_prefetch.rs`, `get_data.rs`), watcher debounce + looper enqueue,
 5 router files to Interactive submits, `expire_check.rs:68` +
 `RemoveTask` migration, delete `INDEX_COORDINATOR`, drop
-`tokio-rayon`. `mini_executor` dep stays until slice 3. Done when
-`just backend-check` and scan/watcher/expire tests pass, with removed
-`Task` types and admittance accounting reported. No writer internals.
+`tokio-rayon`. `mini_executor` dep stays until slice 3. Writer scope
+note (revised on landing): `BATCH_COORDINATOR`, the 7 `BatchTask`
+impls, and the `mini_executor` dep are KEPT — request-path routers
+still dispatch through them and the request path is frozen per (3).
+Background flush/rebuild/expire/sweep/removal now go through the
+serial writer with generation barrier; the dep removal moves to the
+deferred request-path follow-up. Done when `just backend-check` and
+scan/watcher/expire tests pass, with removed `Task` types and
+admittance accounting reported. No writer internals.
 
 ### Step 6c — Interim benchmark after intake+queue, before writer
 
@@ -314,8 +320,11 @@ sweep ordering pinned as flush→sweep→flush→drain before Completed;
 stay in `actor/*` (computation); only runtime/queue dispatch sites
 join the `spawn_blocking` allowlist (allowlist = read-only, bounded
 work, no lock-holding — criteria, not just paths). `mini_executor`
-(and `tokio-rayon` if lingering) removed here, never earlier. Writer
-constraints: txns stay short (no bulk work inline — large rebuilds
+(and `tokio-rayon` if lingering) removed here, never earlier — except
+as revised on landing: `BATCH_COORDINATOR`, the `BatchTask` impls,
+and the dep stay because the frozen request path still dispatches
+through them; their removal moves to the deferred request-path
+follow-up. Writer constraints: txns stay short (no bulk work inline — large rebuilds
 and sweeps stay chunked or dispatched as background jobs, never
 head-of-line blocking); the Interactive lane gets reserved capacity
 bulk can never starve; ack waits carry generous deadlines as
@@ -375,6 +384,75 @@ jpg at ~7.7s/image (100 in ~13min).
 N8 on 4000x3000 jpg. 1000-cell full completion to be rerun with a
 longer timeout; numbers above are the committed baseline for
 before/after comparison.
+
+### Interim perf (Step 6c, intake+queue landed, writer untouched)
+
+Raw: `/tmp/opencode/worker-pool-rework/bench-mid-*/`,
+`out-mid/`, `complexity-mid.clippy-cognitive.txt`. Writer-presence
+verified (16 `BATCH_COORDINATOR` hits, `FlushTreeTask` impl present,
+`INDEX_COORDINATOR` zero hits), so the delta is intake/queue only.
+Pool log lines still print the stale `tokio 4x3/8x3` text — post
+slice 1 the process runs a single runtime (1×N workers); thread
+counts observed: srv-threads 10 (N4) / 18 (N8), down from 21/37.
+
+| N   | count | bytes    | scan wall | probe seq mean  | probe conc mean   | hyperfine compressed | hyperfine prefetch |
+| --- | ----- | -------- | --------- | --------------- | ----------------- | -------------------- | ------------------ |
+| 4   | 100   | 46690163 | 421s base | 0.0030s (n=99)  | 0.0046s P4 (n=99) | 0.00928s             | 0.00831s           |
+| 4   | 100   | 57198822 | 554s mid  | 0.0051s (n=100) | 0.0114s P4 (n100) | 0.00982s             | 0.00857s           |
+| 8   | 100   | 62329256 | 228s base | 0.0042s (n=99)  | 0.0108s P8 (n=99) | 0.01544s             | 0.01368s           |
+| 8   | 100   | 55873217 | 247s mid  | 0.0044s (n=99)  | 0.0101s P8 (n=99) | 0.01628s             | 0.01472s           |
+
+Mid shows no scan win yet (per-MB: N4 9.0→9.7 s/MB, N8 3.7→4.4
+s/MB; sets differ in bytes — snapfab content is random per run).
+Expected: intake/queue adds a hop without removing the per-insert
+flush bottleneck, which is slice 3's target. Fetch/hyperfine flat
+within noise. Complexity mid: sloc 3450→4112, cyclomatic 530→610,
+cognitive 338→382, functions 100→136 (new `tasks/queue/*`: 5 files,
+847 sloc; deletions land in slice 3); clippy cognitive still 2
+warnings, both outside scope.
+
+### After perf (Step 8, slices 1–3 landed, writer serializes background)
+
+Raw: `/tmp/opencode/worker-pool-rework/bench-after-*/`,
+`out-after/`, `complexity-after.clippy-cognitive.txt`. Same harness,
+same manifest shape (jpg 4000x3000 + exif/tags), random per-run
+bytes — compare per-MB, not wall seconds.
+
+| N   | count | bytes    | scan wall  | per-MB | probe seq mean  | probe conc mean   | hyperfine compressed | hyperfine prefetch |
+| --- | ----- | -------- | ---------- | ------ | --------------- | ----------------- | -------------------- | ------------------ |
+| 4   | 100   | 46690163 | 421s base  | 9.0    | 0.0030s (n=99)  | 0.0046s P4 (n=99) | 0.00928s             | 0.00831s           |
+| 4   | 100   | 57198822 | 554s mid   | 9.7    | 0.0051s (n=100) | 0.0114s P4 (n100) | 0.00982s             | 0.00857s           |
+| 4   | 100   | 67539241 | 553s after | 8.2    | 0.0054s (n=100) | 0.0083s P4 (n100) | 0.02131s             | 0.01474s           |
+| 8   | 100   | 62329256 | 228s base  | 3.7    | 0.0042s (n=99)  | 0.0108s P8 (n=99) | 0.01544s             | 0.01368s           |
+| 8   | 100   | 55873217 | 247s mid   | 4.4    | 0.0044s (n=99)  | 0.0101s P8 (n=99) | 0.01628s             | 0.01472s           |
+| 8   | 100   | 50578966 | 245s after | 4.8    | 0.0050s (n=100) | 0.0108s P8 (n100) | 0.01763s             | 0.01406s           |
+
+Scan throughput flat within set variance (N4 9.0→8.2 s/MB, N8
+3.7→4.8 s/MB — random-set bytes dominate; all cells `completed`,
+`failed=0`). Fetch/hyperfine flat within noise. The measured win is
+structural, not throughput: server threads observed 21→10 (N4) and
+37→18 (N8), runtimes 3→1, rayon pools 2→1 (N-1), `Task` impls 7→0,
+`INDEX_COORDINATOR` gone, zero unbounded `mpsc` call sites. 1000-cell
+full completion remains a long-timeout rerun (Step 3 finding stands).
+
+### After complexity (Step 8)
+
+| module        | files (b/m/a) | sloc (b/m/a)   | cyclo (b/m/a) | cog (b/m/a) | funcs (b/m/a) |
+| ------------- | ------------- | -------------- | ------------- | ----------- | ------------- |
+| tasks         | 2/2/2         | 62/56/56       | 9/6/6         | 0/0/0       | 0/1/1         |
+| tasks/actor   | 9/9/9         | 1751/1561/1548 | 259/208/204   | 149/146/141 | 53/39/39      |
+| tasks/batcher | 8/8/8         | 1413/1402/1430 | 210/208/210   | 172/171/173 | 40/40/41      |
+| tasks/looper  | 1/1/1         | 47/49/54       | 6/7/7         | 1/1/1       | 2/2/2         |
+| tasks/queue   | –/5/6         | –/847/1224     | –/130/192     | –/51/94     | –/43/60       |
+| workflow      | 1/1/1         | 177/197/217    | 46/51/58      | 16/13/14    | 5/11/11       |
+| total         | 21/26/27      | 3450/4112/4529 | 530/610/677   | 338/382/423 | 100/136/154   |
+
+Net vs baseline: +1079 sloc for the queue + writer substrate;
+removed: 7 `Task` impls, `INDEX_COORDINATOR`, `tokio-rayon`,
+per-file spawn fan-out, 2 runtimes, 1 rayon pool. `BatchTask`
+impls (7) and `BATCH_COORDINATOR` kept per the deferred
+request-path scope. Clippy cognitive unchanged: 2 warnings, both
+outside scope.
 
 ### Baseline complexity (Step 1, commit `80141138` scope)
 
