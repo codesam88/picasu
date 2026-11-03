@@ -1,0 +1,82 @@
+[
+  {
+    "output": "scan_0001.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:01 08:15:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0002.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:02 09:20:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0003.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:03 10:25:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0004.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:04 11:30:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0005.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:05 12:35:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0006.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:06 13:40:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0007.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:07 14:45:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0008.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:08 15:50:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0009.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:09 16:55:00",
+    "tags": ["bench", "scan-set"]
+  },
+  {
+    "output": "scan_0010.jpg",
+    "format": "jpeg",
+    "width": 4000,
+    "height": 3000,
+    "exif_date": "2024:06:10 17:05:00",
+    "tags": ["bench", "scan-set"]
+  }
+]
