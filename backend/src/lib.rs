@@ -34,7 +34,6 @@ use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 use crate::tasks::runtime::{CURRENT_NUM_THREADS, RUNTIME};
 use model::metadata_record::MetadataRecord;
@@ -154,10 +153,15 @@ pub fn run() {
         txn.commit().expect("failed to commit transaction");
 
         BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
-        BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+        if let Err(err) = crate::tasks::queue::writer::submit_update_tree().await {
+            error!("initial tree rebuild submit failed: {err:#}");
+        }
         start_expire_check_loop();
 
         rocket_handle.await.expect("Rocket task panicked");
+        // Single shutdown drain: let the serial writer finish everything
+        // submitted so far before the runtime goes down.
+        crate::tasks::queue::shutdown_writer().await;
         info!("Worker shutting down.");
     });
 }

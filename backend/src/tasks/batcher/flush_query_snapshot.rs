@@ -18,7 +18,7 @@ impl BatchTask for FlushQuerySnapshotTask {
     }
 }
 
-fn flush_query_snapshot_task() {
+pub(crate) fn flush_query_snapshot_task() {
     loop {
         if QUERY_SNAPSHOT.in_memory.is_empty() {
             break;

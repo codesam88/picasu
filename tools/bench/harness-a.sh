@@ -165,7 +165,7 @@ log "generated=$IMG_COUNT bytes=$IMG_BYTES wall_ms=$((gen_end_ms - gen_start_ms)
 log "=== run parameters ==="
 log "N=$N taskset_cores=0-$((N - 1)) nproc_under_affinity=$(taskset -c "0-$((N - 1))" nproc)"
 log "image_count=$IMG_COUNT image_bytes=$IMG_BYTES"
-log "pool_sizes: CURRENT_NUM_THREADS=$N -> tokio ROCKET/BATCH/INDEX worker_threads=$N each; rayon WORKER_RAYON_POOL=$N"
+log "pool_sizes: CURRENT_NUM_THREADS=$N -> single tokio RUNTIME worker_threads=$N; global rayon pool max(1,N-1)"
 log "hyperfine=$HYPERFINE_BIN warmup=$WARMUP repeats=$REPEATS concurrency=$CONCURRENCY port=$PORT"
 
 # --- server ----------------------------------------------------------------
@@ -388,7 +388,7 @@ fi
 # --- summary ---------------------------------------------------------------
 log "=== summary ==="
 log "N=$N image_count=$IMG_COUNT image_bytes=$IMG_BYTES"
-log "pool_sizes: tokio ROCKET/BATCH/INDEX=$N each; rayon WORKER_RAYON_POOL=$N; server_threads_observed=$SERVER_THREADS"
+log "pool_sizes: single tokio RUNTIME workers=$N; global rayon max(1,N-1); server_threads_observed=$SERVER_THREADS"
 log "scan_wall_ms=$((scan_end_ms - scan_start_ms)) scan_state=$state"
 log "$(probe_stats "$OUT/probe-seq.tsv" "seq")"
 log "$(probe_stats "$OUT/probe-conc.tsv" "conc-P$CONCURRENCY")"

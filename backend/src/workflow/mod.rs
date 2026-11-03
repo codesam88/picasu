@@ -141,8 +141,11 @@ pub async fn submit_index(src: &Path, job_id: u64) -> Result<()> {
 /// Each stage runs through the queue bridges in
 /// `tasks::queue::bridge`: short blocking I/O (open, dedup) on the Tokio
 /// blocking pool, CPU work (hash, index, video) on the shared Rayon pool
-/// behind the N-1 admittance semaphore.
+/// behind the N-1 admittance semaphore. Asset-table flushes go to the
+/// serial writer (`tasks::queue::writer`), never to detached batches.
 pub async fn process_file(path: PathBuf) -> Result<()> {
+    use crate::tasks::queue::writer::submit_flush_insert;
+
     let album_id_opt = match path.parent().and_then(get_album_id_for_dir) {
         Some(id) => Some(id),
         None => ensure_dir_albums(&path).await,
@@ -152,17 +155,28 @@ pub async fn process_file(path: PathBuf) -> Result<()> {
     let hash = stage_hash(file).await?;
 
     let abstract_data_opt = stage_dedup(path, hash, album_id_opt).await?;
-    let Some(mut abstract_data) = abstract_data_opt else {
+    let Some(abstract_data) = abstract_data_opt else {
         return Ok(());
     };
 
-    abstract_data = stage_index(abstract_data).await?;
-
-    if abstract_data.is_video() {
-        stage_video(abstract_data).await?;
+    let outcome = stage_index(abstract_data).await?;
+    let data = outcome.data;
+    if data.is_video() && outcome.result.is_ok() {
+        // Video files flush twice, as before: the pending record first, then
+        // the transcoded record from the video stage.
+        submit_flush_insert(vec![data.clone()])
+            .await
+            .map_err(|e| anyhow::anyhow!("writer submit failed: {e:#}"))?;
+        let (video_data, video_result) = stage_video(data).await?;
+        submit_flush_insert(vec![video_data])
+            .await
+            .map_err(|e| anyhow::anyhow!("writer submit failed: {e:#}"))?;
+        return video_result;
     }
-
-    Ok(())
+    submit_flush_insert(vec![data])
+        .await
+        .map_err(|e| anyhow::anyhow!("writer submit failed: {e:#}"))?;
+    outcome.result
 }
 
 /// Open stage: read the file handle on the blocking pool.
@@ -187,11 +201,17 @@ async fn stage_dedup(
 }
 
 /// Index stage: metadata pipeline plus thumbnail derivation on the Rayon pool.
-async fn stage_index(abstract_data: AbstractData) -> Result<AbstractData> {
-    run_cpu(move || index_task_match(abstract_data)).await
+/// Returns the processed record plus the pipeline result; the caller flushes
+/// the record through the serial writer either way.
+async fn stage_index(
+    abstract_data: AbstractData,
+) -> Result<crate::tasks::actor::index::IndexOutcome> {
+    run_cpu(move || Ok(index_task_match(abstract_data))).await
 }
 
-/// Video stage: compressed form for video assets on the Rayon pool.
-async fn stage_video(abstract_data: AbstractData) -> Result<()> {
-    run_cpu(move || video_task(abstract_data)).await
+/// Video stage: compressed form for video assets on the Rayon pool. Returns
+/// the updated record plus the transcode result; the caller flushes the
+/// record through the serial writer on success.
+async fn stage_video(abstract_data: AbstractData) -> Result<(AbstractData, Result<()>)> {
+    run_cpu(move || Ok(video_task(abstract_data))).await
 }
