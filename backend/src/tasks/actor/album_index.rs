@@ -17,8 +17,7 @@ use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
 use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::tasks::queue::writer::submit_flush_remove;
 use crate::tasks::runtime::spawn;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -279,11 +278,11 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         crate::tasks::queue::drain_intake(job_id).await;
         debug!("intake drained (job {job_id})");
 
-        // Drain the per-file FlushTreeTask inserts so the in-memory tree
-        // reflects all walk results before the sweep reads it.
-        debug!("BATCH flush_tree pre-sweep (job {job_id})");
+        // Barrier on the serial writer so the in-memory tree reflects
+        // all walk results before the sweep reads it.
+        debug!("writer barrier pre-sweep (job {job_id})");
         crate::tasks::queue::barrier_flush_tree().await;
-        debug!("BATCH flush_tree pre-sweep done (job {job_id})");
+        debug!("writer barrier pre-sweep done (job {job_id})");
 
         // Sweep stale asset paths: remove DB records whose asset file no
         // longer exists on disk under each target root.
@@ -292,22 +291,22 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
                 "sweeping stale asset paths under {} (job {job_id})",
                 scan_root.display()
             );
-            sweep_stale_asset_paths(scan_root);
+            sweep_stale_asset_paths(scan_root).await;
             debug!("stale asset path sweep done (job {job_id})");
         }
 
         // The users_home root itself must never carry an album record.
         if let Some(users_root) = get_resolved_users_home() {
-            prune_users_root_album(&users_root);
+            prune_users_root_album(&users_root).await;
         }
 
-        // Drain the sweep's detached remove/update batches, then
-        // UpdateTreeTask for album metadata.
-        debug!("BATCH flush_tree post-sweep (job {job_id})");
+        // Barrier on the sweep's writer ops, then on the tree rebuild
+        // for album metadata.
+        debug!("writer barrier post-sweep (job {job_id})");
         crate::tasks::queue::barrier_flush_tree().await;
-        debug!("BATCH update_tree (job {job_id})");
+        debug!("writer barrier update-tree (job {job_id})");
         crate::tasks::queue::barrier_update_tree().await;
-        debug!("BATCH drained (job {job_id})");
+        debug!("writer drained (job {job_id})");
 
         let state = if cancel.load(Ordering::SeqCst) {
             AlbumIndexState::Canceled
@@ -346,27 +345,18 @@ pub fn album_index_status() -> AlbumIndexStatus {
 
 /// Remove any album record whose directory is the `users_home` root itself.
 /// The root must never gain an album record; this prunes one if a prior
-/// (buggy or pre-existing) state created it.
-fn prune_users_root_album(users_root: &Path) {
-    use crate::process::dir_album;
-    use crate::storage::db::METADATA_TABLE;
+/// state created it. The DB writes run on the serial writer; the barrier
+/// that follows the sweep covers them.
+async fn prune_users_root_album(users_root: &Path) {
+    use crate::tasks::queue::writer::submit;
 
-    let users_root_str = users_root.to_string_lossy().to_string();
-    let Ok(Some(album_id)) = crate::storage::asset_store::get_asset_id_by_path(&users_root_str)
-    else {
-        return;
-    };
-
-    let _ = crate::storage::asset_store::remove_asset_by_id(album_id.as_str());
-    let _ = crate::storage::asset_store::remove_asset_by_path(&users_root_str);
-
-    if let Ok(txn) = TREE.in_disk.begin_write() {
-        if let Ok(mut table) = txn.open_table(METADATA_TABLE) {
-            let _ = table.remove(&*album_id);
-        }
-        let _ = txn.commit();
+    if let Err(err) = submit(crate::tasks::queue::writer::WriteOp::PruneUsersRoot(
+        users_root.to_path_buf(),
+    ))
+    .await
+    {
+        warn!("prune users-root album submit failed: {err:#}");
     }
-    dir_album::evict_dir_album(users_root);
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
@@ -482,8 +472,9 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 /// Sweep stale asset paths: for every DB record whose path is under
 /// `root`, check that file.  If it no longer exists on disk, prune the path;
 /// once the path is gone, remove the entire record (and its compressed
-/// thumbnail).
-fn sweep_stale_asset_paths(root: &Path) {
+/// thumbnail). Removals go through the serial writer; the post-sweep barrier
+/// covers them.
+async fn sweep_stale_asset_paths(root: &Path) {
     use crate::model::abstract_data::AbstractData;
     use crate::process::path::normalize_asset_path;
 
@@ -530,27 +521,23 @@ fn sweep_stale_asset_paths(root: &Path) {
             .collect()
     };
 
-    for (dir_path, album_id) in album_candidates {
-        if dir_path.exists() {
-            continue;
+    let stale_albums: Vec<_> = album_candidates
+        .into_iter()
+        .filter(|(dir_path, _)| !dir_path.exists())
+        .collect();
+    if !stale_albums.is_empty() {
+        use crate::tasks::queue::writer::{WriteOp, submit};
+
+        if let Err(err) = submit(WriteOp::SweepDirAlbums(stale_albums)).await {
+            warn!("sweep dir-album submit failed: {err:#}");
         }
-        // Remove from asset tables + metadata table.
-        let _ = crate::storage::asset_store::remove_asset_by_id(album_id.as_str());
-        let _ =
-            crate::storage::asset_store::remove_asset_by_path(dir_path.to_string_lossy().as_ref());
-        let write_txn = TREE.in_disk.begin_write();
-        if let Ok(txn) = write_txn {
-            if let Ok(mut table) = txn.open_table(crate::storage::db::METADATA_TABLE) {
-                let _ = table.remove(&*album_id);
-            }
-            let _ = txn.commit();
-        }
-        crate::process::dir_album::evict_dir_album(&dir_path);
     }
 
     if !to_remove.is_empty() {
         debug!("pruning {} stale record(s)", to_remove.len());
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(to_remove));
+        if let Err(err) = submit_flush_remove(to_remove).await {
+            warn!("sweep remove submit failed: {err:#}");
+        }
     }
 }
 
@@ -745,15 +732,9 @@ mod tests {
         let res = crate::workflow::index_image(&rel).await;
         assert!(res.is_err(), "index_image should fail");
 
-        // drain
-        let _ = crate::tasks::BATCH_COORDINATOR
-            .execute_batch_waiting(crate::tasks::batcher::flush_tree::FlushTreeTask::insert(
-                vec![],
-            ))
-            .await;
-        let _ = crate::tasks::BATCH_COORDINATOR
-            .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
-            .await;
+        // drain the writer: the placeholder flush plus its cascade must be
+        // visible before asserting.
+        crate::tasks::queue::barrier_update_tree().await;
 
         let tree = crate::storage::db::TREE
             .in_memory

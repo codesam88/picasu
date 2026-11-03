@@ -111,9 +111,8 @@ static INTAKE_NOTIFY: Notify = Notify::const_new();
 static SCHED: LazyLock<Mutex<SchedulerState>> =
     LazyLock::new(|| Mutex::new(SchedulerState::default()));
 
-/// Latest submitted generation per path. Supersedes the `IN_PROGRESS` set:
-/// instead of refusing a duplicate submit, a newer generation lets the older
-/// queued item be skipped at dequeue time.
+/// Latest submitted generation per path. A newer submit for the same path
+/// supersedes an older queued item, which is then skipped at dequeue time.
 static GENERATIONS: LazyLock<DashMap<PathBuf, u64>> = LazyLock::new(DashMap::new);
 
 /// Per-job submit/complete accounting backing [`super::worker::drain_intake`].

@@ -48,7 +48,6 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     flush_tables(insert_list, remove_list);
     BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
 }
-
 /// Write the insert/remove lists to the four asset tables (`ASSET_BY_ID`,
 /// `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`).
 ///
@@ -59,10 +58,11 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
 /// the input — never its identity fields.
 ///
 /// Does not dispatch [`UpdateTreeTask`]; `flush_tree_task` does that after
-/// the tables are written. Tests call this directly so no background tree
-/// rebuild races their assertions.
+/// the tables are written. The serial writer (`tasks::queue::writer`) calls
+/// this directly and runs its own inline cascade instead. Tests call this
+/// directly so no background tree rebuild races their assertions.
 #[allow(clippy::too_many_lines)]
-fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
+pub(crate) fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     use crate::model::metadata_record::to_metadata_record;
     use crate::process::hash::generate_random_hash;
     use crate::storage::asset_store;

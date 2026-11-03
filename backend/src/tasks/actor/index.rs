@@ -1,41 +1,43 @@
-use anyhow::Context;
-use anyhow::Result;
 use anyhow::anyhow;
 use log::{debug, error, warn};
 
-use crate::{
-    model::abstract_data::AbstractData,
-    process::index::process_media_info,
-    tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
-};
+use crate::{model::abstract_data::AbstractData, process::index::process_media_info};
 
-pub(crate) fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
-    let hash = abstract_data.hash();
-    match index_task(abstract_data) {
-        Ok(data) => {
-            debug!("indexed {hash}");
-            Ok(data)
-        }
-        Err(e) => {
-            error!("indexing failed {hash}: {e:#}");
-            Err(e)
-        }
-    }
+/// The outcome of the index stage: the processed record plus the pipeline
+/// result. The caller flushes `data` through the serial writer in both cases
+/// — on failure the record is an error-marked placeholder (`pending`) that
+/// must still be visible — and then returns `result` to the caller.
+pub(crate) struct IndexOutcome {
+    pub data: AbstractData,
+    pub result: anyhow::Result<()>,
 }
 
-fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
+pub(crate) fn index_task_match(abstract_data: AbstractData) -> IndexOutcome {
+    let hash = abstract_data.hash();
+    let outcome = index_task(abstract_data);
+    match outcome.result {
+        Ok(()) => debug!("indexed {hash}"),
+        Err(ref e) => error!("indexing failed {hash}: {e:#}"),
+    }
+    outcome
+}
+
+fn index_task(mut abstract_data: AbstractData) -> IndexOutcome {
     let hash = abstract_data.hash();
     // Path-primary records hold a single file entry.
-    let path = abstract_data
-        .path()
-        .map(|entry| entry.file.clone())
-        .ok_or_else(|| anyhow!("record has no path for hash: {hash}"))?;
+    let Some(path) = abstract_data.path().map(|entry| entry.file.clone()) else {
+        return IndexOutcome {
+            data: abstract_data,
+            result: Err(anyhow!("record has no path for hash: {hash}")),
+        };
+    };
 
     if !matches!(abstract_data.ext_type(), "image" | "video") {
-        return Err(anyhow!(
-            "unsupported file type: {}",
-            abstract_data.ext_type()
-        ));
+        let ext = abstract_data.ext_type().to_string();
+        return IndexOutcome {
+            data: abstract_data,
+            result: Err(anyhow!("unsupported file type: {ext}")),
+        };
     }
 
     debug!("indexing {} {hash}: {path}", abstract_data.ext_type());
@@ -59,20 +61,23 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
             path
         );
         abstract_data.set_pending(true);
-        BATCH_COORDINATOR
-            .execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
-        return Err(e).context(format!(
-            "failed to process {} metadata pipeline. Hash: {}, Path: {}",
+        let err = anyhow!(
+            "failed to process {} metadata pipeline. Hash: {}, Path: {}: {e:#}",
             abstract_data.ext_type(),
             abstract_data.hash(),
             path
-        ));
+        );
+        return IndexOutcome {
+            data: abstract_data,
+            result: Err(err),
+        };
     }
     if !is_image {
         abstract_data.set_pending(true);
     }
 
-    BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
-
-    Ok(abstract_data)
+    IndexOutcome {
+        data: abstract_data,
+        result: Ok(()),
+    }
 }

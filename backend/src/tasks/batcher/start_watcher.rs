@@ -4,8 +4,6 @@ use crate::model::media::{MediaOutcome, classify_media_file, is_valid_media_file
 use crate::storage::db::TREE;
 use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::queue::{submit_watcher_index, submit_watcher_remove};
 use crate::tasks::runtime::spawn;
 use anyhow::Result;
@@ -172,7 +170,20 @@ fn submit_removal_to_watcher(path: PathBuf) {
     });
 }
 
-pub(crate) fn handle_removed_file(removed: &Path) {
+/// What a watcher-observed removal resolves to. The caller submits the
+/// record to the serial writer; this function performs no DB writes itself
+/// so the writer stays the sole background `TREE` write path.
+pub(crate) enum RemovalAction {
+    /// The record keeps a path (multi-file asset lost one file): re-insert.
+    Insert(AbstractData),
+    /// The record lost its last path: remove the record.
+    Remove(AbstractData),
+}
+
+/// Handle an external file removal: find the DB record that owns `path`,
+/// clear the record's path, and report whether the record (and its
+/// thumbnail) survives or must be removed.
+pub(crate) fn handle_removed_file(removed: &Path) -> Option<RemovalAction> {
     use crate::process::path::prune_asset_path;
 
     // Scan in-memory tree to find the record that owns this path.
@@ -190,7 +201,7 @@ pub(crate) fn handle_removed_file(removed: &Path) {
     };
 
     let Some(mut abstract_data) = matching else {
-        return; // Unknown file, nothing to do.
+        return None; // Unknown file, nothing to do.
     };
 
     // prune_asset_path removes the file (already gone — harmless NotFound),
@@ -199,9 +210,9 @@ pub(crate) fn handle_removed_file(removed: &Path) {
     let has_path = prune_asset_path(&mut abstract_data, removed);
 
     if has_path {
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+        Some(RemovalAction::Insert(abstract_data))
     } else {
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(vec![abstract_data]));
+        Some(RemovalAction::Remove(abstract_data))
     }
 }
 

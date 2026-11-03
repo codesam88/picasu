@@ -6,12 +6,17 @@ use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
-static RESET_SENDER: LazyLock<Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSender<()>>>>> =
+/// Bound for the expire-timer reset signal. Resets coalesce: a full inbox
+/// means a reset is already queued, so `try_send` dropping an extra one
+/// loses nothing.
+const RESET_CAPACITY: usize = 16;
+
+static RESET_SENDER: LazyLock<Arc<tokio::sync::Mutex<Option<mpsc::Sender<()>>>>> =
     LazyLock::new(|| Arc::new(tokio::sync::Mutex::new(None)));
 
 pub fn start_expire_check_loop() {
     spawn(async {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::channel(RESET_CAPACITY);
 
         // Store the sender for external reset usage
         {
@@ -44,6 +49,6 @@ pub fn start_expire_check_loop() {
 // Provide a function to reset the countdown timer
 pub async fn reset_expire_check_timer() {
     if let Some(sender) = RESET_SENDER.lock().await.as_ref() {
-        let _ = sender.send(());
+        let _ = sender.try_send(());
     }
 }

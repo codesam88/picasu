@@ -15,7 +15,7 @@ impl BatchTask for FlushTreeSnapshotTask {
     }
 }
 
-fn flush_tree_snapshot_task() {
+pub(crate) fn flush_tree_snapshot_task() {
     loop {
         if TREE_SNAPSHOT.in_memory.is_empty() {
             break;

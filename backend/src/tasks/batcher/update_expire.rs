@@ -10,12 +10,19 @@ use std::time::Duration;
 pub struct UpdateExpireTask;
 
 impl BatchTask for UpdateExpireTask {
-    async fn batch_run(_: Vec<Self>) {
-        update_expire_task();
+    fn batch_run(_: Vec<Self>) -> impl std::future::Future<Output = ()> + Send {
+        if update_expire_task() {
+            BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
+        }
+        std::future::ready(())
     }
 }
 
-fn update_expire_task() {
+/// Refresh the expiry bookkeeping timestamp. Returns whether an expiry sweep
+/// is due: the `BatchTask` path cascades to [`ExpireCheckTask`] through
+/// [`BATCH_COORDINATOR`] in that case, while the serial writer
+/// (`tasks::queue::writer`) runs its own inline sweep instead.
+pub(crate) fn update_expire_task() -> bool {
     let current_timestamp = Utc::now().timestamp_millis();
     let last_timestamp = VERSION_COUNT_TIMESTAMP.swap(current_timestamp, Ordering::SeqCst);
 
@@ -49,6 +56,8 @@ fn update_expire_task() {
         expire_write_txn
             .commit()
             .expect("failed to commit transaction");
-        BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
+        true
+    } else {
+        false
     }
 }

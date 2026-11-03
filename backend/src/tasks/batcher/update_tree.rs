@@ -33,6 +33,16 @@ impl BatchTask for UpdateTreeTask {
 }
 
 fn update_tree_task() {
+    refresh_tree_cache();
+
+    BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
+}
+
+/// Rebuild the in-memory tree from the asset tables and bump the version
+/// counter so query caches invalidate. No cascade: the `BatchTask` path
+/// cascades through [`BATCH_COORDINATOR`], while the serial writer
+/// (`tasks::queue::writer`) runs its own inline cascade after calling this.
+pub(crate) fn refresh_tree_cache() {
     let start_time = Instant::now();
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
@@ -56,8 +66,6 @@ fn update_tree_task() {
     // invalidated before the next prefetch call.
     let current_timestamp = Utc::now().timestamp_millis();
     VERSION_COUNT_TIMESTAMP.store(current_timestamp, std::sync::atomic::Ordering::SeqCst);
-
-    BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
     let duration = format!("{:?}", start_time.elapsed());
     debug!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
