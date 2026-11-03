@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: perf
 priority: medium
 area: backend
@@ -391,9 +391,9 @@ Raw: `/tmp/opencode/worker-pool-rework/bench-mid-*/`,
 `out-mid/`, `complexity-mid.clippy-cognitive.txt`. Writer-presence
 verified (16 `BATCH_COORDINATOR` hits, `FlushTreeTask` impl present,
 `INDEX_COORDINATOR` zero hits), so the delta is intake/queue only.
-Pool log lines still print the stale `tokio 4x3/8x3` text — post
-slice 1 the process runs a single runtime (1×N workers); thread
-counts observed: srv-threads 10 (N4) / 18 (N8), down from 21/37.
+Harness pool log lines were updated in Step 9 to print the single
+runtime (1×N workers); thread counts observed: srv-threads 10 (N4) /
+18 (N8), down from 21/37.
 
 | N   | count | bytes    | scan wall | probe seq mean  | probe conc mean   | hyperfine compressed | hyperfine prefetch |
 | --- | ----- | -------- | --------- | --------------- | ----------------- | -------------------- | ------------------ |
