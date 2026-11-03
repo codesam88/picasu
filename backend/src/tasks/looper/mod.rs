@@ -1,5 +1,5 @@
 use crate::constant::SNAPSHOT_MAX_LIFETIME_MS;
-use crate::tasks::runtime::INDEX_RUNTIME;
+use crate::tasks::runtime::spawn;
 
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::expire_check::ExpireCheckTask;
@@ -11,7 +11,7 @@ static RESET_SENDER: LazyLock<Arc<tokio::sync::Mutex<Option<mpsc::UnboundedSende
     LazyLock::new(|| Arc::new(tokio::sync::Mutex::new(None)));
 
 pub fn start_expire_check_loop() {
-    INDEX_RUNTIME.spawn(async {
+    spawn(async {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         // Store the sender for external reset usage

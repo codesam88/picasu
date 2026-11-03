@@ -1,4 +1,4 @@
-use crate::tasks::runtime::{BATCH_RUNTIME, INDEX_RUNTIME};
+use crate::tasks::runtime::RUNTIME;
 use mini_executor::TaskExecutor;
 use std::sync::LazyLock;
 
@@ -8,7 +8,7 @@ pub mod looper;
 pub mod runtime;
 
 pub static INDEX_COORDINATOR: LazyLock<TaskExecutor> =
-    LazyLock::new(|| TaskExecutor::new(&INDEX_RUNTIME));
+    LazyLock::new(|| TaskExecutor::new(&RUNTIME));
 
 pub static BATCH_COORDINATOR: LazyLock<TaskExecutor> =
-    LazyLock::new(|| TaskExecutor::new(&BATCH_RUNTIME));
+    LazyLock::new(|| TaskExecutor::new(&RUNTIME));

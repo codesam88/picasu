@@ -21,7 +21,7 @@ use crate::storage::files::get_resolved_users_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::runtime::INDEX_RUNTIME;
+use crate::tasks::runtime::spawn;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -181,7 +181,7 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
     }
 
     let scan_roots_clone = scan_roots.clone();
-    INDEX_RUNTIME.spawn(async move {
+    spawn(async move {
         info!(
             "Starting one-time album index: {} root(s)",
             scan_roots_clone.len()

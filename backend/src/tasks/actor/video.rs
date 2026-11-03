@@ -2,13 +2,11 @@ use crate::{
     error::handle_error,
     model::abstract_data::AbstractData,
     process::video::generate_compressed_video,
-    tasks::runtime::WORKER_RAYON_POOL,
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::{Context, Result};
 use log::debug;
 use mini_executor::Task;
-use tokio_rayon::AsyncThreadPool;
 
 pub struct VideoTask {
     abstract_data: AbstractData,
@@ -24,8 +22,7 @@ impl Task for VideoTask {
     type Output = Result<()>;
 
     async fn run(self) -> Self::Output {
-        WORKER_RAYON_POOL
-            .spawn_async(move || video_task(self.abstract_data))
+        tokio_rayon::spawn(move || video_task(self.abstract_data))
             .await
             .map_err(|err| handle_error(err.context("Failed to run video task")))
     }

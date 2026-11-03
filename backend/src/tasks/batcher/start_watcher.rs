@@ -7,7 +7,7 @@ use crate::storage::files::get_resolved_users_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::runtime::INDEX_RUNTIME;
+use crate::tasks::runtime::spawn;
 use anyhow::Result;
 use log::{error, info, warn};
 use mini_executor::BatchTask;
@@ -124,8 +124,8 @@ fn submit_to_debounce_pool(path: PathBuf) {
         pool.insert(path.clone(), now);
     }
 
-    // Start a task to check after 1 second (running on INDEX_RUNTIME)
-    INDEX_RUNTIME.spawn(async move {
+    // Start a task to check after 1 second (running on the shared runtime)
+    spawn(async move {
         sleep(Duration::from_secs(1)).await;
 
         // Check if there are any events for the same path within this 1 second (i.e., whether the last time is still now)
@@ -165,7 +165,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
 /// clear the record's path, and if no path remains remove the
 /// record + thumbnail.
 fn submit_removal_to_watcher(path: PathBuf) {
-    INDEX_RUNTIME.spawn(async move {
+    spawn(async move {
         if let Err(e) = tokio::task::spawn_blocking(move || handle_removed_file(&path)).await {
             warn!("Join error in removal handler: {e}");
         }
