@@ -12,27 +12,9 @@ use crate::tasks::{
 };
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
-use dashmap::DashSet;
 use log::warn;
 use path_clean::PathClean;
-use std::{path::Path, sync::LazyLock};
-
-static IN_PROGRESS: LazyLock<DashSet<String>> = LazyLock::new(DashSet::new);
-
-pub struct ProcessingGuard(String);
-impl Drop for ProcessingGuard {
-    fn drop(&mut self) {
-        IN_PROGRESS.remove(&self.0);
-    }
-}
-
-fn try_acquire(path_key: String) -> Option<ProcessingGuard> {
-    if IN_PROGRESS.insert(path_key.clone()) {
-        Some(ProcessingGuard(path_key))
-    } else {
-        None
-    }
-}
+use std::{fs::File, path::Path, path::PathBuf};
 
 /// Ensure directory albums exist for every directory level between the
 /// configured image root and the file's parent, returning the deepest one
@@ -112,10 +94,21 @@ pub fn index_media_file(
 /// `src` — path relative to `IMAGE_HOME`. The album is resolved from `src`'s
 /// parent directory.
 ///
+/// Direct (inline) entry point for request-path and watcher callers. The
+/// walk-driven scan instead enqueues via [`submit_index`] and lets intake
+/// workers run [`process_file`].
+///
 /// If the content hash is already known, the file still gets its own
 /// path-primary record — records are never merged. Duplicate content is
 /// grouped via `DUPE_INDEX` only.
 pub async fn index_image(src: &Path) -> Result<()> {
+    let path = resolve_index_path(src)?;
+    process_file(path).await
+}
+
+/// Resolve `src` (relative to `IMAGE_HOME`, or absolute) to a cleaned
+/// absolute path under one of the configured roots.
+fn resolve_index_path(src: &Path) -> Result<PathBuf> {
     let path = if src.is_absolute() {
         src.to_path_buf()
     } else {
@@ -132,46 +125,81 @@ pub async fn index_image(src: &Path) -> Result<()> {
         return Err(anyhow::anyhow!("path outside configured roots"));
     }
 
-    let already_known_album_id = path.parent().and_then(get_album_id_for_dir);
-    let resolved_dir_album_id = match already_known_album_id {
+    Ok(path)
+}
+
+/// Enqueue `src` for background indexing under scan job `job_id`.
+///
+/// Resolution stays identical to [`index_image`]; per-path coalescing and
+/// the per-job completion barrier live in the intake.
+pub async fn submit_index(src: &Path, job_id: u64) -> Result<()> {
+    let path = resolve_index_path(src)?;
+    crate::tasks::queue::submit_scan(path, job_id).await
+}
+
+/// Index one already-resolved file: Open → Hash → Dedup → Index → Video.
+///
+/// Each stage runs through the `INDEX_COORDINATOR` hops, which stay the
+/// execution backend in this slice; only the per-file `tokio::spawn`
+/// fan-out moved into the intake worker pool.
+pub async fn process_file(path: PathBuf) -> Result<()> {
+    let album_id_opt = match path.parent().and_then(get_album_id_for_dir) {
         Some(id) => Some(id),
         None => ensure_dir_albums(&path).await,
     };
-    let album_id_opt = resolved_dir_album_id;
 
-    let file = INDEX_COORDINATOR
-        .execute_waiting(OpenFileTask::new(path.clone()))
-        .await??;
+    let file = stage_open(&path).await?;
+    let hash = stage_hash(file).await?;
 
-    let hash = INDEX_COORDINATOR
-        .execute_waiting(HashTask::new(file))
-        .await??;
-
-    let Some(_guard) = try_acquire(path.to_string_lossy().into_owned()) else {
-        warn!(
-            "Processing already in progress for path: {}",
-            path.display()
-        );
-        return Ok(());
-    };
-
-    let abstract_data_opt = INDEX_COORDINATOR
-        .execute_waiting(DeduplicateTask::new(path.clone(), hash, album_id_opt))
-        .await??;
-
+    let abstract_data_opt = stage_dedup(path, hash, album_id_opt).await?;
     let Some(mut abstract_data) = abstract_data_opt else {
         return Ok(());
     };
 
-    abstract_data = INDEX_COORDINATOR
-        .execute_waiting(IndexTask::new(abstract_data))
-        .await??;
+    abstract_data = stage_index(abstract_data).await?;
 
     if abstract_data.is_video() {
-        INDEX_COORDINATOR
-            .execute_waiting(VideoTask::new(abstract_data))
-            .await??;
+        stage_video(abstract_data).await?;
     }
 
     Ok(())
+}
+
+/// Open stage: read the file handle off the blocking pool.
+async fn stage_open(path: &Path) -> Result<File> {
+    INDEX_COORDINATOR
+        .execute_waiting(OpenFileTask::new(path.to_path_buf()))
+        .await?
+}
+
+/// Hash stage: content-hash the open file.
+async fn stage_hash(file: File) -> Result<ArrayString<64>> {
+    INDEX_COORDINATOR
+        .execute_waiting(HashTask::new(file))
+        .await?
+}
+
+/// Dedup stage: build the path-primary record for this file.
+async fn stage_dedup(
+    path: PathBuf,
+    hash: ArrayString<64>,
+    album_id_opt: Option<ArrayString<64>>,
+) -> Result<Option<AbstractData>> {
+    INDEX_COORDINATOR
+        .execute_waiting(DeduplicateTask::new(path, hash, album_id_opt))
+        .await?
+}
+
+/// Index stage: metadata pipeline plus thumbnail derivation.
+async fn stage_index(abstract_data: AbstractData) -> Result<AbstractData> {
+    INDEX_COORDINATOR
+        .execute_waiting(IndexTask::new(abstract_data))
+        .await?
+}
+
+/// Video stage: compressed form for video assets.
+async fn stage_video(abstract_data: AbstractData) -> Result<()> {
+    INDEX_COORDINATOR
+        .execute_waiting(VideoTask::new(abstract_data))
+        .await?
 }

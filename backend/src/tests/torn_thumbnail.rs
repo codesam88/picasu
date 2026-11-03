@@ -91,12 +91,12 @@ fn thumbnail_signature(path: &Path) -> Option<(std::time::SystemTime, u64)> {
 /// the round to have produced one complete thumbnail for the readers to race
 /// against.
 ///
-/// `GET /get/index/status` settles on `completed` only after every per-file
-/// handle of the job has been joined, and a handle holds its file's
-/// `ProcessingGuard` until `index_image` returns — so `completed` implies the
-/// write finished. A signature-based wait could not say that: it observed the
-/// filesystem, where a finished write looks identical to a write still in
-/// flight.
+/// `GET /get/index/status` settles on `completed` only after the intake
+/// drain barrier has observed every queued item of the job, and an item
+/// completes the barrier only after `process_file` returns — so
+/// `completed` implies the write finished. A signature-based wait could
+/// not say that: it observed the filesystem, where a finished write
+/// looks identical to a write still in flight.
 ///
 /// Both the signature and the bytes are still checked, because the assertion's
 /// purpose is that the round provably rewrote the file. Completeness has to be
