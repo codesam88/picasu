@@ -9,9 +9,9 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::queue::submit_interactive_album_detached;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, Serialize, json::Json};
@@ -167,7 +167,9 @@ pub async fn edit_flags(
     // After memory update, trigger album self-update
     if !affected_album_ids.is_empty() {
         for album_id in affected_album_ids {
-            BATCH_COORDINATOR.execute_detached(AlbumSelfUpdateTask::new(album_id));
+            if let Err(e) = submit_interactive_album_detached(album_id).await {
+                log::warn!("detached album self-update submit failed: {e:#}");
+            }
         }
     }
 

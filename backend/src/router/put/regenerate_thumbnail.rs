@@ -10,7 +10,7 @@ use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
-use crate::tasks::INDEX_COORDINATOR;
+use crate::tasks::BATCH_COORDINATOR;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use log::info;
@@ -169,7 +169,7 @@ pub async fn regenerate_thumbnail_with_frame(
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to spawn blocking task"))??;
 
-    INDEX_COORDINATOR
+    BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![abstract_data]))
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to execute FlushTreeTask"))?;

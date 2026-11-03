@@ -1,4 +1,3 @@
-use crate::error::handle_error;
 use crate::model::abstract_data::AbstractData;
 use crate::model::asset::AssetRecord;
 use crate::model::metadata_record::{MetadataRecord, compose_abstract_data, to_metadata_record};
@@ -9,31 +8,8 @@ use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use log::debug;
-use mini_executor::Task;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use redb::ReadableTable;
-use tokio::task::spawn_blocking;
-
-pub struct AlbumSelfUpdateTask {
-    album_id: ArrayString<64>,
-}
-
-impl AlbumSelfUpdateTask {
-    pub fn new(album_id: ArrayString<64>) -> Self {
-        Self { album_id }
-    }
-}
-
-impl Task for AlbumSelfUpdateTask {
-    type Output = Result<()>;
-
-    async fn run(self) -> Self::Output {
-        spawn_blocking(move || album_task(self.album_id))
-            .await
-            .expect("blocking task panicked")
-            .map_err(|err| handle_error(err.context("Failed to run album task")))
-    }
-}
 
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
     debug!("Perform album self-update");
