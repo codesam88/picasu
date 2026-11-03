@@ -210,8 +210,18 @@ cancellation (cancel queued, finish running chunk).
   remove, so slice 3 would blow up). Slice 3 serializes background
   flush + in-memory rebuild only; the request path keeps direct
   writes (redb single-writer blocking unchanged there). Request-path
-  migration is a separate follow-up plan item. Slice 3 Done-criteria
-  hold on background paths only.
+  migration is a separate follow-up plan item
+  (`.plan/write-load-probe.md`, opened 2026-11-04). Slice 3
+  Done-criteria hold on background paths only. Rationale, recorded
+  2026-11-04: the single writer was built for ordering/exactness
+  (provable flush→sweep→flush→drain, no interleaved write txns,
+  exact barriers), not to speed up request-path edits — those
+  bypass the writer in both eras, and the edit's own cost
+  (sidecar fsync, `commit_metadata`, tree rebuild) dominates the
+  redb txn either way. Measured: N=8 edit latency flat across eras
+  (14–32 ms during scan, 10–22 ms idle). The writer's payoff is
+  structural, visible in worst-case columns (N=4 write stall),
+  not in medians.
 - (4) Writer ack: generation barrier (monotonic seq, wait-for-`<=`).
   Pro: batch-friendly, serves scan-done, sweep, multi-message drains.
   Con: bookkeeping, possible over-wait on coarse seq — and the barrier
@@ -411,29 +421,77 @@ cognitive 338→382, functions 100→136 (new `tasks/queue/*`: 5 files,
 847 sloc; deletions land in slice 3); clippy cognitive still 2
 warnings, both outside scope.
 
-### After perf (Step 8, slices 1–3 landed, writer serializes background)
+### After perf (Step 8 — debug era retired)
 
-Raw: `/tmp/opencode/worker-pool-rework/bench-after-*/`,
-`out-after/`, `complexity-after.clippy-cognitive.txt`. Same harness,
-same manifest shape (jpg 4000x3000 + exif/tags), random per-run
-bytes — compare per-MB, not wall seconds.
+Debug-era cells (`bench-{baseline,mid,after,after2}-*`: single runs
+on random per-run sets, mixed harness generations) are retired as a
+comparison basis — run-to-run variance within one condition
+exceeds any base-vs-after gap for every probe metric, so they
+cannot support a per-metric verdict. Raw logs stay under
+`/tmp/opencode/worker-pool-rework/`; the table below is kept as
+historical context only, not evidence. The release head-to-head
+is the reference comparison.
 
-| N   | count | bytes    | scan wall  | per-MB | probe seq mean  | probe conc mean   | hyperfine compressed | hyperfine prefetch |
-| --- | ----- | -------- | ---------- | ------ | --------------- | ----------------- | -------------------- | ------------------ |
-| 4   | 100   | 46690163 | 421s base  | 9.0    | 0.0030s (n=99)  | 0.0046s P4 (n=99) | 0.00928s             | 0.00831s           |
-| 4   | 100   | 57198822 | 554s mid   | 9.7    | 0.0051s (n=100) | 0.0114s P4 (n100) | 0.00982s             | 0.00857s           |
-| 4   | 100   | 67539241 | 553s after | 8.2    | 0.0054s (n=100) | 0.0083s P4 (n100) | 0.02131s             | 0.01474s           |
-| 8   | 100   | 62329256 | 228s base  | 3.7    | 0.0042s (n=99)  | 0.0108s P8 (n=99) | 0.01544s             | 0.01368s           |
-| 8   | 100   | 55873217 | 247s mid   | 4.4    | 0.0044s (n=99)  | 0.0101s P8 (n=99) | 0.01628s             | 0.01472s           |
-| 8   | 100   | 50578966 | 245s after | 4.8    | 0.0050s (n=100) | 0.0108s P8 (n100) | 0.01763s             | 0.01406s           |
+| benchmark       | cpu | images | MB   | scan_time | s/MB | scan_fetch | scan_thumb | scan_edit | post_thumb | post_fetch | post_edit |
+| --------------- | --- | ------ | ---- | --------- | ---- | ---------- | ---------- | --------- | ---------- | ---------- | --------- |
+| baseline-N8-100 | 8   | 100    | 62.3 | 228       | 3.7  | n/a        | 4.2        | n/a       | 15.4       | 13.7       | n/a       |
+| mid-N8-100      | 8   | 100    | 55.9 | 247       | 4.4  | n/a        | 4.4        | n/a       | 16.3       | 14.7       | n/a       |
+| after-N8-100    | 8   | 100    | 50.6 | 245       | 4.9  | n/a        | 5.0        | n/a       | 17.6       | 14.1       | n/a       |
+| after2-N8-100   | 8   | 100    | 56.7 | 248       | 4.4  | 29.4       | 5.4        | 60.0      | 15.6       | 13.7       | 57.0      |
 
-Scan throughput flat within set variance (N4 9.0→8.2 s/MB, N8
-3.7→4.8 s/MB — random-set bytes dominate; all cells `completed`,
-`failed=0`). Fetch/hyperfine flat within noise. The measured win is
-structural, not throughput: server threads observed 21→10 (N4) and
-37→18 (N8), runtimes 3→1, rayon pools 2→1 (N-1), `Task` impls 7→0,
-`INDEX_COORDINATOR` gone, zero unbounded `mpsc` call sites. 1000-cell
-full completion remains a long-timeout rerun (Step 3 finding stands).
+after2 details (N8 reference cell; N4 retired with the rows above):
+median over runs [248,249] (N8) — repeatability ±0.1%. Pooling all
+rounds changed the story the last-round numbers told. Scan
+throughput flat within set variance across eras (per-MB N8 3.7–4.4
+on random sets). Re-scan runs count scanned=101 vs 100 (one extra
+file walked on repeat, likely the write-probe sidecar;
+matched/processed stay 100/100, failed=0). The measured win
+remains structural, not throughput: server threads 37→18 (N8),
+runtimes 3→1, rayon pools 2→1 (N-1), `Task` impls 7→0,
+`INDEX_COORDINATOR` gone, zero unbounded `mpsc` call sites.
+1000-cell full completion remains a long-timeout rerun (Step 3
+finding stands). The release head-to-head below is the current
+reference comparison.
+
+### Release head-to-head (base vs after, canonical set-100, new harness)
+
+`bench-cmp-{base,after}-N8-100-rel-r{1,2}`: same 56.7 MB set, same
+harness (per-round hyperfine + random fetch + write probe,
+`SCAN_REPEATS=2`), release profile, N=8. Base = pre-rework
+(`977932b6`, 3 runtimes + per-file spawn fan-out, 36 server
+threads); after = slices 1–3 + split writer + barrier fix (single
+runtime, 17 server threads). Medians reported.
+
+| benchmark                                                                                                                                       | scan_time | s/MB | scan_fetch | scan_fetch_worst | scan_thumb | scan_edit | scan_edit_worst | post_thumb | post_fetch | post_edit |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- | ---------- | ---------------- | ---------- | --------- | --------------- | ---------- | ---------- | --------- |
+| base-N8-r1                                                                                                                                      | 8.4       | 0.15 | 19.4       | 25.3             | 4.5        | 19.8      | 45.9            | 13.4       | 11.6       | 21.7      |
+| base-N8-r2                                                                                                                                      | 8.6       | 0.15 | 17.0       | 32.3             | 4.3        | 17.9      | 23.6            | 7.7        | 7.1        | 10.4      |
+| after-N8-r1                                                                                                                                     | 9.3       | 0.16 | 13.7       | 447.3            | 2.0        | 14.9      | 38.0            | 12.8       | 11.6       | 17.3      |
+| after-N8-r2                                                                                                                                     | 9.2       | 0.16 | 20.3       | 54.7             | 5.7        | 31.9      | 578.4           | 13.0       | 11.6       | 16.6      |
+| units: scan_time s; s/MB s per MB; all latency columns ms; hyperfine-derived columns are medians-of-round-medians; worst_* = worst single round |
+
+Scan wall is the only median that separates the eras: after is
+~8% slower (9.2–9.3 s vs 8.4–8.6 s, within-condition spreads
+0.1–0.2 s, gap +0.6 s). Every pooled-median probe metric
+overlaps: scan_fetch within-spreads 2.4/6.6 ms vs gap −5.7 ms,
+scan_thumb 0.2/3.7 vs −2.5 ms, scan_edit 1.9/17.0 vs −4.9 ms,
+post_thumb base spread 5.7 ms alone exceeds any gap. The worst
+rounds tell a different, noisier story: after shows the largest
+single-round stalls (fetch 447 ms, edit 578 ms) where base tops
+out at 32–46 ms — but with 7–10 rounds per cell and n=3
+hyperfine each, one stalled round moves the worst column a lot
+while the median barely notices. So the honest verdict is two
+part: (a) steady-state latency is unchanged in either direction;
+(b) the after tree has (so far) the only multi-hundred-ms
+during-scan stalls, 2 events in 14 rounds vs 0 in 20 base
+rounds — too rare to call systematic, too one-sided to ignore.
+That tail is exactly what the write-load-probe follow-up is
+designed to chase with a forced write burst. At N=8 that is ~0.7 s
+per 100 large images scan cost — the trade for no unbounded
+fan-out, one runtime, and exact barriers. During-scan numbers
+pool all rounds (10/10/7/7 rounds, 98/98/67/64 fetches).
+Post-scan baselines are comparable across the board (compr 8–14,
+prefetch 7–12, edit 10–22 ms).
 
 ### After complexity (Step 8)
 
