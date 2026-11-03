@@ -2,7 +2,6 @@
 #[macro_use]
 extern crate rocket;
 use redb::{ReadableTable, ReadableTableMetadata};
-use std::thread;
 use std::time::Instant;
 
 pub mod auth;
@@ -37,7 +36,7 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
-use crate::tasks::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
+use crate::tasks::runtime::{CURRENT_NUM_THREADS, RUNTIME};
 use model::metadata_record::MetadataRecord;
 
 /// Pure boot-freshness predicate: launching is allowed unless the bootstrap
@@ -81,7 +80,9 @@ pub(crate) fn bootstrap_boot_gate() -> anyhow::Result<()> {
 
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
-    use tokio::signal::unix::{SignalKind, signal};
+    // Size the process thread budget before any other subsystem can touch
+    // rayon (see CURRENT_NUM_THREADS for the ordering requirement).
+    let _ = *CURRENT_NUM_THREADS;
 
     // Initialize logger first thing
     initialize_logger();
@@ -109,95 +110,84 @@ pub fn run() {
     #[cfg(not(feature = "embed-frontend"))]
     info!("Frontend Configuration: EXTERNAL (Loading from file system)");
 
-    // Architecture: Isolate the Indexing/TUI runtime from the Rocket server runtime.
-
-    // This prevents heavy blocking operations in the indexer from stalling web requests.
-    let worker_handle = thread::spawn(move || {
-        INDEX_RUNTIME.block_on(async {
-            let start_time = Instant::now();
-            let txn = TREE
-                .in_disk
-                .begin_write()
-                .expect("failed to begin write transaction");
-
-            {
-                let table = txn
-                    .open_table(METADATA_TABLE)
-                    .expect("failed to open table");
-                let total_count = table.len().expect("failed to get length");
-
-                // Constraint: METADATA_TABLE stores mixed types (Albums and Media).
-                // We must perform an O(N) scan to differentiate counts.
-                let album_count = table
-                    .iter()
-                    .expect("failed to iterate table")
-                    .filter_map(std::result::Result::ok)
-                    .filter(|(_, guard)| matches!(guard.value(), MetadataRecord::Album(_)))
-                    .count();
-
-                let media_count = usize::try_from(total_count).unwrap_or(0) - album_count;
-
-                info!(
-                    duration = &*format!("{:?}", start_time.elapsed());
-                    "Read {} photos/videos and {} albums from database.",
-                    media_count, album_count
-                );
+    // Architecture: one Tokio runtime serves both Rocket requests and
+    // background orchestration; a single signal path shuts both down.
+    RUNTIME.block_on(async {
+        // Start serving while the database summary below is computed.
+        let rocket_handle = RUNTIME.spawn(async {
+            info!("Rocket starting.");
+            if let Err(err) = serve_rocket().await {
+                error!("Rocket exited with an error: {}", err);
             }
-
-            txn.commit().expect("failed to commit transaction");
-
-            BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
-            BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
-            start_expire_check_loop();
-
-            {
-                let mut sigint =
-                    signal(SignalKind::interrupt()).expect("failed to set SIGINT handler");
-                let mut sigterm =
-                    signal(SignalKind::terminate()).expect("failed to set SIGTERM handler");
-                tokio::select! {
-                    _ = sigint.recv() => info!("SIGINT received, worker shutting down."),
-                    _ = sigterm.recv() => info!("SIGTERM received, worker shutting down."),
-                }
-            }
-            info!("Worker thread shutting down.");
         });
-    });
 
-    let rocket_handle = thread::spawn(|| {
-        info!("Rocket thread starting.");
-        if let Err(e) = ROCKET_RUNTIME.block_on(async {
-            let rocket = router::build_rocket().ignite().await?;
-            #[cfg(feature = "auto-open-browser")]
-            let port = rocket.config().port;
-            let shutdown_handle = rocket.shutdown();
+        let start_time = Instant::now();
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .expect("failed to begin write transaction");
 
-            // Manually handle SIGINT/SIGTERM to trigger graceful shutdown
-            // since we are running outside the default global runtime.
-            ROCKET_RUNTIME.spawn(async move {
-                let mut sigint =
-                    signal(SignalKind::interrupt()).expect("failed to set SIGINT handler");
-                let mut sigterm =
-                    signal(SignalKind::terminate()).expect("failed to set SIGTERM handler");
-                tokio::select! {
-                    _ = sigint.recv() => info!("SIGINT received, shutting down Rocket."),
-                    _ = sigterm.recv() => info!("SIGTERM received, shutting down Rocket."),
-                }
-                shutdown_handle.notify();
-            });
+        {
+            let table = txn
+                .open_table(METADATA_TABLE)
+                .expect("failed to open table");
+            let total_count = table.len().expect("failed to get length");
 
-            // Open browser after server starts listening
-            let launch_future = rocket.launch();
-            #[cfg(feature = "auto-open-browser")]
-            open_browser(port);
-            launch_future.await.map_err(anyhow::Error::from)
-        }) {
-            error!("Rocket thread exited with an error: {}", e);
+            // Constraint: METADATA_TABLE stores mixed types (Albums and Media).
+            // We must perform an O(N) scan to differentiate counts.
+            let album_count = table
+                .iter()
+                .expect("failed to iterate table")
+                .filter_map(std::result::Result::ok)
+                .filter(|(_, guard)| matches!(guard.value(), MetadataRecord::Album(_)))
+                .count();
+
+            let media_count = usize::try_from(total_count).unwrap_or(0) - album_count;
+
+            info!(
+                duration = &*format!("{:?}", start_time.elapsed());
+                "Read {} photos/videos and {} albums from database.",
+                media_count, album_count
+            );
         }
+
+        txn.commit().expect("failed to commit transaction");
+
+        BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
+        BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+        start_expire_check_loop();
+
+        rocket_handle.await.expect("Rocket task panicked");
+        info!("Worker shutting down.");
+    });
+}
+
+/// Ignite and serve Rocket until the shutdown signal fires. Runs as a task on
+/// [`RUNTIME`]; SIGINT/SIGTERM notifies Rocket's graceful shutdown.
+async fn serve_rocket() -> anyhow::Result<()> {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let rocket = router::build_rocket().ignite().await?;
+    #[cfg(feature = "auto-open-browser")]
+    let port = rocket.config().port;
+    let shutdown_handle = rocket.shutdown();
+
+    // Single shutdown signal path for the process.
+    RUNTIME.spawn(async move {
+        let mut sigint = signal(SignalKind::interrupt()).expect("failed to set SIGINT handler");
+        let mut sigterm = signal(SignalKind::terminate()).expect("failed to set SIGTERM handler");
+        tokio::select! {
+            _ = sigint.recv() => info!("SIGINT received, shutting down Rocket."),
+            _ = sigterm.recv() => info!("SIGTERM received, shutting down Rocket."),
+        }
+        shutdown_handle.notify();
     });
 
-    worker_handle.join().expect("Worker thread panicked");
-    rocket_handle.join().expect("Rocket thread panicked");
+    let launch_future = rocket.launch();
+    #[cfg(feature = "auto-open-browser")]
+    open_browser(port);
+    launch_future.await.map_err(anyhow::Error::from)?;
+    Ok(())
 }
 
 #[cfg(feature = "auto-open-browser")]

@@ -2,9 +2,7 @@ use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
 use log::{debug, error, warn};
-use tokio_rayon::AsyncThreadPool;
 
-use crate::tasks::runtime::WORKER_RAYON_POOL;
 use crate::{
     error::handle_error,
     model::abstract_data::AbstractData,
@@ -27,8 +25,7 @@ impl Task for IndexTask {
     type Output = Result<AbstractData>;
 
     async fn run(self) -> Self::Output {
-        WORKER_RAYON_POOL
-            .spawn_async(move || index_task_match(self.abstract_data))
+        tokio_rayon::spawn(move || index_task_match(self.abstract_data))
             .await
             .map_err(|err| handle_error(err.context("Failed to run index task")))
     }

@@ -1,48 +1,44 @@
 use std::sync::LazyLock;
 
-use rayon::{ThreadPool, ThreadPoolBuilder};
+use rayon::ThreadPoolBuilder;
 use tokio::runtime::{Builder, Runtime};
 
-pub static CURRENT_NUM_THREADS: LazyLock<usize> = LazyLock::new(rayon::current_num_threads);
-
-// Rocket-specific Tokio Runtime
-// This runtime is dedicated to handling network requests, with thread names clearly labeled.
-pub static ROCKET_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    Builder::new_multi_thread()
-        .worker_threads(*CURRENT_NUM_THREADS)
-        .thread_name("rocket-io-worker")
-        .enable_all()
-        .build()
-        .expect("Failed to build Rocket Tokio runtime")
+/// Hardware parallelism (`N`) for the process. The single Tokio runtime runs
+/// `N` workers; the global rayon pool runs `max(1, N - 1)` compute threads.
+///
+/// Forcing this value builds the global rayon pool first: `build_global` must
+/// run before anything else observes rayon, otherwise rayon lazily creates
+/// its implicit default-sized pool and the `N - 1` budget is lost. The binary
+/// forces this static first thing in `run()`.
+pub static CURRENT_NUM_THREADS: LazyLock<usize> = LazyLock::new(|| {
+    let n = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    // `Err` means the implicit pool already exists: a dependency touched
+    // rayon before startup, which happens when tests reach request-path
+    // rayon before the first coordinator use. Keep that pool rather than
+    // panic; `run()` forces this static first, so the served process always
+    // gets the sized pool.
+    let _ = ThreadPoolBuilder::new()
+        .num_threads(n.saturating_sub(1).max(1))
+        .build_global();
+    n
 });
 
-pub static BATCH_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
+/// The single Tokio runtime: Rocket request handling and background
+/// orchestration share its `N` workers.
+pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
     Builder::new_multi_thread()
         .worker_threads(*CURRENT_NUM_THREADS)
         .thread_name("tokio-core")
         .enable_all()
         .build()
-        .expect("Failed to build Core Tokio runtime")
+        .expect("Failed to build Tokio runtime")
 });
 
-// Background Worker-specific Tokio Runtime
-// This runtime handles all non-network asynchronous tasks, such as file monitoring, database initialization, TUI, etc.
-pub static INDEX_RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    Builder::new_multi_thread()
-        .worker_threads(*CURRENT_NUM_THREADS)
-        .thread_name("background-task-worker")
-        .enable_all()
-        .build()
-        .expect("Failed to build Worker Tokio runtime")
-});
-
-// Rayon thread pool for compute-intensive tasks
-// This thread pool is dedicated to CPU-intensive tasks like IndexTask.
-// It does not create a global Rayon pool, so it does not interfere with other threads.
-pub static WORKER_RAYON_POOL: LazyLock<ThreadPool> = LazyLock::new(|| {
-    ThreadPoolBuilder::new()
-        .num_threads(*CURRENT_NUM_THREADS)
-        .thread_name(|i| format!("cpu-intensive-worker-{i}"))
-        .build()
-        .expect("Failed to build Worker Rayon pool")
-});
+/// Spawn `task` onto [`RUNTIME`].
+pub fn spawn<F>(task: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    RUNTIME.spawn(task)
+}
