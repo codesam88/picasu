@@ -10,6 +10,7 @@
 - [Backend DB](database.md)
 - [Metadata Handling](metadata.md)
 - [Search](search.md)
+- [Picasu vs Immich](picasu_comparison.md)
 
 ---
 
