@@ -8,10 +8,9 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
-use tokio::task::JoinHandle;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::error::{AppError, ErrorKind, handle_error};
+use crate::error::{AppError, ErrorKind};
 use crate::model::media::{MediaOutcome, SkipReason, classify_media_file};
 use crate::router::AppResult;
 use crate::storage::db::TREE;
@@ -20,7 +19,6 @@ use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::runtime::spawn;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -106,8 +104,9 @@ pub fn clear_asset_tables_and_caches() -> AppResult<()> {
 }
 
 /// Index all media files under `src` (a directory path relative to
-/// `IMAGE_HOME`).  Walks recursively, calling `index_image` on each valid
-/// media file.  Album is always resolved from the file's parent directory.
+/// `IMAGE_HOME`). Walks recursively, submitting each valid media file to the
+/// scan intake; intake workers run `workflow::process_file` on them. Album
+/// is always resolved from the file's parent directory.
 ///
 /// Runs as a background job; status can be polled via `album_index_status()`.
 /// Index all media files under `src`, optionally clearing first and/or
@@ -201,7 +200,7 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
                     Ok(entry) => entry,
                     Err(err) => {
                         warn!("Album index walk error: {err}");
-                        increment_failed(job_id, None);
+                        note_file_failed(job_id, None);
                         continue;
                     }
                 };
@@ -227,7 +226,6 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
             }
         }
 
-        let mut handles: Vec<JoinHandle<()>> = Vec::new();
         'files: for scan_root in &scan_roots_clone {
             let walker = WalkDir::new(scan_root)
                 .follow_links(false)
@@ -243,7 +241,7 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
                     Ok(entry) => entry,
                     Err(err) => {
                         warn!("Album index walk error: {err}");
-                        increment_failed(job_id, None);
+                        note_file_failed(job_id, None);
                         continue;
                     }
                 };
@@ -267,36 +265,24 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
 
                 increment_matched(job_id);
 
-                handles.push(tokio::spawn(async move {
-                    match crate::workflow::index_image(&abs_path).await {
-                        Ok(()) => increment_processed(job_id),
-                        Err(err) => {
-                            handle_error(err);
-                            increment_failed(job_id, Some(abs_path.display().to_string()));
-                        }
-                    }
-                }));
+                if let Err(err) = crate::workflow::submit_index(&abs_path, job_id).await {
+                    warn!(
+                        "Album index intake submit failed for {}: {err:#}",
+                        abs_path.display()
+                    );
+                    note_file_failed(job_id, Some(abs_path.display().to_string()));
+                }
             }
         }
 
-        debug!(
-            "walk done, joining {} file handles (job {job_id})",
-            handles.len()
-        );
-        for handle in handles {
-            if let Err(err) = handle.await {
-                warn!("Album index file task join error: {err}");
-                increment_failed(job_id, None);
-            }
-        }
-        debug!("file handles joined (job {job_id})");
+        debug!("walk done, draining intake (job {job_id})");
+        crate::tasks::queue::drain_intake(job_id).await;
+        debug!("intake drained (job {job_id})");
 
         // Drain the per-file FlushTreeTask inserts so the in-memory tree
         // reflects all walk results before the sweep reads it.
         debug!("BATCH flush_tree pre-sweep (job {job_id})");
-        let _ = BATCH_COORDINATOR
-            .execute_batch_waiting(FlushTreeTask::insert(vec![]))
-            .await;
+        crate::tasks::queue::barrier_flush_tree().await;
         debug!("BATCH flush_tree pre-sweep done (job {job_id})");
 
         // Sweep stale asset paths: remove DB records whose asset file no
@@ -318,13 +304,9 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         // Drain the sweep's detached remove/update batches, then
         // UpdateTreeTask for album metadata.
         debug!("BATCH flush_tree post-sweep (job {job_id})");
-        let _ = BATCH_COORDINATOR
-            .execute_batch_waiting(FlushTreeTask::insert(vec![]))
-            .await;
+        crate::tasks::queue::barrier_flush_tree().await;
         debug!("BATCH update_tree (job {job_id})");
-        let _ = BATCH_COORDINATOR
-            .execute_batch_waiting(UpdateTreeTask)
-            .await;
+        crate::tasks::queue::barrier_update_tree().await;
         debug!("BATCH drained (job {job_id})");
 
         let state = if cancel.load(Ordering::SeqCst) {
@@ -597,11 +579,13 @@ fn increment_matched(job_id: u64) {
     update_status(job_id, |status| status.matched += 1);
 }
 
-fn increment_processed(job_id: u64) {
+/// Record one file finished by an intake worker (called from `tasks::queue`).
+pub(crate) fn note_file_processed(job_id: u64) {
     update_status(job_id, |status| status.processed += 1);
 }
 
-fn increment_failed(job_id: u64, path: Option<String>) {
+/// Record one file failed by an intake worker (called from `tasks::queue`).
+pub(crate) fn note_file_failed(job_id: u64, path: Option<String>) {
     update_status(job_id, |status| {
         status.failed += 1;
         if let Some(p) = path
