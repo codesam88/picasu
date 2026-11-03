@@ -128,26 +128,36 @@ benchmarks.
 
 Design (reviewed 2026-11-03, detail in worker report):
 
-- Target: single tokio runtime (`ROCKET_RUNTIME` survives, `INDEX` +
-  `BATCH` deleted; one `block_on`, one shutdown signal), one rayon
-  pool at `max(1, N-1)` (merge implicit global pool forced by
-  `CURRENT_NUM_THREADS` with `WORKER_RAYON_POOL`; drop `tokio-rayon`),
-  bounded `mpsc` intake (e.g. 1024, path coalescing + generation map
-  superseding `IN_PROGRESS`), serial DB writer (all `flush_*`,
-  `update_*`, `expire_*`, sweep writes; auth stores excluded),
-  priority queue Interactive > Watcher > Scan > Expire > Verify/GC
-  with weighted round-robin + aging and per-job cancellation tokens,
-  `index_image` split into `submit_index` + `process_file` (zero
-  coordinator hops, writer message instead of detached flush).
+- Target: single tokio runtime (`RUNTIME` in `runtime.rs` — slice 1
+  deleted `ROCKET`/`INDEX`/`BATCH`; one `block_on`, one shutdown
+  signal), one rayon pool at `max(1, N-1)` (merge implicit global pool
+  forced by `CURRENT_NUM_THREADS` with `WORKER_RAYON_POOL`; drop
+  `tokio-rayon`), bounded `mpsc` intake (e.g. 1024, path coalescing +
+  generation map superseding `IN_PROGRESS`), serial DB writer (all
+  `flush_*`, `update_*`, `expire_*`, sweep writes; auth stores
+  excluded), priority queue Interactive > Watcher > Scan > Expire >
+  Verify/GC with weighted round-robin + aging and per-job cancellation
+  tokens, `index_image` split into `submit_index` + `process_file`
+  (zero coordinator hops, writer message instead of detached flush).
+  Fan-out removed is per-file `tokio::spawn` (`album_index.rs:270`)
+  plus the three `tokio_rayon::spawn` CPU bridges
+  (`actor/hash.rs`, `index.rs`, `video.rs`).
 - Slices: (1) runtime consolidation (`runtime.rs`, `tasks/mod.rs`,
   `lib.rs` bootstrap, import-only edits elsewhere; both coordinators
-  kept, repointed; single shutdown path, Rayon init order pinned);
-  (2) intake + queue (new `tasks/queue/*`, `workflow/mod.rs`, delete 7
-  `Task` structs keeping stage fns, walk sends to intake,
-  watcher/looper enqueue; `INDEX_COORDINATOR` deleted; Rayon
-  admittance + lanes land here); (3) writer (flush/snapshot/update/expire
-  `BatchTask` impls deleted, dispatch sites to writer/queue APIs;
-  `BATCH_COORDINATOR` and `mini_executor` removed).
+  kept, repointed; single shutdown path); (2a) intake skeleton + walk
+  migration (new `tasks/queue/*`, `workflow/mod.rs` 5 hops →
+  submit/process, `album_index.rs` walk → intake sends, drain/barrier
+  API shim over existing rendezvous; coordinators stay as execution
+  backend); (2b) lanes + deletion (priority lanes with aging, Rayon
+  admittance semaphore held across await, `pool.install` scoping at
+  request-path `par_iter`/`par_bridge` sites, watcher debounce +
+  looper + 5 router files + `expire_check.rs:68`/`RemoveTask`
+  migration, delete `INDEX_COORDINATOR`, drop `tokio-rayon` for a
+  `rayon::spawn` + oneshot bridge); (3) writer (flush/snapshot
+  `BatchTask` impls incl. `flush_tree_snapshot.rs`,
+  `flush_query_snapshot.rs`, dispatch sites to writer/queue APIs;
+  `BATCH_COORDINATOR` and `mini_executor` removed last — dep removal
+  only here, never in 2b).
 - Budget: sustained busy CPU `<= N-1`, Rocket headroom via idle
   workers + Interactive priority; OS nice opportunistic only
   (follow-up Step 10). `spawn_blocking` kept only for short I/O on
@@ -193,16 +203,23 @@ cancellation (cancel queued, finish running chunk).
   `build_global` must run before any rayon use; third-party crates
   share the cap. Keeping `WORKER_RAYON_POOL` avoids the ordering
   hazard but leaves two pools to saturate. Direction: merge.
-- (3) Request-path TREE writes: route through the serial writer on
-  the Interactive lane. Pro: single write order, no redb writer
-  contention. Con: more call-site churn plus one queue hop. Leaving
-  them direct is a smaller diff but preserves the contention the
-  writer exists to remove. Direction: through writer.
+- (3) Request-path TREE writes: DEFERRED 2026-11-03 (revised on
+  code-grounded review: routing the request path means touching ~10
+  router files and/or the `asset_store` API used everywhere — a
+  half-migration preserves the contention the writer exists to
+  remove, so slice 3 would blow up). Slice 3 serializes background
+  flush + in-memory rebuild only; the request path keeps direct
+  writes (redb single-writer blocking unchanged there). Request-path
+  migration is a separate follow-up plan item. Slice 3 Done-criteria
+  hold on background paths only.
 - (4) Writer ack: generation barrier (monotonic seq, wait-for-`<=`).
   Pro: batch-friendly, serves scan-done, sweep, multi-message drains.
-  Con: bookkeeping, possible over-wait on coarse seq. Per-message
-  oneshot is exact but allocates per write under bulk scan.
-  Direction: barrier.
+  Con: bookkeeping, possible over-wait on coarse seq — and the barrier
+  must account for cascaded work (auto-`UpdateTreeTask` at
+  `flush_tree.rs:49`, detached sweep remove), not just directly
+  submitted messages. Per-message oneshot is exact but allocates per
+  write under bulk scan. Direction: barrier with cascade accounting
+  specced in slice 3.
 - (5) Interactive submits: via queue. Pro: uniform cancellation,
   budget, observability. Con: queue latency on the fastest path.
   Direct spawn bypass is faster but evades priority, budget, drain.
@@ -235,42 +252,84 @@ cancellation (cancel queued, finish running chunk).
 Scope: `runtime.rs`, `tasks/mod.rs`, bootstrap wiring only. Collapse to
 one orchestration runtime + one `rayon(N-1)` pool, rewire deleted
 statics and coordinators minimally; collapse the two signal handlers
-to one and set grace/mercy/force with an `on_shutdown` drain for
-queue/writer/Rayon. Done when `just backend-check` passes,
-`build_global(N-1)` runs before any rayon touch (including
-`CURRENT_NUM_THREADS` deref) with `Err` treated as already-initialized
-plus `current_num_threads()` verification (`RAYON_NUM_THREADS`
-alternative documented), startup/dispatch tests pass, busy-CPU budget
-(`<= N-1`, blocking I/O excluded) holds, and harness A reruns for a
+to one. Done when `just backend-check` passes,
+`build_global(N-1)` pinned to first `CURRENT_NUM_THREADS` deref in
+`run()` before any other rayon use (`Err` = already-initialized pool
+kept, serve-path-only guarantee — tests never call `run()`, so budget
+claims do not cover test processes; `RAYON_NUM_THREADS` alternative
+documented), startup/dispatch tests pass, and harness A reruns for a
 p95 fetch check (dedicated-Rocket revisit trigger). No intake or
-writer changes.
+writer changes. (`on_shutdown` drain for queue/writer/Rayon is slice
+3 scope, not here.)
 
-### Step 6 — Refactor slice 2: bounded intake and priority queue
+### Step 6a — Refactor slice 2a: intake skeleton + walk migration
 
-Scope: `tasks/actor/*`, batcher dispatch surface, `looper/mod.rs` per
-Step-4 list. Replace per-file spawn fan-out with bounded intake and
-shared priority queue with cancellation; add Rayon admittance
-(semaphore permits `≈` threads held across await), Interactive
-`spawn_fifo` vs scan LIFO lanes (or weighted admission queues +
-aging), `pool.install` scoping on the request path, and
-cancel/generation discard of superseded work. Done when
+Scope: new `tasks/queue/*`, `workflow/mod.rs`, `actor/album_index.rs`
+walk loop only. Bounded intake with path coalescing + generation map;
+5 `execute_waiting` hops → `submit_index` + `process_file` (stage fns
+kept, still dispatched via coordinators as execution backend);
+per-file `tokio::spawn` + `Vec<JoinHandle>` → intake sends; drain and
+scan-done barrier defined as an API shim over the existing
+`execute_batch_waiting` rendezvous (same call sites,
+`album_index.rs:297-327`); counters keep current meanings. Done when
+`just backend-check` and scan tests pass with identical counters. No
+lane/admittance work, no deletions, no writer changes.
+
+### Step 6b — Refactor slice 2b: lanes, admittance, coordinator deletion
+
+Scope: lanes + aging + Rayon admittance (semaphore permits `≈`
+threads held across await; CPU bridge is `rayon::spawn` + oneshot —
+never `spawn_blocking`, which would evade the N-1 budget),
+`pool.install` scoping at request-path sites (`update_tree.rs`,
+`expire_check.rs`, `model/album.rs`, `storage/db.rs`,
+`get_prefetch.rs`, `get_data.rs`), watcher debounce + looper enqueue,
+5 router files to Interactive submits, `expire_check.rs:68` +
+`RemoveTask` migration, delete `INDEX_COORDINATOR`, drop
+`tokio-rayon`. `mini_executor` dep stays until slice 3. Done when
 `just backend-check` and scan/watcher/expire tests pass, with removed
-`Task`/`BatchTask` types reported. No writer internals.
+`Task` types and admittance accounting reported. No writer internals.
+
+### Step 6c — Interim benchmark after intake+queue, before writer
+
+Scope: rerun Step 1–3 tooling unmodified (same versions, script,
+manifests, machine); raw to `bench-mid-*`/`complexity-mid.*`; append
+an interim comparison table (baseline vs mid) to this plan. 100-cells
+at N=4 and N=8 are required; 1000-cells rerun with the longer timeout
+in background as in Step 3. Verify the writer is untouched (grep:
+`BATCH_COORDINATOR` + flush `BatchTask` impls still present) so the
+delta is attributable to intake/queue only. Done when mid raw files
+parse and the plan holds baseline-vs-mid deltas; `just plan-lint`
+passes. Flags regressions before slice 3 lands. No code changes.
 
 ### Step 7 — Refactor slice 3: single serial DB writer
 
-Scope: `batcher/flush_tree.rs`, snapshots, `update_tree.rs`,
-`update_expire.rs` plus writer edge. Serialize mutations, remove
-detached spawns and overlapping batches, keep backpressure end to end.
-Kept stage fns stay in `actor/*` (computation); only runtime/queue
-dispatch sites join the `spawn_blocking` allowlist. Done when
-`just backend-check` and flush/expire tests pass, with
-channel inventory delta reported.
+Scope: `batcher/flush_tree.rs` (incl. the auto-`UpdateTreeTask`
+cascade at `:49` — barrier must account for cascaded work, not just
+directly submitted messages), `flush_tree_snapshot.rs`,
+`flush_query_snapshot.rs`, `update_tree.rs`, `update_expire.rs`,
+`expire_check.rs` plus writer edge. Serialize mutations, remove
+detached spawns and overlapping batches, keep backpressure end to end;
+sweep ordering pinned as flush→sweep→flush→drain before Completed;
+`on_shutdown` drain for queue/writer/Rayon lands here. Kept stage fns
+stay in `actor/*` (computation); only runtime/queue dispatch sites
+join the `spawn_blocking` allowlist (allowlist = read-only, bounded
+work, no lock-holding — criteria, not just paths). `mini_executor`
+(and `tokio-rayon` if lingering) removed here, never earlier. Writer
+constraints: txns stay short (no bulk work inline — large rebuilds
+and sweeps stay chunked or dispatched as background jobs, never
+head-of-line blocking); the Interactive lane gets reserved capacity
+bulk can never starve; ack waits carry generous deadlines as
+deadlock-breakers only, and any timeout is an anomaly to alert on,
+not a pressure valve; multi-item edits keep per-item acks so partial
+success stays reportable. Done
+when `just backend-check` and flush/expire tests pass, with channel
+inventory delta reported.
 
 ### Step 8 — Re-measure, compare, record summary
 
 Scope: rerun Steps 1–3 tooling unmodified; raw to
-`bench-after-*`/`complexity-after.*`; append comparison tables to this
+`bench-after-*`/`complexity-after.*`; append three-way comparison
+tables (baseline vs mid vs after) to this
 plan. Same versions, script, manifests, machine. Collect writer queue
 depth and ack latency under the 1000-image scan; upload/mutation hop
 latency stays an unprobed gap (noted, not compared). Update
