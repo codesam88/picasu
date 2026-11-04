@@ -1,0 +1,52 @@
+# Submodule justfile for the benchmark harness (utils/bench).
+# Invoke from the repo root as `just bench <recipe>` (works from any
+# directory), or directly: `just -f utils/bench/justfile <recipe>`.
+# A local venv (.venv/) is created on demand; ruff is installed into it.
+
+venv_dir := source_directory() / ".venv"
+venv_python := venv_dir / "bin/python"
+ruff_version := "0.17.3"
+
+# List bench recipes (default when invoked as bare `just bench`).
+default:
+    @just --list --justfile "{{ source_file() }}"
+
+# Create the venv and install ruff on first use (idempotent).
+_venv:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -x "{{ venv_python }}" ]; then
+        uv venv "{{ venv_dir }}"
+    fi
+    if [ ! -x "{{ venv_dir }}/bin/ruff" ]; then
+        uv pip install --python "{{ venv_python }}" "ruff=={{ ruff_version }}"
+    fi
+
+# Run the bench unit tests (stdlib only, stub servers, no real backend).
+test: _venv
+    "{{ venv_python }}" -m unittest discover -s "{{ source_directory() }}/tests"
+
+# Lint + format check.
+lint: _venv
+    "{{ venv_dir }}/bin/ruff" check "{{ source_directory() }}"
+    "{{ venv_dir }}/bin/ruff" format --check "{{ source_directory() }}"
+
+# Apply formatting.
+format: _venv
+    "{{ venv_dir }}/bin/ruff" format "{{ source_directory() }}"
+
+# Launch a backend cell server (env-driven; see backend_launcher.py).
+launch: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/launch-backend.py"
+
+# Run the workload protocol against a launcher-info.json.
+workload *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/run-workload.py" {{ args }}
+
+# Extract metrics from a finished cell OUT dir.
+extract *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/extract-bench.py" {{ args }}
+
+# Remove the on-demand venv.
+clean:
+    rm -rf "{{ venv_dir }}"

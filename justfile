@@ -134,6 +134,11 @@ utils-test:
     cargo test -p snapfab -p openapi-sanity
     python3 {{justfile_directory()}}/utils/schemathesis/test_auth_rules.py
 
+# Benchmark tooling submodule (utils/bench/justfile); `just bench <recipe>`
+# works from any directory. Old flat names kept as aliases.
+[group('utils')]
+mod bench "utils/bench/justfile"
+
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
 # Regenerate the checked-in OpenAPI artifact

@@ -1,0 +1,19 @@
+# Ruff lint/format configuration for the benchmark harness. The harness is
+# stdlib-only; ruff itself is pinned as `ruff_version` in the root justfile and
+# run through uvx (`just bench-lint`).
+
+[project]
+name = "picasu-bench"
+version = "0.0.0"
+description = "Benchmark harness for the Picasu backend"
+requires-python = ">=3.14"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

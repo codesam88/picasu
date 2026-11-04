@@ -1,0 +1,4 @@
+# Local run state
+__pycache__/
+.ruff_cache/
+.venv/
