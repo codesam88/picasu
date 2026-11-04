@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::model::abstract_data::AbstractData;
 use crate::model::object::ObjectSchema;
-use crate::storage::db::TREE;
+use crate::storage::db::snapshot_tree;
 
 /// Combined Album data with Object and Metadata
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -47,7 +47,9 @@ impl AlbumCombined {
     }
 
     pub fn self_update(&mut self) {
-        let ref_data = TREE.in_memory.read().expect("lock poisoned");
+        // Runs inside a pool job (`album_task`); snapshot first so the tree
+        // guard is not held across the `par_iter` below.
+        let ref_data = snapshot_tree();
 
         let dir_path = Path::new(&self.metadata.dir_path).to_path_buf();
 

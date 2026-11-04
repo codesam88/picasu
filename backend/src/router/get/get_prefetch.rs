@@ -1,4 +1,4 @@
-use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::error::{ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::model::album::ResolvedShare;
 use crate::model::expression::{AlbumFilterValue, Expression};
@@ -13,14 +13,13 @@ use crate::router::auth::GuardPresenter;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::cache::next_snapshot_id;
-use crate::storage::db::TREE;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
+use crate::storage::db::snapshot_tree;
 use crate::tasks::BATCH_COORDINATOR;
 
 use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
 use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 
-use anyhow::Result;
 use bitcode::{Decode, Encode};
 use log::{debug, trace};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -29,8 +28,11 @@ use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::mem;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
+
+/// Correlates the enter/exit holder logs of one `filter_items` call.
+static NEXT_PREFETCH_HOLD_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
@@ -125,15 +127,20 @@ fn filter_items(
     caller_id: &str,
     include_personal: bool,
     personal_only_roots: bool,
-) -> Result<Vec<ReducedData>, AppError> {
+) -> Vec<ReducedData> {
     let filter_items_start_time = Instant::now();
 
-    let tree_guard = TREE.in_memory.read().map_err(|err| {
-        AppError::new(
-            ErrorKind::Internal,
-            format!("Failed to read tree in memory: {err:?}"),
-        )
-    })?;
+    let hold_id = NEXT_PREFETCH_HOLD_ID.fetch_add(1, Ordering::Relaxed);
+    debug!("filter_items: prefetch tree snapshot waiting req={hold_id}");
+    // Clone under a short guard, then drop the guard before any Rayon work.
+    // Holding the guard across `par_iter` lets a stolen cascade job block on
+    // the tree-refresh write while this join waits for that pool worker.
+    let tree_snapshot = snapshot_tree();
+    let tree_rows = tree_snapshot.len();
+    let guard_wait = filter_items_start_time.elapsed();
+    debug!(
+        "filter_items: prefetch tree snapshot acquired req={hold_id} rows={tree_rows} guard_wait={guard_wait:?}"
+    );
     let reduced_data_vector: Vec<ReducedData> = match (expression_option, resolved_share_option) {
         // If we have a resolved share then it must have a filter expression
         (Some(expr), Some(resolved_share)) => {
@@ -142,7 +149,7 @@ fn filter_items(
             } else {
                 expr.generate_filter_hide_metadata(resolved_share.album_id)
             };
-            tree_guard
+            tree_snapshot
                 .par_iter()
                 .filter(|db_ts| {
                     // Share scoping comes from the injected Expression::Album, and
@@ -160,7 +167,7 @@ fn filter_items(
         }
         (Some(expr), None) => {
             let filter_fn = expr.generate_filter();
-            tree_guard
+            tree_snapshot
                 .par_iter()
                 .filter(|database_timestamp| {
                     let ad = &database_timestamp.abstract_data;
@@ -184,7 +191,7 @@ fn filter_items(
                 .map(std::convert::Into::into)
                 .collect()
         }
-        (None, _) => tree_guard
+        (None, _) => tree_snapshot
             .par_iter()
             .filter(|database_timestamp| {
                 let ad = &database_timestamp.abstract_data;
@@ -193,11 +200,16 @@ fn filter_items(
             .map(std::convert::Into::into)
             .collect(),
     };
+    let hold = filter_items_start_time.elapsed();
+    debug!(
+        "filter_items: prefetch tree snapshot released req={hold_id} rows={tree_rows} collected={} hold={hold:?}",
+        reduced_data_vector.len()
+    );
 
     let duration = format!("{:?}", filter_items_start_time.elapsed());
     trace!(duration = &*duration; "Filter items");
 
-    Ok(reduced_data_vector)
+    reduced_data_vector
 }
 
 fn compute_locate(
@@ -314,7 +326,7 @@ fn execute_prefetch_logic(
     caller_id: String,
     include_personal: bool,
     personal_only_roots: bool,
-) -> Result<Json<PrefetchReturn>, AppError> {
+) -> Json<PrefetchReturn> {
     // Start timer
     let start_time = Instant::now();
 
@@ -331,7 +343,7 @@ fn execute_prefetch_logic(
     if let Some(cached_response) =
         check_query_cache(query_hash, &mut resolved_share_option, &caller_id)
     {
-        return Ok(cached_response);
+        return cached_response;
     }
 
     // Step 3: Filter items
@@ -341,7 +353,7 @@ fn execute_prefetch_logic(
         &caller_id,
         include_personal,
         personal_only_roots,
-    )?;
+    );
 
     // Step 4: Compute layout
     let locate_to_index = compute_locate(&reduced_data_vector, locate_option);
@@ -364,7 +376,7 @@ fn execute_prefetch_logic(
     let duration = format!("{:?}", start_time.elapsed());
     trace!(duration = &*duration; "(total time) Get_data_length complete");
 
-    Ok(json)
+    json
 }
 
 /// Evaluate a list query, snapshot its result, and return the snapshot id.
@@ -469,7 +481,7 @@ pub async fn prefetch(
         )
     })
     .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?;
 
     Ok(job_handle)
 }

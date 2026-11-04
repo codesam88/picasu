@@ -3,7 +3,7 @@ use crate::model::asset::AssetRecord;
 use crate::model::metadata_record::{MetadataRecord, compose_abstract_data, to_metadata_record};
 use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
-use crate::storage::db::TREE;
+use crate::storage::db::{TREE, snapshot_tree};
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -43,8 +43,9 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             album.object.pending = false;
             metadata_table.insert(&*album_id, to_metadata_record(&AbstractData::Album(album)))?;
         } else {
-            // Album has been deleted
-            let ref_data = TREE.in_memory.read().expect("lock poisoned");
+            // Album has been deleted. This runs inside a pool job; snapshot
+            // first so the tree guard is not held across the `par_iter` below.
+            let ref_data = snapshot_tree();
 
             // Collect all data contained in this album
             let asset_ids: Vec<_> = ref_data
