@@ -91,6 +91,7 @@ DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
 DEFAULT_BUILD_PROFILE = "debug"
 DEFAULT_PORT = 5713
+TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
 
 ARTIFACT_FILES = (
     "harness-a.log",
@@ -823,11 +824,23 @@ def probe_phase(
 
 # --- scans -------------------------------------------------------------------
 def _write_status_final(out: Path, run_index: int) -> None:
+    """Publish a run's status under the terminal names when it is terminal.
+
+    `status-last.json` always holds the newest poll, including `running`
+    snapshots. The final names mean "the run finished", so a non-terminal
+    snapshot is not copied there; stale final files from an earlier run are
+    removed instead.
+    """
     source = out / "status-last.json"
     if source.is_file():
         body = source.read_bytes()
     else:
         body = b'{"state":"unknown"}\n'
+    document = _body_json(body) or {}
+    if document.get("state") not in TERMINAL_STATUS_STATES:
+        (out / "status-final.json").unlink(missing_ok=True)
+        (out / f"status-final-run-{run_index}.json").unlink(missing_ok=True)
+        return
     (out / "status-final.json").write_bytes(body)
     (out / f"status-final-run-{run_index}.json").write_bytes(body)
 
@@ -923,7 +936,10 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             f"scan run {run_index}/{cfg['scan_repeats']}: state={state} "
             f"polls={polls} wall_ms={wall_ms}"
         )
-        final_status = _body_json((out / "status-final.json").read_bytes()) or {}
+        excerpt_path = out / "status-final.json"
+        if not excerpt_path.is_file():
+            excerpt_path = out / "status-last.json"
+        final_status = _body_json(excerpt_path.read_bytes()) or {}
         logger.log(
             "status excerpt: "
             + json.dumps(

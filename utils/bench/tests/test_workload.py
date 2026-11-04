@@ -421,8 +421,10 @@ class WorkloadTest(unittest.TestCase):
         self.server.mode = "stuck"
         proc = self.run_cli(self.env(SCAN_TIMEOUT_S="0", SCAN_STALL_TIMEOUT_S="0.5"))
         self.assertNotEqual(proc.returncode, 0, proc.stdout)
-        self.assert_cell_artifact("status-final.json")
-        self.assert_cell_artifact("status-final-run-1.json")
+        self.assert_cell_artifact("status-last.json")
+        # A running snapshot is not terminal: it keeps the -last name only.
+        self.assertFalse((self.cell / "status-final.json").exists())
+        self.assertFalse((self.cell / "status-final-run-1.json").exists())
         self.assert_cell_artifact("scan-walls.tsv")
         self.assertTrue((self.cell / "rounds-run-1").is_dir())
         self.assertFalse((self.cell / "hyperfine.json").exists())
@@ -558,6 +560,50 @@ class ConfigTest(unittest.TestCase):
             cfg = workload.config_from_env(env)
             self.assertEqual(cfg["reuse_images"], images)
             self.assertIsNone(cfg["manifest"])
+
+
+class StatusFinalTest(unittest.TestCase):
+    """`status-final*` names are reserved for terminal scan states."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out = Path(self.tmp.name)
+        self.workload = load_workload()
+
+    def write_last(self, state):
+        (self.out / "status-last.json").write_text(json.dumps({"state": state}))
+
+    def test_running_snapshot_is_not_final(self):
+        self.write_last("running")
+        self.workload._write_status_final(self.out, 1)
+        self.assertTrue((self.out / "status-last.json").is_file())
+        self.assertFalse((self.out / "status-final.json").exists())
+        self.assertFalse((self.out / "status-final-run-1.json").exists())
+
+    def test_terminal_snapshot_is_final(self):
+        for state in ("completed", "failed", "canceled"):
+            with self.subTest(state=state):
+                self.write_last(state)
+                self.workload._write_status_final(self.out, 1)
+                self.assertEqual(
+                    json.loads((self.out / "status-final.json").read_text())["state"], state
+                )
+                self.assertEqual(
+                    json.loads((self.out / "status-final-run-1.json").read_text())["state"],
+                    state,
+                )
+
+    def test_running_snapshot_removes_stale_final(self):
+        self.write_last("completed")
+        self.workload._write_status_final(self.out, 1)
+        self.assertTrue((self.out / "status-final-run-1.json").is_file())
+
+        self.write_last("running")
+        self.workload._write_status_final(self.out, 2)
+        self.assertFalse((self.out / "status-final.json").exists())
+        self.assertFalse((self.out / "status-final-run-2.json").exists())
+        self.assertTrue((self.out / "status-final-run-1.json").is_file())
 
 
 if __name__ == "__main__":

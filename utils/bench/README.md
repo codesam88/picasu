@@ -9,6 +9,7 @@ Python plus the shell workload driver; it is not part of the server binary.
 | `launch-backend.py`   | Env-driven CLI wrapper around `backend_launcher.py`                              |
 | `workload.py`         | Image-set materialisation, scans, probes and harness-A-compatible artifacts      |
 | `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                      |
+| `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown             |
 | `extract-bench.py`    | Summarise one or more harness output directories                                 |
 | `harness-a.sh`        | Shell workload driver; also the reference protocol the wrapper reproduces        |
 | `manifests/`          | PhotoSpec manifests for fixed image sets                                         |
