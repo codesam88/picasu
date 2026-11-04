@@ -43,6 +43,10 @@ launch: _venv
 workload *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/run-workload.py" {{ args }}
 
+# Run one cell: launcher + workload + shutdown (env-driven; see run-cell.py).
+cell *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/run-cell.py" {{ args }}
+
 # Extract metrics from a finished cell OUT dir.
 extract *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/extract-bench.py" {{ args }}

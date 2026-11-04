@@ -412,33 +412,126 @@ def _tail(path: Path, lines: int) -> str:
         return ""
 
 
-def capture_stacks(pid: int, diag: Path, logf, use_gdb: bool) -> None:
+SYSTEM_GDB = "/usr/bin/gdb"
+GDB_TIMEOUT_S = 120.0
+
+
+def _rust_pretty_printers() -> tuple:
+    """Return `(gdb_args, env)` that enable the toolchain's Rust pretty-printers.
+
+    Reproduces the setup `rust-gdb` performs for batch use: source directory,
+    auto-load safe path, and `PYTHONPATH` for `gdb_load_rust_pretty_printers.py`.
+    Empty when no toolchain `etc` directory is available, so a plain gdb still
+    produces backtraces.
+    """
+    rustc = shutil.which("rustc")
+    if rustc is None:
+        return [], {}
+    try:
+        probe = subprocess.run(
+            [rustc, "--print=sysroot"], capture_output=True, text=True, timeout=15
+        )
+    except subprocess.SubprocessError, OSError:
+        return [], {}
+    if probe.returncode != 0:
+        return [], {}
+    etc = Path(probe.stdout.strip()) / "lib" / "rustlib" / "etc"
+    if not (etc / "gdb_load_rust_pretty_printers.py").is_file():
+        return [], {}
+    args = [f"--directory={etc}", "-iex", f"add-auto-load-safe-path {etc}"]
+    env = {"PYTHONPATH": f"{etc}:{os.environ.get('PYTHONPATH', '')}".rstrip(":")}
+    return args, env
+
+
+def gdb_candidates() -> list:
+    """gdb binaries to try, best first.
+
+    The system gdb comes first because it can carry a file capability such as
+    CAP_SYS_PTRACE, which the rustup `rust-gdb` indirection cannot add. Both
+    remain candidates so a capability-less system gdb degrades to the
+    toolchain wrapper or a PATH gdb.
+    """
+    candidates = []
+    if os.path.isfile(SYSTEM_GDB) and os.access(SYSTEM_GDB, os.X_OK):
+        candidates.append(SYSTEM_GDB)
+    for name in ("rust-gdb", "gdb"):
+        path = shutil.which(name)
+        if path and path not in candidates:
+            candidates.append(path)
+    return candidates
+
+
+def capture_stacks(pid: int, diag: Path, logf, use_gdb: bool) -> dict:
+    """Write `threads.txt` and, when gdb can attach, `stacks.txt`.
+
+    Tries `gdb_candidates()` in order and keeps the last failure output in
+    `stacks.txt`. Returns a summary for the orchestrator's `captures` dict,
+    including the reason stack capture degraded.
+    """
+    result = {"ok": False, "tool": None, "reason": None, "attempts": []}
     try:
         nthreads = len(list((Path(f"/proc/{pid}/task")).iterdir()))
     except OSError:
         log_line(logf, f"stack capture: pid {pid} gone")
-        return
+        result["reason"] = "process gone"
+        return result
     (diag / "threads.txt").write_text(f"{nthreads}\n")
-    gdb = shutil.which("rust-gdb") or shutil.which("gdb")
-    if not use_gdb or gdb is None:
-        log_line(logf, "stack capture skipped (GDB off or no gdb)")
-        return
-    try:
-        out = subprocess.run(
-            [gdb, "-batch", "-ex", "thread apply all bt", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        (diag / "stacks.txt").write_text(out.stdout + out.stderr)
-        n = sum(
-            1
-            for line in (diag / "stacks.txt").read_text().splitlines()
-            if line.startswith("Thread ")
-        )
-        log_line(logf, f"stacks: {n} threads -> {diag / 'stacks.txt'}")
-    except (subprocess.SubprocessError, OSError) as err:
-        log_line(logf, f"gdb stack capture failed: {err}")
+    result["threads"] = nthreads
+
+    if not use_gdb:
+        log_line(logf, "stack capture skipped (GDB off)")
+        result["reason"] = "GDB disabled (GDB=0)"
+        return result
+    candidates = gdb_candidates()
+    if not candidates:
+        log_line(logf, "stack capture skipped (no gdb binary found)")
+        result["reason"] = "no gdb binary found (tried /usr/bin/gdb, rust-gdb, gdb)"
+        return result
+
+    pretty_args, pretty_env = _rust_pretty_printers()
+    env = dict(os.environ)
+    env.update(pretty_env)
+    failure = ""
+    for tool in candidates:
+        try:
+            out = subprocess.run(
+                [
+                    tool,
+                    *pretty_args,
+                    "-batch",
+                    "-ex",
+                    "thread apply all bt",
+                    "-p",
+                    str(pid),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=GDB_TIMEOUT_S,
+                env=env,
+            )
+        except (subprocess.SubprocessError, OSError) as err:
+            log_line(logf, f"gdb stack capture via {tool} failed: {err}")
+            result["attempts"].append({"tool": tool, "error": str(err)})
+            failure = f"{tool}: {err}"
+            continue
+
+        text = out.stdout + out.stderr
+        frames = sum(1 for line in text.splitlines() if line.startswith("Thread "))
+        result["attempts"].append({"tool": tool, "rc": out.returncode, "threads": frames})
+        if out.returncode == 0 and frames > 0:
+            (diag / "stacks.txt").write_text(text)
+            log_line(logf, f"stacks: {frames} threads via {tool} -> {diag / 'stacks.txt'}")
+            result.update(ok=True, tool=tool, frames=frames)
+            return result
+
+        # Preserve the failure output for the bundle, then try the next tool.
+        (diag / "stacks.txt").write_text(text)
+        failure = f"{tool}: rc={out.returncode}, {frames} thread frames"
+        log_line(logf, f"gdb stack capture via {tool} produced {frames} thread frames; trying next")
+
+    result["reason"] = f"all gdb candidates failed ({failure})"
+    log_line(logf, f"stack capture degraded: {result['reason']}")
+    return result
 
 
 def collect_bundle(cfg: dict, proc, reason: str, logf) -> None:

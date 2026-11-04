@@ -10,6 +10,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -367,6 +368,107 @@ class LauncherTest(unittest.TestCase):
         rc, out, _ = self.run_cfg(env, proc)
         self.assertEqual(rc, 2)
         self.assertTrue((out / "diag" / "launcher-info-server-exited-7.json").exists())
+
+
+class StackCaptureTest(unittest.TestCase):
+    """gdb candidate ordering and capture degradation behavior."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.diag = self.root / "diag"
+        self.diag.mkdir()
+
+    def script(self, name: str, body: str) -> Path:
+        path = self.root / name
+        path.write_text("#!/usr/bin/env python3\n" + body)
+        path.chmod(0o755)
+        return path
+
+    def test_gdb_candidates_prefers_system_gdb(self):
+        toolchain = self.root / "rust-gdb"
+        path_gdb = self.root / "gdb"
+        with (
+            mock.patch.object(bl.os.path, "isfile", return_value=True),
+            mock.patch.object(bl.os, "access", return_value=True),
+            mock.patch.object(
+                bl.shutil,
+                "which",
+                lambda name: str(toolchain) if name == "rust-gdb" else str(path_gdb),
+            ),
+        ):
+            candidates = bl.gdb_candidates()
+        self.assertEqual(candidates, [bl.SYSTEM_GDB, str(toolchain), str(path_gdb)])
+
+    def test_gdb_candidates_skips_inaccessible_system_gdb(self):
+        # A file-capability gdb is useless when DAC denies execute; the rustup
+        # wrapper and PATH gdb stay candidates.
+        toolchain = self.root / "rust-gdb"
+        with (
+            mock.patch.object(bl.os.path, "isfile", return_value=True),
+            mock.patch.object(bl.os, "access", return_value=False),
+            mock.patch.object(
+                bl.shutil,
+                "which",
+                lambda name: str(toolchain) if name == "rust-gdb" else None,
+            ),
+        ):
+            candidates = bl.gdb_candidates()
+        self.assertEqual(candidates, [str(toolchain)])
+
+    def test_gdb_candidates_falls_back_to_path_gdb(self):
+        path_gdb = self.root / "gdb"
+        with (
+            mock.patch.object(bl.os.path, "isfile", return_value=False),
+            mock.patch.object(
+                bl.shutil,
+                "which",
+                lambda name: str(path_gdb) if name == "gdb" else None,
+            ),
+        ):
+            self.assertEqual(bl.gdb_candidates(), [str(path_gdb)])
+
+    def test_capture_stacks_falls_back_to_next_candidate(self):
+        failing = self.script(
+            "failing-gdb.py",
+            "import sys\nsys.stderr.write('cannot attach\\n')\nsys.exit(1)\n",
+        )
+        working = self.script(
+            "working-gdb.py",
+            "import sys\nsys.stdout.write('Thread 1 (Thread 0x0 (LWP 42)):\\n#0  sleep ()\\n')\n",
+        )
+        logf = io.StringIO()
+        with (
+            mock.patch.object(bl, "gdb_candidates", lambda: [str(failing), str(working)]),
+            mock.patch.object(bl, "_rust_pretty_printers", lambda: ([], {})),
+        ):
+            result = bl.capture_stacks(os.getpid(), self.diag, logf, True)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tool"], str(working))
+        self.assertEqual(len(result["attempts"]), 2)
+        stacks = (self.diag / "stacks.txt").read_text()
+        self.assertIn("Thread 1", stacks)
+        self.assertIn("#0", stacks)
+
+    def test_capture_stacks_gdb_positive(self):
+        # Real attach against a live child. Skips where gdb is absent or lacks
+        # ptrace permission so the suite stays green on unprivileged CI.
+        if not bl.gdb_candidates():
+            self.skipTest("no gdb binary available")
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        self.addCleanup(child.wait)
+        self.addCleanup(child.terminate)
+        logf = io.StringIO()
+        result = bl.capture_stacks(child.pid, self.diag, logf, True)
+        if not result["ok"]:
+            self.skipTest(f"gdb cannot attach here: {result['reason']}")
+
+        self.assertGreaterEqual(int((self.diag / "threads.txt").read_text().strip()), 1)
+        stacks = (self.diag / "stacks.txt").read_text()
+        self.assertIn("Thread ", stacks)
+        self.assertIn("#0", stacks)
 
 
 if __name__ == "__main__":
