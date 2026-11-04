@@ -50,7 +50,7 @@ here.
 
 ### Step 1 — Write-blast harness mode (no backend changes)
 
-Scope: `scripts/bench/harness-a.sh` (+ `extract-bench.py`
+Scope: `utils/bench/harness-a.sh` (+ `extract-bench.py`
 worst-column support already exists) only. Add `WRITE_CLIENTS`
 (default 1, current behavior) and `WRITE_OPS_PER_CLIENT`
 (default 3 = one hyperfine round): N clients fire M edit-rating

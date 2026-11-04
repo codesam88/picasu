@@ -2,10 +2,10 @@
 """Extract benchmark summary from one or more harness-A output dirs.
 
 Usage:
-    scripts/bench/extract-bench.py /tmp/.../bench-after-N4-100 [...]
+    utils/bench/extract-bench.py /tmp/.../bench-after-N4-100 [...]
 
 Reads harness-a.log, status-final.json and hyperfine.json from each
-OUT dir (as produced by scripts/bench/harness-a.sh) and prints one
+OUT dir (as produced by utils/bench/harness-a.sh) and prints one
 row per cell: image count/bytes, scan wall time + sec/MB, last-round
 probe means (sequential + concurrent), and post-scan hyperfine means.
 
@@ -151,6 +151,7 @@ def main() -> None:
             if val is not None:
                 return f"{val * 1000:>{width}.1f}"
         return "n/a".rjust(width)
+
     for raw in args.outdirs:
         outdir = Path(raw)
         if not (outdir / "harness-a.log").exists():
@@ -199,7 +200,9 @@ def main() -> None:
             runs = ",".join(f"{w:.0f}" for w in row["scan_runs_ms"])
             counts += f" scan_runs_s=[{runs}]"
         print(counts)
-    print("units: scan_time s; s/MB s per MB; all latency columns ms (hyperfine-derived columns report medians-of-round-medians, robust to stalls; scan_thumb pools all rounds' random fetches; worst_ms lists each column's worst round)")
+    print(
+        "units: scan_time s; s/MB s per MB; all latency columns ms (hyperfine-derived columns report medians-of-round-medians, robust to stalls; scan_thumb pools all rounds' random fetches; worst_ms lists each column's worst round)"
+    )
 
 
 if __name__ == "__main__":

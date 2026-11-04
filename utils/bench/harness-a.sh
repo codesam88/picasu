@@ -13,7 +13,7 @@
 # lean and carry no rating, so get-data cannot prove the write applied).
 #
 # Usage:
-#   scripts/bench/harness-a.sh
+#   utils/bench/harness-a.sh
 #
 # Environment:
 #   N            cores for the server's taskset budget (default 4)
@@ -56,16 +56,16 @@
 #                   wall time is reported as scan_time
 #
 # Canonical reusable image sets (jpg-only 4000x3000 + exif_date + tags, same
-# PhotoSpec shape as scripts/bench/manifests/scan-10.json) live under
+# PhotoSpec shape as utils/bench/manifests/scan-10.json) live under
 # /tmp/opencode/worker-pool-rework/sets/ as <name>/ + <name>.json, with a
 # per-file sha256 list (<name>-files.sha256), a manifest sha256 (<name>.sha256)
 # and a count/bytes record (<name>.meta). Reuse invocations:
 #   MANIFEST=/tmp/opencode/worker-pool-rework/sets/set-100.json \
 #   REUSE_IMAGES=/tmp/opencode/worker-pool-rework/sets/set-100 \
-#   OUT=<out> N=<n> scripts/bench/harness-a.sh
+#   OUT=<out> N=<n> utils/bench/harness-a.sh
 # or (caller pre-populates $OUT/images, e.g. a bind of the set dir):
 #   MANIFEST=/tmp/opencode/worker-pool-rework/sets/set-100.json \
-#   SKIP_GENERATE=1 OUT=<out> N=<n> scripts/bench/harness-a.sh
+#   SKIP_GENERATE=1 OUT=<out> N=<n> utils/bench/harness-a.sh
 #
 # All artifacts land in $OUT: server log, status snapshots, per-round
 # hyperfine JSON, the final sweep TSV, post-scan hyperfine JSON, and
