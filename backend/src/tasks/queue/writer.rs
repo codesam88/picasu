@@ -88,7 +88,8 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use arrayvec::ArrayString;
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -155,6 +156,26 @@ static COMPLETED_SEQ: AtomicU64 = AtomicU64::new(0);
 /// Highest seq whose cascade entry has fully completed.
 static CASCADE_COMPLETED_SEQ: AtomicU64 = AtomicU64::new(0);
 
+/// Last barrier target seq awaited (diagnostic).
+static BARRIER_TARGET_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Writer inbox depth: incremented on submit, decremented on receive.
+static WRITER_INBOX_DEPTH: AtomicUsize = AtomicUsize::new(0);
+
+/// Cascade inbox depth: incremented on enqueue, decremented on receive.
+static CASCADE_DEPTH: AtomicUsize = AtomicUsize::new(0);
+
+/// Last barrier stage set by `album_index`: 1=pre-sweep,2=post-sweep,3=update-tree.
+static LAST_BARRIER_STAGE: AtomicU8 = AtomicU8::new(0);
+
+/// Seq of the cascade entry currently being processed (diagnostic).
+static CURRENT_CASCADE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Phase within the current cascade entry (diagnostic): 1=tree-refresh,
+/// 2=album-updates, 3=tree-refresh2, 4=update-expire-check,
+/// 5=expire-round, 6=timer-rearm.
+static CURRENT_CASCADE_PHASE: AtomicU8 = AtomicU8::new(0);
+
 /// Woken after every watermark advance on either stage.
 static BARRIER_NOTIFY: Notify = Notify::const_new();
 
@@ -210,6 +231,7 @@ async fn ensure_writer() -> mpsc::Sender<(u64, WriteOp)> {
 pub async fn submit(op: WriteOp) -> anyhow::Result<()> {
     let tx = ensure_writer().await;
     let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
+    WRITER_INBOX_DEPTH.fetch_add(1, Ordering::Relaxed);
     tx.send((seq, op))
         .await
         .map_err(|_| anyhow::anyhow!("serial db writer is gone"))?;
@@ -285,22 +307,100 @@ pub async fn shutdown_writer() {
     }
 }
 
+/// Diagnostic getters (lock-free).
+pub fn completed_seq() -> u64 {
+    COMPLETED_SEQ.load(Ordering::SeqCst)
+}
+
+pub fn cascade_completed_seq() -> u64 {
+    CASCADE_COMPLETED_SEQ.load(Ordering::SeqCst)
+}
+
+pub fn barrier_target_seq() -> u64 {
+    BARRIER_TARGET_SEQ.load(Ordering::Relaxed)
+}
+
+pub fn writer_inbox_depth() -> usize {
+    WRITER_INBOX_DEPTH.load(Ordering::Relaxed)
+}
+
+pub fn cascade_depth() -> usize {
+    CASCADE_DEPTH.load(Ordering::Relaxed)
+}
+
+pub fn last_barrier_stage() -> u8 {
+    LAST_BARRIER_STAGE.load(Ordering::Relaxed)
+}
+
+pub fn set_last_barrier_stage(stage: u8) {
+    LAST_BARRIER_STAGE.store(stage, Ordering::Relaxed);
+}
+
+pub fn current_cascade_seq() -> u64 {
+    CURRENT_CASCADE_SEQ.load(Ordering::Relaxed)
+}
+
+pub fn current_cascade_phase() -> u8 {
+    CURRENT_CASCADE_PHASE.load(Ordering::Relaxed)
+}
+
+/// Timer interval for re-polling a barrier and for periodic stall logging.
+///
+/// A barrier must never return early, so a timeout only wakes the loop to
+/// re-check the watermarks; it never releases the wait.
+const BARRIER_POLL_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Whether a stuck barrier should emit its periodic `barrier wait` line.
+///
+/// Healthy barriers resolve in milliseconds and log nothing. A stuck one
+/// logs at most once per interval, regardless of how often the loop re-polls.
+fn barrier_stall_log_due(elapsed: Duration, since_last_log: Option<Duration>) -> bool {
+    elapsed >= BARRIER_POLL_INTERVAL
+        && since_last_log.is_none_or(|since| since >= BARRIER_POLL_INTERVAL)
+}
+
 async fn wait_for_seq(seq: u64) {
+    BARRIER_TARGET_SEQ.store(seq, Ordering::Relaxed);
+
     // `BARRIER_NOTIFY` wakes via `notify_waiters`, which stores no permit:
     // a notification that fires between the watermark check and the wait
     // would otherwise be lost forever once no more ops complete. `enable()`
     // registers this waiter *before* the check, closing that race — the
     // check-then-wait order below is exact, not optimistic.
+    let start = Instant::now();
+    let mut last_log: Option<Instant> = None;
     loop {
         let notified = BARRIER_NOTIFY.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
-        if COMPLETED_SEQ.load(Ordering::SeqCst) >= seq
-            && CASCADE_COMPLETED_SEQ.load(Ordering::SeqCst) >= seq
-        {
+        let completed = COMPLETED_SEQ.load(Ordering::SeqCst);
+        let cascaded = CASCADE_COMPLETED_SEQ.load(Ordering::SeqCst);
+        if completed >= seq && cascaded >= seq {
             return;
         }
-        notified.await;
+
+        let now = Instant::now();
+        let since_last_log = last_log.map(|logged| now.duration_since(logged));
+        if barrier_stall_log_due(now.duration_since(start), since_last_log) {
+            last_log = Some(now);
+            log::info!(
+                "barrier wait: target={} completed={} cascaded={} writer_depth={} cascade_depth={} cpu_permits={} cascade_seq={} cascade_phase={} elapsed={}s",
+                seq,
+                completed,
+                cascaded,
+                WRITER_INBOX_DEPTH.load(Ordering::Relaxed),
+                CASCADE_DEPTH.load(Ordering::Relaxed),
+                crate::tasks::queue::bridge::available_permits(),
+                CURRENT_CASCADE_SEQ.load(Ordering::Relaxed),
+                CURRENT_CASCADE_PHASE.load(Ordering::Relaxed),
+                start.elapsed().as_secs()
+            );
+        }
+
+        // A fully quiescent deadlock emits no notify at all, so cap the wait
+        // to keep the observer alive: the loop re-checks (and may log) at
+        // least every interval while still requiring both watermarks to pass.
+        let _ = tokio::time::timeout(BARRIER_POLL_INTERVAL, notified.as_mut()).await;
     }
 }
 
@@ -318,9 +418,11 @@ async fn writer_loop(
             let Some(msg) = rx.recv().await else {
                 return;
             };
+            WRITER_INBOX_DEPTH.fetch_sub(1, Ordering::Relaxed);
             pending.push_back(msg);
         }
         while let Ok(msg) = rx.try_recv() {
+            WRITER_INBOX_DEPTH.fetch_sub(1, Ordering::Relaxed);
             pending.push_back(msg);
         }
         // Merge the leading run of flushes into one batch plus one cascade.
@@ -361,6 +463,7 @@ fn complete_seq(seq: u64) {
 }
 
 async fn enqueue_cascade(cascade_tx: &mpsc::Sender<(u64, CascadeOp)>, seq: u64, op: CascadeOp) {
+    CASCADE_DEPTH.fetch_add(1, Ordering::Relaxed);
     if cascade_tx.send((seq, op)).await.is_err() {
         // The cascade task is gone: barriers below this seq hang loudly
         // rather than covering un-run cascades (see module docs).
@@ -398,6 +501,9 @@ async fn cascade_loop(mut rx: mpsc::Receiver<(u64, CascadeOp)>) {
         let Some((seq, op)) = rx.recv().await else {
             return;
         };
+        CASCADE_DEPTH.fetch_sub(1, Ordering::Relaxed);
+        CURRENT_CASCADE_SEQ.store(seq, Ordering::Relaxed);
+        CURRENT_CASCADE_PHASE.store(0, Ordering::Relaxed);
         handle_cascade(op).await;
         CASCADE_COMPLETED_SEQ.store(seq, Ordering::SeqCst);
         BARRIER_NOTIFY.notify_waiters();
@@ -416,6 +522,7 @@ async fn handle_cascade(op: CascadeOp) {
 /// cascade into expiry — the chain the old detached `UpdateTreeTask` ran,
 /// now ordered behind the writer through the cascade queue.
 async fn cascade_update_tree() {
+    CURRENT_CASCADE_PHASE.store(1, Ordering::Relaxed);
     if let Err(err) = run_cpu(|| {
         refresh_tree_cache();
         Ok::<(), anyhow::Error>(())
@@ -425,6 +532,7 @@ async fn cascade_update_tree() {
         log::warn!("cascade tree refresh failed: {err:#}");
         return;
     }
+    CURRENT_CASCADE_PHASE.store(2, Ordering::Relaxed);
     let pending = drain_pending_album_updates();
     if !pending.is_empty() {
         for album_id in pending {
@@ -432,6 +540,7 @@ async fn cascade_update_tree() {
                 log::warn!("cascade album self-update failed for {album_id}: {err:#}");
             }
         }
+        CURRENT_CASCADE_PHASE.store(3, Ordering::Relaxed);
         if let Err(err) = run_cpu(|| {
             refresh_tree_cache();
             Ok::<(), anyhow::Error>(())
@@ -446,6 +555,7 @@ async fn cascade_update_tree() {
 
 /// Expiry bookkeeping plus the sweep, ordered behind the tree rebuild.
 async fn cascade_update_expire() {
+    CURRENT_CASCADE_PHASE.store(4, Ordering::Relaxed);
     if update_expire_task() {
         cascade_expire_round().await;
     }
@@ -455,6 +565,7 @@ async fn cascade_update_expire() {
 /// the same pool), then re-arm the looper timer — the pairing the old
 /// `ExpireCheckTask::batch_run` provided.
 async fn cascade_expire_round() {
+    CURRENT_CASCADE_PHASE.store(5, Ordering::Relaxed);
     if let Err(err) = run_cpu(|| {
         expire_check_task();
         Ok::<(), anyhow::Error>(())
@@ -463,6 +574,7 @@ async fn cascade_expire_round() {
     {
         log::warn!("cascade expire check failed: {err:#}");
     }
+    CURRENT_CASCADE_PHASE.store(6, Ordering::Relaxed);
     crate::tasks::looper::reset_expire_check_timer().await;
 }
 
@@ -506,4 +618,44 @@ fn handle_prune_users_root(users_root: &std::path::Path) {
         let _ = txn.commit();
     }
     crate::process::dir_album::evict_dir_album(users_root);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BARRIER_POLL_INTERVAL, barrier_stall_log_due};
+    use std::time::Duration;
+
+    fn just_below_interval() -> Duration {
+        BARRIER_POLL_INTERVAL
+            .checked_sub(Duration::from_millis(1))
+            .expect("poll interval exceeds 1 ms")
+    }
+
+    #[test]
+    fn stall_log_is_silent_until_the_first_interval() {
+        assert!(!barrier_stall_log_due(Duration::ZERO, None));
+        assert!(!barrier_stall_log_due(just_below_interval(), None));
+    }
+
+    #[test]
+    fn stall_log_fires_once_the_interval_has_elapsed() {
+        assert!(barrier_stall_log_due(BARRIER_POLL_INTERVAL, None));
+        assert!(barrier_stall_log_due(BARRIER_POLL_INTERVAL * 10, None));
+    }
+
+    #[test]
+    fn stall_log_is_rate_limited_to_one_per_interval() {
+        assert!(!barrier_stall_log_due(
+            BARRIER_POLL_INTERVAL * 2,
+            Some(Duration::ZERO)
+        ));
+        assert!(!barrier_stall_log_due(
+            BARRIER_POLL_INTERVAL * 2,
+            Some(just_below_interval())
+        ));
+        assert!(barrier_stall_log_due(
+            BARRIER_POLL_INTERVAL * 2,
+            Some(BARRIER_POLL_INTERVAL)
+        ));
+    }
 }

@@ -7,6 +7,7 @@ use std::{
         Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    time::Instant,
 };
 use walkdir::{DirEntry, WalkDir};
 
@@ -47,6 +48,25 @@ pub struct AlbumIndexStatus {
     pub started_at: Option<i64>,
     pub finished_at: Option<i64>,
     pub cancel_requested: bool,
+    /// Writer diagnostics (lock-free snapshot).
+    #[serde(default)]
+    pub writer_completed_seq: u64,
+    #[serde(default)]
+    pub writer_cascade_completed_seq: u64,
+    #[serde(default)]
+    pub writer_barrier_target_seq: u64,
+    #[serde(default)]
+    pub writer_inbox_depth: u64,
+    #[serde(default)]
+    pub writer_cascade_depth: u64,
+    #[serde(default)]
+    pub writer_cpu_permits_available: u64,
+    #[serde(default)]
+    pub writer_last_barrier_stage: u8,
+    #[serde(default)]
+    pub writer_current_cascade_seq: u64,
+    #[serde(default)]
+    pub writer_current_cascade_phase: u8,
 }
 
 impl Default for AlbumIndexStatus {
@@ -62,6 +82,15 @@ impl Default for AlbumIndexStatus {
             started_at: None,
             finished_at: None,
             cancel_requested: false,
+            writer_completed_seq: 0,
+            writer_cascade_completed_seq: 0,
+            writer_barrier_target_seq: 0,
+            writer_inbox_depth: 0,
+            writer_cascade_depth: 0,
+            writer_cpu_permits_available: 0,
+            writer_last_barrier_stage: 0,
+            writer_current_cascade_seq: 0,
+            writer_current_cascade_phase: 0,
         }
     }
 }
@@ -166,6 +195,15 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
             started_at: Some(Utc::now().timestamp_millis()),
             finished_at: None,
             cancel_requested: false,
+            writer_completed_seq: 0,
+            writer_cascade_completed_seq: 0,
+            writer_barrier_target_seq: 0,
+            writer_inbox_depth: 0,
+            writer_cascade_depth: 0,
+            writer_cpu_permits_available: 0,
+            writer_last_barrier_stage: 0,
+            writer_current_cascade_seq: 0,
+            writer_current_cascade_phase: 0,
         };
     }
 
@@ -281,6 +319,7 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         // Barrier on the serial writer so the in-memory tree reflects
         // all walk results before the sweep reads it.
         debug!("writer barrier pre-sweep (job {job_id})");
+        crate::tasks::queue::writer::set_last_barrier_stage(1);
         crate::tasks::queue::barrier_flush_tree().await;
         debug!("writer barrier pre-sweep done (job {job_id})");
 
@@ -303,8 +342,10 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         // Barrier on the sweep's writer ops, then on the tree rebuild
         // for album metadata.
         debug!("writer barrier post-sweep (job {job_id})");
+        crate::tasks::queue::writer::set_last_barrier_stage(2);
         crate::tasks::queue::barrier_flush_tree().await;
         debug!("writer barrier update-tree (job {job_id})");
+        crate::tasks::queue::writer::set_last_barrier_stage(3);
         crate::tasks::queue::barrier_update_tree().await;
         debug!("writer drained (job {job_id})");
 
@@ -340,7 +381,18 @@ pub fn cancel_album_index() -> AppResult<()> {
 }
 
 pub fn album_index_status() -> AlbumIndexStatus {
-    INDEX_STATUS.lock().expect("lock poisoned").status.clone()
+    use crate::tasks::queue::writer;
+    let mut status = INDEX_STATUS.lock().expect("lock poisoned").status.clone();
+    status.writer_completed_seq = writer::completed_seq();
+    status.writer_cascade_completed_seq = writer::cascade_completed_seq();
+    status.writer_barrier_target_seq = writer::barrier_target_seq();
+    status.writer_inbox_depth = writer::writer_inbox_depth() as u64;
+    status.writer_cascade_depth = writer::cascade_depth() as u64;
+    status.writer_cpu_permits_available = crate::tasks::queue::bridge::available_permits() as u64;
+    status.writer_last_barrier_stage = writer::last_barrier_stage();
+    status.writer_current_cascade_seq = writer::current_cascade_seq();
+    status.writer_current_cascade_phase = writer::current_cascade_phase();
+    status
 }
 
 /// Remove any album record whose directory is the `users_home` root itself.
@@ -469,6 +521,9 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
         .collect()
 }
 
+/// Correlates the enter/exit holder logs of one sweep read section.
+static NEXT_SWEEP_HOLD_ID: AtomicU64 = AtomicU64::new(1);
+
 /// Sweep stale asset paths: for every DB record whose path is under
 /// `root`, check that file.  If it no longer exists on disk, prune the path;
 /// once the path is gone, remove the entire record (and its compressed
@@ -480,8 +535,20 @@ async fn sweep_stale_asset_paths(root: &Path) {
 
     // File assets.
     let candidates: Vec<_> = {
+        let hold_id = NEXT_SWEEP_HOLD_ID.fetch_add(1, Ordering::Relaxed);
+        let hold_start = Instant::now();
+        debug!("sweep_stale_asset_paths: sweep read guard waiting req={hold_id} phase=assets");
+        // Scan-side holder: only a sequential collect runs under it, and the
+        // sweep waits on the writer barrier after collection. No Rayon work
+        // is nested while held, so it cannot deadlock the tree-refresh write.
         let tree = TREE.in_memory.read().expect("lock poisoned");
-        tree.iter()
+        let tree_rows = tree.len();
+        debug!(
+            "sweep_stale_asset_paths: sweep read guard acquired req={hold_id} phase=assets rows={tree_rows} guard_wait={:?}",
+            hold_start.elapsed()
+        );
+        let collected: Vec<_> = tree
+            .iter()
             .filter(|dt| {
                 dt.abstract_data.path().is_some_and(|a| {
                     let abs = normalize_asset_path(&a.file);
@@ -489,7 +556,13 @@ async fn sweep_stale_asset_paths(root: &Path) {
                 })
             })
             .map(|dt| dt.abstract_data.clone())
-            .collect()
+            .collect();
+        debug!(
+            "sweep_stale_asset_paths: sweep read guard released req={hold_id} phase=assets rows={tree_rows} collected={} hold={:?}",
+            collected.len(),
+            hold_start.elapsed()
+        );
+        collected
     };
 
     let mut to_remove = Vec::new();
@@ -505,8 +578,19 @@ async fn sweep_stale_asset_paths(root: &Path) {
 
     // Dir albums under root whose directory no longer exists on disk.
     let album_candidates: Vec<_> = {
+        let hold_id = NEXT_SWEEP_HOLD_ID.fetch_add(1, Ordering::Relaxed);
+        let hold_start = Instant::now();
+        debug!("sweep_stale_asset_paths: sweep read guard waiting req={hold_id} phase=albums");
+        // Scan-side holder: same sequential-collect shape as the asset phase;
+        // no pool work runs while it is held.
         let tree = TREE.in_memory.read().expect("lock poisoned");
-        tree.iter()
+        let tree_rows = tree.len();
+        debug!(
+            "sweep_stale_asset_paths: sweep read guard acquired req={hold_id} phase=albums rows={tree_rows} guard_wait={:?}",
+            hold_start.elapsed()
+        );
+        let collected: Vec<_> = tree
+            .iter()
             .filter_map(|dt| match &dt.abstract_data {
                 AbstractData::Album(alb) if !alb.metadata.dir_path.is_empty() => {
                     let dir_path = std::path::PathBuf::from(&alb.metadata.dir_path);
@@ -518,7 +602,13 @@ async fn sweep_stale_asset_paths(root: &Path) {
                 }
                 _ => None,
             })
-            .collect()
+            .collect();
+        debug!(
+            "sweep_stale_asset_paths: sweep read guard released req={hold_id} phase=albums rows={tree_rows} collected={} hold={:?}",
+            collected.len(),
+            hold_start.elapsed()
+        );
+        collected
     };
 
     let stale_albums: Vec<_> = album_candidates

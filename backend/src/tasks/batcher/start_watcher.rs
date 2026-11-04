@@ -189,6 +189,8 @@ pub(crate) fn handle_removed_file(removed: &Path) -> Option<RemovalAction> {
     // Scan in-memory tree to find the record that owns this path.
     let removed_str = removed.to_string_lossy();
     let matching: Option<AbstractData> = {
+        // Short watcher-side scan on the blocking pool; no Rayon work is
+        // nested while the guard is held.
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
             .find(|dt| {

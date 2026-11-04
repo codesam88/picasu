@@ -17,6 +17,17 @@ pub struct Tree {
 
 pub static TREE: LazyLock<Tree> = LazyLock::new(Tree::new);
 
+/// Clone the in-memory tree under a short read guard and return the owned rows.
+///
+/// Rayon callers must process the returned `Vec` instead of iterating while
+/// the guard is live. The shared pool can steal the cascade's tree-refresh
+/// job during a `par_iter`; that job's write blocks on a live read guard while
+/// the join waits for the very worker that took the write, deadlocking the
+/// pool. Cloning first keeps the guard scope to the copy.
+pub fn snapshot_tree() -> Vec<DatabaseTimestamp> {
+    TREE.in_memory.read().expect("lock poisoned").clone()
+}
+
 pub static VERSION_COUNT_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 
 static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Vec<DatabaseTimestamp>>>> =
@@ -57,30 +68,28 @@ impl Tree {
         // ... (unchanged)
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        self.in_memory
-            .read()
-            .expect("lock poisoned")
-            .iter()
-            .par_bridge()
-            .for_each(|database_timestamp| {
-                let abstract_data = &database_timestamp.abstract_data;
+        // `par_bridge` runs on the shared Rayon pool; clone under a short
+        // guard first so no tree guard is held across pool work.
+        let tree = self.in_memory.read().expect("lock poisoned").clone();
+        tree.iter().par_bridge().for_each(|database_timestamp| {
+            let abstract_data = &database_timestamp.abstract_data;
 
-                // Visibility: never count personal items owned by another user,
-                // nor the users root.
-                if let Some(path) = abstract_data.visibility_path()
-                    && !crate::storage::files::visible_to(caller, &path)
-                {
-                    return;
-                }
+            // Visibility: never count personal items owned by another user,
+            // nor the users root.
+            if let Some(path) = abstract_data.visibility_path()
+                && !crate::storage::files::visible_to(caller, &path)
+            {
+                return;
+            }
 
-                // Count regular tags only
-                for tag in abstract_data.tag() {
-                    let counter = tag_counts
-                        .entry(tag.clone())
-                        .or_insert_with(|| AtomicUsize::new(0));
-                    counter.fetch_add(1, Ordering::Relaxed);
-                }
-            });
+            // Count regular tags only
+            for tag in abstract_data.tag() {
+                let counter = tag_counts
+                    .entry(tag.clone())
+                    .or_insert_with(|| AtomicUsize::new(0));
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+        });
 
         let tag_infos: Vec<TagInfo> = tag_counts
             .par_iter()

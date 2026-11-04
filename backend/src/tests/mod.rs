@@ -54,3 +54,6 @@ mod openapi_parity;
 
 #[cfg(test)]
 mod r6_session_revocation;
+
+#[cfg(test)]
+mod architecture;
