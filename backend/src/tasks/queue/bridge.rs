@@ -33,11 +33,6 @@ static CPU_PERMITS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| {
     Arc::new(Semaphore::new(threads))
 });
 
-/// Available CPU permits (diagnostic).
-pub fn available_permits() -> usize {
-    CPU_PERMITS.available_permits()
-}
-
 /// Run bulk-lane CPU work `f` on the shared Rayon pool (LIFO order).
 pub async fn run_cpu<F, T>(f: F) -> anyhow::Result<T>
 where

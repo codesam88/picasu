@@ -121,52 +121,6 @@
           },
           "state": {
             "$ref": "#/components/schemas/AlbumIndexState"
-          },
-          "writerBarrierTargetSeq": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerCascadeCompletedSeq": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerCascadeDepth": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerCompletedSeq": {
-            "description": "Writer diagnostics (lock-free snapshot).",
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerCpuPermitsAvailable": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerCurrentCascadePhase": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerCurrentCascadeSeq": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerInboxDepth": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "writerLastBarrierStage": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
           }
         },
         "required": [

@@ -49,7 +49,7 @@ interaction); full `harness-a.sh` replacement deferred.
      spawn (process group, log streaming), readiness
      (`/get/server-info` poll, bootstrap/auth with fresh-vs-existing
      handling), liveness supervision, debug support (bench/debug modes,
-     RUST_LOG/PICASU_BARRIER_DEBUG passthrough, gdb stack capture into
+     RUST_LOG passthrough, gdb stack capture into
      diag bundle), and `launcher-info.json` seam (base URL, cookie jar,
      pid, out) for the future workload wrapper. Adapts
      `utils/bench/tests/` to the new module; removes `launch-cell.py`.

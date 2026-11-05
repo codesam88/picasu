@@ -28,11 +28,8 @@ use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::mem;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
-
-/// Correlates the enter/exit holder logs of one `filter_items` call.
-static NEXT_PREFETCH_HOLD_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
@@ -130,17 +127,10 @@ fn filter_items(
 ) -> Vec<ReducedData> {
     let filter_items_start_time = Instant::now();
 
-    let hold_id = NEXT_PREFETCH_HOLD_ID.fetch_add(1, Ordering::Relaxed);
-    debug!("filter_items: prefetch tree snapshot waiting req={hold_id}");
     // Clone under a short guard, then drop the guard before any Rayon work.
     // Holding the guard across `par_iter` lets a stolen cascade job block on
     // the tree-refresh write while this join waits for that pool worker.
     let tree_snapshot = snapshot_tree();
-    let tree_rows = tree_snapshot.len();
-    let guard_wait = filter_items_start_time.elapsed();
-    debug!(
-        "filter_items: prefetch tree snapshot acquired req={hold_id} rows={tree_rows} guard_wait={guard_wait:?}"
-    );
     let reduced_data_vector: Vec<ReducedData> = match (expression_option, resolved_share_option) {
         // If we have a resolved share then it must have a filter expression
         (Some(expr), Some(resolved_share)) => {
@@ -200,11 +190,6 @@ fn filter_items(
             .map(std::convert::Into::into)
             .collect(),
     };
-    let hold = filter_items_start_time.elapsed();
-    debug!(
-        "filter_items: prefetch tree snapshot released req={hold_id} rows={tree_rows} collected={} hold={hold:?}",
-        reduced_data_vector.len()
-    );
 
     let duration = format!("{:?}", filter_items_start_time.elapsed());
     trace!(duration = &*duration; "Filter items");

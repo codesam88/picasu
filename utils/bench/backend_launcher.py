@@ -25,8 +25,8 @@ Environment contract:
   LAUNCH_TIMEOUT_S outer supervision budget; 0 disables (default 0)
   GDB           1 (default) capture thread stacks into the diag bundle
 
-bench refuses diagnostic env (`PICASU_BARRIER_DEBUG`, `RUST_LOG`) because
-it perturbs measurements; debug passes it through and warns when absent.
+bench refuses RUST_LOG (log volume perturbs measurements); debug passes env
+through unstripped.
 
 Artifacts in OUT: server.log, launcher.log, run-manifest.json,
 bootstrap.json, login.json, cookies.txt, launcher-info.json, diag/.
@@ -59,7 +59,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
 MODES = ("bench", "debug")
-DIAGNOSTIC_ENV = ("PICASU_BARRIER_DEBUG", "RUST_LOG")
+DIAGNOSTIC_ENV = ("RUST_LOG",)
 DEFAULT_PORT = 5713
 DEFAULT_ADMIN_ID = "bench-admin"
 READY_TIMEOUT_S = 120.0
@@ -186,13 +186,8 @@ def config_from_env(environ: dict) -> dict:
         raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
     if mode == "bench" and build_profile != "release":
         raise ConfigError("bench mode requires BUILD_PROFILE=release")
-    if mode == "bench":
-        if environ.get("PICASU_BARRIER_DEBUG", "0") not in ("", "0"):
-            raise ConfigError("bench mode refuses PICASU_BARRIER_DEBUG (timing perturbation)")
-        if "RUST_LOG" in environ:
-            raise ConfigError("bench mode refuses RUST_LOG (log-volume perturbation)")
-    else:
-        _warn_debug(environ)
+    if mode == "bench" and "RUST_LOG" in environ:
+        raise ConfigError("bench mode refuses RUST_LOG (log-volume perturbation)")
 
     default_bin = REPO_ROOT / "target" / build_profile / "picasu"
     binary = Path(environ.get("PICASU_BIN", str(default_bin)))
@@ -245,19 +240,6 @@ def config_from_env(environ: dict) -> dict:
     }
 
 
-def _warn_debug(environ: dict) -> None:
-    if "PICASU_BARRIER_DEBUG" not in environ:
-        print(
-            "WARN: debug mode without PICASU_BARRIER_DEBUG (no barrier stall logs)",
-            file=sys.stderr,
-        )
-    if "RUST_LOG" not in environ or "update_tree" not in environ.get("RUST_LOG", ""):
-        print(
-            "WARN: debug mode without update_tree debug logging (no refresh checkpoints)",
-            file=sys.stderr,
-        )
-
-
 # --- artifacts ---------------------------------------------------------------
 def write_manifest(cfg: dict, environ: dict) -> None:
     gi = git_info()
@@ -273,7 +255,6 @@ def write_manifest(cfg: dict, environ: dict) -> None:
                 "N": environ.get("N", ""),
                 "ADMIN_ID": cfg["admin_id"],
                 "RUST_LOG": environ.get("RUST_LOG", ""),
-                "PICASU_BARRIER_DEBUG": environ.get("PICASU_BARRIER_DEBUG", ""),
                 "git": gi["sha"],
                 "started": datetime.now(timezone.utc).isoformat(),
             },

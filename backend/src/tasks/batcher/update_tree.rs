@@ -44,20 +44,10 @@ fn update_tree_task() {
 /// (`tasks::queue::writer`) runs its own inline cascade after calling this.
 pub(crate) fn refresh_tree_cache() {
     let start_time = Instant::now();
-    // Stage checkpoints for hang triage: `debug!` is compiled in but
-    // filtered at the default `info` level, so the steady-state bench path
-    // is untouched. Enable with
-    // `RUST_LOG=info,picasu::tasks::batcher::update_tree=debug`.
-    debug!("refresh_tree_cache: enter");
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
     let mut database_timestamp_vec = build_from_asset_tables(&priority_list).unwrap_or_default();
-    debug!(
-        "refresh_tree_cache: built {} entries in {:?}",
-        database_timestamp_vec.len(),
-        start_time.elapsed()
-    );
 
     // Sort by timestamp descending, with a deterministic secondary key
     // (the asset path) so that items with equal timestamps have a
@@ -69,13 +59,8 @@ pub(crate) fn refresh_tree_cache() {
             a_path.cmp(b_path)
         })
     });
-    debug!("refresh_tree_cache: sorted in {:?}", start_time.elapsed());
 
     *TREE.in_memory.write().expect("lock poisoned") = database_timestamp_vec;
-    debug!(
-        "refresh_tree_cache: write lock acquired in {:?}",
-        start_time.elapsed()
-    );
 
     // Update VERSION_COUNT_TIMESTAMP immediately so query caches are
     // invalidated before the next prefetch call.
