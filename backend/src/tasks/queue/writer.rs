@@ -158,6 +158,17 @@ static CASCADE_COMPLETED_SEQ: AtomicU64 = AtomicU64::new(0);
 /// Woken after every watermark advance on either stage.
 static BARRIER_NOTIFY: Notify = Notify::const_new();
 
+/// Current generation watermarks `(next, writer, cascade)`. Diagnostics only;
+/// the values are read individually and may not form one instant.
+#[cfg(feature = "observe")]
+pub(crate) fn watermarks() -> (u64, u64, u64) {
+    (
+        NEXT_SEQ.load(Ordering::Relaxed),
+        COMPLETED_SEQ.load(Ordering::Relaxed),
+        CASCADE_COMPLETED_SEQ.load(Ordering::Relaxed),
+    )
+}
+
 struct WriterEndpoint {
     tx: mpsc::Sender<(u64, WriteOp)>,
     handle: tokio::task::JoinHandle<()>,

@@ -16,6 +16,7 @@ use crate::storage::cache::next_snapshot_id;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::storage::db::snapshot_tree;
 use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::observe::{Stage, Timer};
 
 use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
 use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
@@ -130,7 +131,12 @@ fn filter_items(
     // Clone under a short guard, then drop the guard before any Rayon work.
     // Holding the guard across `par_iter` lets a stolen cascade job block on
     // the tree-refresh write while this join waits for that pool worker.
+    let clone_timer = Timer::start(Stage::FilterSnapshotClone);
     let tree_snapshot = snapshot_tree();
+    let source_rows = u64::try_from(tree_snapshot.len()).unwrap_or(u64::MAX);
+    clone_timer.finish(source_rows);
+
+    let par_iter_timer = Timer::start(Stage::FilterParIter);
     let reduced_data_vector: Vec<ReducedData> = match (expression_option, resolved_share_option) {
         // If we have a resolved share then it must have a filter expression
         (Some(expr), Some(resolved_share)) => {
@@ -190,6 +196,7 @@ fn filter_items(
             .map(std::convert::Into::into)
             .collect(),
     };
+    par_iter_timer.finish(u64::try_from(reduced_data_vector.len()).unwrap_or(u64::MAX));
 
     let duration = format!("{:?}", filter_items_start_time.elapsed());
     trace!(duration = &*duration; "Filter items");
@@ -206,11 +213,17 @@ fn compute_locate(
     // Find locate index if requested.
     // Asset ID is authoritative for location. A missing/unknown asset ID
     // returns None — never silently resolves another same-hash asset.
-    let locate_to_index = locate_option.and_then(|locate_str| {
-        reduced_data_vector
-            .par_iter()
-            .position_first(|reduced| reduced.asset_id.as_str() == locate_str.as_str())
-    });
+    let locate_to_index = crate::tasks::observe::timed(
+        Stage::ComputeLocate,
+        u64::try_from(reduced_data_vector.len()).unwrap_or(u64::MAX),
+        || {
+            locate_option.and_then(|locate_str| {
+                reduced_data_vector
+                    .par_iter()
+                    .position_first(|reduced| reduced.asset_id.as_str() == locate_str.as_str())
+            })
+        },
+    );
 
     let duration = format!("{:?}", layout_start_time.elapsed());
     trace!(duration = &*duration; "Compute layout");
@@ -314,6 +327,7 @@ fn execute_prefetch_logic(
 ) -> Json<PrefetchReturn> {
     // Start timer
     let start_time = Instant::now();
+    let total_timer = Timer::start(Stage::PrefetchTotal);
 
     // Step 1: Build cache key for response creation
     let query_hash = build_cache_key(
@@ -328,6 +342,7 @@ fn execute_prefetch_logic(
     if let Some(cached_response) =
         check_query_cache(query_hash, &mut resolved_share_option, &caller_id)
     {
+        total_timer.finish(0);
         return cached_response;
     }
 
@@ -356,6 +371,8 @@ fn execute_prefetch_logic(
         resolved_share_option,
         &caller_id,
     );
+
+    total_timer.finish(u64::try_from(reduced_data_vector_length).unwrap_or(u64::MAX));
 
     // Total elapsed time
     let duration = format!("{:?}", start_time.elapsed());

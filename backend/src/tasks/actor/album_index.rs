@@ -184,6 +184,9 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
             "Starting one-time album index: {} root(s)",
             scan_roots_clone.len()
         );
+        // Phase boundary: the drain report at the terminal state covers this
+        // scan only, not traffic that ran before it started.
+        crate::tasks::observe::reset();
 
         // First, ensure a dir-album exists for every directory strictly under
         // each scan root, parent-first. This covers empty directories that the
@@ -597,17 +600,29 @@ fn did_every_matched_file_fail(job_id: u64) -> bool {
 }
 
 fn finish_job(job_id: u64, state: AlbumIndexState) {
-    {
+    let report_context = {
         let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
         if slot.job_id == job_id {
+            let context = format!(
+                "scan job={job_id} state={state:?} scanned={} matched={} processed={} failed={}",
+                slot.status.scanned, slot.status.matched, slot.status.processed, slot.status.failed
+            );
             slot.status.state = state;
             slot.status.finished_at = Some(Utc::now().timestamp_millis());
+            Some(context)
+        } else {
+            None
         }
-    }
+    };
 
     let mut active = ACTIVE_INDEX.lock().expect("lock poisoned");
     if active.as_ref().is_some_and(|job| job.job_id == job_id) {
         *active = None;
+    }
+    drop(active);
+
+    if let Some(context) = report_context {
+        crate::tasks::observe::drain_report(&context);
     }
 }
 

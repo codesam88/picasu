@@ -25,6 +25,8 @@ use std::sync::{Arc, LazyLock};
 use anyhow::Context;
 use tokio::sync::Semaphore;
 
+use crate::tasks::observe::{self, Stage};
+
 /// Rayon admittance: one permit per shared-pool compute thread.
 static CPU_PERMITS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| {
     let threads = (*crate::tasks::runtime::CURRENT_NUM_THREADS)
@@ -33,21 +35,32 @@ static CPU_PERMITS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| {
     Arc::new(Semaphore::new(threads))
 });
 
+/// Free admittance permits in the shared CPU budget. Diagnostics only.
+#[cfg(feature = "observe")]
+pub(crate) fn available_cpu_permits() -> usize {
+    CPU_PERMITS.available_permits()
+}
+
 /// Run bulk-lane CPU work `f` on the shared Rayon pool (LIFO order).
 pub async fn run_cpu<F, T>(f: F) -> anyhow::Result<T>
 where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
+    let permit_timer = observe::Timer::start(Stage::CpuPermitWait);
     let permit = CPU_PERMITS
         .clone()
         .acquire_owned()
         .await
         .map_err(|_| anyhow::anyhow!("cpu admittance semaphore closed"))?;
+    permit_timer.finish(u64::try_from(CPU_PERMITS.available_permits()).unwrap_or(u64::MAX));
     let (tx, rx) = tokio::sync::oneshot::channel();
     rayon::spawn(move || {
         let _permit = permit;
-        let _ = tx.send(f());
+        let exec_timer = observe::Timer::start(Stage::CpuExec);
+        let result = f();
+        exec_timer.finish(0);
+        let _ = tx.send(result);
     });
     rx.await
         .map_err(|_| anyhow::anyhow!("background cpu task dropped its result"))?
@@ -59,15 +72,20 @@ where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
+    let permit_timer = observe::Timer::start(Stage::CpuPermitWait);
     let permit = CPU_PERMITS
         .clone()
         .acquire_owned()
         .await
         .map_err(|_| anyhow::anyhow!("cpu admittance semaphore closed"))?;
+    permit_timer.finish(u64::try_from(CPU_PERMITS.available_permits()).unwrap_or(u64::MAX));
     let (tx, rx) = tokio::sync::oneshot::channel();
     rayon::spawn_fifo(move || {
         let _permit = permit;
-        let _ = tx.send(f());
+        let exec_timer = observe::Timer::start(Stage::CpuExec);
+        let result = f();
+        exec_timer.finish(0);
+        let _ = tx.send(result);
     });
     rx.await
         .map_err(|_| anyhow::anyhow!("background cpu task dropped its result"))?

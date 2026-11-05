@@ -43,15 +43,22 @@ fn update_tree_task() {
 /// cascades through [`BATCH_COORDINATOR`], while the serial writer
 /// (`tasks::queue::writer`) runs its own inline cascade after calling this.
 pub(crate) fn refresh_tree_cache() {
+    use crate::tasks::observe::{Stage, Timer};
+
     let start_time = Instant::now();
+    let total_timer = Timer::start(Stage::TreeRefreshTotal);
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
+    let build_timer = Timer::start(Stage::TreeRefreshBuild);
     let mut database_timestamp_vec = build_from_asset_tables(&priority_list).unwrap_or_default();
+    let rows = u64::try_from(database_timestamp_vec.len()).unwrap_or(u64::MAX);
+    build_timer.finish(rows);
 
     // Sort by timestamp descending, with a deterministic secondary key
     // (the asset path) so that items with equal timestamps have a
     // stable order.
+    let sort_timer = Timer::start(Stage::TreeRefreshSort);
     database_timestamp_vec.par_sort_by(|a, b| {
         b.timestamp.cmp(&a.timestamp).then_with(|| {
             let a_path = a.abstract_data.path().map_or("", |a| a.file.as_str());
@@ -59,13 +66,20 @@ pub(crate) fn refresh_tree_cache() {
             a_path.cmp(b_path)
         })
     });
+    sort_timer.finish(rows);
 
-    *TREE.in_memory.write().expect("lock poisoned") = database_timestamp_vec;
+    let write_timer = Timer::start(Stage::TreeRefreshWriteWait);
+    let mut tree_guard = TREE.in_memory.write().expect("lock poisoned");
+    write_timer.finish(rows);
+    *tree_guard = database_timestamp_vec;
+    drop(tree_guard);
 
     // Update VERSION_COUNT_TIMESTAMP immediately so query caches are
     // invalidated before the next prefetch call.
     let current_timestamp = Utc::now().timestamp_millis();
     VERSION_COUNT_TIMESTAMP.store(current_timestamp, std::sync::atomic::Ordering::SeqCst);
+
+    total_timer.finish(rows);
 
     let duration = format!("{:?}", start_time.elapsed());
     debug!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
