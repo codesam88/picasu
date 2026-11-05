@@ -14,7 +14,7 @@ Scheduled, non-blocking MSRV floor check. Floor (1.90) is the maximum
 
 ## Goal
 
-`just msrv-check` installs the floor toolchain and runs
-`cargo check --workspace --locked --all-targets` on it.
+The scheduled CI job in `.github/workflows/msrv.yml` installs the floor toolchain
+and runs `cargo check --workspace --locked --all-targets` on it directly.
 `.github/workflows/msrv.yml` runs it on schedule + manual dispatch only;
 a red run means code or locked deps moved above the floor.

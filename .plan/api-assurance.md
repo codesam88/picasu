@@ -167,14 +167,14 @@ pinning becomes painful.
 ### 3. Run the lint through cargo-dylint
 
 Run `utils/dylint-lints` through upstream `cargo-dylint`: pin it like
-other tools (`just install-dylint`), declare the lint crate in workspace
+other tools (`just install dylint`), declare the lint crate in workspace
 metadata, and point `just dylint-check` at `cargo dylint --all -- -p
 picasu`. Verify GREEN (zero findings) and RED (exactly one warning on a
 synthetic violation, tree restored) through `cargo dylint`. The nightly
 pin, the lint source, and the quarterly re-pin policy are the load-bearing
 parts — the runner is just mechanics.
 
-Step 3 done (`just install-dylint` pinned 6.1.0, workspace metadata,
+Step 3 done (`just install dylint` pinned 6.1.0, workspace metadata,
 GREEN/RED re-verified through `cargo dylint`). Follow-up
 survey of the upstream general example set (dylint rev `08e00155`, tag
 v6.1.1): all 8 lints build and run, exactly one finding — `abs_home_path`

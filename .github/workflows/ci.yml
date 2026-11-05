@@ -75,7 +75,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-nextest
+          just install nextest
           cargo nextest --version
 
       # The pinned media tools unpack into ~/.local/opt; the install
@@ -96,14 +96,14 @@ jobs:
       # snapfab writes fixture metadata through ExifTool, an external binary
       # the backend itself never spawns (the backend reads metadata in-process).
       # Install the pinned distribution the dev environment uses
-      # (`just install-exiftool`, no root, pure Perl): the snapfab tests spawn
+      # (`just install exiftool`, no root, pure Perl): the snapfab tests spawn
       # it, and they encode the pinned version's refusal behaviour, which the
       # distro package does not reproduce.
       - name: Install ExifTool
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-exiftool
+          just install exiftool
           exiftool -ver
 
       # Video metadata (ffprobe) and video thumbnails (ffmpeg) are external
@@ -114,7 +114,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-ffmpeg
+          just install ffmpeg
           ffmpeg -version
 
       - name: Install uv
@@ -215,7 +215,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-ffmpeg
+          just install ffmpeg
           ffmpeg -version
 
       # The scenarios generate their fixture images through snapfab, which
@@ -226,7 +226,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-exiftool
+          just install exiftool
           exiftool -ver
 
       # The docs gates ride along with the frontend job: they need the same
@@ -264,7 +264,7 @@ jobs:
 
       # The lint crates pin nightly-2026-08-01 and need rustc-dev + llvm-tools;
       # the main build stays on stable. Installed alongside, not instead of,
-      # stable so `just install-dylint` (a `cargo install`) keeps working.
+      # stable so `just install dylint` (a `cargo install`) keeps working.
       - name: Install nightly toolchain + components
         run: rustup toolchain install nightly-2026-08-01 --component rustc-dev,llvm-tools
 
@@ -272,7 +272,7 @@ jobs:
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
-          just install-dylint
+          just install dylint
           cargo dylint --version
 
       - name: Dylint check (zero-tolerance)

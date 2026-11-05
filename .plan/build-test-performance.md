@@ -156,7 +156,7 @@ already run was repeated inside the build script).
 Notes:
 
 - nextest is installed from the pinned prebuilt release
-  (`just install-nextest`, `scripts/install-nextest.sh`, sha256 per platform),
+  (`just install nextest`, `scripts/install-nextest.sh`, sha256 per platform),
   not compiled from source — `cargo install cargo-nextest` takes minutes.
   CI installs the same pinned binary in the two jobs that run the backend
   suite.
@@ -180,7 +180,7 @@ Notes:
 
 - `scripts/install-cargo-deny.sh` installs the pinned release binary
   (sha256 per platform) the way the nextest installer does; the audit job
-  calls `just install-cargo-deny` instead of `cargo install cargo-deny`.
+  calls `just install cargo-deny` instead of `cargo install cargo-deny`.
 - The plan tool is the board view only. The frontmatter gate moved into the
   repo: `scripts/plan-lint.mjs` validates every `.plan/*.md` against
   `.plan/.schema.json` with the same rules the tool used (required fields,

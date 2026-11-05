@@ -60,14 +60,14 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-exiftool
+          just install exiftool
           exiftool -ver
 
       - name: Install ffmpeg
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-ffmpeg
+          just install ffmpeg
           ffmpeg -version
 
       - name: Install uv

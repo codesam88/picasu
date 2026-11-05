@@ -7,13 +7,15 @@ on:
       - ".github/workflows/**"
       - ".github/dependabot.yml"
       - "justfile"
-      - "scripts/install-zizmor.sh"
+      - "scripts/deps/zizmor.sh"
+      - "scripts/deps/versions.env"
   pull_request:
     paths:
       - ".github/workflows/**"
       - ".github/dependabot.yml"
       - "justfile"
-      - "scripts/install-zizmor.sh"
+      - "scripts/deps/zizmor.sh"
+      - "scripts/deps/versions.env"
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
@@ -87,7 +89,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          just install-zizmor > /dev/null
+          just install zizmor > /dev/null
           uvx zizmor@"$(just --evaluate zizmor_version)" --format=sarif -q --no-progress . > results.sarif
 
       - name: Upload SARIF

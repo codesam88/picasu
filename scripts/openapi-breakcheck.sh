@@ -29,7 +29,7 @@ cd "$repo_root"
 
 if ! command -v oasdiff >/dev/null 2>&1 \
     || [ "$(oasdiff --version 2>/dev/null || true)" != "oasdiff version $oasdiff_version" ]; then
-    ./scripts/install-oasdiff.sh "$oasdiff_version" "$OASDIFF_SHA256"
+    "$SCRIPT_DIR/deps/oasdiff.sh" ensure
     export PATH="$HOME/.local/bin:$PATH"
 fi
 

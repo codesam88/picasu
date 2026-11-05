@@ -362,7 +362,7 @@ metadata this backend writes.
 | Read EXIF (backend)                      | `kamadak-exif`         | Pure Rust; PRIMARY-IFD display strings become the API's `exifVec`                                                    |
 | Read and write XMP (backend)             | `xmpkit`               | Sidecars read with `XmpMeta::parse`, embedded packets with `XmpFile::open`; sidecars written with `serialize_packet` |
 | Video metadata and thumbnails (backend)  | `ffprobe` / `ffmpeg`   | External binaries spawned at runtime; install per `docs/linux.md`                                                    |
-| Write fixture metadata (`utils/snapfab`) | `exiftool`             | Dev/test tool only (`just install-exiftool`); the backend never spawns it                                            |
+| Write fixture metadata (`utils/snapfab`) | `exiftool`             | Dev/test tool only (`just install exiftool`); the backend never spawns it                                            |
 | Evaluated, not used                      | `xmp-writer`, `rexiv2` | Earlier candidates; neither is a dependency                                                                          |
 
 ### exiv2 tag reference (for debugging)
