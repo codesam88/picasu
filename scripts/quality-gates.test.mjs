@@ -115,3 +115,49 @@ test("regenerated doc lists openapi-routes-release in the release lane", (t) => 
   assert.match(content, /### `openapi-routes-release`/);
   assert.match(content, /### `openapi-routes-release`[\s\S]*?- Lanes: [^\n]*release/);
 });
+
+
+test("precommit lane present on backend-check", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.match(md, /### `backend-check`[\s\S]*?- Lanes: [^\n]*precommit/);
+});
+
+test("every emitted lane node has at least one edge and no self-loops", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  const m = md.match(/```mermaid\n([\s\S]*?)```/);
+  assert.ok(m, "mermaid block present");
+  const block = m[1];
+  const laneNodes = [...block.matchAll(/^\s*(lane_[A-Za-z0-9_]+)\[/gm)].map((x) => x[1]);
+  const edges = [...block.matchAll(/^\s*(\S+?)\s*-->\s*([A-Za-z0-9_]+)/gm)].map((x) => ({
+    from: x[1],
+    to: x[2],
+  }));
+  for (const node of laneNodes) {
+    assert.ok(
+      edges.some((e) => e.from === node),
+      `lane node ${node} has no outgoing edge`,
+    );
+  }
+  for (const e of edges) {
+    assert.notEqual(e.from, e.to, `self-loop edge ${e.from} --> ${e.to}`);
+  }
+});
+
+test("openapi-sanity has no direct lane edge", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  const m = md.match(/```mermaid\n([\s\S]*?)```/);
+  assert.ok(m);
+  const block = m[1];
+  const directLaneEdges = [...block.matchAll(/^\s*lane_[A-Za-z0-9_]+\s*-->\s*openapi_sanity\b/gm)];
+  assert.equal(directLaneEdges.length, 0, "openapi-sanity should not be a direct lane target");
+});
+
+test("checks sections carry a Required by line", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  const backend = md.match(/### `backend-check`([\s\S]*?)(?=\n### `|\s*$)/);
+  assert.ok(backend, "backend-check section present");
+  assert.match(backend[1], /- Required by: `check`\n/);
+  const sanity = md.match(/### `openapi-sanity`([\s\S]*?)(?=\n### `|\s*$)/);
+  assert.ok(sanity, "openapi-sanity section present");
+  assert.match(sanity[1], /- Required by: .*`openapi-check`/);
+});
