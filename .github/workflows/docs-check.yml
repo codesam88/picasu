@@ -33,3 +33,4 @@ jobs:
         working-directory: frontend
       - run: just docs-check
       - run: just plan-lint
+      - run: just gates-check

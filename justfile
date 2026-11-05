@@ -294,6 +294,11 @@ plan-format:
 plan-lint:
     node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
+# ensure all test/check rules are called from CI and global rules
+[group('utils')]
+gates-check:
+    node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}}
+
 # run plan <args> (needs install-plan)
 [group('utils')]
 plan *args:
@@ -306,6 +311,11 @@ plan *args:
 docs-openapi: openapi-gen
     npx --yes widdershins@4.0.1 --summary backend/openapi.json -o docs/openapi-reference.md
     npx prettier --write docs/openapi-reference.md
+
+# Regenerate the gates doc (checked by gates-check)
+[group('docs')]
+gates-docs:
+    node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}} --generate docs/quality-gates.md
 
 # Build mdBook site at target/docs/
 [group('docs')]
@@ -345,7 +355,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check
+check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check gates-check
 
 # run full test suite
 [group('global')]
