@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CLI wrapper around `backend_launcher.py`. Configuration is env-driven.
 
-    MODE=bench OUT=<out> PORT=<port> utils/bench/launch-backend.py
+    BUILD_PROFILE=release OUT=<out> PORT=<port> utils/bench/launch-backend.py
 
 Exit codes: 0 completed; 1 config/preflight; 2 startup; 3 reserved;
 4 outer timeout. See `backend_launcher.py` for the full environment contract.

@@ -22,13 +22,14 @@ Two layers, built in order:
    spawns and supervises throwaway backend runs for bench and debug use,
    detects common failures, and captures diagnostics. `serve.sh` stays
    untouched for persistent fuzz/dev use.
-2. Workload wrapper (follow-up): runs desired workloads against a
-   launcher-provided server and captures results. `harness-a.sh` stays
-   the workload driver until the wrapper exists.
+2. Workload wrapper (done): `utils/bench/run-cell.py` + `workload.py`
+   run desired workloads against a launcher-provided server and capture
+   results. `harness-a.sh` retired with the wrapper in place.
 
 Scope decisions (2026-11-04): bench + debug first; supervise-only
 (spawn, stream logs, liveness, diag bundle, cleanup — no mid-run
-interaction); full `harness-a.sh` replacement deferred.
+interaction); the Python stack (`run-cell.py` + `workload.py`) replaced
+`harness-a.sh` outright.
 
 ## Non-goals
 
@@ -55,10 +56,10 @@ interaction); full `harness-a.sh` replacement deferred.
      `utils/bench/tests/` to the new module; removes `launch-cell.py`.
 3. Stub-server test suite: fresh/reuse/bootstrap-closed/port-busy/
    server-dies/ready-timeout paths (no real server needed).
-4. Cut over one debug run and one bench cell to the launcher;
-   `harness-a.sh` keeps driving workload until the wrapper lands.
-5. Retire `harness-a.sh` only when the workload wrapper exists
-   (follow-up plan).
+4. Cut over one debug run and one bench cell to the launcher
+   (done — Python stack validated against harness cells, then cut over).
+5. Retire `harness-a.sh` (done — removed once the workload wrapper
+   proved metric-compatible).
 
 ## Acceptance
 

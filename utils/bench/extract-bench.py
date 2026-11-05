@@ -5,7 +5,7 @@ Usage:
     utils/bench/extract-bench.py /tmp/.../bench-after-N4-100 [...]
 
 Reads harness-a.log, status-final.json and hyperfine.json from each
-OUT dir (as produced by utils/bench/harness-a.sh) and prints one
+OUT dir (as produced by the bench workload) and prints one
 row per cell: image count/bytes, scan wall time + sec/MB, last-round
 probe means (sequential + concurrent), and post-scan hyperfine means.
 
@@ -140,7 +140,9 @@ def main() -> None:
     header = (
         f"{'benchmark':<26}{'cpu':>4}{'images':>7}{'MB':>9}"
         f"{'scan_time':>10}{'s/MB':>8}{'state':>11}"
-        f"{'scan_fetch':>13}{'scan_thumb':>14}{'scan_edit':>13}"
+        f"{'scan_fetch':>13}{'fetch_worst':>12}"
+        f"{'scan_thumb':>14}{'thumb_worst':>12}"
+        f"{'scan_edit':>13}{'edit_worst':>12}"
         f"{'post_thumb':>14}{'post_fetch':>13}{'post_edit':>13}"
     )
     print(header)
@@ -171,8 +173,11 @@ def main() -> None:
             f"{sec_per_mb:>8.1f}"
             f"{status.get('state', '?'):>11}"
             f"{ms(row, 'scan_pref_median', 'scan_pref_mean', width=13)}"
+            f"{ms(row, 'scan_pref_worst', width=12)}"
             f"{ms(row, 'scan_thumb_mean', width=14)}"
+            f"{ms(row, 'scan_thumb_worst', width=12)}"
             f"{ms(row, 'scan_edit_median', 'scan_edit_mean', width=13)}"
+            f"{ms(row, 'scan_edit_worst', width=12)}"
             f"{ms(row, 'post_compressed', width=14)}"
             f"{ms(row, 'post_prefetch', width=13)}"
             f"{ms(row, 'post_edit', width=13)}"
@@ -186,23 +191,12 @@ def main() -> None:
             counts += f" rounds={row['scan_rounds']}"
         if "scan_thumb_n" in row:
             counts += f" thumb_n={row['scan_thumb_n']}"
-        worst = []
-        for key, label in (
-            ("scan_pref_worst", "fetch"),
-            ("scan_thumb_worst", "thumb"),
-            ("scan_edit_worst", "edit"),
-        ):
-            if key in row:
-                worst.append(f"{label}={row[key] * 1000:.1f}")
-        if worst:
-            counts += f" worst_ms=[{', '.join(worst)}]"
         if "scan_runs_ms" in row:
             runs = ",".join(f"{w:.0f}" for w in row["scan_runs_ms"])
             counts += f" scan_runs_s=[{runs}]"
         print(counts)
-    print(
-        "units: scan_time s; s/MB s per MB; all latency columns ms (hyperfine-derived columns report medians-of-round-medians, robust to stalls; scan_thumb pools all rounds' random fetches; worst_ms lists each column's worst round)"
-    )
+    print("units: scan_time s; s/MB s per MB; all latency columns ms.")
+    print("median/worst latency: pre[fetch], [thumb]nail, metadata[edit], scan and post")
 
 
 if __name__ == "__main__":

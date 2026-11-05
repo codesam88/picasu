@@ -26,7 +26,8 @@ Environment contract:
 
   OUT                       required (or --out); cell artifact directory
   PORT                      required (or --port); server port
-  MODE                      bench (default) | debug
+  BUILD_PROFILE             release (default) | debug; release without
+                            RUST_LOG counts as canonical upstream
   LAUNCHER_READY_TIMEOUT_S  budget for launcher-info.json + readiness
                             (default 150)
   LAUNCHER_STOP_TIMEOUT_S   SIGTERM grace before SIGKILL (default 30)
@@ -66,8 +67,6 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import backend_launcher  # noqa: E402
 
-MODES = ("bench", "debug")
-DEFAULT_MODE = "bench"
 DEFAULT_READY_TIMEOUT_S = 150.0
 DEFAULT_STOP_TIMEOUT_S = 30.0
 POLL_INTERVAL_S = 0.2
@@ -139,22 +138,22 @@ def _nonnegative_float(environ: dict, name: str, default: float) -> float:
     return value
 
 
-def config_from_env(environ: dict, out_flag=None, port_flag=None, mode_flag=None) -> dict:
-    """Build cell config. Flags win over environment; MODE defaults to bench."""
+def config_from_env(environ: dict, out_flag=None, port_flag=None) -> dict:
+    """Build cell config. Flags win over environment; mode is derived downstream."""
     out = _validate_out(out_flag if out_flag is not None else environ.get("OUT", ""))
     raw_port = port_flag if port_flag is not None else environ.get("PORT", "")
     if raw_port == "":
         raise ConfigError("PORT is required (environment PORT or --port)")
     port = _port(str(raw_port))
 
-    mode = mode_flag if mode_flag is not None else environ.get("MODE", DEFAULT_MODE)
-    if mode not in MODES:
-        raise ConfigError(f"MODE must be one of {MODES}, got '{mode}'")
+    build_profile = environ.get("BUILD_PROFILE", "release")
+    if build_profile not in ("release", "debug"):
+        raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
 
     return {
         "out": out,
         "port": port,
-        "mode": mode,
+        "build_profile": build_profile,
         "ready_timeout": _positive_float(
             environ, "LAUNCHER_READY_TIMEOUT_S", DEFAULT_READY_TIMEOUT_S
         ),
@@ -185,9 +184,15 @@ def spawn_launcher(cfg: dict, environ: dict, output_path: Path):
     before it creates its own launcher.log.
     """
     env = dict(environ)
-    env.update({"OUT": str(cfg["out"]), "PORT": str(cfg["port"]), "MODE": cfg["mode"]})
+    env.update(
+        {
+            "OUT": str(cfg["out"]),
+            "PORT": str(cfg["port"]),
+            "BUILD_PROFILE": cfg["build_profile"],
+        }
+    )
     command = [sys.executable, str(cfg["launcher_script"])]
-    log_line(f"launcher start: port={cfg['port']} out={cfg['out']} mode={cfg['mode']}")
+    log_line(f"launcher start: port={cfg['port']} out={cfg['out']} profile={cfg['build_profile']}")
     handle = open(output_path, "w", encoding="utf-8")  # noqa: PTH123
     try:
         return subprocess.Popen(
@@ -259,6 +264,7 @@ def run_workload(cfg: dict, environ: dict, info: dict) -> int:
     env = dict(environ)
     env["LAUNCHER_INFO"] = str(cfg["out"] / "launcher-info.json")
     env["OUT"] = str(cfg["out"])
+    env["BUILD_PROFILE"] = cfg["build_profile"]
     command = [sys.executable, str(cfg["workload_script"])]
     log_line(f"workload start: {info.get('base_url')} out={cfg['out']}")
     timeout = cfg.get("workload_timeout") or None
@@ -420,7 +426,7 @@ def collect_diag(
         "reason": reason,
         "out": str(out),
         "port": cfg["port"],
-        "mode": cfg["mode"],
+        "build_profile": cfg["build_profile"],
         "workload_rc": workload_rc,
         "launcher_rc": launcher_rc,
         "status_state": state,
@@ -556,7 +562,6 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", help="cell artifact directory (default: $OUT)")
     parser.add_argument("--port", help="server port (default: $PORT)")
-    parser.add_argument("--mode", help="bench (default) or debug (default: $MODE)")
     args = parser.parse_args(argv)
 
     # SIGTERM unwinds through run_cell's finally so the launcher and its
@@ -564,7 +569,7 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGTERM, _interrupt)
     environ = dict(os.environ)
     try:
-        cfg = config_from_env(environ, args.out, args.port, args.mode)
+        cfg = config_from_env(environ, args.out, args.port)
     except ConfigError as err:
         print(f"ERROR: {err}", file=sys.stderr)
         return EXIT_CONFIG

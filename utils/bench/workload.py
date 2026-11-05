@@ -2,7 +2,8 @@
 """Workload half of a benchmark cell, against a launcher-owned server.
 
 Consumes `launcher-info.json` written by `utils/bench/backend_launcher.py`
-and reproduces the measurement protocol of `utils/bench/harness-a.sh`:
+and implements the measurement protocol (line formats compatible with
+the retired shell driver, so historical cells keep parsing):
 image-set materialisation, repeated album-index scans, during-scan random
 compressed fetches plus hyperfine prefetch/edit-rating probes, a post-scan
 sequential sweep, post-scan hyperfine baselines, and write-probe verification.
@@ -34,25 +35,25 @@ Environment contract (on top of the launcher's):
 
   LAUNCHER_INFO   path to launcher-info.json (required)
   OUT             artifact directory (default: launcher-info.out)
-  COUNT           images to generate when MANIFEST is absent (default 10)
+  NCPU            cores for the CPU column (default 4)
+  IMAGES          images per cell, copied from IMAGE_REPO (default 100)
+  IMAGE_REPO      pre-seeded image directory (required, read-only);
+                  the first IMAGES entries in sorted order are copied
+  IMAGE_PATH      cell image directory (default OUT/images)
   REPEATS         post-scan hyperfine runs (default 3)
   WARMUP          post-scan hyperfine warmup runs (default 1)
   RUNS_DURING     per-round hyperfine runs during a scan (default 3; the
                   per-round warmup is always 0, matching harness-A)
   SCAN_REPEATS    scan repetitions per cell (default 3)
   FETCHES         random compressed fetches per during-scan round (default 10)
-  PROBE_LIMIT     max probe-list rows (default: COUNT)
+  PROBE_LIMIT     max probe-list rows (default: IMAGES)
   SCAN_TIMEOUT_S  scan poll budget; 0 waits for a terminal state (default 0)
   SCAN_STALL_TIMEOUT_S  abort when running counters do not move for this
                   long; 0 disables (default 120)
   POLL_INTERVAL_S status poll interval (default 0.2)
   PROBE_INTERVAL_S probe-phase refresh interval (default 0.5)
-  MANIFEST        PhotoSpec manifest to use instead of generating one
-  REUSE_IMAGES    pre-generated image directory to copy (read-only source)
-  SKIP_GENERATE   1 requires MANIFEST and images already in OUT/images
-  GEN_JOBS        parallel snapfab workers (default: min(4, nproc))
-  BUILD_PROFILE   debug (default) | release
-  SNAPFAB_BIN     snapfab binary (default target/<BUILD_PROFILE>/snapfab)
+  IMAGES is required to be present in IMAGE_REPO: repos are seeded
+  a priori (see `just bench seed-images`); the workload never generates.
   HYPERFINE_BIN   hyperfine binary; empty disables hyperfine
 
 Exit codes: 0 completed; 1 config/preflight; 2 runtime failure (including a
@@ -81,7 +82,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
-DEFAULT_COUNT = 10
+DEFAULT_IMAGES = 100
 DEFAULT_REPEATS = 3
 DEFAULT_WARMUP = 1
 DEFAULT_RUNS_DURING = 3
@@ -186,6 +187,22 @@ def _validate_out(raw: str) -> Path:
 
 
 def config_from_env(environ: dict) -> dict:
+    for old, new in (
+        ("N", "NCPU"),
+        ("COUNT", "IMAGES"),
+        ("REUSE_IMAGES", "IMAGE_REPO"),
+        ("SKIP_GENERATE", None),
+        ("GEN_JOBS", None),
+        ("SNAPFAB_BIN", None),
+        ("MANIFEST", None),
+    ):
+        if old in environ:
+            hint = f"use {new} instead" if new else "seeding moved to `just bench seed-images`"
+            raise ConfigError(f"{old} was removed ({hint})")
+
+    if not environ.get("IMAGE_REPO", ""):
+        raise ConfigError("IMAGE_REPO is required (seed a repo with `just bench seed-images`)")
+
     info_path = environ.get("LAUNCHER_INFO", "")
     if not info_path:
         raise ConfigError("LAUNCHER_INFO is required")
@@ -202,20 +219,20 @@ def config_from_env(environ: dict) -> dict:
         port = urllib.parse.urlsplit(base_url).port or DEFAULT_PORT
     except ValueError:
         raise ConfigError(f"invalid base_url: {base_url}")
-    n = _int_env(environ, "N", 4, minimum=0)
+
+    ncpu = _int_env(environ, "NCPU", 4, minimum=0)
 
     build_profile = environ.get("BUILD_PROFILE", DEFAULT_BUILD_PROFILE)
     if build_profile not in ("debug", "release"):
         raise ConfigError(f"BUILD_PROFILE must be debug or release, got '{build_profile}'")
 
-    count = _int_env(environ, "COUNT", DEFAULT_COUNT, minimum=1)
+    images = _int_env(environ, "IMAGES", DEFAULT_IMAGES, minimum=1)
     scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
     repeats = _int_env(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
     warmup = _int_env(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
     runs_during = _int_env(environ, "RUNS_DURING", DEFAULT_RUNS_DURING, minimum=1)
     fetches = _int_env(environ, "FETCHES", DEFAULT_FETCHES, minimum=0)
-    probe_limit = _int_env(environ, "PROBE_LIMIT", count, minimum=1)
-    gen_jobs = _int_env(environ, "GEN_JOBS", min(4, os.cpu_count() or 1), minimum=1)
+    probe_limit = _int_env(environ, "PROBE_LIMIT", images, minimum=1)
     scan_timeout = _float_env(environ, "SCAN_TIMEOUT_S", 0.0, minimum=0.0)
     scan_stall_timeout = _float_env(environ, "SCAN_STALL_TIMEOUT_S", 120.0, minimum=0.0)
     poll_interval = _float_env(environ, "POLL_INTERVAL_S", DEFAULT_POLL_INTERVAL_S, minimum=0.001)
@@ -223,58 +240,33 @@ def config_from_env(environ: dict) -> dict:
         environ, "PROBE_INTERVAL_S", DEFAULT_PROBE_INTERVAL_S, minimum=0.001
     )
 
-    manifest = environ.get("MANIFEST", "")
-    if manifest:
-        manifest_path = Path(manifest)
-        if not manifest_path.is_file():
-            raise ConfigError(f"manifest not found: {manifest}")
-    else:
-        manifest_path = None
+    repo_path = Path(environ["IMAGE_REPO"])
+    if not repo_path.is_dir():
+        raise ConfigError(f"IMAGE_REPO not a directory: {environ['IMAGE_REPO']}")
 
-    reuse_images = environ.get("REUSE_IMAGES", "")
-    if reuse_images:
-        reuse_path = Path(reuse_images)
-        if not reuse_path.is_dir():
-            raise ConfigError(f"REUSE_IMAGES not a directory: {reuse_images}")
-    else:
-        reuse_path = None
-
-    skip_generate = environ.get("SKIP_GENERATE", "0")
-    if skip_generate not in ("0", "1"):
-        raise ConfigError(f"SKIP_GENERATE must be 0 or 1, got '{skip_generate}'")
-    if skip_generate == "1" and manifest_path is None:
-        raise ConfigError("SKIP_GENERATE=1 requires MANIFEST=<set manifest>")
-
-    default_snapfab = REPO_ROOT / "target" / build_profile / "snapfab"
-    snapfab = Path(environ.get("SNAPFAB_BIN", str(default_snapfab)))
-    needs_snapfab = reuse_path is None and skip_generate != "1"
-    if needs_snapfab and not (snapfab.is_file() and os.access(snapfab, os.X_OK)):
-        raise ConfigError(f"missing executable snapfab binary {snapfab}")
+    image_path = Path(environ.get("IMAGE_PATH", "") or out / "images")
 
     return {
         "launcher_info": info,
         "base_url": base_url,
         "cookie_jar": cookie_jar,
         "out": out,
-        "n": n,
+        "ncpu": ncpu,
         "port": port,
-        "count": count,
+        "images": images,
         "scan_repeats": scan_repeats,
         "repeats": repeats,
         "warmup": warmup,
         "runs_during": runs_during,
         "fetches": fetches,
         "probe_limit": probe_limit,
-        "gen_jobs": gen_jobs,
         "scan_timeout_s": scan_timeout,
         "scan_stall_timeout_s": scan_stall_timeout,
         "poll_interval_s": poll_interval,
         "probe_interval_s": probe_interval,
-        "manifest": manifest_path,
-        "reuse_images": reuse_path,
-        "skip_generate": skip_generate == "1",
+        "image_repo": repo_path,
+        "image_path": image_path,
         "build_profile": build_profile,
-        "snapfab": str(snapfab),
         "hyperfine": resolve_hyperfine(environ),
     }
 
@@ -381,130 +373,38 @@ def _compressed_path(hash_value: str) -> str:
 
 
 # --- image set ---------------------------------------------------------------
-def _write_generated_manifest(path: Path, count: int) -> None:
-    entries = []
-    for i in range(1, count + 1):
-        day = (i % 28) + 1
-        hour = (i - 1) % 24
-        entries.append(
-            {
-                "output": f"bench_{i:04d}.jpg",
-                "format": "jpeg",
-                "width": 4000,
-                "height": 3000,
-                "exif_date": f"2024:06:{day:02d} {hour:02d}:15:00",
-                "tags": ["bench", "harness-a"],
-            }
-        )
-    path.write_text(
-        "[" + ",".join(json.dumps(entry, separators=(",", ":")) for entry in entries) + "]\n"
-    )
-
-
-def _generate_parallel(cfg: dict, entries: list, img_dir: Path, logger: Logger) -> None:
-    shards = min(cfg["gen_jobs"], len(entries))
-    chunk_dir = cfg["out"] / "manifest-chunks"
-    if chunk_dir.exists():
-        shutil.rmtree(chunk_dir)
-    chunk_dir.mkdir(parents=True)
-    processes = []
-    for shard in range(shards):
-        chunk = [entry for index, entry in enumerate(entries) if index % shards == shard]
-        chunk_path = chunk_dir / f"chunk-{shard}.json"
-        chunk_path.write_text(json.dumps(chunk))
-        log_path = cfg["out"] / f"gen-chunk-{shard}.log"
-        handle = open(log_path, "w", encoding="utf-8")  # noqa: PTH123
-        processes.append(
-            (
-                handle,
-                subprocess.Popen(
-                    [cfg["snapfab"], "batch", str(chunk_path)],
-                    cwd=str(img_dir),
-                    stdout=handle,
-                    stderr=subprocess.STDOUT,
-                ),
-            )
-        )
-    failed = False
-    for handle, process in processes:
-        if process.wait() != 0:
-            failed = True
-        handle.close()
-    for log_path in sorted(chunk_dir.parent.glob("gen-chunk-*.log")):
-        logger.raw(log_path.read_text(errors="replace"))
-    if failed:
-        raise WorkloadError("parallel image generation failed (see gen-chunk-*.log)")
+# Images are seeded a priori (`just bench seed-images`). The workload copies
+# exactly IMAGES files — the first IMAGES entries in sorted order — so one
+# repo can serve any cell size deterministically.
 
 
 def prepare_images(cfg: dict, logger: Logger) -> tuple:
-    out = cfg["out"]
-    img_dir = out / "images"
+    img_dir = cfg["image_path"]
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    if cfg["manifest"] is not None:
-        manifest_path = cfg["manifest"]
-        logger.log(f"manifest={manifest_path} (external)")
-    else:
-        manifest_path = out / "manifest.json"
-        _write_generated_manifest(manifest_path, cfg["count"])
-        logger.log(f"manifest={manifest_path} (generated for COUNT={cfg['count']})")
-
-    try:
-        entries = json.loads(manifest_path.read_text())
-    except (OSError, json.JSONDecodeError) as err:
-        raise ConfigError(f"cannot read manifest {manifest_path}: {err}")
-    expected = len(entries)
-    logger.log(f"manifest entries={expected} format=jpeg width=4000 height=3000 minimal=absent")
-
-    logger.log(
-        f"=== generating images (gen_jobs={cfg['gen_jobs']} "
-        f"reuse={cfg['reuse_images'] or 'none'} skip_generate={int(cfg['skip_generate'])}) ==="
-    )
-    started = time.perf_counter()
-    if cfg["reuse_images"] is not None:
-        mode = f"reuse({cfg['reuse_images']})"
-        for stale in img_dir.glob("*.jpg"):
-            stale.unlink()
-        for source in cfg["reuse_images"].glob("*.jpg"):
-            shutil.copy2(source, img_dir / source.name)
-        logger.log(f"reused images copied from {cfg['reuse_images']} (source untouched)")
-    elif cfg["skip_generate"]:
-        mode = "skipped"
-        logger.log(f"SKIP_GENERATE=1: expecting images already in {img_dir}")
-    elif cfg["gen_jobs"] > 1 and expected > 1:
-        mode = f"parallel(jobs={min(cfg['gen_jobs'], expected)},deal=round-robin)"
-        for stale in img_dir.glob("*.jpg"):
-            stale.unlink()
-        _generate_parallel(cfg, entries, img_dir, logger)
-    else:
-        mode = "sequential"
-        for stale in img_dir.glob("*.jpg"):
-            stale.unlink()
-        result = subprocess.run(
-            [cfg["snapfab"], "--verbose", "batch", str(manifest_path)],
-            cwd=str(img_dir),
-            capture_output=True,
-            text=True,
+    available = sorted(cfg["image_repo"].glob("*.jpg"), key=lambda path: path.name)
+    if len(available) < cfg["images"]:
+        raise ConfigError(
+            f"IMAGE_REPO holds {len(available)} images, need IMAGES={cfg['images']}: "
+            f"seed more with `just bench seed-images` (repo: {cfg['image_repo']})"
         )
-        logger.raw(result.stdout + result.stderr)
-        if result.returncode != 0:
-            raise WorkloadError("image generation failed")
-    wall_ms = int((time.perf_counter() - started) * 1000)
+    wanted = available[: cfg["images"]]
 
-    missing = 0
-    for entry in entries:
-        name = entry.get("output")
-        if not name or not (img_dir / name).is_file():
-            logger.log(f"missing image: {name}")
-            missing += 1
-    if missing:
-        raise WorkloadError(f"missing {missing} manifest images in {img_dir}")
+    logger.log(f"=== seeding images (repo={cfg['image_repo']} path={img_dir}) ===")
+    started = time.perf_counter()
+    for stale in img_dir.glob("*.jpg"):
+        stale.unlink()
+    for source in wanted:
+        shutil.copy2(source, img_dir / source.name)
+    logger.log(f"seeded {len(wanted)} images from {cfg['image_repo']} (source untouched)")
+    mode = f"seeded({cfg['image_repo']})"
+    wall_ms = int((time.perf_counter() - started) * 1000)
 
     jpgs = list(img_dir.glob("*.jpg"))
     image_count = len(jpgs)
     image_bytes = sum(path.stat().st_size for path in jpgs)
-    if image_count != expected:
-        raise WorkloadError(f"expected {expected} images, found {image_count}")
+    if image_count != cfg["images"]:
+        raise WorkloadError(f"expected {cfg['images']} images, found {image_count}")
     logger.log(f"generated={image_count} bytes={image_bytes} wall_ms={wall_ms} mode={mode}")
     return image_count, image_bytes
 
@@ -1134,7 +1034,7 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
     logger.log(f"write-probe verification: asset {asset} rating={rating} (expected 3)")
 
     logger.log("=== summary ===")
-    logger.log(f"N={cfg['n']} image_count={cfg['image_count']} image_bytes={cfg['image_bytes']}")
+    logger.log(f"N={cfg['ncpu']} image_count={cfg['image_count']} image_bytes={cfg['image_bytes']}")
     logger.log(
         f"scan_wall_ms={cfg['scan_wall_ms']:g} scan_state=completed "
         f"(median of {cfg['scan_repeats']} run(s))"
@@ -1167,7 +1067,7 @@ def run_workload(cfg: dict) -> int:
             f"base_url={cfg['base_url']} out={cfg['out']} "
             f"scan_repeats={cfg['scan_repeats']} repeats={cfg['repeats']} "
             f"warmup={cfg['warmup']} runs_during={cfg['runs_during']} "
-            f"fetches={cfg['fetches']} count={cfg['count']}"
+            f"fetches={cfg['fetches']} images={cfg['images']}"
         )
         logger.log(f"tool hyperfine: {cfg['hyperfine'] or 'MISSING'}")
 
@@ -1177,7 +1077,7 @@ def run_workload(cfg: dict) -> int:
         cfg["expected_entries"] = image_count
 
         logger.log("=== run parameters ===")
-        logger.log(f"N={cfg['n']} out={cfg['out']}")
+        logger.log(f"N={cfg['ncpu']} out={cfg['out']}")
         logger.log(f"image_count={image_count} image_bytes={image_bytes}")
         logger.log(
             f"hyperfine={cfg['hyperfine']} warmup={cfg['warmup']} "

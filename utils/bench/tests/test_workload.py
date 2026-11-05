@@ -263,26 +263,12 @@ def make_cookie_jar(path: Path) -> None:
     jar.save(ignore_discard=True, ignore_expires=True)
 
 
-def make_images(tmp: Path, count: int):
+def make_images(tmp: Path, count: int, prefix="img"):
     source = tmp / "source-images"
     source.mkdir()
-    entries = []
     for i in range(1, count + 1):
-        name = f"bench_{i:04d}.jpg"
-        (source / name).write_bytes(b"x" * 100_000)
-        entries.append(
-            {
-                "output": name,
-                "format": "jpeg",
-                "width": 4000,
-                "height": 3000,
-                "exif_date": f"2024:06:{(i % 28) + 1:02d} {(i - 1) % 24:02d}:15:00",
-                "tags": ["bench", "harness-a"],
-            }
-        )
-    manifest = tmp / "manifest.json"
-    manifest.write_text(json.dumps(entries))
-    return source, manifest
+        (source / f"{prefix}_{i:04d}.jpg").write_bytes(b"x" * 100_000)
+    return source
 
 
 class WorkloadTest(unittest.TestCase):
@@ -311,7 +297,7 @@ class WorkloadTest(unittest.TestCase):
             )
         )
         self.fake_hyperfine = write_fake_hyperfine(self.tmp_path)
-        self.images, self.manifest = make_images(self.tmp_path, 4)
+        self.images = make_images(self.tmp_path, 4)
 
     def _stop_server(self):
         self.server.shutdown()
@@ -322,14 +308,13 @@ class WorkloadTest(unittest.TestCase):
         env.update(
             {
                 "LAUNCHER_INFO": str(self.launcher_info),
-                "COUNT": "4",
+                "IMAGES": "4",
                 "SCAN_REPEATS": "1",
                 "REPEATS": "2",
                 "WARMUP": "0",
                 "RUNS_DURING": "2",
                 "FETCHES": "2",
-                "REUSE_IMAGES": str(self.images),
-                "MANIFEST": str(self.manifest),
+                "IMAGE_REPO": str(self.images),
                 "HYPERFINE_BIN": str(self.fake_hyperfine),
                 "SCAN_TIMEOUT_S": "5",
                 "POLL_INTERVAL_S": "0.02",
@@ -457,48 +442,87 @@ class WorkloadTest(unittest.TestCase):
 
 
 class ImageSetTest(unittest.TestCase):
-    def test_generation_delegates_to_snapfab(self):
-        workload = load_workload()
-        fake = (
-            "#!/usr/bin/env python3\n"
-            "import json, sys\n"
-            "entries = json.load(open(sys.argv[-1]))\n"
-            "for entry in entries:\n"
-            "    open(entry['output'], 'wb').write(b'x' * 1000)\n"
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.tmp_path = Path(self.tmp.name)
+        self.workload = load_workload()
+
+    def _run_prepare(self, files, images, image_path=None, repo=None):
+        repo = repo or (self.tmp_path / "repo")
+        repo.mkdir(exist_ok=True)
+        for name in files:
+            (repo / name).write_bytes(b"x" * 1000)
+        out = self.tmp_path / "cell"
+        out.mkdir(exist_ok=True)
+        cfg = {
+            "out": out,
+            "image_repo": repo,
+            "image_path": image_path or out / "images",
+            "images": images,
+        }
+        logger = self.workload.Logger(out / "prepare.log")
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                return self.workload.prepare_images(cfg, logger)
+        finally:
+            logger.close()
+
+    def test_seeded_copy_takes_sorted_prefix(self):
+        count, size = self._run_prepare(
+            [
+                "img_0003.jpg",
+                "img_0001.jpg",
+                "img_0005.jpg",
+                "img_0002.jpg",
+                "img_0004.jpg",
+                "img_0006.jpg",
+            ],
+            4,
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            snapfab = tmp_path / "fake-snapfab"
-            snapfab.write_text(fake)
-            snapfab.chmod(snapfab.stat().st_mode | stat.S_IXUSR)
-            out = tmp_path / "cell"
-            out.mkdir()
-            for jobs in (1, 2):
-                with self.subTest(jobs=jobs):
-                    for stale in (out / "images").glob("*.jpg"):
-                        stale.unlink()
-                    logger = workload.Logger(out / f"gen-{jobs}.log")
-                    try:
-                        cfg = {
-                            "out": out,
-                            "manifest": None,
-                            "count": 4,
-                            "reuse_images": None,
-                            "skip_generate": False,
-                            "gen_jobs": jobs,
-                            "snapfab": str(snapfab),
-                        }
-                        with contextlib.redirect_stdout(io.StringIO()):
-                            count, size = workload.prepare_images(cfg, logger)
-                    finally:
-                        logger.close()
-                    self.assertEqual(count, 4)
-                    self.assertEqual(size, 4000)
-                    self.assertEqual(len(list((out / "images").glob("*.jpg"))), 4)
-                    self.assertTrue((out / "manifest.json").is_file())
-                    text = (out / f"gen-{jobs}.log").read_text()
-                    self.assertIn("generated=4 bytes=4000", text)
-                    self.assertIn("parallel" if jobs > 1 else "sequential", text)
+        self.assertEqual(count, 4)
+        self.assertEqual(size, 4000)
+        got = sorted(p.name for p in (self.tmp_path / "cell" / "images").glob("*.jpg"))
+        self.assertEqual(got, ["img_0001.jpg", "img_0002.jpg", "img_0003.jpg", "img_0004.jpg"])
+        log = (self.tmp_path / "cell" / "prepare.log").read_text()
+        self.assertIn("generated=4 bytes=4000", log)
+        self.assertIn("mode=seeded(", log)
+
+    def test_short_repo_fails_with_counts(self):
+        with self.assertRaises(self.workload.ConfigError) as ctx:
+            self._run_prepare(["img_0001.jpg", "img_0002.jpg"], 4)
+        self.assertIn("holds 2 images", str(ctx.exception))
+        self.assertIn("IMAGES=4", str(ctx.exception))
+
+    def test_missing_image_repo_fails(self):
+        with self.assertRaises(self.workload.ConfigError) as ctx:
+            self.workload.config_from_env({"IMAGES": "4"})
+        self.assertIn("IMAGE_REPO is required", str(ctx.exception))
+
+    def test_legacy_names_rejected(self):
+        repo = self.tmp_path / "repo"
+        repo.mkdir()
+        base = {"IMAGES": "1", "IMAGE_REPO": str(repo)}
+        for old in (
+            "N",
+            "COUNT",
+            "REUSE_IMAGES",
+            "SKIP_GENERATE",
+            "GEN_JOBS",
+            "SNAPFAB_BIN",
+            "MANIFEST",
+        ):
+            with self.subTest(old=old):
+                env = dict(base, **{old: "1"})
+                with self.assertRaises(self.workload.ConfigError) as ctx:
+                    self.workload.config_from_env(env)
+                self.assertIn(old, str(ctx.exception))
+
+    def test_image_path_override(self):
+        custom = self.tmp_path / "custom-images"
+        self._run_prepare(["img_0001.jpg", "img_0002.jpg"], 2, image_path=custom)
+        self.assertEqual(len(list(custom.glob("*.jpg"))), 2)
+        self.assertFalse((self.tmp_path / "cell" / "images").exists())
 
 
 class ConfigTest(unittest.TestCase):
@@ -523,7 +547,8 @@ class ConfigTest(unittest.TestCase):
             )
             env = {
                 "LAUNCHER_INFO": str(info),
-                "COUNT": "7",
+                "IMAGES": "7",
+                "IMAGE_REPO": str(tmp_path),
                 "SCAN_REPEATS": "2",
                 "REPEATS": "4",
                 "WARMUP": "1",
@@ -534,7 +559,7 @@ class ConfigTest(unittest.TestCase):
             cfg = workload.config_from_env(env)
             self.assertEqual(cfg["base_url"], "http://127.0.0.1:9999")
             self.assertEqual(cfg["out"], cell.resolve())
-            self.assertEqual(cfg["count"], 7)
+            self.assertEqual(cfg["images"], 7)
             self.assertEqual(cfg["scan_repeats"], 2)
             self.assertEqual(cfg["repeats"], 4)
             self.assertEqual(cfg["warmup"], 1)
@@ -563,14 +588,15 @@ class ConfigTest(unittest.TestCase):
             images = tmp_path / "images"
             images.mkdir()
             (images / "bench_0001.jpg").write_bytes(b"x")
+            repo_images = tmp_path / "repo"
+            repo_images.mkdir()
+            (repo_images / "img_0001.jpg").write_bytes(b"x")
             env = {
                 "LAUNCHER_INFO": str(info),
-                "REUSE_IMAGES": str(images),
-                "SNAPFAB_BIN": str(tmp_path / "does-not-exist"),
+                "IMAGE_REPO": str(repo_images),
             }
             cfg = workload.config_from_env(env)
-            self.assertEqual(cfg["reuse_images"], images)
-            self.assertIsNone(cfg["manifest"])
+            self.assertEqual(cfg["image_repo"], repo_images)
 
 
 class StatusFinalTest(unittest.TestCase):

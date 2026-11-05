@@ -37,7 +37,6 @@ bl = load_launcher()
 
 def base_env(**kw):
     e = {
-        "MODE": "bench",
         "BUILD_PROFILE": "release",
         "PICASU_BIN": sys.executable,
         "GDB": "0",
@@ -188,24 +187,25 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(cfg["build_profile"], "release")
         self.assertEqual(cfg["ready_timeout"], 120)
         self.assertEqual(cfg["launch_timeout"], 0)
-        self.assertEqual(cfg["n"], 4)
+        self.assertEqual(cfg["ncpu"], 4)
         self.assertTrue(cfg["gdb"])
         self.assertEqual(cfg["admin_id"], "bench-admin")
         self.assertTrue(cfg["admin_pw"].startswith("bench-"))
 
-    def test_debug_defaults_no_warnings(self):
-        err = io.StringIO()
-        env = base_env(MODE="debug", OUT=str(Path(self.tmp.name) / "c"))
-        env.pop("BUILD_PROFILE")
-        with contextlib.redirect_stderr(err):
-            cfg = bl.config_from_env(env)
+    def test_debug_profile_is_not_canonical(self):
+        env = base_env(BUILD_PROFILE="debug", OUT=str(Path(self.tmp.name) / "c"))
+        cfg = bl.config_from_env(env)
         self.assertEqual(cfg["mode"], "debug")
         self.assertEqual(cfg["build_profile"], "debug")
-        self.assertEqual(err.getvalue(), "")
 
-    def test_bad_mode(self):
+    def test_release_with_rust_log_is_not_canonical(self):
+        env = base_env(OUT=str(Path(self.tmp.name) / "c"), RUST_LOG="info")
+        cfg = bl.config_from_env(env)
+        self.assertEqual(cfg["mode"], "debug")
+
+    def test_bad_profile(self):
         with self.assertRaises(bl.ConfigError):
-            bl.config_from_env(base_env(MODE="prod", OUT=str(Path(self.tmp.name) / "c")))
+            bl.config_from_env(base_env(BUILD_PROFILE="prod", OUT=str(Path(self.tmp.name) / "c")))
 
     def test_out_refusals(self):
         for bad in ("", "/", str(bl.REPO_ROOT), str(bl.REPO_ROOT) + "/x"):
@@ -216,14 +216,14 @@ class LauncherTest(unittest.TestCase):
         with self.assertRaises(bl.ConfigError):
             bl.config_from_env(base_env(OUT="/var/lib/picasu-launcher-test"))
 
-    def test_bench_refuses_diagnostics(self):
+    def test_mode_derived_from_profile_and_env(self):
         out = str(Path(self.tmp.name) / "c")
-        for extra in (
-            {"RUST_LOG": "info"},
-            {"BUILD_PROFILE": "debug"},
-        ):
-            with self.assertRaises(bl.ConfigError, msg=extra):
-                bl.config_from_env(base_env(OUT=out, **extra))
+        cfg = bl.config_from_env(base_env(OUT=out))
+        self.assertEqual(cfg["mode"], "bench")
+        cfg = bl.config_from_env(base_env(OUT=out, RUST_LOG="info"))
+        self.assertEqual(cfg["mode"], "debug")
+        cfg = bl.config_from_env(base_env(OUT=out, BUILD_PROFILE="debug"))
+        self.assertEqual(cfg["mode"], "debug")
 
     def test_missing_binary(self):
         with self.assertRaises(bl.ConfigError):
