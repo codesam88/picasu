@@ -441,6 +441,119 @@ class WorkloadTest(unittest.TestCase):
         self.assertIn("write-probe verification FAILED", log)
 
 
+class StormTest(unittest.TestCase):
+    """Selectable storm workloads against the stub origin."""
+
+    def setUp(self):
+        self.server = StubOrigin(("127.0.0.1", 0))
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._stop_server)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.tmp_path = Path(self.tmp.name)
+        self.cell = self.tmp_path / "cell"
+        self.cell.mkdir()
+        make_cookie_jar(self.cell / "cookies.txt")
+        self.launcher_info = self.cell / "launcher-info.json"
+        self.launcher_info.write_text(
+            json.dumps(
+                {
+                    "base_url": f"http://127.0.0.1:{self.port}",
+                    "cookie_jar": str(self.cell / "cookies.txt"),
+                    "pid": 1234,
+                    "out": str(self.cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        self.fake_hyperfine = write_fake_hyperfine(self.tmp_path)
+        self.images = make_images(self.tmp_path, 4)
+
+    def _stop_server(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def env(self, **overrides):
+        env = os.environ.copy()
+        env.update(
+            {
+                "LAUNCHER_INFO": str(self.launcher_info),
+                "IMAGES": "4",
+                "IMAGE_REPO": str(self.images),
+                "SCAN_REPEATS": "1",
+                "REPEATS": "1",
+                "WARMUP": "0",
+                "RUNS_DURING": "1",
+                "FETCHES": "1",
+                "HYPERFINE_BIN": str(self.fake_hyperfine),
+                "SCAN_TIMEOUT_S": "5",
+                "POLL_INTERVAL_S": "0.02",
+                "PROBE_INTERVAL_S": "0.05",
+                "STORM_MARGIN_S": "0",
+            }
+        )
+        env.pop("OUT", None)
+        env.update(overrides)
+        return env
+
+    def run_cli(self, env):
+        return subprocess.run(
+            [sys.executable, str(RUN_WORKLOAD)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_storm_diff_completes(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-diff", STORM_CLIENTS="2", STORM_OPS="3"))
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        tsv = self.cell / "rounds-run-1" / "storm-round-1.tsv"
+        self.assertTrue(tsv.is_file())
+        self.assertEqual(len(tsv.read_text().splitlines()), 6)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm: profile=storm-diff ops=6/6", log)
+        self.assertIn("storm margin ok", log)
+
+    def test_storm_read_completes(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-read", STORM_CLIENTS="2", STORM_OPS="3"))
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm: profile=storm-read ops=6/6", log)
+
+    def test_storm_margin_violation_names_factor(self):
+        proc = self.run_cli(
+            self.env(
+                WORKLOAD="storm-diff",
+                STORM_CLIENTS="2",
+                STORM_OPS="3",
+                STORM_MARGIN_S="100",
+            )
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm outran the scan", log)
+        self.assertIn("increase scantime by factor", log)
+
+    def test_storm_idle_runs_after_populate_scan(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-idle", STORM_CLIENTS="2", STORM_OPS="3"))
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm: profile=storm-idle ops=6/6", log)
+        self.assertIn("no margin check", log)
+        self.assertEqual(
+            json.loads((self.cell / "status-final.json").read_text())["state"],
+            "completed",
+        )
+
+    def test_invalid_workload_rejected(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-everything"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("WORKLOAD must be one of", proc.stderr + proc.stdout)
+
+
 class ImageSetTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -566,7 +679,39 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg["runs_during"], 2)
             self.assertEqual(cfg["fetches"], 3)
 
-    def test_reuse_images_does_not_require_snapfab(self):
+    def test_workload_defaults_and_validation(self):
+        workload = load_workload()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cell = tmp_path / "cell"
+            cell.mkdir()
+            make_cookie_jar(cell / "cookies.txt")
+            info = cell / "launcher-info.json"
+            info.write_text(
+                json.dumps(
+                    {
+                        "base_url": "http://127.0.0.1:9999",
+                        "cookie_jar": str(cell / "cookies.txt"),
+                        "pid": 1,
+                        "out": str(cell),
+                        "mode": "bench",
+                    }
+                )
+            )
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            base = {"LAUNCHER_INFO": str(info), "IMAGE_REPO": str(repo)}
+            cfg = workload.config_from_env(dict(base))
+            self.assertEqual(cfg["workload"], "control")
+            self.assertEqual(cfg["storm_clients"], 8)
+            self.assertEqual(cfg["storm_ops"], 10)
+            self.assertEqual(cfg["storm_margin_s"], 5.0)
+            for bad in ("storm-everything", "CONTROL", ""):
+                with self.subTest(workload=bad):
+                    with self.assertRaises(workload.ConfigError):
+                        workload.config_from_env(dict(base, WORKLOAD=bad))
+
+    def test_no_snapfab_needed_without_generation(self):
         workload = load_workload()
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

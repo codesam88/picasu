@@ -48,18 +48,17 @@ Each step is one worker invocation. Raw outputs stay in tmpfiles
 under `/tmp/opencode/write-load-probe/`; only summary tables land
 here.
 
-### Step 1 — Write-blast harness mode (no backend changes)
+### Step 1 — Storm workloads (no backend changes; landed)
 
-Scope: `utils/bench/workload.py` (+ `extract-bench.py`
-worst-column support already exists) only. Add `WRITE_CLIENTS`
-(default 1, current behavior) and `WRITE_OPS_PER_CLIENT`
-(default 3 = one hyperfine round): N clients fire M edit-rating
-PUTs each per probe round (async clients), prefetch timestamp reused
-from the round; record per-op latency + HTTP code into
-`write-blast-round-<n>.tsv`; extractor reports median + worst.
-Sanity: `just bench lint`, 10-image reuse smoke, one debug cell with
-verification still green. Done when smoke shows blast rows with
-non-zero counts and the extractor prints them.
+Implemented as `WORKLOAD=storm-diff|storm-read|storm-idle` in
+`utils/bench/workload.py` (+ `storm_clients`, `storm_ops`,
+`storm_margin_s`; per-op TSV `storm-round-<n>.tsv`; extractor prints
+median/p95/max in the detail line). Storms run while the scan is
+active and stop issuing ops at terminal state; the margin check
+fails the cell with the scantime increase factor when the storm
+does not finish `STORM_MARGIN_S` before scan end. Sanity: 66
+bench tests green, extractor parses storm lines, one debug cell
+per profile completes. Blast matrix (Step 2) still to run.
 
 ### Step 2 — Baseline blast matrix (current code)
 

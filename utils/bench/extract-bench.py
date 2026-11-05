@@ -121,6 +121,27 @@ def parse_log(outdir: Path) -> dict:
         m = re.search(r"hyperfine edit-rating: mean=([\d.]+)", log)
         if m:
             row["post_edit"] = float(m.group(1))
+    # Storm summaries (one per scan run for storm-* workloads).
+    storms = re.findall(
+        r"^.*storm: profile=(\S+) ops=(\d+)/(\d+) median=([\d.]+)s "
+        r"p95=([\d.]+)s max=([\d.]+)s failed=(\d+) wall=([\d.]+)s",
+        log,
+        re.M,
+    )
+    if storms:
+        row["storms"] = [
+            {
+                "profile": s[0],
+                "done": int(s[1]),
+                "total": int(s[2]),
+                "median": float(s[3]),
+                "p95": float(s[4]),
+                "max": float(s[5]),
+                "failed": int(s[6]),
+                "wall": float(s[7]),
+            }
+            for s in storms
+        ]
     return row
 
 
@@ -194,6 +215,12 @@ def main() -> None:
         if "scan_runs_ms" in row:
             runs = ",".join(f"{w:.0f}" for w in row["scan_runs_ms"])
             counts += f" scan_runs_s=[{runs}]"
+        for storm in row.get("storms", []):
+            counts += (
+                f" {storm['profile']}: {storm['done']}/{storm['total']}"
+                f" med={storm['median'] * 1000:.1f} p95={storm['p95'] * 1000:.1f}"
+                f" max={storm['max'] * 1000:.1f} fail={storm['failed']}"
+            )
         print(counts)
     print("units: scan_time s; s/MB s per MB; all latency columns ms.")
     print("median/worst latency: pre[fetch], [thumb]nail, metadata[edit], scan and post")
