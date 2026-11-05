@@ -50,14 +50,14 @@ here.
 
 ### Step 1 — Write-blast harness mode (no backend changes)
 
-Scope: `utils/bench/harness-a.sh` (+ `extract-bench.py`
+Scope: `utils/bench/workload.py` (+ `extract-bench.py`
 worst-column support already exists) only. Add `WRITE_CLIENTS`
 (default 1, current behavior) and `WRITE_OPS_PER_CLIENT`
 (default 3 = one hyperfine round): N clients fire M edit-rating
-PUTs each per probe round (xargs -P), prefetch timestamp reused
+PUTs each per probe round (async clients), prefetch timestamp reused
 from the round; record per-op latency + HTTP code into
 `write-blast-round-<n>.tsv`; extractor reports median + worst.
-Sanity: `bash -n`, 10-image reuse smoke, write-probe
+Sanity: `just bench lint`, 10-image reuse smoke, one debug cell with
 verification still green. Done when smoke shows blast rows with
 non-zero counts and the extractor prints them.
 

@@ -78,7 +78,7 @@ with open(os.path.join(out, "server.log"), "w", encoding="utf-8") as handle:
     handle.write("stub server listening\\n")
 with open(os.path.join(out, "launcher-env.json"), "w", encoding="utf-8") as handle:
     json.dump(
-        {k: os.environ.get(k) for k in ("OUT", "PORT", "MODE", "BUILD_PROFILE", "CELL_TAG")},
+        {k: os.environ.get(k) for k in ("OUT", "PORT", "BUILD_PROFILE", "CELL_TAG")},
         handle,
     )
 
@@ -135,7 +135,7 @@ with open(os.environ["LAUNCHER_INFO"], encoding="utf-8") as handle:
 note("workload-saw-info:" + info["base_url"])
 with open(os.path.join(out, "workload-env.json"), "w", encoding="utf-8") as handle:
     json.dump(
-        {k: os.environ.get(k) for k in ("OUT", "LAUNCHER_INFO", "COUNT", "CELL_TAG")},
+        {k: os.environ.get(k) for k in ("OUT", "LAUNCHER_INFO", "IMAGES", "CELL_TAG")},
         handle,
     )
 
@@ -231,7 +231,7 @@ class RunCellTest(unittest.TestCase):
             "STUB_BASE_URL": self.base_url,
             "STUB_LAUNCHER": "ready",
             "STUB_WORKLOAD": "ok",
-            "COUNT": "100",
+            "IMAGES": "100",
             "CELL_TAG": "tag-1",
         }
         env.update(kw)
@@ -241,7 +241,7 @@ class RunCellTest(unittest.TestCase):
         cfg = {
             "out": self.out,
             "port": self.port,
-            "mode": "bench",
+            "build_profile": "release",
             "ready_timeout": 5.0,
             "stop_timeout": 5.0,
             "workload_timeout": 0.0,
@@ -274,7 +274,7 @@ class RunCellTest(unittest.TestCase):
 
     def test_config_defaults_and_flags(self):
         cfg = oc.config_from_env({"OUT": str(self.out), "PORT": "5800"})
-        self.assertEqual(cfg["mode"], "bench")
+        self.assertEqual(cfg["build_profile"], "release")
         self.assertEqual(cfg["ready_timeout"], 150)
         self.assertEqual(cfg["stop_timeout"], 30)
         self.assertEqual(cfg["workload_timeout"], 0)
@@ -282,14 +282,13 @@ class RunCellTest(unittest.TestCase):
         self.assertEqual(cfg["port"], 5800)
 
         cfg = oc.config_from_env(
-            {"OUT": str(self.tmp.name), "PORT": "5800"},
+            {"OUT": str(self.tmp.name), "PORT": "5800", "BUILD_PROFILE": "debug"},
             out_flag=str(self.out),
             port_flag="5801",
-            mode_flag="debug",
         )
         self.assertEqual(cfg["out"], Path(self.out).resolve())
         self.assertEqual(cfg["port"], 5801)
-        self.assertEqual(cfg["mode"], "debug")
+        self.assertEqual(cfg["build_profile"], "debug")
 
     def test_config_rejects_negative_workload_timeout(self):
         with self.assertRaises(oc.ConfigError):
@@ -320,12 +319,13 @@ class RunCellTest(unittest.TestCase):
         launcher_env = json.loads((self.out / "launcher-env.json").read_text())
         self.assertEqual(launcher_env["OUT"], str(self.out))
         self.assertEqual(launcher_env["PORT"], str(self.port))
-        self.assertEqual(launcher_env["MODE"], "bench")
+        self.assertEqual(launcher_env["BUILD_PROFILE"], "release")
+        self.assertNotIn("MODE", launcher_env)
 
         workload_env = json.loads((self.out / "workload-env.json").read_text())
         self.assertEqual(workload_env["OUT"], str(self.out))
         self.assertEqual(workload_env["LAUNCHER_INFO"], str(self.out / "launcher-info.json"))
-        self.assertEqual(workload_env["COUNT"], "100")
+        self.assertEqual(workload_env["IMAGES"], "100")
         self.assertEqual(workload_env["CELL_TAG"], "tag-1")
 
         self.assertFalse(self.diag().exists())

@@ -3,13 +3,14 @@
 
 Owns the server-management half of a benchmark cell: state setup, port
 preflight, spawn, readiness, bootstrap/login, supervision, and diagnostics.
-The workload stays with the caller (`utils/bench/harness-a.sh` today,
-a workload wrapper later). The module is importable and stdlib-only; the
+The workload stays with the caller (run-cell.py drives workload.py).
+The module is importable and stdlib-only; the
 CLI in `utils/bench/launch-backend.py` is a thin wrapper.
 
 Environment contract:
 
-  MODE          bench (default) | debug
+  BUILD_PROFILE release (default) | debug; release without RUST_LOG
+                  counts as a canonical ("bench") cell, anything else "debug"
   OUT           state/output directory; outside the repository. FRESH=1
                 additionally requires a path under a temp root
   PORT          server port (default 5713)
@@ -18,9 +19,12 @@ Environment contract:
   ADMIN_ID      benchmark administrator id (default bench-admin)
   ADMIN_PW      administrator password; generated for FRESH=1, required
                 for FRESH=0
-  PICASU_BIN    server binary (default target/<profile>/picasu)
+  PICASU_BIN    server binary. When set, it is used as-is and must be
+                executable; when unset, the launcher builds
+                target/<profile>/picasu with cargo (log:
+                OUT/build-picasu.log)
   BUILD_PROFILE release (required in bench) | debug
-  N             taskset core budget 0-(N-1); 0 disables pinning (default 4)
+  NCPU          taskset core budget 0-(NCPU-1); 0 disables pinning (default 4)
   READY_TIMEOUT_S  readiness budget in seconds (default 120)
   LAUNCH_TIMEOUT_S outer supervision budget; 0 disables (default 0)
   GDB           1 (default) capture thread stacks into the diag bundle
@@ -29,9 +33,11 @@ bench refuses RUST_LOG (log volume perturbs measurements); debug passes env
 through unstripped.
 
 Artifacts in OUT: server.log, launcher.log, run-manifest.json,
-bootstrap.json, login.json, cookies.txt, launcher-info.json, diag/.
+bootstrap.json, login.json, cookies.txt, launcher-info.json, diag/, and
+build-picasu.log when the launcher built the binary.
 `launcher-info.json` is the seam for a future workload wrapper:
-base_url, cookie_jar, pid, out, mode.
+base_url, cookie_jar, pid, out, mode. `run-manifest.json` records the
+resolved build profile and the binary's sha256.
 
 Exit codes: 0 completed; 1 config/preflight; 2 startup; 3 reserved;
 4 outer timeout.
@@ -58,7 +64,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
-MODES = ("bench", "debug")
+MODES = ("bench", "debug")  # run-manifest/launcher-info labels (derived, not input)
 DIAGNOSTIC_ENV = ("RUST_LOG",)
 DEFAULT_PORT = 5713
 DEFAULT_ADMIN_ID = "bench-admin"
@@ -164,10 +170,6 @@ def _positive_float(environ: dict, name: str, default: float) -> float:
 
 def config_from_env(environ: dict) -> dict:
     """Build and validate launcher config. Reads env; only stats paths."""
-    mode = environ.get("MODE", "bench")
-    if mode not in MODES:
-        raise ConfigError(f"MODE must be one of {MODES}, got '{mode}'")
-
     try:
         port = int(environ.get("PORT", str(DEFAULT_PORT)))
     except ValueError:
@@ -181,25 +183,31 @@ def config_from_env(environ: dict) -> dict:
     fresh = fresh_raw == "1"
     out = _validate_out(environ.get("OUT", ""), fresh=fresh)
 
-    build_profile = environ.get("BUILD_PROFILE", "release" if mode == "bench" else "debug")
+    build_profile = environ.get("BUILD_PROFILE", "release")
     if build_profile not in ("release", "debug"):
         raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
-    if mode == "bench" and build_profile != "release":
-        raise ConfigError("bench mode requires BUILD_PROFILE=release")
-    if mode == "bench" and "RUST_LOG" in environ:
-        raise ConfigError("bench mode refuses RUST_LOG (log-volume perturbation)")
+    # No MODE knob: a cell is canonical ("bench") iff it runs the release
+    # binary with default logging; anything else is "debug". The manifest
+    # records the verdict, so non-canonical runs cannot masquerade as bench.
+    mode = "bench" if (build_profile == "release" and "RUST_LOG" not in environ) else "debug"
 
     default_bin = REPO_ROOT / "target" / build_profile / "picasu"
-    binary = Path(environ.get("PICASU_BIN", str(default_bin)))
+    explicit_bin = "PICASU_BIN" in environ
+    binary = Path(environ["PICASU_BIN"]) if explicit_bin else default_bin
     if not (binary.exists() and os.access(binary, os.X_OK)):
-        raise ConfigError(f"missing executable server binary {binary}")
+        raise ConfigError(
+            f"missing executable server binary {binary} "
+            f"(build it: cargo build --profile {build_profile} --bin picasu)"
+        )
 
+    if "N" in environ:
+        raise ConfigError("N was renamed to NCPU")
     try:
-        n = int(environ.get("N", "4"))
+        ncpu = int(environ.get("NCPU", "4"))
     except ValueError:
-        raise ConfigError(f"N must be an integer, got '{environ.get('N')}'")
-    if n < 0:
-        raise ConfigError(f"N must be >= 0, got {n}")
+        raise ConfigError(f"NCPU must be an integer, got '{environ.get('NCPU')}'")
+    if ncpu < 0:
+        raise ConfigError(f"NCPU must be >= 0, got {ncpu}")
 
     ready_timeout = _positive_float(environ, "READY_TIMEOUT_S", READY_TIMEOUT_S)
     try:
@@ -228,8 +236,9 @@ def config_from_env(environ: dict) -> dict:
         "port": port,
         "fresh": fresh,
         "binary": binary,
+        "explicit_bin": explicit_bin,
         "build_profile": build_profile,
-        "n": n,
+        "ncpu": ncpu,
         "gdb": environ.get("GDB", "1") != "0",
         "ready_timeout": ready_timeout,
         "launch_timeout": launch_timeout,
@@ -252,7 +261,7 @@ def write_manifest(cfg: dict, environ: dict) -> None:
                 "base_url": cfg["base_url"],
                 "fresh": cfg["fresh"],
                 "build_profile": cfg["build_profile"],
-                "N": environ.get("N", ""),
+                "NCPU": environ.get("NCPU", ""),
                 "ADMIN_ID": cfg["admin_id"],
                 "RUST_LOG": environ.get("RUST_LOG", ""),
                 "git": gi["sha"],
@@ -322,8 +331,8 @@ def _body_text(raw: bytes) -> str:
 # --- process control ---------------------------------------------------------
 def server_command(cfg: dict) -> list:
     cmd = [str(cfg["binary"])]
-    if cfg["n"] > 0 and shutil.which("taskset") is not None:
-        cmd = ["taskset", "-c", f"0-{cfg['n'] - 1}", *cmd]
+    if cfg["ncpu"] > 0 and shutil.which("taskset") is not None:
+        cmd = ["taskset", "-c", f"0-{cfg['ncpu'] - 1}", *cmd]
     return cmd
 
 
@@ -636,7 +645,7 @@ def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
         log_line(
             logf,
             f"mode={cfg['mode']} fresh={cfg['fresh']} out={out} port={cfg['port']} "
-            f"build_profile={cfg['build_profile']} n={cfg['n']} gdb={cfg['gdb']}",
+            f"build_profile={cfg['build_profile']} ncpu={cfg['ncpu']} gdb={cfg['gdb']}",
         )
         gi = git_info()
         log_line(logf, f"git={gi['sha'][:12]} {gi['status']}")
