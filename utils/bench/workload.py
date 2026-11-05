@@ -54,11 +54,14 @@ Environment contract (on top of the launcher's):
   PROBE_INTERVAL_S probe-phase refresh interval (default 0.5)
   IMAGES is required to be present in IMAGE_REPO: repos are seeded
   a priori (see `just bench seed-images`); the workload never generates.
-  WORKLOAD        control (default) | storm-diff | storm-read | storm-idle:
+  WORKLOAD        control (default) | storm-diff | storm-read | storm-thumb | storm-idle:
                   control runs probe rounds during the scan; storm-diff fires
                   concurrent edit-rating PUTs at distinct assets, storm-read
-                  concurrent prefetch POSTs, storm-idle runs one populate scan
-                  then storms the tree at rest (no margin check)
+                  concurrent prefetch POSTs, storm-thumb concurrent
+                  compressed-thumbnail GETs of random assets, storm-idle runs
+                  one populate scan then storms the tree at rest (no margin
+                  check; the storm kind comes from IDLE_PROFILE)
+  IDLE_PROFILE    storm op kind used by storm-idle: diff | read (default) | thumb
   STORM_CLIENTS   concurrent storm clients (default 8)
   STORM_OPS       ops per storm client (default 10)
   STORM_MARGIN_S  storm must finish this long before the scan ends
@@ -104,7 +107,7 @@ DEFAULT_FETCHES = 10
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
 DEFAULT_STORM_MARGIN_S = 5.0
-WORKLOADS = ("control", "storm-diff", "storm-read", "storm-idle")
+WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle")
 DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
 DEFAULT_BUILD_PROFILE = "debug"
@@ -250,6 +253,9 @@ def config_from_env(environ: dict) -> dict:
     storm_clients = _int_env(environ, "STORM_CLIENTS", DEFAULT_STORM_CLIENTS, minimum=1)
     storm_ops = _int_env(environ, "STORM_OPS", DEFAULT_STORM_OPS, minimum=1)
     storm_margin = _float_env(environ, "STORM_MARGIN_S", DEFAULT_STORM_MARGIN_S, minimum=0.0)
+    idle_profile = environ.get("IDLE_PROFILE", "read")
+    if idle_profile not in ("diff", "read", "thumb"):
+        raise ConfigError(f"IDLE_PROFILE must be diff|read|thumb, got '{idle_profile}'")
     scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
     repeats = _int_env(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
     warmup = _int_env(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
@@ -281,6 +287,7 @@ def config_from_env(environ: dict) -> dict:
         "storm_clients": storm_clients,
         "storm_ops": storm_ops,
         "storm_margin_s": storm_margin,
+        "idle_profile": idle_profile,
         "scan_repeats": scan_repeats,
         "repeats": repeats,
         "warmup": warmup,
@@ -752,6 +759,9 @@ def probe_phase(
 # --- storm workloads ---------------------------------------------------------
 # storm-diff: concurrent edit-rating PUTs at distinct assets.
 # storm-read: concurrent prefetch POSTs.
+# storm-thumb: concurrent compressed-thumbnail GETs of random assets.
+# storm-idle runs one populate scan first, then storms the tree at rest
+# (no margin check).
 # Both run while a scan is active and stop issuing new ops once the scan
 # reaches a terminal state; the margin check then verifies the storm
 # finished early enough for the numbers to describe loaded operation.
@@ -800,6 +810,7 @@ def run_storm(
     under their own timeout). None means no concurrent scan (storm-idle).
     """
     profile = cfg["workload"]
+    op_kind = cfg["idle_profile"] if profile == "storm-idle" else profile.removeprefix("storm-")
     total = cfg["storm_clients"] * cfg["storm_ops"]
 
     code, body, _ = client.post("/get/prefetch", {})
@@ -809,7 +820,7 @@ def run_storm(
     if timestamp is None:
         raise WorkloadError("storm: no prefetch timestamp")
     lines = _wait_for_rows(cfg, client, logger, scan_active)
-    rows = [line.split("\t", 1)[0] for line in lines]
+    rows = [tuple(line.split("\t", 1)) for line in lines]
 
     results: list = []
     results_lock = threading.Lock()
@@ -823,13 +834,18 @@ def run_storm(
                 return
             start = time.perf_counter()
             try:
-                if profile == "storm-diff":
+                if op_kind == "diff":
                     code, _, _ = client.put(
                         "/put/edit_rating",
                         {"indexArray": [op_index % len(rows)], "timestamp": timestamp, "rating": 3},
                         timeout=30.0,
                     )
-                else:  # storm-read
+                elif op_kind == "thumb":
+                    hash_value, token = random.choice(rows)
+                    code, _, _ = client.get(
+                        _compressed_path(hash_value), bearer=token, timeout=30.0
+                    )
+                else:  # read
                     code, _, _ = client.post("/get/prefetch", {}, timeout=30.0)
             except WorkloadError:
                 code = "error"
@@ -853,6 +869,7 @@ def run_storm(
     failed = sum(1 for _, _, _, code in results if code != 200)
     summary = {
         "profile": profile,
+        "kind": op_kind,
         "done": len(results),
         "total": total,
         "median": statistics.median(latencies) if latencies else 0.0,
@@ -869,9 +886,71 @@ def run_storm(
     logger.log(
         f"storm: profile={profile} ops={summary['done']}/{total} "
         f"median={summary['median']:.3f}s p95={summary['p95']:.3f}s "
-        f"max={summary['max']:.3f}s failed={failed} wall={wall:.1f}s"
+        f"max={summary['max']:.3f}s failed={failed} wall={wall:.1f}s kind={op_kind}"
     )
     return summary
+
+
+CANARY_CHECKS = 8
+
+
+def verify_storm_sample(
+    cfg: dict, client: HttpClient, logger: Logger, out: Path, run_index: int
+) -> None:
+    """Round-trip spot check for storm-diff writes: PUT distinct ratings on
+    spread-out assets, read each back by stable assetId. PUTs commit
+    synchronously, so a mismatch means the write did not stick (or hit a
+    different asset than addressed) — fail loudly instead of trusting 200s.
+    """
+    code, body, _ = client.post("/get/prefetch", {}, timeout=30.0)
+    if code != 200:
+        raise WorkloadError("storm verify: prefetch failed")
+    payload = _body_json(body) or {}
+    timestamp, token = payload.get("prefetch", {}).get("timestamp"), payload.get("token")
+    if timestamp is None or token is None:
+        raise WorkloadError("storm verify: no prefetch timestamp/token")
+    code, body, _ = client.get(
+        f"/get/get-data?timestamp={timestamp}&start=0&end=1000", bearer=token, timeout=30.0
+    )
+    rows = _body_json(body) if code == 200 else None
+    if not isinstance(rows, list) or not rows:
+        raise WorkloadError("storm verify: no probe rows")
+    step = max(1, len(rows) // CANARY_CHECKS)
+    picks = []
+    for position in range(0, len(rows), step):
+        if len(picks) >= CANARY_CHECKS:
+            break
+        asset = rows[position].get("assetId") if isinstance(rows[position], dict) else None
+        if asset:
+            picks.append((position, asset))
+    if not picks:
+        raise WorkloadError("storm verify: rows carry no assetId")
+    checked = []
+    for canary, (index, asset) in enumerate(picks):
+        expected = (canary % 5) + 1
+        code, _, _ = client.put(
+            "/put/edit_rating",
+            {"indexArray": [index], "timestamp": timestamp, "rating": expected},
+            timeout=30.0,
+        )
+        got = None
+        if code == 200:
+            code, body, _ = client.get(
+                f"/get/metadata/{asset}?timestamp={timestamp}", bearer=token, timeout=30.0
+            )
+            if code == 200:
+                got = (_body_json(body) or {}).get("rating")
+        checked.append({"asset": asset, "index": index, "expected": expected, "got": got})
+    path = out / f"verify-storm-run-{run_index}.json"
+    path.write_text(json.dumps(checked, indent=2) + "\n")
+    bad = [c for c in checked if c["got"] != c["expected"]]
+    matched = len(checked) - len(bad)
+    logger.log(f"storm verify: matched {matched}/{len(checked)} canary writes (run {run_index})")
+    if bad:
+        detail = "; ".join(
+            f"{c['asset']}[{c['index']}]: expected={c['expected']} got={c['got']}" for c in bad[:5]
+        )
+        raise WorkloadError(f"storm verify FAILED ({matched}/{len(checked)} stuck): {detail}")
 
 
 def check_storm_margin(
@@ -968,7 +1047,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             )
             storm_thread = None
             probe_thread.start()
-        elif profile in ("storm-diff", "storm-read"):
+        elif profile in ("storm-diff", "storm-read", "storm-thumb"):
             probe_thread = None
             storm_thread = threading.Thread(target=run_storm_guarded, daemon=True)
             storm_thread.start()
@@ -1080,11 +1159,20 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             suffix = " after stall" if stalled else ""
             raise WorkloadError(f"scan did not complete (state={state}){suffix}")
 
+        def is_diff_writes() -> bool:
+            if profile == "storm-diff":
+                return True
+            return profile == "storm-idle" and cfg["idle_profile"] == "diff"
+
         if profile == "storm-idle":
             run_storm(cfg, client, logger, round_dir, run_index, None)
             logger.log("storm-idle: no margin check (no concurrent scan)")
+            if is_diff_writes():
+                verify_storm_sample(cfg, client, logger, out, run_index)
         elif storm_thread is not None and storm_result is not None:
             check_storm_margin(cfg, logger, storm_result, started, t_terminal)
+            if is_diff_writes():
+                verify_storm_sample(cfg, client, logger, out, run_index)
 
     median_ms = statistics.median(walls)
     logger.log(
@@ -1099,7 +1187,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             f"refusing post-scan work: live state={live_state} (expected completed)"
         )
     logger.log("scan terminally completed — starting post-scan phase")
-    return median_ms
+    return median_ms, len(walls)
 
 
 # --- post-scan ---------------------------------------------------------------
@@ -1257,7 +1345,7 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
     logger.log(f"N={cfg['ncpu']} image_count={cfg['image_count']} image_bytes={cfg['image_bytes']}")
     logger.log(
         f"scan_wall_ms={cfg['scan_wall_ms']:g} scan_state=completed "
-        f"(median of {cfg['scan_repeats']} run(s))"
+        f"(median of {cfg['scan_runs']} run(s))"
     )
     logger.log(probe_stats(seq_path, "final-sweep"))
     logger.log(f"artifacts: {out}")
@@ -1308,7 +1396,9 @@ def run_workload(cfg: dict) -> int:
         logger.log(f"scan repeats: {cfg['scan_repeats']} (median wall time reported)")
 
         client = HttpClient(cfg["base_url"], cfg["cookie_jar"])
-        cfg["scan_wall_ms"] = run_scans(cfg, client, logger)
+        median_ms, run_count = run_scans(cfg, client, logger)
+        cfg["scan_wall_ms"] = median_ms
+        cfg["scan_runs"] = run_count
         run_post_scan(cfg, client, logger)
         return 0
     except WorkloadError as err:

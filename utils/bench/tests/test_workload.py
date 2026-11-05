@@ -48,13 +48,13 @@ class StubOrigin(ThreadingHTTPServer):
         self.apply_rating = True
         self.started_at = None
         self.trigger_count = 0
-        self.rating = 0
+        self.ratings = {}
         self.requests = []
 
     def reset_run(self):
         self.started_at = time.monotonic()
         self.trigger_count += 1
-        self.rating = 0
+        self.ratings = {}
 
     def visible_rows(self):
         if self.started_at is None:
@@ -135,7 +135,7 @@ class StubHandler(BaseHTTPRequestHandler):
                 self._send(404, {})
         elif path.startswith("/get/metadata/"):
             asset = path.rsplit("/", 1)[-1]
-            rating = self.server.rating if asset == "asset-0" else 0
+            rating = self.server.ratings.get(asset, 0)
             self._send(200, {"rating": rating})
         else:
             self._send(404, {})
@@ -160,8 +160,9 @@ class StubHandler(BaseHTTPRequestHandler):
         self.server.requests.append(("PUT", path, query))
         if path == "/put/edit_rating":
             body = json.loads(raw or b"{}")
-            if self.server.apply_rating and body.get("rating") == 3:
-                self.server.rating = 3
+            if self.server.apply_rating and isinstance(body.get("rating"), int):
+                for index in body.get("indexArray", []):
+                    self.server.ratings[f"asset-{index}"] = body["rating"]
             self._send(200, {})
         else:
             self._send(404, {})
@@ -400,7 +401,7 @@ class WorkloadTest(unittest.TestCase):
         lines = [line for line in extract.stdout.splitlines() if line.strip()]
         by_metric = {line.split()[0]: line for line in lines if line.split()}
         self.assertIn("scan_fetch_ms", by_metric)
-        self.assertIn("post_edit_ms", by_metric)
+        self.assertIn("idle_edit_ms", by_metric)
         self.assertNotIn("n/a", by_metric["scan_fetch_ms"])
 
     def test_status_without_writer_diagnostics_is_accepted(self):
@@ -524,6 +525,15 @@ class StormTest(unittest.TestCase):
         log = (self.cell / "harness-a.log").read_text()
         self.assertIn("storm: profile=storm-read ops=6/6", log)
 
+    def test_storm_thumb_completes(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-thumb", STORM_CLIENTS="2", STORM_OPS="3"))
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        tsv = self.cell / "rounds-run-1" / "storm-round-1.tsv"
+        self.assertEqual(len(tsv.read_text().splitlines()), 6)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm: profile=storm-thumb ops=6/6", log)
+        self.assertIn("storm margin ok", log)
+
     def test_storm_margin_violation_names_factor(self):
         proc = self.run_cli(
             self.env(
@@ -548,6 +558,35 @@ class StormTest(unittest.TestCase):
             json.loads((self.cell / "status-final.json").read_text())["state"],
             "completed",
         )
+
+    def test_storm_idle_thumb(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-idle", IDLE_PROFILE="thumb"))
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm: profile=storm-idle ops=80/80", log)
+        self.assertIn("kind=thumb", log)
+
+    def test_storm_idle_diff_verifies_canaries(self):
+        proc = self.run_cli(
+            self.env(WORKLOAD="storm-idle", IDLE_PROFILE="diff", STORM_CLIENTS="2", STORM_OPS="3")
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm verify: matched 4/4 canary writes", log)
+        verify = json.loads((self.cell / "verify-storm-run-1.json").read_text())
+        self.assertTrue(all(item["got"] == item["expected"] for item in verify))
+
+    def test_invalid_idle_profile_rejected(self):
+        proc = self.run_cli(self.env(WORKLOAD="storm-idle", IDLE_PROFILE="bogus"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("IDLE_PROFILE", proc.stderr + proc.stdout)
+
+    def test_storm_verify_failure(self):
+        self.server.apply_rating = False
+        proc = self.run_cli(self.env(WORKLOAD="storm-diff", STORM_CLIENTS="2", STORM_OPS="3"))
+        self.assertNotEqual(proc.returncode, 0, proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("storm verify FAILED", log)
 
     def test_invalid_workload_rejected(self):
         proc = self.run_cli(self.env(WORKLOAD="storm-everything"))

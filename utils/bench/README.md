@@ -52,7 +52,8 @@ WORKLOAD=storm-idle just bench workload /tmp/c-r3 /tmp/sets/set-100 100 8
 ```
 
 `storm-diff` fires `STORM_CLIENTS × STORM_OPS` edit-rating PUTs at
-distinct assets; `storm-read` fires prefetch POSTs; `storm-idle` runs one
+distinct assets; `storm-read` fires prefetch POSTs; `storm-thumb` fires
+compressed-thumbnail GETs of random assets; `storm-idle` runs one
 populate scan then storms the tree at rest (no margin check). Per-op
 latencies land in `rounds-run-N/storm-round-N.tsv`; the extractor prints
 medians/p95/max in the detail line. If the storm does not finish

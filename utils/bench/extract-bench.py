@@ -49,6 +49,21 @@ def parse_log(outdir: Path) -> dict:
         row["scan_wall_s"] = float(m.group(1)) / 1000.0
         row["scan_runs"] = len(m.group(3).split(","))
         row["scan_runs_ms"] = [float(x) / 1000.0 for x in m.group(3).split(",")]
+    else:
+        # Failed cells never log the median line; fall back to the raw
+        # per-run walls so partial runs stay readable.
+        walls = []
+        try:
+            for line in (outdir / "scan-walls.tsv").read_text().splitlines():
+                parts = line.split()
+                if len(parts) == 2:
+                    walls.append(float(parts[1]) / 1000.0)
+        except OSError:
+            pass
+        if walls:
+            row["scan_wall_s"] = statistics.median(walls)
+            row["scan_runs"] = len(walls)
+            row["scan_runs_ms"] = walls
     # Pool ALL fetch rounds (every round is an equally representative
     # random sample; reporting only the last one discards ~90% of the
     # measurements). Mean of round means + total fetch count.
@@ -128,24 +143,30 @@ def parse_log(outdir: Path) -> dict:
     # Storm summaries (one per scan run for storm-* workloads).
     storms = re.findall(
         r"^.*storm: profile=(\S+) ops=(\d+)/(\d+) median=([\d.]+)s "
-        r"p95=([\d.]+)s max=([\d.]+)s failed=(\d+) wall=([\d.]+)s",
+        r"p95=([\d.]+)s max=([\d.]+)s failed=(\d+) wall=([\d.]+)s(?: kind=(\S+))?",
         log,
         re.M,
     )
     if storms:
-        row["storms"] = [
-            {
-                "profile": s[0],
-                "done": int(s[1]),
-                "total": int(s[2]),
-                "median": float(s[3]),
-                "p95": float(s[4]),
-                "max": float(s[5]),
-                "failed": int(s[6]),
-                "wall": float(s[7]),
-            }
-            for s in storms
-        ]
+        row["storms"] = []
+        for s in storms:
+            profile, kind = s[0], s[8] or None
+            key = profile if not kind or profile.endswith(kind) else f"{profile}-{kind}"
+            row["storms"].append(
+                {
+                    "key": key,
+                    "done": int(s[1]),
+                    "total": int(s[2]),
+                    "median": float(s[3]),
+                    "p95": float(s[4]),
+                    "max": float(s[5]),
+                    "failed": int(s[6]),
+                    "wall": float(s[7]),
+                }
+            )
+    verifies = re.findall(r"^.*storm verify: matched (\d+)/(\d+) canary writes", log, re.M)
+    if verifies:
+        row["storm_verify"] = [(int(m), int(t)) for m, t in verifies]
     m = re.search(r"=== seeding images \(repo=(\S+) path=\S+\)", log)
     if not m:
         m = re.search(r"reused images copied from (\S+)", log)
@@ -162,9 +183,9 @@ def parse_status(outdir: Path) -> dict:
         sys.exit(1)
 
 
-def _storm_summary(storms: list, profile: str) -> dict | None:
+def _storm_summary(storms: list, key: str) -> dict | None:
     """Aggregate per-run storm summaries: median of medians, worst of max."""
-    runs = [s for s in storms if s["profile"] == profile]
+    runs = [s for s in storms if s["key"] == key]
     if not runs:
         return None
     return {
@@ -176,7 +197,7 @@ def _storm_summary(storms: list, profile: str) -> dict | None:
     }
 
 
-def _cell(row: dict, status: dict) -> dict:
+def _cell(row: dict, status: dict, storm_keys: list) -> dict:
     """Flatten one parsed cell into label-agnostic string/number fields."""
     mb = row.get("bytes", 0) / 1e6
     wall = row.get("scan_wall_s", 0.0)
@@ -201,25 +222,41 @@ def _cell(row: dict, status: dict) -> dict:
         "thumb_worst_ms": _ms(row.get("scan_thumb_worst")),
         "scan_edit_ms": _ms(row.get("scan_edit_median", row.get("scan_edit_mean"))),
         "edit_worst_ms": _ms(row.get("scan_edit_worst")),
-        "post_thumb_ms": _ms(row.get("post_compressed")),
-        "post_fetch_ms": _ms(row.get("post_prefetch")),
-        "post_edit_ms": _ms(row.get("post_edit")),
+        "idle_thumb_ms": _ms(row.get("post_compressed")),
+        "idle_fetch_ms": _ms(row.get("post_prefetch")),
+        "idle_edit_ms": _ms(row.get("post_edit")),
     }
-    for profile in ("storm-diff", "storm-read", "storm-idle"):
-        summary = _storm_summary(row.get("storms", []), profile)
+    for key in storm_keys:
+        summary = _storm_summary(row.get("storms", []), key)
         if summary is None:
-            cell[f"{profile}_ops"] = "n/a"
-            cell[f"{profile}_med_ms"] = "n/a"
-            cell[f"{profile}_p95_ms"] = "n/a"
-            cell[f"{profile}_max_ms"] = "n/a"
-            cell[f"{profile}_fail"] = "n/a"
+            cell[f"{key}_ops"] = "n/a"
+            cell[f"{key}_med_ms"] = "n/a"
+            cell[f"{key}_p95_ms"] = "n/a"
+            cell[f"{key}_max_ms"] = "n/a"
+            cell[f"{key}_fail"] = "n/a"
         else:
-            cell[f"{profile}_ops"] = summary["ops"]
-            cell[f"{profile}_med_ms"] = round(summary["med"] * 1000, 1)
-            cell[f"{profile}_p95_ms"] = round(summary["p95"] * 1000, 1)
-            cell[f"{profile}_max_ms"] = round(summary["max"] * 1000, 1)
-            cell[f"{profile}_fail"] = summary["fail"]
+            cell[f"{key}_ops"] = summary["ops"]
+            cell[f"{key}_med_ms"] = round(summary["med"] * 1000, 1)
+            cell[f"{key}_p95_ms"] = round(summary["p95"] * 1000, 1)
+            cell[f"{key}_max_ms"] = round(summary["max"] * 1000, 1)
+            cell[f"{key}_fail"] = summary["fail"]
+    if row.get("storm_verify"):
+        cell["storm_verify"] = "; ".join(f"{m}/{t}" for m, t in row["storm_verify"])
+    else:
+        cell["storm_verify"] = "n/a"
     return cell
+
+
+def _storm_keys(storms: list) -> list:
+    """Ordered distinct storm keys in one cell, base profiles first."""
+    present = []
+    for storm in storms:
+        if storm["key"] not in present:
+            present.append(storm["key"])
+    order = ["storm-diff", "storm-read", "storm-thumb", "storm-idle"]
+    base = [key for key in order if key in present]
+    rest = sorted(key for key in present if key not in base)
+    return base + rest
 
 
 def _ms(value) -> object:
@@ -231,19 +268,22 @@ def main() -> None:
     parser.add_argument("outdirs", nargs="+", help="harness-A OUT dirs")
     args = parser.parse_args()
 
-    cells = []
+    parsed = []
     for raw in args.outdirs:
         outdir = Path(raw)
         if not (outdir / "harness-a.log").exists():
             print(f"error: {outdir}: no harness-a.log", file=sys.stderr)
             sys.exit(1)
-        cells.append(_cell(parse_log(outdir), parse_status(outdir)))
+        parsed.append((parse_log(outdir), parse_status(outdir)))
 
-    profiles = [
-        p
-        for p in ("storm-diff", "storm-read", "storm-idle")
-        if any(c[f"{p}_ops"] != "n/a" for c in cells)
-    ]
+    storm_union: list = []
+    for row, _ in parsed:
+        for key in _storm_keys(row.get("storms", [])):
+            if key not in storm_union:
+                storm_union.append(key)
+    cells = [_cell(row, status, storm_union) for row, status in parsed]
+
+    profiles = storm_union
     for i, cell in enumerate(cells, 1):
         print(f"[{i}] name: {cell['name']}")
         print(f"    {cell['setup']}")
@@ -258,9 +298,10 @@ def main() -> None:
         "thumb_worst_ms",
         "scan_edit_ms",
         "edit_worst_ms",
-        "post_thumb_ms",
-        "post_fetch_ms",
-        "post_edit_ms",
+        "idle_thumb_ms",
+        "idle_fetch_ms",
+        "idle_edit_ms",
+        "storm_verify",
     ] + [f"{p}_{c}" for p in profiles for c in ("ops", "med_ms", "p95_ms", "max_ms", "fail")]
     width = max([len(label) for label in labels] + [8])
     col_widths = []
@@ -294,7 +335,7 @@ def main() -> None:
                 file=sys.stderr,
             )
     print("units: scan_time s; s/MB s per MB; all latency columns ms.")
-    print("median/worst latency: pre[fetch], [thumb]nail, metadata[edit], scan and post")
+    print("median/worst latency: pre[fetch], [thumb]nail, metadata[edit], scan and idle")
 
 
 if __name__ == "__main__":
