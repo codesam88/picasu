@@ -14,7 +14,7 @@ help:
 backend-format:
     cd backend && cargo fmt
 
-# cargo fmt --check + cargo clippy (all targets: lib, bins, tests, build script)
+# cargo fmt --check + clippy (all targets)
 [group('backend')]
 backend-check:
     cd backend && cargo fmt --check
@@ -67,7 +67,7 @@ frontend-check:
 frontend-vitest:
     cd frontend && npm test
 
-# run frontend playwright tests, with optional filter
+# run playwright tests (optional filter)
 [group('frontend')]
 frontend-playwright filter="": frontend-build-maybe
     #!/usr/bin/env bash
@@ -101,7 +101,7 @@ frontend-playwright filter="": frontend-build-maybe
 [group('frontend')]
 frontend-test: frontend-vitest frontend-playwright
 
-# npm run build (vue-tsc + vite build); installs deps if missing
+# npm run build; installs deps if missing
 [group('frontend')]
 frontend-build:
     cd frontend && (test -d node_modules || npm ci) && npm run build
@@ -122,13 +122,13 @@ frontend-audit:
 utils-format:
     cargo fmt -p snapfab -p paste -p openapi-sanity
 
-# cargo fmt --check + cargo clippy on utils/ crates (all targets)
+# utils fmt + clippy (all targets)
 [group('utils')]
 utils-check: zizmor-check
     cargo fmt --check -p snapfab -p paste -p openapi-sanity
     cargo clippy --all-targets -p snapfab -p paste -p openapi-sanity -- -D warnings
 
-# cargo test on utils/ crates + the Schemathesis harness derivations
+# cargo test utils/ + Schemathesis derivations
 [group('utils')]
 utils-test:
     cargo test -p snapfab -p openapi-sanity
@@ -146,7 +146,7 @@ openapi-gen:
 [group('utils')]
 openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check
 
-# Run dylint auth lints on the backend (advisory)
+# run dylint auth lints (advisory)
 [group('utils')]
 dylint-check:
     cargo dylint --all -- -p picasu
@@ -156,7 +156,7 @@ dylint-check:
 openapi-lint:
     cd frontend && npx --no-install spectral lint --ruleset ../.spectral.yaml ../backend/openapi.json
 
-# Check source-level OpenAPI annotation conventions.
+# check OpenAPI annotation conventions
 [group('utils')]
 openapi-sanity:
     cargo run --quiet -p openapi-sanity -- --source-root "{{justfile_directory()}}/backend/src/router" --app-error-map "{{justfile_directory()}}/backend/src/error.rs" --expect-at-least 60
@@ -185,7 +185,7 @@ openapi-json-match:
     echo "openapi.json matches the generated spec"
 
 # Install one managed tool: `just install <name>` (e.g. `just install ffmpeg`).
-# The dispatcher loops over scripts/deps/*.sh; no run-parts binary needed.
+# dispatcher loops scripts/deps/*.sh
 [group('deps')]
 install tool:
     ./scripts/deps-install.sh --tool {{tool}}
@@ -194,7 +194,7 @@ install tool:
 # tier-1 check) are scripts under scripts/ and utils/schemathesis/, combined
 # as documented in utils/schemathesis/README.md.
 
-# Tier-1 gate: seeded sweep against a throwaway instance, baseline-compared
+# tier-1 gate: seeded sweep, baseline-compared
 [group('utils')]
 fuzz-check: frontend-build-maybe (install "schemathesis")
     #!/usr/bin/env bash
@@ -203,7 +203,7 @@ fuzz-check: frontend-build-maybe (install "schemathesis")
     utils/schemathesis/check.sh
 
 # Serve a seeded instance in the foreground (first run seeds; Ctrl-C stops)
-# Run the fuzz matrix: matrix-derived auth checks against a throwaway instance
+# run fuzz matrix (auth checks)
 [group('utils')]
 fuzz-matrix: frontend-build-maybe
     utils/schemathesis/fuzz_matrix.sh
@@ -212,7 +212,7 @@ fuzz-matrix: frontend-build-maybe
 fuzz-serve *args: frontend-build-maybe
     utils/schemathesis/serve.sh {{ args }}
 
-# Run the campaign against a served instance; budget in minutes via FUZZ_MIN
+# run fuzz campaign (budget via FUZZ_MIN)
 [group('utils')]
 fuzz-run *args: (install "schemathesis")
     #!/usr/bin/env bash
@@ -222,7 +222,7 @@ fuzz-run *args: (install "schemathesis")
     utils/schemathesis/campaign.sh {{ args }}
 
 
-# Audit workflows and Dependabot config offline (no GH_TOKEN needed)
+# audit workflows/deps offline (no GH_TOKEN)
 [group('utils')]
 zizmor-check: (install "zizmor")
     #!/usr/bin/env bash
@@ -233,7 +233,7 @@ zizmor-check: (install "zizmor")
 # Online audit for the scheduled CI job: stale pins, archived actions and
 # other checks that need the GitHub API. Needs GH_TOKEN (or GITHUB_TOKEN);
 # without one it degrades to the offline check. Takes extra zizmor flags,
-# e.g. `just zizmor-check-online --format=sarif`.
+# e.g. --format=sarif
 [group('utils')]
 zizmor-check-online *args="": (install "zizmor")
     #!/usr/bin/env bash
@@ -249,13 +249,13 @@ openapi-breakcheck: (install "oasdiff")
     ./scripts/deps-install.sh --tool oasdiff --check
     ./scripts/openapi-breakcheck.sh "{{ justfile_directory() }}"
 
-# check that the PICASU_* env vars read by the backend match the docs/config.md table
+# check PICASU_* env vars match docs/config.md
 [group('utils')]
 env-var-check:
     node --test {{justfile_directory()}}/scripts/env-var-lint.test.mjs
     node {{justfile_directory()}}/scripts/env-var-lint.mjs {{justfile_directory()}}
 
-# Ensure committed auth-matrix artifacts match generator output
+# ensure auth-matrix artifacts match generator
 [group('utils')]
 auth-matrix-check:
     #!/usr/bin/env bash
@@ -294,7 +294,7 @@ plan-format:
 plan-lint:
     node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
-# run plan <args>, depends on `just install-plan`
+# run plan <args> (needs install-plan)
 [group('utils')]
 plan *args:
     plan --root {{justfile_directory()}} {{args}}
@@ -327,12 +327,12 @@ docs-build: docs-openapi
 docs-serve:
     python3 -m http.server 3637 -d target/docs/book
 
-# Format markdown files (README, docs, .plan, utils)
+# format markdown (README, docs, .plan, utils)
 [group('docs')]
 docs-format:
     cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
 
-# Check markdown formatting (docs, .plan, utils)
+# check markdown (docs, .plan, utils)
 [group('docs')]
 docs-check:
     cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
@@ -347,7 +347,7 @@ format: backend-format utils-format frontend-format docs-format
 [group('global')]
 check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check
 
-# Run tests (backend + utils + frontend + generated auth probes)
+# run full test suite
 [group('global')]
 test: backend-test utils-test frontend-test fuzz-matrix
 
@@ -395,12 +395,12 @@ test: backend-test utils-test frontend-test fuzz-matrix
 # The version and its per-platform checksums move together: upstream
 # publishes the binaries and a .sha256 sidecar per platform on the GitHub
 # release.
-# Verify all managed tools (check only, no install).
+# verify managed tools (check only)
 [group('deps')]
 check-tools:
     ./scripts/deps-install.sh --check
 
-# Install all managed dev tools (dispatcher loops scripts/deps/*.sh).
+# install managed dev tools
 [group('deps')]
 install-dev:
     ./scripts/deps-install.sh
@@ -420,7 +420,7 @@ build: frontend-build backend-build
 [group('global')]
 build-release: frontend-build backend-build-release
 
-# Build + test release build - webroot is embedded
+# build + test release (webroot embedded)
 [group('global')]
 test-release: backend-test-release build-release
     PICASU_BINARY=target/release/picasu just frontend-playwright
