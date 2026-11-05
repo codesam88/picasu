@@ -188,7 +188,7 @@ Split into three phases; each has its own gate.
   `tempfile`, rewrite `test_image.rs`. Port the binary-safe `fixture` given
   step + `schema.json` entries and `scenario_schema.rs` (old branch's final,
   post-`7a7721cd` state).
-- CI: add the pinned `just install-exiftool` step to both jobs (snapfab tests
+- CI: add the pinned `just install exiftool` step to both jobs (snapfab tests
   now need it). No ffmpeg step yet.
 - Gate: `cargo test -p snapfab`, manifest-consistency tests, `just utils-check`.
 

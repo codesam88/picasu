@@ -26,7 +26,7 @@ limits. Start from the folder README, not from here.
 Install cargo-dylint once (pinned version, idempotent):
 
 ```sh
-just install-dylint
+just install dylint
 ```
 
 Run the checks (not part of `just check`; gating in CI):
@@ -95,7 +95,7 @@ rustup component add --toolchain nightly-2026-08-01 rustc-dev llvm-tools
 ```
 
 Built against `dylint_linting 6.1.0`, driven by `cargo-dylint 6.1.0` (same
-version, installed via `just install-dylint`). Re-pin quarterly,
+version, installed via `just install dylint`). Re-pin quarterly,
 driven by `dylint_linting` releases: bump the pin here and the
 `dylint_version` justfile var together, since the check toolchain
 must match the toolchain the lint libraries build with.

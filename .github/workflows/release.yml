@@ -86,7 +86,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-nextest
+          just install nextest
           cargo nextest --version
 
       # Same media-tools cache as CI: the unpacked dirs keyed on justfile;
@@ -106,7 +106,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-ffmpeg
+          just install ffmpeg
           ffmpeg -version
 
       - name: Install Playwright browsers
@@ -119,7 +119,7 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-exiftool
+          just install exiftool
           exiftool -ver
 
       - name: Test the release build

@@ -43,6 +43,6 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
-          just install-cargo-deny
+          just install cargo-deny
           cargo deny --version
       - run: just audit

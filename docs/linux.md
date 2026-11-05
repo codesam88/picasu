@@ -28,7 +28,7 @@ just setup-dev    # installs every pinned tool, including ffmpeg and ExifTool
   pinned static build without root:
 
   ```bash
-  just install-ffmpeg
+  just install ffmpeg
   ```
 
 - **ExifTool**: snapfab (`utils/snapfab`), the fixture generator behind the
@@ -39,7 +39,7 @@ just setup-dev    # installs every pinned tool, including ffmpeg and ExifTool
   release without root:
 
   ```bash
-  just install-exiftool
+  just install exiftool
   ```
 
   A distribution's package works too (Debian/Ubuntu:

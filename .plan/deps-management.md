@@ -172,7 +172,7 @@ distributing versions across per-tool `install-*.sh` scripts
    `utils/dylint-lints/*/Cargo.toml` (4 crates), installer.
    Done: version defined once in the manifest
    (`grep -rn "6\.3\.1"` shows manifest + generated lock/derived
-   uses only); `just install-dylint` and `just dylint-check` pass.
+   uses only); `just install dylint` and `just dylint-check` pass.
 
 8. Tighten playwright/media cache keys.
    Scope: `.github/workflows/{ci,release}.yml` (cache steps), frontend

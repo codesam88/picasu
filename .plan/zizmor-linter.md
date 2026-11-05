@@ -18,7 +18,7 @@ fast; CI backend job already installs uv); run offline at repo root
 
 ## Goal
 
-`just install-zizmor` prefetches the pinned release; `just zizmor-check`
+`just install zizmor` prefetches the pinned release; `just zizmor-check`
 audits the repo offline. Wired in: `install-zizmor` in `install-dev`,
 `zizmor-check` in `utils-check` and `check`; install recipes regrouped
 under `[group('deps')]`.

@@ -1180,7 +1180,7 @@ only thing that puts EXIF, XMP and IIM into a generated image, so without it eve
 would be a bare pixel buffer and every scenario asserting on metadata would pass vacuously.
 
 Install ExifTool to fix this (Debian/Ubuntu: `apt-get install libimage-exiftool-perl`, or \
-`just install-exiftool` to fetch the pinned pure-Perl distribution into `~/.local` without \
+`just install exiftool` to fetch the pinned pure-Perl distribution into `~/.local` without \
 root) and re-run `cargo test -p snapfab`.";
 
 /// One image's metadata, as the values [`write_metadata`] hands to `exiftool`.
@@ -1955,7 +1955,7 @@ mod tests {
         for expected in [
             "pass vacuously",
             "apt-get install libimage-exiftool-perl",
-            "just install-exiftool",
+            "just install exiftool",
             "cargo test -p snapfab",
         ] {
             assert!(
