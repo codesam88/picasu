@@ -5,13 +5,17 @@ Usage:
     utils/bench/extract-bench.py /tmp/.../bench-after-N4-100 [...]
 
 Reads harness-a.log, status-final.json and hyperfine.json from each
-OUT dir (as produced by the bench workload) and prints one
-row per cell: image count/bytes, scan wall time + sec/MB, last-round
-probe means (sequential + concurrent), and post-scan hyperfine means.
+OUT dir (as produced by the bench workload) and prints one metric per
+line, one column per cell: image count/bytes, scan wall time + sec/MB,
+during-scan latency medians and worst rounds, post-scan hyperfine
+medians, and per-storm-profile aggregates (median of run medians,
+worst of run maxes).
 
-Scan counters come from status-final.json (scanned/matched/processed/
-failed); timings from the log's `scan state=` line and the final
-`probe round=` line; hyperfine means from hyperfine.json.
+Scan counters come from status-final.json and are validity-checked only:
+a non-completed state, any failure, or a processed/matched mismatch prints
+a WARN line to stderr instead of a table row. Timings come from the log's
+`scan state=` line and the final `probe round=` line; hyperfine means from
+hyperfine.json.
 Exit non-zero if a dir is missing expected artifacts.
 """
 
@@ -142,6 +146,11 @@ def parse_log(outdir: Path) -> dict:
             }
             for s in storms
         ]
+    m = re.search(r"=== seeding images \(repo=(\S+) path=\S+\)", log)
+    if not m:
+        m = re.search(r"reused images copied from (\S+)", log)
+    if m:
+        row["image_repo"] = m.group(1)
     return row
 
 
@@ -153,75 +162,137 @@ def parse_status(outdir: Path) -> dict:
         sys.exit(1)
 
 
+def _storm_summary(storms: list, profile: str) -> dict | None:
+    """Aggregate per-run storm summaries: median of medians, worst of max."""
+    runs = [s for s in storms if s["profile"] == profile]
+    if not runs:
+        return None
+    return {
+        "ops": f"{sum(s['done'] for s in runs)}/{sum(s['total'] for s in runs)}",
+        "med": statistics.median(s["median"] for s in runs),
+        "p95": max(s["p95"] for s in runs),
+        "max": max(s["max"] for s in runs),
+        "fail": sum(s["failed"] for s in runs),
+    }
+
+
+def _cell(row: dict, status: dict) -> dict:
+    """Flatten one parsed cell into label-agnostic string/number fields."""
+    mb = row.get("bytes", 0) / 1e6
+    wall = row.get("scan_wall_s", 0.0)
+    cell = {
+        "name": row.get("benchmark", ""),
+        "setup": (
+            f"NCPU={row.get('cpu', '?')} IMAGES={row.get('images', '?')} "
+            f"IMAGE_REPO={row.get('image_repo', '?')}"
+        ),
+        "state": status.get("state", "?"),
+        "scan_time_s": round(wall),
+        "s/MB": round(wall / mb, 1) if mb else "n/a",
+        "MB": round(mb, 1),
+        "scanned": status.get("scanned", "?"),
+        "matched": status.get("matched", "?"),
+        "processed": status.get("processed", "?"),
+        "failed": status.get("failed", "?"),
+        "scan_runs_s": ",".join(f"{w:.0f}" for w in row.get("scan_runs_ms", [])) or "n/a",
+        "scan_fetch_ms": _ms(row.get("scan_pref_median", row.get("scan_pref_mean"))),
+        "fetch_worst_ms": _ms(row.get("scan_pref_worst")),
+        "scan_thumb_ms": _ms(row.get("scan_thumb_mean")),
+        "thumb_worst_ms": _ms(row.get("scan_thumb_worst")),
+        "scan_edit_ms": _ms(row.get("scan_edit_median", row.get("scan_edit_mean"))),
+        "edit_worst_ms": _ms(row.get("scan_edit_worst")),
+        "post_thumb_ms": _ms(row.get("post_compressed")),
+        "post_fetch_ms": _ms(row.get("post_prefetch")),
+        "post_edit_ms": _ms(row.get("post_edit")),
+    }
+    for profile in ("storm-diff", "storm-read", "storm-idle"):
+        summary = _storm_summary(row.get("storms", []), profile)
+        if summary is None:
+            cell[f"{profile}_ops"] = "n/a"
+            cell[f"{profile}_med_ms"] = "n/a"
+            cell[f"{profile}_p95_ms"] = "n/a"
+            cell[f"{profile}_max_ms"] = "n/a"
+            cell[f"{profile}_fail"] = "n/a"
+        else:
+            cell[f"{profile}_ops"] = summary["ops"]
+            cell[f"{profile}_med_ms"] = round(summary["med"] * 1000, 1)
+            cell[f"{profile}_p95_ms"] = round(summary["p95"] * 1000, 1)
+            cell[f"{profile}_max_ms"] = round(summary["max"] * 1000, 1)
+            cell[f"{profile}_fail"] = summary["fail"]
+    return cell
+
+
+def _ms(value) -> object:
+    return round(value * 1000, 1) if value is not None else "n/a"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("outdirs", nargs="+", help="harness-A OUT dirs")
     args = parser.parse_args()
 
-    header = (
-        f"{'benchmark':<26}{'cpu':>4}{'images':>7}{'MB':>9}"
-        f"{'scan_time':>10}{'s/MB':>8}{'state':>11}"
-        f"{'scan_fetch':>13}{'fetch_worst':>12}"
-        f"{'scan_thumb':>14}{'thumb_worst':>12}"
-        f"{'scan_edit':>13}{'edit_worst':>12}"
-        f"{'post_thumb':>14}{'post_fetch':>13}{'post_edit':>13}"
-    )
-    print(header)
-
-    def ms(row: dict, *keys: str, width: int) -> str:
-        for key in keys:
-            val = row.get(key)
-            if val is not None:
-                return f"{val * 1000:>{width}.1f}"
-        return "n/a".rjust(width)
-
+    cells = []
     for raw in args.outdirs:
         outdir = Path(raw)
         if not (outdir / "harness-a.log").exists():
             print(f"error: {outdir}: no harness-a.log", file=sys.stderr)
             sys.exit(1)
-        row = parse_log(outdir)
-        status = parse_status(outdir)
-        mb = row.get("bytes", 0) / 1e6
-        wall = row.get("scan_wall_s", 0.0)
-        sec_per_mb = (wall / mb) if mb else 0.0
+        cells.append(_cell(parse_log(outdir), parse_status(outdir)))
+
+    profiles = [
+        p
+        for p in ("storm-diff", "storm-read", "storm-idle")
+        if any(c[f"{p}_ops"] != "n/a" for c in cells)
+    ]
+    for i, cell in enumerate(cells, 1):
+        print(f"[{i}] name: {cell['name']}")
+        print(f"    {cell['setup']}")
+    labels = [
+        "scan_time_s",
+        "s/MB",
+        "MB",
+        "scan_runs_s",
+        "scan_fetch_ms",
+        "fetch_worst_ms",
+        "scan_thumb_ms",
+        "thumb_worst_ms",
+        "scan_edit_ms",
+        "edit_worst_ms",
+        "post_thumb_ms",
+        "post_fetch_ms",
+        "post_edit_ms",
+    ] + [f"{p}_{c}" for p in profiles for c in ("ops", "med_ms", "p95_ms", "max_ms", "fail")]
+    width = max([len(label) for label in labels] + [8])
+    col_widths = []
+    for i in range(len(cells)):
+        widest = max([len(str(cells[i][label])) for label in labels] + [len(f"[{i + 1}]"), 10])
+        col_widths.append(widest)
+    print(
+        f"{'metric':<{width}} "
+        + " ".join(f"{f'[{i}]':>{w}}" for i, w in zip(range(1, len(cells) + 1), col_widths))
+    )
+    for label in labels:
         print(
-            f"{row.get('benchmark', ''):<26}"
-            f"{row.get('cpu', '?'):>4}"
-            f"{row.get('images', 0):>7}"
-            f"{mb:>9.1f}"
-            f"{wall:>10.0f}"
-            f"{sec_per_mb:>8.1f}"
-            f"{status.get('state', '?'):>11}"
-            f"{ms(row, 'scan_pref_median', 'scan_pref_mean', width=13)}"
-            f"{ms(row, 'scan_pref_worst', width=12)}"
-            f"{ms(row, 'scan_thumb_mean', width=14)}"
-            f"{ms(row, 'scan_thumb_worst', width=12)}"
-            f"{ms(row, 'scan_edit_median', 'scan_edit_mean', width=13)}"
-            f"{ms(row, 'scan_edit_worst', width=12)}"
-            f"{ms(row, 'post_compressed', width=14)}"
-            f"{ms(row, 'post_prefetch', width=13)}"
-            f"{ms(row, 'post_edit', width=13)}"
+            f"{label:<{width}} "
+            + " ".join(f"{str(cell[label]):>{w}}" for cell, w in zip(cells, col_widths))
         )
-        counts = (
-            f"  scanned={status.get('scanned')} matched={status.get('matched')} "
-            f"processed={status.get('processed')} failed={status.get('failed')} "
-            f"probe_rows={row.get('probe_rows', '?')}"
-        )
-        if "scan_rounds" in row:
-            counts += f" rounds={row['scan_rounds']}"
-        if "scan_thumb_n" in row:
-            counts += f" thumb_n={row['scan_thumb_n']}"
-        if "scan_runs_ms" in row:
-            runs = ",".join(f"{w:.0f}" for w in row["scan_runs_ms"])
-            counts += f" scan_runs_s=[{runs}]"
-        for storm in row.get("storms", []):
-            counts += (
-                f" {storm['profile']}: {storm['done']}/{storm['total']}"
-                f" med={storm['median'] * 1000:.1f} p95={storm['p95'] * 1000:.1f}"
-                f" max={storm['max'] * 1000:.1f} fail={storm['failed']}"
+    for cell in cells:
+        if cell["state"] != "completed":
+            print(
+                f"WARN {cell['name']}: state={cell['state']} (expected completed)",
+                file=sys.stderr,
             )
-        print(counts)
+        if isinstance(cell["failed"], int) and cell["failed"] > 0:
+            print(f"WARN {cell['name']}: failed={cell['failed']}", file=sys.stderr)
+        if (
+            isinstance(cell["processed"], int)
+            and isinstance(cell["matched"], int)
+            and cell["processed"] != cell["matched"]
+        ):
+            print(
+                f"WARN {cell['name']}: processed={cell['processed']} matched={cell['matched']}",
+                file=sys.stderr,
+            )
     print("units: scan_time s; s/MB s per MB; all latency columns ms.")
     print("median/worst latency: pre[fetch], [thumb]nail, metadata[edit], scan and post")
 
