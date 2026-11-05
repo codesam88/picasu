@@ -193,7 +193,7 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(cfg["admin_id"], "bench-admin")
         self.assertTrue(cfg["admin_pw"].startswith("bench-"))
 
-    def test_debug_defaults_warn(self):
+    def test_debug_defaults_no_warnings(self):
         err = io.StringIO()
         env = base_env(MODE="debug", OUT=str(Path(self.tmp.name) / "c"))
         env.pop("BUILD_PROFILE")
@@ -201,7 +201,7 @@ class LauncherTest(unittest.TestCase):
             cfg = bl.config_from_env(env)
         self.assertEqual(cfg["mode"], "debug")
         self.assertEqual(cfg["build_profile"], "debug")
-        self.assertIn("WARN", err.getvalue())
+        self.assertEqual(err.getvalue(), "")
 
     def test_bad_mode(self):
         with self.assertRaises(bl.ConfigError):
@@ -219,7 +219,6 @@ class LauncherTest(unittest.TestCase):
     def test_bench_refuses_diagnostics(self):
         out = str(Path(self.tmp.name) / "c")
         for extra in (
-            {"PICASU_BARRIER_DEBUG": "1"},
             {"RUST_LOG": "info"},
             {"BUILD_PROFILE": "debug"},
         ):

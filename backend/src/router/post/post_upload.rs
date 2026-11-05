@@ -11,18 +11,13 @@ use crate::storage::db::{TREE, snapshot_tree};
 use crate::storage::files::get_resolved_image_home;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use log::debug;
 use redb::{ReadableDatabase, ReadableTable};
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
 use uuid::Uuid;
-
-/// Correlates the enter/exit holder logs of one `record_exists_for` call.
-static NEXT_UPLOAD_HOLD_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Data structure representing the multipart form for file uploads.
 #[derive(FromForm, Debug)]
@@ -553,22 +548,10 @@ fn record_exists_for(path: &Path, relative: &Path) -> bool {
         candidate == path || candidate == relative
     };
 
-    let hold_id = NEXT_UPLOAD_HOLD_ID.fetch_add(1, Ordering::Relaxed);
-    let hold_start = Instant::now();
-    debug!("record_exists_for: upload tree snapshot waiting req={hold_id}");
     let tree_snapshot = snapshot_tree();
-    let tree_rows = tree_snapshot.len();
-    debug!(
-        "record_exists_for: upload tree snapshot acquired req={hold_id} rows={tree_rows} guard_wait={:?}",
-        hold_start.elapsed()
-    );
     let found = tree_snapshot
         .iter()
         .any(|dt| dt.abstract_data.path().iter().any(|a| matches(&a.file)));
-    debug!(
-        "record_exists_for: upload tree snapshot released req={hold_id} rows={tree_rows} found={found} hold={:?}",
-        hold_start.elapsed()
-    );
     if found {
         return true;
     }

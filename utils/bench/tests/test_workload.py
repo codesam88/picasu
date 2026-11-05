@@ -417,6 +417,17 @@ class WorkloadTest(unittest.TestCase):
         self.assertIn("post_edit", lines[0])
         self.assertNotIn("n/a", lines[1])
 
+    def test_status_without_writer_diagnostics_is_accepted(self):
+        # The server status body carries only the index counters; no writer
+        # diagnostics. Readers use .get() defaults, so the scan still completes.
+        proc = self.run_cli(self.env())
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        status = json.loads((self.cell / "status-final.json").read_text())
+        self.assertEqual(status["state"], "completed")
+        self.assertFalse([key for key in status if key.startswith("writer")])
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("scan wall median_ms=", log)
+
     def test_stuck_scan_exits_nonzero_with_partial_artifacts(self):
         self.server.mode = "stuck"
         proc = self.run_cli(self.env(SCAN_TIMEOUT_S="0", SCAN_STALL_TIMEOUT_S="0.5"))
