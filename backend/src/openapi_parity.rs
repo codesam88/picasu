@@ -393,7 +393,7 @@ pub fn enabled_features() -> Vec<&'static str> {
 /// unconditionally;
 /// `every_declared_feature_is_readable_by_the_enabled_feature_list` holds the two
 /// sets equal.
-pub const KNOWN_FEATURES: [&str; 2] = ["embed-frontend", "auto-open-browser"];
+pub const KNOWN_FEATURES: [&str; 4] = ["default", "observe", "embed-frontend", "auto-open-browser"];
 
 /// Whether this build was compiled with `feature`, read with `cfg!`.
 ///
@@ -401,6 +401,8 @@ pub const KNOWN_FEATURES: [&str; 2] = ["embed-frontend", "auto-open-browser"];
 /// name is not enabled, which is the answer the excuse branch wants.
 fn is_enabled(feature: &str) -> bool {
     match feature {
+        "default" => cfg!(feature = "default"),
+        "observe" => cfg!(feature = "observe"),
         "embed-frontend" => cfg!(feature = "embed-frontend"),
         "auto-open-browser" => cfg!(feature = "auto-open-browser"),
         _ => false,

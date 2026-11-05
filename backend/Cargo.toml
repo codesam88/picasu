@@ -105,6 +105,11 @@ openapi-sanity = { version = "0.1", path = "../utils/openapi-sanity" }
 proptest = "1.11.0"
 
 [features]
+default = ["observe"]
+# Stall observation for the tree/snapshot pipeline. On by default: the
+# recording path is a few atomics per stage and the breach log is the
+# diagnostic. Turn it off to measure its overhead.
+observe = []
 embed-frontend = []
 auto-open-browser = ["dep:webbrowser"]
 
