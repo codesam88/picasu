@@ -46,3 +46,19 @@ link_points_at() {
     local link="$HOME/.local/bin/$name"
     [ -L "$link" ] && [ "$(readlink -f "$link")" = "$target" ]
 }
+
+# Platform key for prebuilt-asset selection (moved from scripts/deps-install.sh).
+platform_key() {
+    case "$(uname -s)-$(uname -m)" in
+        Linux-x86_64) printf 'LINUX_X86_64' ;;
+        Linux-aarch64|Linux-arm64) printf 'LINUX_AARCH64' ;;
+        Darwin-x86_64) printf 'MACOS_X86_64' ;;
+        Darwin-arm64) printf 'MACOS_AARCH64' ;;
+        *) printf 'UNKNOWN' ;;
+    esac
+}
+
+# Shared workdir tracking for per-tool installers.
+WORKDIR="${WORKDIR:-}"
+cleanup() { rm -rf "$WORKDIR"; }
+trap cleanup EXIT

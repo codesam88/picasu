@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Tier-1 Schemathesis check: seed a throwaway backend, run the bounded
 # single-op sweep, compare findings against the accepted-findings baseline.
-# Usage: check.sh <schemathesis-version>   (run from the repository root)
+# Usage: check.sh [<schemathesis-version>]   (run from the repository root)
 #
 # Exits 0 iff the tool ran and every finding is baseline-accepted. The
 # instance this run starts is torn down on exit (pid-scoped — never a
 # dev server elsewhere); FUZZ_REPORT_OUT copies the JSON report out first.
 set -euo pipefail
 
-version="${1:?usage: check.sh <schemathesis-version>}"
+# Resolve the pinned version internally (single source of truth).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../../scripts/deps/versions.env"
+version="${1:-$SCHEMATHESIS_VERSION}"
+: "${version:?usage: check.sh <schemathesis-version>}"
 export PATH="$HOME/.local/bin:$PATH"
 
 cd "$(dirname "$0")/../.."
