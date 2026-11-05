@@ -6,15 +6,25 @@
 # backend/openapi.json. Breaking findings fail; entries in
 # .oasdiff-ignore.txt are explicitly accepted breaks, not failures.
 #
-# Usage: openapi-breakcheck.sh <repo-root> <oasdiff-version>
+# Usage: openapi-breakcheck.sh <repo-root> [<oasdiff-version>]
 # Baseline: $OASDIFF_BASE_BRANCH, else $GITHUB_BASE_REF (PRs), else `main`.
 # CI checks out with full history so origin/<branch> resolves locally; on
 # shallow clones the base is fetched here (the only network use) instead of
 # touching the shared checkout config.
 set -euo pipefail
 
-repo_root="${1:?usage: openapi-breakcheck.sh <repo-root> <oasdiff-version>}"
-oasdiff_version="${2:?usage: openapi-breakcheck.sh <repo-root> <oasdiff-version>}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/deps/versions.env"
+
+repo_root="${1:?usage: openapi-breakcheck.sh <repo-root> [<oasdiff-version>]}"
+oasdiff_version="${2:-$OASDIFF_VERSION}"
+: "${oasdiff_version:?usage: openapi-breakcheck.sh <repo-root> [<oasdiff-version>]}"
+
+# Resolve sha internally (single source of truth).
+: "${OASDIFF_SHA256:=$OASDIFF_SHA256_LINUX_X86_64}"
+export OASDIFF_SHA256
+
 cd "$repo_root"
 
 if ! command -v oasdiff >/dev/null 2>&1 \

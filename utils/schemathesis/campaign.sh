@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tier-2 Schemathesis campaign: stateful run against a running backend.
-# Usage: campaign.sh <schemathesis-version> [schemathesis args...]
+# Usage: campaign.sh [<schemathesis-version>] [schemathesis args...]
 #        (run from the repository root)
 #
 # Advisory: the exit code is the baseline comparison — known (accepted)
@@ -11,8 +11,17 @@
 # seed.env when FUZZ_STATE_DIR points at a seed directory.
 set -euo pipefail
 
-version="${1:?usage: campaign.sh <schemathesis-version> [args...]}"
-shift
+# Resolve the pinned version internally (single source of truth).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../../scripts/deps/versions.env"
+if [[ $# -gt 0 && "$1" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+    version="$1"
+    shift
+else
+    version="$SCHEMATHESIS_VERSION"
+fi
+: "${version:?usage: campaign.sh <schemathesis-version> [args...]}"
 
 export PATH="$HOME/.local/bin:$PATH"
 cd "$(dirname "$0")/../.."

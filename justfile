@@ -23,7 +23,7 @@ backend-check:
 [private]
 nextest-present:
     #!/usr/bin/env sh
-    command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install-nextest" >&2; exit 1; }
+    command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install nextest" >&2; exit 1; }
 
 # Backend tests (cargo-nextest)
 [group('backend')]
@@ -184,21 +184,11 @@ openapi-json-match:
     fi
     echo "openapi.json matches the generated spec"
 
-# Pinned cargo-dylint release (matches the lint crate's dylint_linting; no sha256 — crates.io verification).
-dylint_version := "6.3.1"
-
-# Install pinned cargo-dylint (idempotent)
+# Install one managed tool: `just install <name>` (e.g. `just install ffmpeg`).
+# The dispatcher loops over scripts/deps/*.sh; no run-parts binary needed.
 [group('deps')]
-install-dylint:
-    ./scripts/install-dylint.sh "{{ dylint_version }}"
-
-# Pinned Schemathesis release for API fuzzing (via uvx; no sha256 — uv registry verification).
-schemathesis_version := "4.30.1"
-
-# Prefetch pinned Schemathesis (idempotent)
-[group('deps')]
-install-schemathesis:
-    ./scripts/install-schemathesis.sh "{{ schemathesis_version }}"
+install tool:
+    ./scripts/deps-install.sh --tool {{tool}}
 
 # Common fuzz flows; the fundamental commands (raw launcher, campaign engine,
 # tier-1 check) are scripts under scripts/ and utils/schemathesis/, combined
@@ -206,8 +196,11 @@ install-schemathesis:
 
 # Tier-1 gate: seeded sweep against a throwaway instance, baseline-compared
 [group('utils')]
-fuzz-check: frontend-build-maybe install-schemathesis
-    utils/schemathesis/check.sh "{{ schemathesis_version }}"
+fuzz-check: frontend-build-maybe (install "schemathesis")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/deps-install.sh --tool schemathesis --check
+    utils/schemathesis/check.sh
 
 # Serve a seeded instance in the foreground (first run seeds; Ctrl-C stops)
 # Run the fuzz matrix: matrix-derived auth checks against a throwaway instance
@@ -221,9 +214,12 @@ fuzz-serve *args: frontend-build-maybe
 
 # Run the campaign against a served instance; budget in minutes via FUZZ_MIN
 [group('utils')]
-fuzz-run *args: install-schemathesis
+fuzz-run *args: (install "schemathesis")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/deps-install.sh --tool schemathesis --check
     FUZZ_STATE_DIR="${FUZZ_STATE_DIR:-{{justfile_directory()}}/sandbox/fuzz}" \
-    utils/schemathesis/campaign.sh "{{ schemathesis_version }}" {{ args }}
+    utils/schemathesis/campaign.sh {{ args }}
 
 # Pinned MSRV floor: the maximum rust-version across the locked dependency
 # tree. The scheduled CI job checks the workspace here; pull requests are
@@ -236,47 +232,32 @@ msrv-check:
     rustup toolchain install {{ msrv_version }} --profile minimal
     cargo +{{ msrv_version }} check --workspace --locked --all-targets
 
-# Pinned zizmor release for the workflow lint below.
-#
-# zizmor runs via `uvx`, so the pin is a PyPI version resolved through uv
-# (pre-compiled, no build step). Integrity comes from uv's registry
-# verification; there is no upstream-published sha256 to check, unlike the
-# tarball-based installs above.
-zizmor_version := "1.31.1"
-
-# Prefetch pinned zizmor (idempotent)
-[group('deps')]
-install-zizmor:
-    ./scripts/install-zizmor.sh "{{ zizmor_version }}"
-
 # Audit workflows and Dependabot config offline (no GH_TOKEN needed)
 [group('utils')]
-zizmor-check: install-zizmor
-    uvx zizmor@"{{ zizmor_version }}" --offline --no-progress .
+zizmor-check: (install "zizmor")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/deps-install.sh --tool zizmor --check
+    ./scripts/zizmor-run.sh --offline --no-progress .
 
 # Online audit for the scheduled CI job: stale pins, archived actions and
 # other checks that need the GitHub API. Needs GH_TOKEN (or GITHUB_TOKEN);
 # without one it degrades to the offline check. Takes extra zizmor flags,
 # e.g. `just zizmor-check-online --format=sarif`.
 [group('utils')]
-zizmor-check-online *args="": install-zizmor
-    uvx zizmor@"{{ zizmor_version }}" {{ args }} --no-progress .
-
-# Pinned oasdiff release for the breaking-change gate below.
-# Upstream publishes checksums at
-# https://github.com/oasdiff/oasdiff/releases/download/v<version>/checksums.txt
-oasdiff_version := "1.33.0"
-oasdiff_sha256 := "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247"
-
-# Install pinned oasdiff (idempotent)
-[group('deps')]
-install-oasdiff:
-    ./scripts/install-oasdiff.sh "{{ oasdiff_version }}" "{{ oasdiff_sha256 }}"
+zizmor-check-online *args="": (install "zizmor")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/deps-install.sh --tool zizmor --check
+    ./scripts/zizmor-run.sh {{ args }} --no-progress .
 
 # Fail on breaking OpenAPI changes
 [group('utils')]
-openapi-breakcheck:
-    OASDIFF_SHA256="{{ oasdiff_sha256 }}" ./scripts/openapi-breakcheck.sh "{{ justfile_directory() }}" "{{ oasdiff_version }}"
+openapi-breakcheck: (install "oasdiff")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/deps-install.sh --tool oasdiff --check
+    ./scripts/openapi-breakcheck.sh "{{ justfile_directory() }}"
 
 # check that the PICASU_* env vars read by the backend match the docs/config.md table
 [group('utils')]
@@ -386,7 +367,7 @@ test: backend-test utils-test frontend-test fuzz-matrix
 # dev/test prerequisite; the backend reads metadata in-process (kamadak-exif +
 # xmpkit) and never spawns it. The distribution is pure Perl and unpacks
 # without root, so a dev machine installs it into `~/.local`. CI installs the
-# same pinned distribution (`just install-exiftool` in
+# same pinned distribution (`just install exiftool` in
 # `.github/workflows/ci.yml`) because snapfab's tests spawn the binary and
 # encode this version's refusal behaviour, which the distro package
 # (`libimage-exiftool-perl`) does not necessarily reproduce.
@@ -394,14 +375,6 @@ test: backend-test utils-test frontend-test fuzz-matrix
 # The version and its checksum move together: upstream publishes both at
 # https://exiftool.org/checksums-<version>.txt, and the archive is fetched from
 # the SourceForge mirror that exiftool.org's own download links point at.
-exiftool_version := "13.59"
-exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828fd65a"
-
-# Install pinned ExifTool (idempotent)
-[group('deps')]
-install-exiftool:
-    ./scripts/install-exiftool.sh "{{ exiftool_version }}" "{{ exiftool_sha256 }}"
-
 # Pinned static ffmpeg build.
 #
 # The backend spawns ffmpeg (video thumbnails) and ffprobe (video metadata),
@@ -412,14 +385,6 @@ install-exiftool:
 #
 # The version and its digest move together: the tarball is fetched from the
 # versioned release URL and verified against the digest below.
-ffmpeg_version := "7.0.2"
-ffmpeg_sha256 := "abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67"
-
-# Install pinned ffmpeg (idempotent)
-[group('deps')]
-install-ffmpeg:
-    ./scripts/install-ffmpeg.sh "{{ ffmpeg_version }}" "{{ ffmpeg_sha256 }}"
-
 # Pinned cargo-nextest (the backend test runner).
 #
 # nextest runs one process per test, so the backend suite runs in parallel
@@ -431,16 +396,6 @@ install-ffmpeg:
 # The version and its per-platform checksums move together: upstream
 # publishes the binaries and a .sha256 sidecar per platform on the GitHub
 # release.
-nextest_version := "0.9.138"
-nextest_sha256_linux_x86_64 := "3793bf0c27607b196f502c39b2108f571de89fcda7586ae6beefa11ee177b216"
-nextest_sha256_linux_aarch64 := "e1c85dbe02dcf5b963803b3f96f4f561757f5c37cab68c932411dea20d57284e"
-nextest_sha256_apple_darwin := "124baa34d160355fa8a8bed053856270cfcf132659e76a0bc8bbcdfc093266b7"
-
-# Install pinned cargo-nextest (idempotent)
-[group('deps')]
-install-nextest:
-    ./scripts/install-nextest.sh "{{ nextest_version }}" "{{ nextest_sha256_linux_x86_64 }}" "{{ nextest_sha256_linux_aarch64 }}" "{{ nextest_sha256_apple_darwin }}"
-
 # Pinned cargo-deny (the dependency audit).
 #
 # The audit job used to build it from source on every run
@@ -450,20 +405,15 @@ install-nextest:
 # The version and its per-platform checksums move together: upstream
 # publishes the binaries and a .sha256 sidecar per platform on the GitHub
 # release.
-cargo_deny_version := "0.20.2"
-cargo_deny_sha256_linux_x86_64 := "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f"
-cargo_deny_sha256_linux_aarch64 := "995c82be0defc7a025cae49a2aa2644ce8245c9a3318fc4103907c6a285e8c7d"
-cargo_deny_sha256_apple_x86_64 := "248da7f581724e470071990c088ffc55c811981715f4cbdb258621fb79f8b7a6"
-cargo_deny_sha256_apple_aarch64 := "fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a72090c3"
-
-# Install pinned cargo-deny (idempotent)
+# Verify all managed tools (check only, no install).
 [group('deps')]
-install-cargo-deny:
-    ./scripts/install-cargo-deny.sh "{{ cargo_deny_version }}" "{{ cargo_deny_sha256_linux_x86_64 }}" "{{ cargo_deny_sha256_linux_aarch64 }}" "{{ cargo_deny_sha256_apple_x86_64 }}" "{{ cargo_deny_sha256_apple_aarch64 }}"
+check-tools:
+    ./scripts/deps-install.sh --check
 
-# Install dev tools
+# Install all managed dev tools (dispatcher loops scripts/deps/*.sh).
 [group('deps')]
-install-dev: install-nextest install-cargo-deny install-ffmpeg install-exiftool install-oasdiff install-dylint install-schemathesis install-zizmor
+install-dev:
+    ./scripts/deps-install.sh
     npm ci --prefix frontend
 
 # install dev tools + precommit hook
