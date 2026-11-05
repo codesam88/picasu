@@ -139,8 +139,11 @@ recipes and their dependencies) and the workflow steps +
 `.githooks/pre-commit` dispatch, and fails on (a) a `just
 <domain>-check|-test` recipe invoked by no lane, (b) a CI step running
 tooling without a `just` recipe, (c) generated-doc drift. It writes
-`docs/quality-gates.md`: a lane graph (mermaid: precommit-fast,
-pr-check, pr-test, main, nightly, release) plus one section per
+`docs/quality-gates.md`: a lane graph (mermaid `graph TD`: job lanes
+`precommit`, `ci-backend`, `ci-frontend`, `ci-dylint`, `ci-zizmor`,
+`docs`, `audit`, `nightly`, `release` → directly-invoked entry
+recipes → transitive recipe deps; lane nodes only where edged, lane
+ids prefixed so they cannot collide with recipe ids) plus one section per
 check/test with the annotation taken from the recipe's comment line
 above it in the `justfile` (the `just --list` summary). Check-only by
 default (no writes); `node scripts/quality-gates.mjs <root>
@@ -152,6 +155,25 @@ without wiring its lane fails the gate, and the docs regenerate with
 it. `just docs-check`, `just plan-lint` pass.
 Out: lane-semantics changes (steps 1-5 own those), registry files
 (option B, not pursued), runtime CI reporting.
+
+### 8. Promote release-only verifications into just recipes (option A, done 2026-11-05)
+
+Scope: `justfile` (new `msrv-check`, `openapi-routes-release`),
+`.github/workflows/msrv.yml`, `release.yml`,
+`scripts/quality-gates.mjs` isGateRecipe exact list (+ test),
+regenerated `docs/quality-gates.md`.
+Done: `msrv.yml` runs `just msrv-check` (add the Install-just step;
+recipe reads the floor from `backend/Cargo.toml`, installs the minimal
+toolchain, `cargo +floor check --workspace --locked --all-targets`);
+`release.yml` runs `just openapi-routes-release` (checks the already
+built `./target/release/picasu` against the committed spec, same
+assume-built contract as `PICASU_BINARY`). `openapi-routes-release`
+joins the isGateRecipe exact names so the release lane lists it;
+`msrv-check` matches `-check` and lands in the nightly lane. `just
+gates-check` passes and the doc is regenerated. No tracker or
+pattern-list changes, no workflow-native classification.
+Out: CodeQL/docker/packaging (workflow-native mechanics), check-(b)
+pattern changes, steps 1-6.
 
 ## Verification
 

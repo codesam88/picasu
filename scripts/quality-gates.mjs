@@ -119,14 +119,19 @@ function parseJustfile() {
           .find(Boolean);
         const group = groupMatch ? groupMatch[1] : "";
         const startLine = idx + 1;
-        let end = idx;
+        let lastBody = idx;
         let j = idx + 1;
         while (j < lines.length) {
           const l = lines[j];
-          if (l === "" || !/^\s/.test(l)) break;
-          end = j + 1;
+          if (l.trim() === "") {
+            j += 1;
+            continue;
+          }
+          if (!/^\s/.test(l)) break;
+          lastBody = j;
           j += 1;
         }
+        let end = lastBody + 1;
         if (end < startLine) end = startLine;
         const bodyLines = lines.slice(idx + 1, end).map((l, k) => ({
           text: l,
@@ -195,26 +200,23 @@ function isGateRecipe(r) {
 }
 
 // ---------- workflow parsing ----------
-function fileLane(file, recipe) {
+function laneForWorkflow(file, job) {
   const base = basename(file);
   if (base === "ci.yml") {
-    const testLike =
-      recipe.endsWith("-test") ||
-      recipe === "frontend-vitest" ||
-      recipe === "frontend-playwright" ||
-      recipe === "fuzz-matrix";
-    return testLike ? "pr-test" : "pr-check";
+    if (job === "backend") return "ci-backend";
+    if (job === "frontend") return "ci-frontend";
+    if (job === "dylint") return "ci-dylint";
+    return null;
   }
-  if (base === "docs-check.yml") return "pr-check";
+  if (base === "docs-check.yml") return "docs";
   if (base === "audit.yml") return "audit";
   if (base === "fuzz-advisory.yml") return "nightly";
-  if (base === "zizmor.yml") return "pr-check";
-  if (base === "codeql.yml") return "main";
   if (base === "msrv.yml") return "nightly";
   if (base === "release.yml") return "release";
-  if (base === "docker-build.yml") return "release";
-  if (base === "dependency-review.yml") return "pr-check";
-  return "pr-check";
+  if (base === "zizmor.yml") {
+    return job ? `ci-${String(job).toLowerCase()}` : null;
+  }
+  return null;
 }
 
 const suspiciousPatterns = [
@@ -344,9 +346,11 @@ for (const wf of workflowFiles) {
         let m;
         while ((m = re.exec(txt)) !== null) {
           const recipe = m[1];
+          const lane = laneForWorkflow(file, currentJob);
+          if (!lane) continue;
           directInvocations.push({
             recipe,
-            lane: fileLane(file, recipe),
+            lane,
             file,
             startLine,
             endLine,
@@ -368,7 +372,7 @@ if (precommitRecipe) {
     while ((m = re.exec(bl.text)) !== null) {
       directInvocations.push({
         recipe: m[1],
-        lane: "precommit-fast",
+        lane: "precommit",
         file: "justfile",
         startLine: bl.lineno,
         endLine: bl.lineno,
@@ -489,37 +493,66 @@ const gateRecipes = recipes.filter(isGateRecipe).sort((a, b) =>
 );
 
 const laneIds = [
-  "precommit-fast",
-  "pr-check",
-  "pr-test",
-  "main",
+  "ci-backend",
+  "ci-frontend",
+  "ci-dylint",
+  "ci-zizmor",
+  "docs",
+  "audit",
   "nightly",
   "release",
-  "audit",
+  "precommit",
 ];
 const laneLabel = {
-  "precommit-fast": "precommit-fast",
-  "pr-check": "pr-check",
-  "pr-test": "pr-test",
-  main: "main",
-  nightly: "nightly / scheduled",
-  release: "release",
+  "ci-backend": "ci-backend",
+  "ci-frontend": "ci-frontend",
+  "ci-dylint": "ci-dylint",
+  "ci-zizmor": "ci-zizmor",
+  docs: "docs",
   audit: "audit",
+  nightly: "nightly",
+  release: "release",
+  precommit: "precommit",
 };
 
-// mermaid
-const mermaidLines = ["```mermaid", "graph LR"];
-for (const lane of laneIds) {
-  mermaidLines.push(`  ${lane.replace(/-/g, "_")}["${laneLabel[lane]}"]`);
-}
+// mermaid: top-down cascade. Edges only (a) lane -> directly-invoked
+// entry recipes and (b) recipe -> its justfile deps.
+const mermaidLines = ["```mermaid", "graph TD"];
 const edgeSet = new Set();
+// (a) lane -> directly-invoked entry recipes (gate recipes only)
+const directPairs = new Set();
+for (const inv of directInvocations) {
+  if (!laneIds.includes(inv.lane)) continue;
+  if (!recipeByName.has(inv.recipe)) continue;
+  if (!isGateRecipe(recipeByName.get(inv.recipe))) continue;
+  directPairs.add(`${inv.lane}::${inv.recipe}`);
+}
+for (const pair of directPairs) {
+  const [lane, recipe] = pair.split("::");
+  edgeSet.add(
+    `  lane_${lane.replace(/-/g, "_")} --> ${recipe.replace(/-/g, "_")}["${recipe}"]`,
+  );
+}
+// (b) recipe -> its justfile deps (gate recipes only, so nodes stay declared)
 for (const r of gateRecipes) {
-  const lanes = recipeLanes.get(r.name) || new Set();
-  for (const lane of lanes) {
-    if (!laneIds.includes(lane)) continue;
-    const edge = `  ${lane.replace(/-/g, "_")} --> ${r.name.replace(/-/g, "_")}["${r.name}"]`;
-    edgeSet.add(edge);
+  for (const dep of r.deps) {
+    if (!recipeByName.has(dep)) continue;
+    if (!isGateRecipe(recipeByName.get(dep))) continue;
+    edgeSet.add(
+      `  ${r.name.replace(/-/g, "_")} --> ${dep.replace(/-/g, "_")}["${dep}"]`,
+    );
   }
+}
+// lane nodes: only those with at least one edge
+const laneNodesWithEdges = new Set();
+for (const e of edgeSet) {
+  const mm = e.match(/^\s*(lane_[A-Za-z0-9_]+)\s*-->/);
+  if (mm) laneNodesWithEdges.add(mm[1]);
+}
+for (const lane of laneIds) {
+  const id = `lane_${lane.replace(/-/g, "_")}`;
+  if (!laneNodesWithEdges.has(id)) continue;
+  mermaidLines.push(`  ${id}["${laneLabel[lane]}"]`);
 }
 for (const e of [...edgeSet].sort()) mermaidLines.push(e);
 mermaidLines.push("```");
@@ -573,6 +606,14 @@ for (const r of gateRecipes) {
       );
     }
   }
+  // required by (all recipes, including non-gate aggregates)
+  const parents = recipes
+    .filter((q) => q.deps.includes(r.name))
+    .map((q) => q.name)
+    .sort();
+  docLines.push(
+    `- Required by: ${parents.length ? parents.map((p) => `\`${p}\``).join(", ") : "(none — lane entry)"}`,
+  );
   docLines.push("");
 }
 
