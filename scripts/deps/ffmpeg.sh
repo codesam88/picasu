@@ -22,11 +22,11 @@ ensure() {
     fi
     local tmp
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
+    trap 'rm -rf "${tmp:-}"' EXIT
     local url="${FFMPEG_URL_TEMPLATE//\{version\}/$want}"
     local file="$tmp/ffmpeg.tar.xz"
     echo "→ downloading ffmpeg $want"
-    curl -fsSL -o "$file" "$url"
+    curl -fsSL --retry 3 --retry-all-errors -o "$file" "$url"
     if command -v sha256sum >/dev/null 2>&1; then
         echo "$FFMPEG_SHA256  $file" | sha256sum -c -
     else

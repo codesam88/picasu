@@ -25,12 +25,12 @@ ensure() {
     esac
     local tmp
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
+    trap 'rm -rf "${tmp:-}"' EXIT
     local url="${NEXTEST_URL_TEMPLATE//\{version\}/$want}"
     url="${url//\{target\}/$target}"
     local file="$tmp/nextest.tar.gz"
     echo "→ downloading cargo-nextest $want ($target)"
-    curl -fsSL -o "$file" "$url"
+    curl -fsSL --retry 3 --retry-all-errors -o "$file" "$url"
     if command -v sha256sum >/dev/null 2>&1; then
         echo "$sha  $file" | sha256sum -c -
     else
