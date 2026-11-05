@@ -101,45 +101,47 @@ pub async fn get_data(
             return Ok(Json(vec![]));
         }
 
-        let database_timestamp_return_list: Result<Vec<_>, AppError> = (start..end)
-            .into_par_iter()
-            .map(|index| {
-                let reduced = tree_snapshot.get_reduced(index).or_raise(|| {
-                    (
-                        ErrorKind::Database,
-                        format!("Failed to read snapshot entry for index {index}"),
-                    )
-                })?;
-                let asset_id = reduced.asset_id;
+        let database_timestamp_return_list: Result<Vec<_>, AppError> =
+            crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
+                (start..end)
+                    .into_par_iter()
+                    .map(|index| {
+                        let reduced = tree_snapshot.get_reduced(index).or_raise(|| {
+                            (
+                                ErrorKind::Database,
+                                format!("Failed to read snapshot entry for index {index}"),
+                            )
+                        })?;
+                        let asset_id = reduced.asset_id;
 
-                let record_json = asset_by_id
-                    .get(&*asset_id)
-                    .or_raise(|| {
-                        (
-                            ErrorKind::Database,
-                            format!("Failed to read ASSET_BY_ID for asset_id {asset_id}"),
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        AppError::new(
-                            ErrorKind::Database,
-                            format!("No ASSET_BY_ID record for asset_id {asset_id}"),
-                        )
-                    })?;
-                let record: AssetRecord =
-                    serde_json::from_str(record_json.value()).or_raise(|| {
-                        (
-                            ErrorKind::Database,
-                            format!("Failed to parse AssetRecord for asset_id {asset_id}"),
-                        )
-                    })?;
+                        let record_json = asset_by_id
+                            .get(&*asset_id)
+                            .or_raise(|| {
+                                (
+                                    ErrorKind::Database,
+                                    format!("Failed to read ASSET_BY_ID for asset_id {asset_id}"),
+                                )
+                            })?
+                            .ok_or_else(|| {
+                                AppError::new(
+                                    ErrorKind::Database,
+                                    format!("No ASSET_BY_ID record for asset_id {asset_id}"),
+                                )
+                            })?;
+                        let record: AssetRecord = serde_json::from_str(record_json.value())
+                            .or_raise(|| {
+                                (
+                                    ErrorKind::Database,
+                                    format!("Failed to parse AssetRecord for asset_id {asset_id}"),
+                                )
+                            })?;
 
-                let (abstract_data, cover_content_hash) = match record.kind {
-                    // Albums keep their stored payload: tiles need
-                    // title/cover/counts; identity (dir_path, id, trash)
-                    // is composed from the AssetRecord.
-                    AssetKind::Album => {
-                        let payload = metadata_table
+                        let (abstract_data, cover_content_hash) = match record.kind {
+                            // Albums keep their stored payload: tiles need
+                            // title/cover/counts; identity (dir_path, id, trash)
+                            // is composed from the AssetRecord.
+                            AssetKind::Album => {
+                                let payload = metadata_table
                             .get(&*asset_id)
                             .or_raise(|| {
                                 (
@@ -154,34 +156,35 @@ pub async fn get_data(
                                 )
                             })?
                             .value();
-                        let abstract_data = compose_abstract_data(&record, Some(&payload));
-                        let cover = cover_content_hash_from_data(&abstract_data);
-                        (abstract_data, cover)
-                    }
-                    // Media rows: lean construction, no metadata read.
-                    AssetKind::Image | AssetKind::Video => {
-                        (lean_media_abstract_data(&record, &reduced), None)
-                    }
-                };
+                                let abstract_data = compose_abstract_data(&record, Some(&payload));
+                                let cover = cover_content_hash_from_data(&abstract_data);
+                                (abstract_data, cover)
+                            }
+                            // Media rows: lean construction, no metadata read.
+                            AssetKind::Image | AssetKind::Video => {
+                                (lean_media_abstract_data(&record, &reduced), None)
+                            }
+                        };
 
-                let mut database_timestamp_return =
-                    crate::process::transitor::abstract_data_to_timestamp_return(
-                        abstract_data,
-                        timestamp,
-                        show_download,
-                        show_metadata,
-                        asset_id,
-                        cover_content_hash,
-                        caller.clone(),
-                        resolved_share_opt.clone(),
-                    );
-                // Row timestamps equal the tree snapshot's date (computed
-                // from the full in-memory record when the snapshot was taken),
-                // so lean rows keep the EXIF-derived sort date.
-                database_timestamp_return.timestamp = reduced.date;
-                Ok(database_timestamp_return)
-            })
-            .collect();
+                        let mut database_timestamp_return =
+                            crate::process::transitor::abstract_data_to_timestamp_return(
+                                abstract_data,
+                                timestamp,
+                                show_download,
+                                show_metadata,
+                                asset_id,
+                                cover_content_hash,
+                                caller.clone(),
+                                resolved_share_opt.clone(),
+                            );
+                        // Row timestamps equal the tree snapshot's date (computed
+                        // from the full in-memory record when the snapshot was taken),
+                        // so lean rows keep the EXIF-derived sort date.
+                        database_timestamp_return.timestamp = reduced.date;
+                        Ok(database_timestamp_return)
+                    })
+                    .collect()
+            });
 
         let duration = format!("{:?}", start_time.elapsed());
         debug!(duration = &*duration; "Get data: {start} ~ {end}");

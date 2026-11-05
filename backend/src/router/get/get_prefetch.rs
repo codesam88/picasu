@@ -16,20 +16,20 @@ use crate::storage::cache::next_snapshot_id;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::storage::db::snapshot_tree;
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::observe::{Stage, Timer};
+use crate::tasks::observe::{self, Stage, Timer, claim_report, mono_ms};
 
 use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
 use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 
 use bitcode::{Decode, Encode};
-use log::{debug, trace};
+use log::{debug, trace, warn};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
 use std::mem;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Decode, Encode)]
@@ -137,65 +137,71 @@ fn filter_items(
     clone_timer.finish(source_rows);
 
     let par_iter_timer = Timer::start(Stage::FilterParIter);
-    let reduced_data_vector: Vec<ReducedData> = match (expression_option, resolved_share_option) {
-        // If we have a resolved share then it must have a filter expression
-        (Some(expr), Some(resolved_share)) => {
-            let filter_fn = if resolved_share.share.show_metadata {
-                expr.generate_filter()
-            } else {
-                expr.generate_filter_hide_metadata(resolved_share.album_id)
-            };
-            tree_snapshot
-                .par_iter()
-                .filter(|db_ts| {
-                    // Share scoping comes from the injected Expression::Album, and
-                    // share callers have caller_id ""; visible_to is not applied here.
-                    if let Some(path) = db_ts.abstract_data.visibility_path()
-                        && crate::storage::files::classify_path(&path)
-                            == crate::storage::files::PathClassification::UsersRoot
-                    {
-                        return false;
-                    }
-                    filter_fn(&db_ts.abstract_data)
-                })
-                .map(std::convert::Into::into)
-                .collect()
-        }
-        (Some(expr), None) => {
-            let filter_fn = expr.generate_filter();
-            tree_snapshot
-                .par_iter()
-                .filter(|database_timestamp| {
-                    let ad = &database_timestamp.abstract_data;
-                    if !row_visible(ad, caller_id, include_personal) {
-                        return false;
-                    }
-                    // MyAlbums view: when the query selects root albums and the
-                    // caller opted into personal items, drop global roots so only
-                    // the caller's own personal roots remain. Ownership scoping
-                    // already happens in `row_visible`, so this only removes the
-                    // public-tree roots.
-                    if personal_only_roots
-                        && let Some(path) = ad.visibility_path()
-                        && crate::storage::files::classify_path(&path)
-                            == crate::storage::files::PathClassification::Public
-                    {
-                        return false;
-                    }
-                    filter_fn(ad)
-                })
-                .map(std::convert::Into::into)
-                .collect()
-        }
-        (None, _) => tree_snapshot
-            .par_iter()
-            .filter(|database_timestamp| {
-                let ad = &database_timestamp.abstract_data;
-                row_visible(ad, caller_id, include_personal)
-            })
-            .map(std::convert::Into::into)
-            .collect(),
-    };
+    // Interactive pool: prefetch joins must not compete with bulk scan work
+    // on the shared pool. `install` scopes every split below to the
+    // dedicated pool; the global pool never sees this work.
+    let reduced_data_vector: Vec<ReducedData> =
+        crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
+            match (expression_option, resolved_share_option) {
+                // If we have a resolved share then it must have a filter expression
+                (Some(expr), Some(resolved_share)) => {
+                    let filter_fn = if resolved_share.share.show_metadata {
+                        expr.generate_filter()
+                    } else {
+                        expr.generate_filter_hide_metadata(resolved_share.album_id)
+                    };
+                    tree_snapshot
+                        .par_iter()
+                        .filter(|db_ts| {
+                            // Share scoping comes from the injected Expression::Album, and
+                            // share callers have caller_id ""; visible_to is not applied here.
+                            if let Some(path) = db_ts.abstract_data.visibility_path()
+                                && crate::storage::files::classify_path(&path)
+                                    == crate::storage::files::PathClassification::UsersRoot
+                            {
+                                return false;
+                            }
+                            filter_fn(&db_ts.abstract_data)
+                        })
+                        .map(std::convert::Into::into)
+                        .collect()
+                }
+                (Some(expr), None) => {
+                    let filter_fn = expr.generate_filter();
+                    tree_snapshot
+                        .par_iter()
+                        .filter(|database_timestamp| {
+                            let ad = &database_timestamp.abstract_data;
+                            if !row_visible(ad, caller_id, include_personal) {
+                                return false;
+                            }
+                            // MyAlbums view: when the query selects root albums and the
+                            // caller opted into personal items, drop global roots so only
+                            // the caller's own personal roots remain. Ownership scoping
+                            // already happens in `row_visible`, so this only removes the
+                            // public-tree roots.
+                            if personal_only_roots
+                                && let Some(path) = ad.visibility_path()
+                                && crate::storage::files::classify_path(&path)
+                                    == crate::storage::files::PathClassification::Public
+                            {
+                                return false;
+                            }
+                            filter_fn(ad)
+                        })
+                        .map(std::convert::Into::into)
+                        .collect()
+                }
+                (None, _) => tree_snapshot
+                    .par_iter()
+                    .filter(|database_timestamp| {
+                        let ad = &database_timestamp.abstract_data;
+                        row_visible(ad, caller_id, include_personal)
+                    })
+                    .map(std::convert::Into::into)
+                    .collect(),
+            }
+        });
     par_iter_timer.finish(u64::try_from(reduced_data_vector.len()).unwrap_or(u64::MAX));
 
     let duration = format!("{:?}", filter_items_start_time.elapsed());
@@ -218,9 +224,11 @@ fn compute_locate(
         u64::try_from(reduced_data_vector.len()).unwrap_or(u64::MAX),
         || {
             locate_option.and_then(|locate_str| {
-                reduced_data_vector
-                    .par_iter()
-                    .position_first(|reduced| reduced.asset_id.as_str() == locate_str.as_str())
+                crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
+                    reduced_data_vector
+                        .par_iter()
+                        .position_first(|reduced| reduced.asset_id.as_str() == locate_str.as_str())
+                })
             })
         },
     );
@@ -381,6 +389,43 @@ fn execute_prefetch_logic(
     json
 }
 
+/// Concurrent in-flight prefetch handlers. Legitimate bursts (tests,
+/// storms) run at most a handful; sustained counts far beyond the worker
+/// budget mean runaway or looping callers.
+static PREFETCH_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+static PREFETCH_IN_FLIGHT_LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Tripwire multiplier over the Tokio worker budget.
+const IN_FLIGHT_WARN_MULTIPLE: usize = 4;
+
+/// Pure predicate for the in-flight tripwire (unit-testable).
+fn prefetch_concurrency_over_limit(in_flight: usize, workers: usize) -> bool {
+    in_flight > IN_FLIGHT_WARN_MULTIPLE * workers.max(1)
+}
+
+/// RAII guard: tracks one in-flight prefetch handler, warns on breach.
+struct InFlightGuard;
+
+impl InFlightGuard {
+    fn enter() -> Self {
+        let in_flight = PREFETCH_IN_FLIGHT.fetch_add(1, Ordering::Relaxed) + 1;
+        let workers = *crate::tasks::runtime::CURRENT_NUM_THREADS;
+        if prefetch_concurrency_over_limit(in_flight, workers)
+            && claim_report(&PREFETCH_IN_FLIGHT_LAST_WARN_MS, mono_ms())
+        {
+            warn!(
+                "observe concurrency: prefetch in_flight={in_flight} over limit {IN_FLIGHT_WARN_MULTIPLE}x{workers} workers"
+            );
+        }
+        Self
+    }
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        PREFETCH_IN_FLIGHT.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 /// Evaluate a list query, snapshot its result, and return the snapshot id.
 ///
 /// The optional JSON filter body selects the assets to include; results are
@@ -471,8 +516,17 @@ pub async fn prefetch(
         });
     }
 
-    // Execute on blocking thread
+    // Execute on blocking thread. The queue wait is measured here, at the
+    // handoff: the total is recorded inside the job, so a slow dispatch
+    // attributes to the pool queue rather than the work itself.
+    let queued_at = Instant::now();
+    let _in_flight = InFlightGuard::enter();
     let job_handle = tokio::task::spawn_blocking(move || {
+        observe::record(
+            Stage::BlockingQueueWait,
+            u64::try_from(queued_at.elapsed().as_micros()).unwrap_or(u64::MAX),
+            0,
+        );
         execute_prefetch_logic(
             combined_expression_option,
             locate.as_ref(),
@@ -486,4 +540,24 @@ pub async fn prefetch(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?;
 
     Ok(job_handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prefetch_concurrency_over_limit;
+
+    #[test]
+    fn concurrency_tripwire_fires_only_well_above_burst_levels() {
+        // 8 workers (bench storms run 8 concurrent clients): quiet and
+        // at-capacity traffic stays silent.
+        assert!(!prefetch_concurrency_over_limit(0, 8));
+        assert!(!prefetch_concurrency_over_limit(8, 8));
+        assert!(!prefetch_concurrency_over_limit(32, 8));
+        // Sustained load far beyond any legitimate burst trips the warn.
+        assert!(prefetch_concurrency_over_limit(33, 8));
+        assert!(prefetch_concurrency_over_limit(100, 8));
+        // Single-core box: anything above the 4x floor trips.
+        assert!(!prefetch_concurrency_over_limit(4, 1));
+        assert!(prefetch_concurrency_over_limit(5, 1));
+    }
 }

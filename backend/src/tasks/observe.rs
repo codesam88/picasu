@@ -45,6 +45,9 @@
 //! | `cpu_permit_wait` | `25_000` | acquiring one of the `N-1` admittance permits; a long wait means the pool is saturated |
 //! | `cpu_exec` | `1_000_000` | a bridged closure body; single-image indexing reaches several hundred milliseconds, so only a second or more is an outlier |
 //! | `prefetch_total` | `1_000_000` | the whole prefetch body; storm prefetch med ~3 ms and p95 ~15 ms, with 100 ms–3 s outliers, so 1 s marks the multi-second tail |
+//! | `blocking_queue_wait` | `50_000` | Tokio blocking-pool queueing before prefetch work starts; dispatch normally takes microseconds |
+//! | `interactive_exec` | `500_000` | interactive-lane job bodies; they must stay short, so half a second flags a hog |
+//! | `blocking_queue_wait` | `50_000` | Tokio blocking-pool queueing before prefetch work starts; dispatch is normally microseconds, so 50 ms means the blocking pool itself is backlogged |
 //!
 //! # Synchronization
 //!
@@ -92,10 +95,16 @@ pub enum Stage {
     /// The whole prefetch body: cache lookup, filter, locate, snapshot insert
     /// and response construction.
     PrefetchTotal,
+    /// Time spent queued for a Tokio blocking-pool thread before prefetch
+    /// work starts (measured at the handoff, not inside the job).
+    BlockingQueueWait,
+    /// Interactive-lane work on the dedicated pool (spawned via the bridge,
+    /// never admitted through the bulk semaphore).
+    InteractiveExec,
 }
 
 /// Number of stages, must match [`Stage`]'s variants.
-pub const STAGE_COUNT: usize = 10;
+pub const STAGE_COUNT: usize = 12;
 
 // Breach thresholds in microseconds. They are compile-time defaults, not
 // runtime configuration: each is deliberately an order of magnitude above
@@ -128,6 +137,13 @@ const CPU_EXEC_US: u64 = 1_000_000;
 /// 100 ms–3 s outliers: 1 s isolates the multi-second tail without firing
 /// on the ordinary 100 ms stalls.
 const PREFETCH_TOTAL_US: u64 = 1_000_000;
+/// Tokio blocking-pool queueing before prefetch work starts; measured at
+/// the handoff. Dispatch normally takes microseconds; 50 ms means the
+/// blocking pool is backlogged, not that filtering is slow.
+const BLOCKING_QUEUE_WAIT_US: u64 = 50_000;
+/// Interactive-lane jobs run without bulk admittance on a dedicated pool;
+/// 500 ms flags an interactive job that stopped being interactive.
+const INTERACTIVE_EXEC_US: u64 = 500_000;
 
 impl Stage {
     /// Every stage in table order.
@@ -142,6 +158,8 @@ impl Stage {
         Self::CpuPermitWait,
         Self::CpuExec,
         Self::PrefetchTotal,
+        Self::BlockingQueueWait,
+        Self::InteractiveExec,
     ];
 
     /// Stable snake-case name used in logs and tables.
@@ -158,6 +176,8 @@ impl Stage {
             Self::CpuPermitWait => "cpu_permit_wait",
             Self::CpuExec => "cpu_exec",
             Self::PrefetchTotal => "prefetch_total",
+            Self::BlockingQueueWait => "blocking_queue_wait",
+            Self::InteractiveExec => "interactive_exec",
         }
     }
 
@@ -175,6 +195,8 @@ impl Stage {
             Self::CpuPermitWait => CPU_PERMIT_WAIT_US,
             Self::CpuExec => CPU_EXEC_US,
             Self::PrefetchTotal => PREFETCH_TOTAL_US,
+            Self::BlockingQueueWait => BLOCKING_QUEUE_WAIT_US,
+            Self::InteractiveExec => INTERACTIVE_EXEC_US,
         }
     }
 
@@ -450,7 +472,8 @@ fn wall_ms() -> u64 {
         })
 }
 
-fn mono_ms() -> u64 {
+/// Monotonic milliseconds for rate gates (immune to wall-clock jumps).
+pub(crate) fn mono_ms() -> u64 {
     u64::try_from(MONO_START.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
@@ -464,7 +487,8 @@ fn report_due(last: &AtomicU64, now: u64) -> bool {
 }
 
 /// Claim the per-stage report slot if the interval has passed.
-fn claim_report(last: &AtomicU64, now: u64) -> bool {
+/// Rate-limit gate shared by breach and wrap reports.
+pub(crate) fn claim_report(last: &AtomicU64, now: u64) -> bool {
     if !report_due(last, now) {
         return false;
     }

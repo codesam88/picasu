@@ -257,6 +257,19 @@ cancellation (cancel queued, finish running chunk).
   executor framework: ~150 lines of queue plus
   handles, value is in the narrow API.
 
+- (8) Interactive pool isolation (decided 2026-11-05, supersedes the
+  N-1/N reservation sketch): bulk work stays on the single global
+  Rayon pool (N threads, niced +10 via `start_handler`); request-path
+  CPU work runs on a dedicated `INTERACTIVE_POOL` (N/2 threads,
+  default nice) via `pool.install`, so the OS scheduler preempts bulk
+  work for interactive joins instead of a userspace ticket scheme.
+  `run_interactive` replaces the Interactive lane's `run_cpu_fifo`;
+  no new `rayon::spawn` sites. Verified live: bulk threads at nice
+  10, interactive at 0 (`ps -L`), storm-read max 2.5 s -> 54 ms with
+  medians and scan wall flat. Follow-up: `picasu-discipline` dylint
+  rule for holding locks across Rayon boundaries (the arch test pins
+  `INTERACTIVE_POOL.install` placement meanwhile).
+
 ### Step 5 — Refactor slice 1: runtime consolidation
 
 Scope: `runtime.rs`, `tasks/mod.rs`, bootstrap wiring only. Collapse to
