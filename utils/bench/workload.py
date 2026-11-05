@@ -54,6 +54,16 @@ Environment contract (on top of the launcher's):
   PROBE_INTERVAL_S probe-phase refresh interval (default 0.5)
   IMAGES is required to be present in IMAGE_REPO: repos are seeded
   a priori (see `just bench seed-images`); the workload never generates.
+  WORKLOAD        control (default) | storm-diff | storm-read | storm-idle:
+                  control runs probe rounds during the scan; storm-diff fires
+                  concurrent edit-rating PUTs at distinct assets, storm-read
+                  concurrent prefetch POSTs, storm-idle runs one populate scan
+                  then storms the tree at rest (no margin check)
+  STORM_CLIENTS   concurrent storm clients (default 8)
+  STORM_OPS       ops per storm client (default 10)
+  STORM_MARGIN_S  storm must finish this long before the scan ends
+                  (default 5); on violation the run fails naming the
+                  scantime increase factor
   HYPERFINE_BIN   hyperfine binary; empty disables hyperfine
 
 Exit codes: 0 completed; 1 config/preflight; 2 runtime failure (including a
@@ -63,8 +73,11 @@ scan that did not reach `completed` and a failed write-probe verification).
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import http.cookiejar
+import itertools
 import json
+import math
 import os
 import random
 import re
@@ -88,6 +101,10 @@ DEFAULT_WARMUP = 1
 DEFAULT_RUNS_DURING = 3
 DEFAULT_SCAN_REPEATS = 3
 DEFAULT_FETCHES = 10
+DEFAULT_STORM_CLIENTS = 8
+DEFAULT_STORM_OPS = 10
+DEFAULT_STORM_MARGIN_S = 5.0
+WORKLOADS = ("control", "storm-diff", "storm-read", "storm-idle")
 DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
 DEFAULT_BUILD_PROFILE = "debug"
@@ -227,6 +244,12 @@ def config_from_env(environ: dict) -> dict:
         raise ConfigError(f"BUILD_PROFILE must be debug or release, got '{build_profile}'")
 
     images = _int_env(environ, "IMAGES", DEFAULT_IMAGES, minimum=1)
+    workload = environ.get("WORKLOAD", "control")
+    if workload not in WORKLOADS:
+        raise ConfigError(f"WORKLOAD must be one of {WORKLOADS}, got '{workload}'")
+    storm_clients = _int_env(environ, "STORM_CLIENTS", DEFAULT_STORM_CLIENTS, minimum=1)
+    storm_ops = _int_env(environ, "STORM_OPS", DEFAULT_STORM_OPS, minimum=1)
+    storm_margin = _float_env(environ, "STORM_MARGIN_S", DEFAULT_STORM_MARGIN_S, minimum=0.0)
     scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
     repeats = _int_env(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
     warmup = _int_env(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
@@ -254,6 +277,10 @@ def config_from_env(environ: dict) -> dict:
         "ncpu": ncpu,
         "port": port,
         "images": images,
+        "workload": workload,
+        "storm_clients": storm_clients,
+        "storm_ops": storm_ops,
+        "storm_margin_s": storm_margin,
         "scan_repeats": scan_repeats,
         "repeats": repeats,
         "warmup": warmup,
@@ -722,6 +749,158 @@ def probe_phase(
         transcript.close()
 
 
+# --- storm workloads ---------------------------------------------------------
+# storm-diff: concurrent edit-rating PUTs at distinct assets.
+# storm-read: concurrent prefetch POSTs.
+# Both run while a scan is active and stop issuing new ops once the scan
+# reaches a terminal state; the margin check then verifies the storm
+# finished early enough for the numbers to describe loaded operation.
+# storm-idle runs one populate scan first, then storms the tree at rest
+# (no margin check — there is no concurrent scan).
+
+
+def _percentile(sorted_vals: list, pct: float) -> float:
+    if not sorted_vals:
+        return 0.0
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    rank = (len(sorted_vals) - 1) * pct / 100.0
+    low = math.floor(rank)
+    high = math.ceil(rank)
+    if low == high:
+        return sorted_vals[int(rank)]
+    return sorted_vals[low] + (sorted_vals[high] - sorted_vals[low]) * (rank - low)
+
+
+def _wait_for_rows(
+    cfg: dict, client: HttpClient, logger: Logger, scan_active: threading.Event | None
+) -> list:
+    """Poll the probe list until rows appear or the scan goes terminal."""
+    for _ in range(150):  # ~30 s cap; the poll loop clears active on settle
+        lines = build_probe_list(cfg, client) or []
+        if lines:
+            return lines
+        if scan_active is not None and not scan_active.is_set():
+            break
+        time.sleep(0.2)
+    raise WorkloadError("storm: no probe rows available (scan too short?)")
+
+
+def run_storm(
+    cfg: dict,
+    client: HttpClient,
+    logger: Logger,
+    round_dir: Path,
+    run_index: int,
+    scan_active: threading.Event | None,
+) -> dict:
+    """Fire STORM_CLIENTS x STORM_OPS ops; return timings and counts.
+
+    `scan_active` cleared stops issuing new ops (in-flight ops run out
+    under their own timeout). None means no concurrent scan (storm-idle).
+    """
+    profile = cfg["workload"]
+    total = cfg["storm_clients"] * cfg["storm_ops"]
+
+    code, body, _ = client.post("/get/prefetch", {})
+    if code != 200:
+        raise WorkloadError("storm: prefetch for timestamp failed")
+    timestamp = (_body_json(body) or {}).get("prefetch", {}).get("timestamp")
+    if timestamp is None:
+        raise WorkloadError("storm: no prefetch timestamp")
+    lines = _wait_for_rows(cfg, client, logger, scan_active)
+    rows = [line.split("\t", 1)[0] for line in lines]
+
+    results: list = []
+    results_lock = threading.Lock()
+    counter = itertools.count()
+    started_all = time.perf_counter()
+
+    def one_op(client_index: int) -> None:
+        while scan_active is None or scan_active.is_set():
+            op_index = next(counter)
+            if op_index >= total:
+                return
+            start = time.perf_counter()
+            try:
+                if profile == "storm-diff":
+                    code, _, _ = client.put(
+                        "/put/edit_rating",
+                        {"indexArray": [op_index % len(rows)], "timestamp": timestamp, "rating": 3},
+                        timeout=30.0,
+                    )
+                else:  # storm-read
+                    code, _, _ = client.post("/get/prefetch", {}, timeout=30.0)
+            except WorkloadError:
+                code = "error"
+            elapsed = time.perf_counter() - start
+            with results_lock:
+                results.append((op_index, client_index, elapsed, code))
+
+    logger.log(
+        f"=== storm {profile} (run {run_index}): "
+        f"{cfg['storm_clients']} clients x {cfg['storm_ops']} ops on {len(rows)} rows ==="
+    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=cfg["storm_clients"]) as pool:
+        futures = [
+            pool.submit(one_op, client_index) for client_index in range(cfg["storm_clients"])
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
+    wall = time.perf_counter() - started_all
+
+    latencies = sorted(elapsed for _, _, elapsed, _ in results)
+    failed = sum(1 for _, _, _, code in results if code != 200)
+    summary = {
+        "profile": profile,
+        "done": len(results),
+        "total": total,
+        "median": statistics.median(latencies) if latencies else 0.0,
+        "p95": _percentile(latencies, 95),
+        "max": max(latencies) if latencies else 0.0,
+        "failed": failed,
+        "wall": wall,
+        "end": started_all + wall,
+    }
+    path = round_dir / f"storm-round-{run_index}.tsv"
+    with open(path, "w", encoding="utf-8") as handle:  # noqa: PTH123
+        for op_index, client_index, elapsed, code in sorted(results):
+            handle.write(f"{op_index}\t{client_index}\t{elapsed:.6f}\t{code}\n")
+    logger.log(
+        f"storm: profile={profile} ops={summary['done']}/{total} "
+        f"median={summary['median']:.3f}s p95={summary['p95']:.3f}s "
+        f"max={summary['max']:.3f}s failed={failed} wall={wall:.1f}s"
+    )
+    return summary
+
+
+def check_storm_margin(
+    cfg: dict, logger: Logger, summary: dict, scan_start: float, scan_end: float
+) -> None:
+    """Require the storm to have finished with margin before scan end."""
+    scan_wall = scan_end - scan_start
+    if summary["done"] >= summary["total"]:
+        need = summary["wall"]
+    elif summary["done"] > 0:
+        need = summary["wall"] / summary["done"] * summary["total"]
+    else:
+        need = float("inf")
+    if summary["end"] + cfg["storm_margin_s"] <= scan_end:
+        logger.log(
+            f"storm margin ok: storm ended {scan_end - summary['end']:.1f}s "
+            f"before scan end (margin {cfg['storm_margin_s']:g}s)"
+        )
+        return
+    factor = 1.0 if scan_wall <= 0 else (need + cfg["storm_margin_s"]) / scan_wall
+    factor = max(1.5, math.ceil(factor * 10) / 10)
+    raise WorkloadError(
+        f"storm outran the scan: storm_wall={summary['wall']:.1f}s "
+        f"ops={summary['done']}/{summary['total']} scan_wall={scan_wall:.1f}s "
+        f"margin={cfg['storm_margin_s']:g}s — increase scantime by factor ~{factor:g} "
+        f"(more IMAGES, slower scan, or fewer STORM_OPS)"
+    )
+
+
 # --- scans -------------------------------------------------------------------
 def _write_status_final(out: Path, run_index: int) -> None:
     """Publish a run's status under the terminal names when it is terminal.
@@ -750,7 +929,11 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
     walls = []
     walls_path = out / "scan-walls.tsv"
     walls_path.write_text("")
-    for run_index in range(1, cfg["scan_repeats"] + 1):
+    scan_repeats = cfg["scan_repeats"]
+    if cfg["workload"] == "storm-idle" and scan_repeats != 1:
+        logger.log(f"storm-idle: forcing SCAN_REPEATS=1 (was {scan_repeats})")
+        scan_repeats = 1
+    for run_index in range(1, scan_repeats + 1):
         logger.log(f"=== triggering index scan (run {run_index}/{cfg['scan_repeats']}) ===")
         started = time.perf_counter()
         start_ms = int(time.time() * 1000)
@@ -764,12 +947,34 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
         round_dir = out / f"rounds-run-{run_index}"
         round_dir.mkdir(parents=True, exist_ok=True)
 
-        probe_thread = threading.Thread(
-            target=probe_phase,
-            args=(cfg, client, logger, cfg["expected_entries"], round_dir),
-            daemon=True,
-        )
-        probe_thread.start()
+        profile = cfg["workload"]
+        scan_active = threading.Event()
+        scan_active.set()
+        storm_result: dict | None = None
+        storm_error: Exception | None = None
+
+        def run_storm_guarded() -> None:
+            nonlocal storm_result, storm_error
+            try:
+                storm_result = run_storm(cfg, client, logger, round_dir, run_index, scan_active)
+            except Exception as err:  # noqa: BLE001 - storm failure must not hang the cell
+                storm_error = err
+
+        if profile == "control":
+            probe_thread = threading.Thread(
+                target=probe_phase,
+                args=(cfg, client, logger, cfg["expected_entries"], round_dir),
+                daemon=True,
+            )
+            storm_thread = None
+            probe_thread.start()
+        elif profile in ("storm-diff", "storm-read"):
+            probe_thread = None
+            storm_thread = threading.Thread(target=run_storm_guarded, daemon=True)
+            storm_thread.start()
+        else:  # storm-idle: populate first, storm the tree at rest afterwards
+            probe_thread = None
+            storm_thread = None
 
         logger.log("=== polling /get/index/status ===")
         if cfg["scan_timeout_s"] > 0:
@@ -827,6 +1032,8 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             time.sleep(cfg["poll_interval_s"])
 
         wall_ms = int((time.perf_counter() - started) * 1000)
+        scan_active.clear()
+        t_terminal = time.perf_counter()
         _write_status_final(out, run_index)
         (out / "scan-done.marker").write_text(f"state={state} wall_ms={wall_ms}\n")
         walls.append(wall_ms)
@@ -859,16 +1066,29 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             )
         )
 
-        probe_thread.join(timeout=60)
-        logger.log(f"probe phase transcript: {out / 'probe-phase.log'}")
+        if probe_thread is not None:
+            probe_thread.join(timeout=60)
+            logger.log(f"probe phase transcript: {out / 'probe-phase.log'}")
+        if storm_thread is not None:
+            storm_thread.join(timeout=120)
+            if storm_error is not None:
+                raise WorkloadError(f"storm failed: {storm_error}")
+            if storm_result is None:
+                raise WorkloadError("storm produced no result")
 
         if state != "completed":
             suffix = " after stall" if stalled else ""
             raise WorkloadError(f"scan did not complete (state={state}){suffix}")
 
+        if profile == "storm-idle":
+            run_storm(cfg, client, logger, round_dir, run_index, None)
+            logger.log("storm-idle: no margin check (no concurrent scan)")
+        elif storm_thread is not None and storm_result is not None:
+            check_storm_margin(cfg, logger, storm_result, started, t_terminal)
+
     median_ms = statistics.median(walls)
     logger.log(
-        f"scan wall median_ms={median_ms:g} over {cfg['scan_repeats']} run(s): "
+        f"scan wall median_ms={median_ms:g} over {len(walls)} run(s): "
         f"{','.join(str(wall) for wall in walls)}"
     )
 

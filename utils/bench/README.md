@@ -39,6 +39,26 @@ Binaries and the repo must exist; the stack fails with a build/seed hint
 otherwise. `just bench server` serves a backend without driving any
 workload.
 
+## Workload profiles (`WORKLOAD`)
+
+`control` (default) runs the classic during-scan probes. Storm profiles
+replace the probe rounds with a concurrent burst and check it finished
+with margin before the scan ended:
+
+```sh
+WORKLOAD=storm-diff STORM_CLIENTS=8 STORM_OPS=10 just bench workload /tmp/c-r1 /tmp/sets/set-100 100 8
+WORKLOAD=storm-read just bench workload /tmp/c-r2 /tmp/sets/set-100 100 8
+WORKLOAD=storm-idle just bench workload /tmp/c-r3 /tmp/sets/set-100 100 8
+```
+
+`storm-diff` fires `STORM_CLIENTS × STORM_OPS` edit-rating PUTs at
+distinct assets; `storm-read` fires prefetch POSTs; `storm-idle` runs one
+populate scan then storms the tree at rest (no margin check). Per-op
+latencies land in `rounds-run-N/storm-round-N.tsv`; the extractor prints
+medians/p95/max in the detail line. If the storm does not finish
+`STORM_MARGIN_S` (default 5) before scan end, the cell fails with the
+factor by which to increase scantime.
+
 ## Image repos (seeded a priori)
 
 Cells never generate images. Seed a repo once, reuse it for any cell size
