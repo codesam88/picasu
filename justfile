@@ -168,6 +168,11 @@ openapi-routes-match: frontend-build-maybe
     cargo run --quiet --package picasu --features "embed-frontend auto-open-browser" -- \
         --check-openapi "{{justfile_directory()}}/backend/openapi.json"
 
+# Run the already-built release binary's route-set gate against the committed spec.
+[group('utils')]
+openapi-routes-release:
+    {{justfile_directory()}}/target/release/picasu --check-openapi "{{justfile_directory()}}/backend/openapi.json"
+
 # Ensure that committed/staged json matches current --dump-openapi output
 [private]
 openapi-json-match:
@@ -229,6 +234,16 @@ zizmor-check: (install "zizmor")
     set -euo pipefail
     ./scripts/deps-install.sh --tool zizmor --check
     ./scripts/zizmor-run.sh --offline --no-progress .
+
+# Non-blocking by design: MSRV floor check (nightly lane).
+[group('utils')]
+msrv-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    floor="$(grep '^rust-version' "{{justfile_directory()}}/backend/Cargo.toml" | cut -d'"' -f2)"
+    rustup toolchain install "$floor" --profile minimal
+    cd "{{justfile_directory()}}"
+    cargo +"$floor" check --workspace --locked --all-targets
 
 # Online audit for the scheduled CI job: stale pins, archived actions and
 # other checks that need the GitHub API. Needs GH_TOKEN (or GITHUB_TOKEN);

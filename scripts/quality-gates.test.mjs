@@ -104,3 +104,14 @@ test("widened gate rule: unwired foo-lint fails, wired default-param recipe pass
   const r2 = run(dir2);
   assert.equal(r2.code, 0, r2.out);
 });
+
+test("regenerated doc lists openapi-routes-release in the release lane", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const md = join(dir, "quality-gates.md");
+  const r = run(repoRoot, ["--generate", md]);
+  assert.equal(r.code, 0, r.out);
+  const content = readFileSync(md, "utf8");
+  assert.match(content, /### `openapi-routes-release`/);
+  assert.match(content, /### `openapi-routes-release`[\s\S]*?- Lanes: [^\n]*release/);
+});

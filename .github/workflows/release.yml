@@ -76,7 +76,7 @@ jobs:
       # document carries that nothing mounts is drift unless it is feature-gated
       # and the feature is off here.
       - name: Check the shipped binary's routes against the committed spec
-        run: ./target/release/picasu --check-openapi backend/openapi.json
+        run: just openapi-routes-release
 
       # The production-level test run: the same suite, in the optimized build
       # that is about to ship. It runs here and only here — a release is the

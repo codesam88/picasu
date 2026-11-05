@@ -190,6 +190,7 @@ function isGateRecipe(r) {
   if (name === "audit") return true;
   if (name === "frontend-vitest") return true;
   if (name === "frontend-playwright") return true;
+  if (name === "openapi-routes-release") return true;
   return false;
 }
 
