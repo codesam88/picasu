@@ -388,123 +388,162 @@ land. Does not gate Steps 5–8. Done when warn-then-gate is wired and
 
 ## Benchmark results
 
-### Baseline perf (Step 3, harness A, 2026-11-03)
+### Superseded measurements (see git history)
 
-Raw: `/tmp/opencode/worker-pool-rework/bench-baseline-*/`
-(`harness-a.log`, `status-final.json`, `hyperfine.json`,
-`probe-*.tsv`). Harness `62fe7b23`, `hyperfine 2.0.0`, `taskset`
-budgets (no `cpulimit`). Generation dominates: snapfab 4000x3000
-jpg at ~7.7s/image (100 in ~13min).
+The Step 3 baseline, Step 6c interim, Step 8 after/debug-era, release
+head-to-head (`977932b6`), and first storm-battery tables are retired as
+a comparison basis: mixed harnesses, random per-run image sets, and
+run-to-run variance within one condition exceeding any base-vs-after gap
+for every probe metric. Full text lives in git history
+(`git log -p -- .plan/worker-pool-rework.md`); raw logs were under
+`/tmp/opencode/worker-pool-rework/bench-{baseline,mid,after,cmp}-*`.
+What stands: the post-isolation baseline and the true-baseline
+head-to-head below, both on the canonical set-100 with the Python
+tooling (`utils/bench`), release profile, N=8, `SCAN_REPEATS=2`.
 
-| N   | count | bytes    | pools                              | scan wall         | fetch seq mean | fetch conc mean   | hyperfine compressed | hyperfine prefetch |
-| --- | ----- | -------- | ---------------------------------- | ----------------- | -------------- | ----------------- | -------------------- | ------------------ |
-| 4   | 100   | 46690163 | tokio 4x3, rayon 4, srv-threads 21 | 421s (1949 polls) | 0.0030s (n=99) | 0.0046s P4 (n=99) | 0.00928s             | 0.00831s           |
-| 8   | 100   | 62329256 | tokio 8x3, rayon 8, srv-threads 37 | 228s (977 polls)  | 0.0042s (n=99) | 0.0108s P8 (n=99) | 0.01544s             | 0.01368s           |
+### Read-tail investigation (closed 2026-11-05)
 
-100-cells: `completed`, `failed=0`, 100/100/100. 1000-cells hit the
-30min `SCAN_TIMEOUT_S` with zero failures (N4: 416/1000, N8:
-773/1000 processed) — scan rate ~4.2s/image at N4, ~2.3s/image at
-N8 on 4000x3000 jpg. 1000-cell full completion to be rerun with a
-longer timeout; numbers above are the committed baseline for
-before/after comparison.
+Root cause proven by live instrumentation: prefetch `par_iter` joins
+queued behind saturated bulk-scan waves on the single shared Rayon pool
+(`filter_par_iter` p95 ~0.3–0.6 s during stall windows, `cpu_permits`
+pinned at 0, medians untouched). Fix: dedicated `INTERACTIVE_POOL`
+(N/2 threads, default nice) for request-path Rayon work; bulk pool at
+nice +10 so the OS scheduler preempts it. Replaces the earlier
+reserved-thread sketch (permits bound jobs, not threads, so it could not
+guarantee a free worker). Verified live: bulk threads at nice 10,
+interactive at 0 (`ps -L`).
 
-### Interim perf (Step 6c, intake+queue landed, writer untouched)
+### Post-isolation baseline (reference, 2026-11-05)
 
-Raw: `/tmp/opencode/worker-pool-rework/bench-mid-*/`,
-`out-mid/`, `complexity-mid.clippy-cognitive.txt`. Writer-presence
-verified (16 `BATCH_COORDINATOR` hits, `FlushTreeTask` impl present,
-`INDEX_COORDINATOR` zero hits), so the delta is intake/queue only.
-Harness pool log lines were updated in Step 9 to print the single
-runtime (1×N workers); thread counts observed: srv-threads 10 (N4) /
-18 (N8), down from 21/37.
+Post-fix tree, new Python tooling, canonical set-100, `SCAN_REPEATS=2`.
+Seven cells, all rc=0: control/read/thumb/diff/idle-diff at N=8, control/read
+at N=4 (`taskset` 0–3). Raw cells under
+`/tmp/opencode/worker-pool-rework/bench-v2-*-N{8,4}-r1`.
 
-| N   | count | bytes    | scan wall | probe seq mean  | probe conc mean   | hyperfine compressed | hyperfine prefetch |
-| --- | ----- | -------- | --------- | --------------- | ----------------- | -------------------- | ------------------ |
-| 4   | 100   | 46690163 | 421s base | 0.0030s (n=99)  | 0.0046s P4 (n=99) | 0.00928s             | 0.00831s           |
-| 4   | 100   | 57198822 | 554s mid  | 0.0051s (n=100) | 0.0114s P4 (n100) | 0.00982s             | 0.00857s           |
-| 8   | 100   | 62329256 | 228s base | 0.0042s (n=99)  | 0.0108s P8 (n=99) | 0.01544s             | 0.01368s           |
-| 8   | 100   | 55873217 | 247s mid  | 0.0044s (n=99)  | 0.0101s P8 (n=99) | 0.01628s             | 0.01472s           |
+| workload (N=8)                  | med ms | p95 ms | max ms             | fail                            |
+| ------------------------------- | ------ | ------ | ------------------ | ------------------------------- |
+| control prefetch (probe)        | 7.7    | —      | 8.9 (worst round)  | 0                               |
+| control edit (probe)            | 11.3   | —      | 12.1 (worst round) | 0                               |
+| storm-read 8x100 (1600 ops)     | 3.5    | 17     | 49                 | 0                               |
+| storm-thumb 8x100 (1600 ops)    | 7.0    | 26     | 54                 | 0                               |
+| storm-diff 8x100 (1600 ops)     | 6.5    | 14     | 26                 | 535 early-scan 500s, run 1 only |
+| storm-idle-diff 8x100 (at rest) | 8      | 15     | 21                 | 0, verify 8/8 canaries          |
 
-Mid shows no scan win yet (per-MB: N4 9.0→9.7 s/MB, N8 3.7→4.4
-s/MB; sets differ in bytes — snapfab content is random per run).
-Expected: intake/queue adds a hop without removing the per-insert
-flush bottleneck, which is slice 3's target. Fetch/hyperfine flat
-within noise. Complexity mid: sloc 3450→4112, cyclomatic 530→610,
-cognitive 338→382, functions 100→136 (new `tasks/queue/*`: 5 files,
-847 sloc; deletions land in slice 3); clippy cognitive still 2
-warnings, both outside scope.
+N=4: control scan 21 s (vs ~10 s N=8); read storm med 4 / p95 7 / max 11 ms,
+0 fails — tighter than N=8, no contention signal at halved core budget.
+Scan walls flat across workloads (storms add no measurable scan time);
+post-scan idle columns unchanged everywhere (11–17 ms).
 
-### After perf (Step 8 — debug era retired)
+Verdict vs pre-fix eras: medians identical everywhere; the multi-hundred-ms
+single-op stalls (2.5 s worst observed) are gone — max single op across
+~5000 post-fix storm ops is 54 ms, max control round in this battery
+12.1 ms. The only fails anywhere are unindexed-asset 500s in scan run 1
+(pre-existing error shape, unchanged by this work; run 2 always clean).
 
-Debug-era cells (`bench-{baseline,mid,after,after2}-*`: single runs
-on random per-run sets, mixed harness generations) are retired as a
-comparison basis — run-to-run variance within one condition
-exceeds any base-vs-after gap for every probe metric, so they
-cannot support a per-metric verdict. Raw logs stay under
-`/tmp/opencode/worker-pool-rework/`; the table below is kept as
-historical context only, not evidence. The release head-to-head
-is the reference comparison.
+### True-baseline head-to-head (cdba92f02c, 2026-11-05)
 
-| benchmark       | cpu | images | MB   | scan_time | s/MB | scan_fetch | scan_thumb | scan_edit | post_thumb | post_fetch | post_edit |
-| --------------- | --- | ------ | ---- | --------- | ---- | ---------- | ---------- | --------- | ---------- | ---------- | --------- |
-| baseline-N8-100 | 8   | 100    | 62.3 | 228       | 3.7  | n/a        | 4.2        | n/a       | 15.4       | 13.7       | n/a       |
-| mid-N8-100      | 8   | 100    | 55.9 | 247       | 4.4  | n/a        | 4.4        | n/a       | 16.3       | 14.7       | n/a       |
-| after-N8-100    | 8   | 100    | 50.6 | 245       | 4.9  | n/a        | 5.0        | n/a       | 17.6       | 14.1       | n/a       |
-| after2-N8-100   | 8   | 100    | 56.7 | 248       | 4.4  | 29.4       | 5.4        | 60.0      | 15.6       | 13.7       | 57.0      |
+Pre-rework tree at the plan's starting commit (`cdba92f0`, “Add
+worker-pool-rework perf task”), clean tree, release build in a
+`bench-true-base` worktree, driven by the same Python tooling via
+`PICASU_BIN` (wire protocol verified identical: get-data shape,
+`assetId`, prefetch, edit_rating). Same set-100, `SCAN_REPEATS=2`.
+Seven cells mirror the post-isolation battery exactly.
 
-after2 details (N8 reference cell; N4 retired with the rows above):
-median over runs [248,249] (N8) — repeatability ±0.1%. Pooling all
-rounds changed the story the last-round numbers told. Scan
-throughput flat within set variance across eras (per-MB N8 3.7–4.4
-on random sets). Re-scan runs count scanned=101 vs 100 (one extra
-file walked on repeat, likely the write-probe sidecar;
-matched/processed stay 100/100, failed=0). The measured win
-remains structural, not throughput: server threads 37→18 (N8),
-runtimes 3→1, rayon pools 2→1 (N-1), `Task` impls 7→0,
-`INDEX_COORDINATOR` gone, zero unbounded `mpsc` call sites.
-1000-cell full completion remains a long-timeout rerun (Step 3
-finding stands). The release head-to-head below is the current
-reference comparison.
+| workload                     | base med / p95 / max ms       | after med / p95 / max ms                                  |
+| ---------------------------- | ----------------------------- | --------------------------------------------------------- |
+| control prefetch probe       | 17.1 / — / 27.1 worst round   | 7.7 / — / 8.9 worst round                                 |
+| control edit probe           | 19.8 / — / 24.9 worst round   | 11.3 / — / 12.1 worst round                               |
+| storm-read 8x100 (1600 ops)  | 4.0 / 24 / 86, 0 fails        | 3.5 / 17 / 49, 0 fails                                    |
+| storm-thumb 8x100 (1600 ops) | 15 / 52 / 87, 0 fails         | 7 / 26 / 54, 0 fails                                      |
+| storm-diff 8x100 (1600 ops)  | 8.5 / 21 / 38, 411 early 500s | 6.5 / 14 / 26, 535 early 500s                             |
+| storm-idle-diff (at rest)    | 11–14 across columns, 0 fails | 8–16 across columns, 0 fails, verify 8/8                  |
+| N=4 control scan             | 18–19 s                       | 21 s (single runs each — needs repeats before calling it) |
+| N=4 storm-read               | 5 / 25 / 84, 0 fails          | 4 / 7 / 11, 0 fails                                       |
 
-### Release head-to-head (base vs after, canonical set-100, new harness)
+Verdict: medians equal-or-better on after everywhere; no
+multi-hundred-ms event on either side in this battery (base worst:
+87 ms thumb; after worst: 54 ms read). The 1–3 s prefetch stalls
+seen earlier appear on _neither_ tree here — they were unique to the
+single-shared-pool interim (fixed by pool isolation, confirmed by the
+1.9 s → 54 ms drop on the same workload). Early-scan 500 counts
+(411 vs 535) move with race timing, not tree version — same known
+error shape both sides, zero fails from run 2 on.
 
-`bench-cmp-{base,after}-N8-100-rel-r{1,2}`: same 56.7 MB set, same
-harness (per-round hyperfine + random fetch + write probe,
-`SCAN_REPEATS=2`), release profile, N=8. Base = pre-rework
-(`977932b6`, 3 runtimes + per-file spawn fan-out, 36 server
-threads); after = slices 1–3 + split writer + barrier fix (single
-runtime, 17 server threads). Medians reported.
+### Reading the observe output (breach / wrap / drain)
 
-| benchmark                                                                                                                                       | scan_time | s/MB | scan_fetch | scan_fetch_worst | scan_thumb | scan_edit | scan_edit_worst | post_thumb | post_fetch | post_edit |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---- | ---------- | ---------------- | ---------- | --------- | --------------- | ---------- | ---------- | --------- |
-| base-N8-r1                                                                                                                                      | 8.4       | 0.15 | 19.4       | 25.3             | 4.5        | 19.8      | 45.9            | 13.4       | 11.6       | 21.7      |
-| base-N8-r2                                                                                                                                      | 8.6       | 0.15 | 17.0       | 32.3             | 4.3        | 17.9      | 23.6            | 7.7        | 7.1        | 10.4      |
-| after-N8-r1                                                                                                                                     | 9.3       | 0.16 | 13.7       | 447.3            | 2.0        | 14.9      | 38.0            | 12.8       | 11.6       | 17.3      |
-| after-N8-r2                                                                                                                                     | 9.2       | 0.16 | 20.3       | 54.7             | 5.7        | 31.9      | 578.4           | 13.0       | 11.6       | 16.6      |
-| units: scan_time s; s/MB s per MB; all latency columns ms; hyperfine-derived columns are medians-of-round-medians; worst_* = worst single round |
+Three line types, three different meanings:
 
-Scan wall is the only median that separates the eras: after is
-~8% slower (9.2–9.3 s vs 8.4–8.6 s, within-condition spreads
-0.1–0.2 s, gap +0.6 s). Every pooled-median probe metric
-overlaps: scan_fetch within-spreads 2.4/6.6 ms vs gap −5.7 ms,
-scan_thumb 0.2/3.7 vs −2.5 ms, scan_edit 1.9/17.0 vs −4.9 ms,
-post_thumb base spread 5.7 ms alone exceeds any gap. The worst
-rounds tell a different, noisier story: after shows the largest
-single-round stalls (fetch 447 ms, edit 578 ms) where base tops
-out at 32–46 ms — but with 7–10 rounds per cell and n=3
-hyperfine each, one stalled round moves the worst column a lot
-while the median barely notices. So the honest verdict is two
-part: (a) steady-state latency is unchanged in either direction;
-(b) the after tree has (so far) the only multi-hundred-ms
-during-scan stalls, 2 events in 14 rounds vs 0 in 20 base
-rounds — too rare to call systematic, too one-sided to ignore.
-That tail is exactly what the write-load-probe follow-up is
-designed to chase with a forced write burst. At N=8 that is ~0.7 s
-per 100 large images scan cost — the trade for no unbounded
-fan-out, one runtime, and exact barriers. During-scan numbers
-pool all rounds (10/10/7/7 rounds, 98/98/67/64 fetches).
-Post-scan baselines are comparable across the board (compr 8–14,
-prefetch 7–12, edit 10–22 ms).
+- `... took X, normal bound Y` at `WARN` = **breach**: one operation of
+  that stage exceeded its duration threshold. Actionable only when it
+  repeats with queue pressure (see below). Rate-limited to one per stage
+  per 5 s.
+- `High event volume: ...` at `INFO` = **wrap**: the stage recorded more
+  than the 256-slot ring holds. Prints only for a stage that breached its
+  threshold since the last reset, as volume context for known slowness.
+  Healthy churn is silent — compare `recorded` vs `n` in the drain table.
+  Expect zero wrap lines on a healthy scan. Rate-limited to one per stage
+  per 5 s; suppressed wraps keep their backlog until a breach or reset.
+- `observe drain: ...` at `INFO`, once per scan = the per-stage table
+  (`n`, p50, p95, max). This is the reference for "what is normal".
+
+Worked example — the two wrap lines pasted from a release run. Why they
+are normal load, field by field:
+
+- `wraps=6`, and the table shows `n=256` on `tree_refresh_*`,
+  `cpu_permit_wait`, `cpu_exec`, but `n=4–6` on filter/prefetch stages.
+  256 + 6 = 262 recorded: a 100-image scan with repeats records one
+  refresh + one `cpu_exec` per image, so just over 256 is exactly the
+  expected volume. Low `n` on prefetch/filter is expected too (one per
+  probe round, not per image). Volume explains the wraps; nothing had to
+  be slow.
+- p50/p95/max vs threshold: `tree_refresh_total` p50 1.1 ms / p95 2.0 ms /
+  max 3.8 ms vs 250 ms bound; `write_wait` all zeros vs 20 ms;
+  `cpu_permit_wait` 0–2 µs vs 25 ms; `blocking_queue_wait` ≤ 245 µs vs
+  50 ms; `prefetch_total` ≤ 9 ms vs 1 s; `cpu_exec` p50 1.5 ms / p95
+  813 ms / max 941 ms vs 1 s (closest, still under). Nothing breached,
+  so no WARN — consistent with INFO-only wraps.
+- `cpu_permits_available=7` (full house on N=8: N−1 permits) rules out
+  pool saturation. Saturated would read 0 sustained.
+- `in_flight` all zeros except a transient `tree_refresh_total=1` in one
+  of the two lines: one refresh in progress at snapshot time, gone by the
+  next line. Stuck would read the same non-zero stage across successive
+  lines minutes apart.
+- `seq[next=117 writer=115 cascade=115]`: writer 2 behind intake, stable.
+  Falling behind would be a large and growing gap (tens to hundreds) plus
+  `write_wait` p95 climbing toward its 20 ms bound.
+- Two wraps in the same second (one per churning stage) each snapshotting
+  the same table is the old format's duplication; the current format logs
+  one short line per churning stage with only that stage's stats.
+
+What to look for when analysing (in order):
+
+1. Level first: INFO wrap alone during a scan = volume, ignore unless
+   `n`/`recorded` is far above scan size. WARN breach = slow op; look at
+   the queue clause on the same line.
+2. Permits: `cpu_permits_available=0` sustained across lines = bulk pool
+   saturated (the pre-isolation stall shape had this pinned at 0 with
+   `filter_par_iter` p95 0.3–0.6 s). Full or bouncing back = healthy.
+3. In-flight: same stage non-zero across minutes = hung op. Transient 1
+   = normal snapshot timing.
+4. Seq gap: `next − writer` large and growing + `write_wait` rising =
+   writer falling behind. Small stable gap (1–3) = normal pipelining.
+5. p50 vs p95 vs max: p95 near threshold with low p50 = tail (a few slow
+   ops, e.g. single-image indexing near 1 s). p50 near threshold = the
+   whole stage shifted (regression or under-provisioned pool).
+6. Cross-stage: `cpu_permit_wait` high + permits 0 = admission jam;
+   `write_wait` high + filter `in_flight` > 0 = reader-holds-guard
+   contention (the fixed deadlock's milder cousin);
+   `blocking_queue_wait` high = Tokio blocking pool backlogged, not a
+   filter problem; single `interactive_exec` WARN = one heavy UI job, not
+   systemic.
+7. Rate: isolated breach/wrap during a scan = note and compare to the
+   drain table. Repeating WARNs for the same stage across scans with
+   degrading p95 = regression — that is what the production delay +
+   wrap detection is for. A full deadlock would WARN persistently and
+   wedge `in_flight`/seq, not vanish the next line.
+8. Profile: ignore absolute WARN thresholds in debug builds (unoptimized
+   codegen runs 10–30× slower; breach/wrap log at `debug!` there by
+   design). Compare debug-to-debug only via the drain tables.
 
 ### After complexity (Step 8)
 
