@@ -53,9 +53,9 @@ npm/crates would block unrelated changes; gating is kept to PRs that
 change the dependency set.
 
 Settled 2026-11-05: tracking follows option A — the `justfile` is the
-source of truth; a `just pipeline-check` gate verifies every
+source of truth; a `just gates-check` gate verifies every
 check/test recipe is scheduled in its lane and generates
-`docs/test-pipeline.md` (lane graph plus per-check annotation taken
+`docs/quality-gates.md` (lane graph plus per-check annotation taken
 from the `justfile` recipe comments).
 
 ## Steps
@@ -129,22 +129,24 @@ gating labeled per check, `openapi-reference.md` and
 plan-lint` pass.
 Out: code, workflows, recipes.
 
-### 7. Add `pipeline-check`: justfile is the source of truth
+### 7. Add `gates-check`: justfile is the source of truth (done 2026-11-05)
 
-Scope: new `just pipeline-check` recipe (+ small script under
-`scripts/`, e.g. `pipeline-lint.mjs`), `justfile` `check` recipe,
+Scope: new `just gates-check` recipe (+ `scripts/quality-gates.mjs`), `justfile` `check` recipe,
 `.github/workflows/ci.yml` + `docs-check.yml` (call it; no inline
-tooling), generated `docs/test-pipeline.md`.
+tooling), generated `docs/quality-gates.md`.
 Done: the script parses the `justfile` recipe graph (check/test
 recipes and their dependencies) and the workflow steps +
 `.githooks/pre-commit` dispatch, and fails on (a) a `just
 <domain>-check|-test` recipe invoked by no lane, (b) a CI step running
 tooling without a `just` recipe, (c) generated-doc drift. It writes
-`docs/test-pipeline.md`: a lane graph (mermaid: precommit-fast,
+`docs/quality-gates.md`: a lane graph (mermaid: precommit-fast,
 pr-check, pr-test, main, nightly, release) plus one section per
 check/test with the annotation taken from the recipe's comment line
-above it in the `justfile` (the `just --list` summary). `just
-pipeline-check` runs inside `just check` and in CI so a new check
+above it in the `justfile` (the `just --list` summary). Check-only by
+default (no writes); `node scripts/quality-gates.mjs <root>
+--generate <path>` writes the document explicitly (`just gates-docs`
+regenerates the committed doc). `just
+gates-check` runs inside `just check` and in CI so a new check
 such as `shellshock` cannot land unscheduled: adding the recipe
 without wiring its lane fails the gate, and the docs regenerate with
 it. `just docs-check`, `just plan-lint` pass.

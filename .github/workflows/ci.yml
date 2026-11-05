@@ -133,6 +133,7 @@ jobs:
           just utils-check
           just openapi-check
           just env-var-check
+          just gates-check
 
       - name: Test (backend, utils)
         run: |
