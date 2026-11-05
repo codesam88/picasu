@@ -10,7 +10,7 @@
 //! the serial writer (see `super::writer`), keeping the same call sites and
 //! the same flush→sweep→flush→drain-before-Completed order.
 
-use super::bridge::{run_cpu_fifo, run_io};
+use super::bridge::{run_interactive, run_io};
 use super::intake::{
     IntakeItem, IntakeKind, current_generation, job_progress, note_item_complete, recv_item,
     release_generation, remove_job,
@@ -42,7 +42,7 @@ async fn dispatch_item(item: IntakeItem) {
         IntakeKind::ExpireCheck => process_expire_check().await,
         IntakeKind::InteractiveAlbum { album_id, reply } => {
             let outcome =
-                run_cpu_fifo(move || crate::tasks::actor::album::album_task(album_id)).await;
+                run_interactive(move || crate::tasks::actor::album::album_task(album_id)).await;
             match reply {
                 Some(tx) => {
                     let _ = tx.send(outcome);

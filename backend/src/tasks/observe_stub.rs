@@ -32,10 +32,12 @@ pub enum Stage {
     CpuPermitWait,
     CpuExec,
     PrefetchTotal,
+    BlockingQueueWait,
+    InteractiveExec,
 }
 
 /// Number of stages, must match [`Stage`]'s variants.
-pub const STAGE_COUNT: usize = 10;
+pub const STAGE_COUNT: usize = 12;
 
 impl Stage {
     /// Every stage in table order.
@@ -50,6 +52,8 @@ impl Stage {
         Self::CpuPermitWait,
         Self::CpuExec,
         Self::PrefetchTotal,
+        Self::BlockingQueueWait,
+        Self::InteractiveExec,
     ];
 
     /// Stable snake-case name used in logs and tables.
@@ -66,6 +70,8 @@ impl Stage {
             Self::CpuPermitWait => "cpu_permit_wait",
             Self::CpuExec => "cpu_exec",
             Self::PrefetchTotal => "prefetch_total",
+            Self::BlockingQueueWait => "blocking_queue_wait",
+            Self::InteractiveExec => "interactive_exec",
         }
     }
 
@@ -81,6 +87,8 @@ impl Stage {
             Self::TreeRefreshSort => 100_000,
             Self::TreeRefreshWriteWait => 20_000,
             Self::CpuExec | Self::PrefetchTotal => 1_000_000,
+            Self::BlockingQueueWait => 50_000,
+            Self::InteractiveExec => 500_000,
         }
     }
 }
@@ -144,6 +152,16 @@ pub fn timed<T>(_stage: Stage, _context: u64, f: impl FnOnce() -> T) -> T {
 
 /// Record a completed sample (no-op).
 pub fn record(_stage: Stage, _duration_us: u64, _context: u64) {}
+
+/// Rate-limit gate (no-op build: never claims, so callers stay silent).
+pub(crate) fn claim_report(_last: &std::sync::atomic::AtomicU64, _now: u64) -> bool {
+    false
+}
+
+/// Monotonic milliseconds for rate gates (no-op build: always zero).
+pub(crate) fn mono_ms() -> u64 {
+    0
+}
 
 /// Aggregate every stage; always empty without the feature.
 #[must_use]

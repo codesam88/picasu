@@ -68,38 +68,42 @@ impl Tree {
         // ... (unchanged)
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        // `par_bridge` runs on the shared Rayon pool; clone under a short
-        // guard first so no tree guard is held across pool work.
+        // `par_bridge` runs on the interactive pool (scoped below), never the
+        // bulk pool: tag enumeration is a request-path join and must not
+        // queue behind scan work. Clone under a short guard first so no tree
+        // guard is held across pool work.
         let tree = self.in_memory.read().expect("lock poisoned").clone();
-        tree.iter().par_bridge().for_each(|database_timestamp| {
-            let abstract_data = &database_timestamp.abstract_data;
+        crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
+            tree.iter().par_bridge().for_each(|database_timestamp| {
+                let abstract_data = &database_timestamp.abstract_data;
 
-            // Visibility: never count personal items owned by another user,
-            // nor the users root.
-            if let Some(path) = abstract_data.visibility_path()
-                && !crate::storage::files::visible_to(caller, &path)
-            {
-                return;
-            }
+                // Visibility: never count personal items owned by another user,
+                // nor the users root.
+                if let Some(path) = abstract_data.visibility_path()
+                    && !crate::storage::files::visible_to(caller, &path)
+                {
+                    return;
+                }
 
-            // Count regular tags only
-            for tag in abstract_data.tag() {
-                let counter = tag_counts
-                    .entry(tag.clone())
-                    .or_insert_with(|| AtomicUsize::new(0));
-                counter.fetch_add(1, Ordering::Relaxed);
-            }
-        });
+                // Count regular tags only
+                for tag in abstract_data.tag() {
+                    let counter = tag_counts
+                        .entry(tag.clone())
+                        .or_insert_with(|| AtomicUsize::new(0));
+                    counter.fetch_add(1, Ordering::Relaxed);
+                }
+            });
 
-        let tag_infos: Vec<TagInfo> = tag_counts
-            .par_iter()
-            .map(|entry| TagInfo {
-                tag: entry.key().clone(),
-                number: entry.value().load(Ordering::Relaxed),
-            })
-            .collect();
+            let tag_infos: Vec<TagInfo> = tag_counts
+                .par_iter()
+                .map(|entry| TagInfo {
+                    tag: entry.key().clone(),
+                    number: entry.value().load(Ordering::Relaxed),
+                })
+                .collect();
 
-        tag_infos
+            tag_infos
+        })
     }
 
     /// Return all filesystem-backed (dir) albums, composed from each album's
