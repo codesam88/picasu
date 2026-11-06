@@ -351,51 +351,7 @@ check: backend-check utils-check frontend-check docs-check plan-lint openapi-che
 [group('global')]
 test: backend-test utils-test frontend-test fuzz-matrix
 
-# Pinned ExifTool distribution for local development installs.
-#
-# ExifTool is snapfab's fixture metadata writer (`utils/snapfab`) and a
-# dev/test prerequisite; the backend reads metadata in-process (kamadak-exif +
-# xmpkit) and never spawns it. The distribution is pure Perl and unpacks
-# without root, so a dev machine installs it into `~/.local`. CI installs the
-# same pinned distribution (`just install exiftool` in
-# `.github/workflows/ci.yml`) because snapfab's tests spawn the binary and
-# encode this version's refusal behaviour, which the distro package
-# (`libimage-exiftool-perl`) does not necessarily reproduce.
-#
-# The version and its checksum move together: upstream publishes both at
-# https://exiftool.org/checksums-<version>.txt, and the archive is fetched from
-# the SourceForge mirror that exiftool.org's own download links point at.
-# Pinned static ffmpeg build.
-#
-# The backend spawns ffmpeg (video thumbnails) and ffprobe (video metadata),
-# and the release package ships the same static build. Pinning it here means
-# the ffmpeg the tests run against is the ffmpeg that reaches the admin's
-# machine, and that the digest is checked rather than whatever the URL
-# serves today.
-#
-# The version and its digest move together: the tarball is fetched from the
-# versioned release URL and verified against the digest below.
-# Pinned cargo-nextest (the backend test runner).
-#
-# nextest runs one process per test, so the backend suite runs in parallel
-# instead of serializing on the shared test data home. It publishes prebuilt
-# binaries per platform, so the dev setup and CI install the binary rather
-# than compiling it from source (`cargo install cargo-nextest` takes
-# minutes).
-#
-# The version and its per-platform checksums move together: upstream
-# publishes the binaries and a .sha256 sidecar per platform on the GitHub
-# release.
-# Pinned cargo-deny (the dependency audit).
-#
-# The audit job used to build it from source on every run
-# (`cargo install cargo-deny` — minutes). cargo-deny publishes prebuilt
-# binaries per platform, so the binary is installed instead.
-#
-# The version and its per-platform checksums move together: upstream
-# publishes the binaries and a .sha256 sidecar per platform on the GitHub
-# release.
-# verify managed tools (check only)
+# verify installed tool versions
 [group('deps')]
 check-tools:
     ./scripts/deps-install.sh --check
