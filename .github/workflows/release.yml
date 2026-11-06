@@ -42,10 +42,13 @@ jobs:
           persist-credentials: false
 
       # The tool installs below are `just` recipes.
+      - name: Read pinned tool versions
+        run: echo "JUST_VERSION=$(grep '^JUST_VERSION=' scripts/deps/versions.env | cut -d'"' -f2)" >> "$GITHUB_ENV"
+
       - name: Install just
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: just
+          tool: just@${{ env.JUST_VERSION }}
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
