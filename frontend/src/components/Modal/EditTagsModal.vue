@@ -1,10 +1,12 @@
 <template>
-  <v-dialog
+  <BaseModal
     v-if="submit !== undefined"
     v-model="modalStore.showEditTagsModal"
-    persistent
+    title="Edit Tags"
+    width="400"
     id="edit-tag-overlay"
-    max-width="400"
+    content-class="pa-0"
+    hide-close
   >
     <v-confirm-edit
       v-model="changedTagsArray"
@@ -14,7 +16,6 @@
     >
       <template #default="{ model: proxyModel, actions }">
         <v-card variant="elevated" retain-focus>
-          <template #title> Edit Tags </template>
           <template #text>
             <v-form v-model="formIsValid" @submit.prevent validate-on="input">
               <v-combobox
@@ -53,7 +54,7 @@
         </v-card>
       </template>
     </v-confirm-edit>
-  </v-dialog>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -66,6 +67,7 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useTagStore } from '@/store/tagStore'
 import { useDataStore } from '@/store/dataStore'
