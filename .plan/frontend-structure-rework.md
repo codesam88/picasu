@@ -10,9 +10,10 @@ area: frontend
 Overall structural rework of the frontend: consistent design of pages,
 modals, titles, tables, buttons, icons, and tooltips, with automated
 enforcement and behavior tests. Tool knowledge:
-`docs/briefs/vitest-frontend-testing.md`. Prior spike (branch
-`spike/vue-structure-enforcement`) inventoried the current state and
-prototyped a structural scan.
+`docs/briefs/vue-structure-vitest.md` (canonical; supersedes the spike's
+`vitest-frontend-testing.md`, which prescribed the wrong ban rule — see
+step 2). Prior spike (branch `spike/vue-structure-enforcement`)
+inventoried the current state and prototyped a structural scan.
 
 Starting position: all top-level pages render through `PageTemplate`;
 `BaseModal`/`ShareModalBase` exist but most modals still use raw
@@ -23,17 +24,45 @@ dialogs.
 
 1. Port the spike's structural scan (`designStructure` rule + test) as
    the adoption gate, keeping the grandfather list for known debt.
-2. Lint-layer enforcement (earlier feedback than tests):
-   `vue/no-restricted-component-names` for raw dialogs/cards where
-   wrappers exist, `vue/no-bare-strings-in-template` for naked copy,
-   plus free convention rules (`attributes-order`,
-   `require-explicit-emits`/`require-explicit-slots`).
+   Re-audit the list against this tree first: the spike scoped to
+   `Modal/` + top-level `Page/`, but inline confirms also exist in
+   `Page/Config/*`, `ServerFilePicker.vue`, and
+   `Gallery/GalleryEmptyCard.vue`, while `UploadModal`/`DropZoneModal`
+   may already be migrated. Decide narrow vs expanded scope up front.
+2. Lint-layer enforcement (earlier feedback than tests). Corrected per
+   the new brief: ban raw template usage with
+   `vue/no-restricted-html-elements` (element/component names in
+   templates) — NOT `vue/no-restricted-component-names`, which targets
+   the declared `name` property and would silently pass. Add
+   `vue/no-restricted-block` for SFC blocks,
+   `vue/no-bare-strings-in-template` for naked copy, plus free
+   convention rules (`attributes-order`,
+   `require-explicit-emits`/`require-explicit-slots`). Order matters:
+   the shared confirm dialog and section card (step 3) must exist
+   before their bans land, so authors have a correct target.
 3. Migrate the debt: raw-dialog modals to `BaseModal`, inline confirms
    to a shared confirm dialog, Config sections to a shared section
    card; shrink the grandfather list to zero, then delete it.
-4. Behavior tests: browser test project (`vitest-browser-vue`) with the
-   modal accessibility contract (role, focus, `Escape`) and page
-   template slots/loading states first.
+4. Behavior tests: browser test project (`vitest-browser-vue`,
+   pinned against installed Vitest 5.0.5, not `main` docs) for
+   shared wrappers only — the modal accessibility contract (role,
+   focus, `Escape`) and page template slots/loading states first,
+   then the step-3 confirm dialog and section card. Rationale: every
+   page and modal renders through these wrappers, so a handful of
+   tests covers the whole UI's structural behavior. Explicit
+   non-goals: no per-page or per-feature browser tests, no jsdom
+   project — slot-mapping assertions fit inside the wrapper browser
+   tests under a real DOM, and jsdom stays deferred until a shipped
+   bug class proves it needed. Cross-client (e.g. future mobile)
+   confidence lives at the backend API layer (OpenAPI gates,
+   auth-matrix, fuzz), not in frontend component tests. New deps:
+   `vitest-browser-vue` + `@vitest/browser` on the already-present
+   Playwright; no `@vue/test-utils`/`jsdom`/polyfill wiring.
+   Vuetify pinning: repo is on Vuetify 4.3.1 (default theme `system`,
+   changed breakpoint thresholds); verify against the v4 testing docs
+   (`vuetifyjs.com/en/getting-started/unit-testing/`), pass an explicit
+   `theme: { defaultTheme: 'light' }` in the test `createVuetify` for
+   determinism.
 5. Later, if the layering keeps being violated: `eslint-plugin-boundaries`
    sketch, theme-token lint, visual regression coverage.
 6. Test cleanup: detect and remove vacuous absence-only tests, then add
