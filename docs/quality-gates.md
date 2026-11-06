@@ -138,7 +138,7 @@ Annotation: Backend tests in release mode
 - Recipe: [justfile:35-36](https://github.com/codesam88/picasu/blob/main/justfile#L35-L36) `justfile:35-36`
 - Lanes: release
 - Invocations:
-  - [.github/workflows/release.yml:126-128](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L126-L128) `.github/workflows/release.yml:126-128`
+  - [.github/workflows/release.yml:117-119](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L117-L119) `.github/workflows/release.yml:117-119`
 - Required by: `test-release`
 
 ### `docs-check`
@@ -203,7 +203,7 @@ Annotation: run playwright tests (optional filter)
 - Lanes: ci-frontend, precommit, release
 - Invocations:
   - [.github/workflows/ci.yml:242-244](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L242-L244) `.github/workflows/ci.yml:242-244`
-  - [.github/workflows/release.yml:126-128](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L126-L128) `.github/workflows/release.yml:126-128`
+  - [.github/workflows/release.yml:117-119](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L117-L119) `.github/workflows/release.yml:117-119`
 - Required by: `frontend-test`
 
 ### `frontend-test`
@@ -333,7 +333,7 @@ Annotation: Run the already-built release binary's route-set gate against the co
 - Recipe: [justfile:178-179](https://github.com/codesam88/picasu/blob/main/justfile#L178-L179) `justfile:178-179`
 - Lanes: release
 - Invocations:
-  - [.github/workflows/release.yml:79-79](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L79-L79) `.github/workflows/release.yml:79-79`
+  - [.github/workflows/release.yml:80-80](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L80-L80) `.github/workflows/release.yml:80-80`
 - Required by: (none - lane entry)
 
 ### `openapi-sanity`
