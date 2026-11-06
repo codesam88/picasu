@@ -1,0 +1,81 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "description": "Custom-regex rules bump the TOOL_VERSION lines in scripts/deps/versions.env. ffmpeg (johnvansickle tarballs) and exiftool (SourceForge) have no Renovate datasource and stay manual. Only the version line is bumped; refresh the sha256 sidecars by hand on each bump PR.",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["JUST_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "casey/just",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["UV_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "astral-sh/uv",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["NEXTEST_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "nextest-rs/nextest",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^cargo-nextest-(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["CARGO_DENY_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "EmbarkStudios/cargo-deny",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["OASDIFF_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "oasdiff/oasdiff",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["DYLINT_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "cargo-dylint",
+      "datasourceTemplate": "crate"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["MDBOOK_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "rust-lang/mdBook",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["SCHEMATHESIS_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "schemathesis",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["ZIZMOR_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "zizmor",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["SHELLCHECK_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "koalaman/shellcheck",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
+  ]
+}
