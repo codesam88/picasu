@@ -42,10 +42,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Read pinned tool versions
+        run: echo "JUST_VERSION=$(grep '^JUST_VERSION=' scripts/deps/versions.env | cut -d'"' -f2)" >> "$GITHUB_ENV"
+
       - name: Install just
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: just
+          tool: just@${{ env.JUST_VERSION }}
 
       - name: Add Rust
         run: rustup component add clippy rustfmt
@@ -162,10 +165,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read pinned tool versions
+        run: echo "JUST_VERSION=$(grep '^JUST_VERSION=' scripts/deps/versions.env | cut -d'"' -f2)" >> "$GITHUB_ENV"
+
       - name: Install just
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: just
+          tool: just@${{ env.JUST_VERSION }}
 
       # The end-to-end suite runs against a real backend, so this job builds
       # one. It runs in parallel with the backend job instead of waiting for
@@ -252,10 +258,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Read pinned tool versions
+        run: echo "JUST_VERSION=$(grep '^JUST_VERSION=' scripts/deps/versions.env | cut -d'"' -f2)" >> "$GITHUB_ENV"
+
       - name: Install just
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: just
+          tool: just@${{ env.JUST_VERSION }}
 
       - name: Add Rust (stable)
         run: rustup component add clippy rustfmt

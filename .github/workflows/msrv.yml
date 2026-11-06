@@ -22,10 +22,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read pinned tool versions
+        run: echo "JUST_VERSION=$(grep '^JUST_VERSION=' scripts/deps/versions.env | cut -d'"' -f2)" >> "$GITHUB_ENV"
+
       - name: Install just
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
-          tool: just
+          tool: just@${{ env.JUST_VERSION }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
