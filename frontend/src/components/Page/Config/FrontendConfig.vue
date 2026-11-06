@@ -1,9 +1,6 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold">Frontend</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
-
+    <SectionCard title="Frontend">
       <v-list-item class="pt-4">
         <v-list-item-title class="mb-2">Thumbnail size</v-list-item-title>
         <v-slider
@@ -73,12 +70,13 @@
           ></v-switch>
         </template>
       </v-list-item>
-    </v-card>
+    </SectionCard>
   </v-col>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import { useRoute } from 'vue-router'
 import { useConstStore } from '@/store/constStore'
 import { useConfigStore } from '@/store/configStore'

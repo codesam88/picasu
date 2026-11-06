@@ -128,92 +128,77 @@
         </template>
       </v-sheet>
 
-      <v-dialog v-model="confirmOpen" max-width="480">
-        <v-card>
-          <v-card-title class="font-weight-bold">{{
-            pendingAdmin ? 'Make admin?' : 'Demote admin?'
-          }}</v-card-title>
-          <v-card-text>
-            <span v-if="pendingAdmin">
-              Grant admin rights to {{ pendingTarget?.userId }}? They will gain full access to this
-              panel.
-            </span>
-            <span v-else-if="pendingTarget?.userId === me?.id">
-              You are demoting your own account. You will lose access to this panel. Continue?
-            </span>
-            <span v-else> Remove admin rights from {{ pendingTarget?.userId }}? </span>
-          </v-card-text>
-          <v-card-actions class="justify-end">
-            <v-btn variant="text" @click="cancelRoleChange">Cancel</v-btn>
-            <v-btn color="primary" variant="flat" :loading="saving" @click="confirmRoleChange">
-              {{ pendingAdmin ? 'Promote' : 'Demote' }}
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+      <ConfirmDialog
+        v-model="confirmOpen"
+        :title="pendingAdmin ? 'Make admin?' : 'Demote admin?'"
+        :confirm-label="pendingAdmin ? 'Promote' : 'Demote'"
+        :loading="saving"
+        @confirm="confirmRoleChange"
+        @cancel="cancelRoleChange"
+      >
+        <span v-if="pendingAdmin">
+          Grant admin rights to {{ pendingTarget?.userId }}? They will gain full access to this
+          panel.
+        </span>
+        <span v-else-if="pendingTarget?.userId === me?.id">
+          You are demoting your own account. You will lose access to this panel. Continue?
+        </span>
+        <span v-else> Remove admin rights from {{ pendingTarget?.userId }}? </span>
+      </ConfirmDialog>
 
-      <v-dialog v-model="deleteConfirmOpen" max-width="480">
-        <v-card>
-          <v-card-title class="font-weight-bold">Delete user?</v-card-title>
-          <v-card-text>
-            Delete {{ pendingDelete?.userId }}? This cannot be undone.
-            <v-text-field
-              v-model="deletePassword"
-              type="password"
-              label="Your password"
-              class="mt-2"
-              @keyup.enter="confirmDelete"
-            ></v-text-field>
-          </v-card-text>
-          <v-card-actions class="justify-end">
-            <v-btn variant="text" @click="cancelDelete">Cancel</v-btn>
-            <v-btn color="error" variant="flat" :loading="saving" @click="confirmDelete">
-              Delete
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+      <ConfirmDialog
+        v-model="deleteConfirmOpen"
+        title="Delete user?"
+        confirm-label="Delete"
+        cancel-label="Cancel"
+        :loading="saving"
+        destructive
+        @confirm="confirmDelete"
+        @cancel="cancelDelete"
+      >
+        Delete {{ pendingDelete?.userId }}? This cannot be undone.
+        <v-text-field
+          v-model="deletePassword"
+          type="password"
+          label="Your password"
+          class="mt-2"
+          @keyup.enter="confirmDelete"
+        ></v-text-field>
+      </ConfirmDialog>
 
-      <v-dialog v-model="setPasswordOpen" max-width="480">
-        <v-card>
-          <v-card-title class="font-weight-bold">Set password</v-card-title>
-          <v-card-text>
-            Set a new password for {{ pendingSetPassword?.userId }}. Enter your admin password to
-            confirm.
-            <v-text-field
-              v-model="newSetPassword"
-              type="password"
-              label="New password"
-              class="mt-2"
-              @keyup.enter="confirmSetPassword"
-            ></v-text-field>
-            <v-text-field
-              v-model="adminPassword"
-              type="password"
-              label="Your password"
-              class="mt-2"
-              @keyup.enter="confirmSetPassword"
-            ></v-text-field>
-          </v-card-text>
-          <v-card-actions class="justify-end">
-            <v-btn variant="text" @click="cancelSetPassword">Cancel</v-btn>
-            <v-btn
-              color="primary"
-              variant="flat"
-              :loading="settingPassword"
-              @click="confirmSetPassword"
-            >
-              Set
-            </v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+      <ConfirmDialog
+        v-model="setPasswordOpen"
+        title="Set password"
+        confirm-label="Set"
+        cancel-label="Cancel"
+        :loading="settingPassword"
+        @confirm="confirmSetPassword"
+        @cancel="cancelSetPassword"
+      >
+        Set a new password for {{ pendingSetPassword?.userId }}. Enter your admin password to
+        confirm.
+        <v-text-field
+          v-model="newSetPassword"
+          type="password"
+          label="New password"
+          class="mt-2"
+          @keyup.enter="confirmSetPassword"
+        ></v-text-field>
+        <v-text-field
+          v-model="adminPassword"
+          type="password"
+          label="Your password"
+          class="mt-2"
+          @keyup.enter="confirmSetPassword"
+        ></v-text-field>
+      </ConfirmDialog>
     </v-card>
   </v-col>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import ConfirmDialog from '@/components/Modal/ConfirmDialog.vue'
 import axios from 'axios'
 import {
   listUsers,

@@ -63,33 +63,30 @@
       </v-card-actions>
     </v-card>
 
-    <v-dialog v-model="confirmOpen" max-width="480">
-      <v-card>
-        <v-card-title class="font-weight-bold">Disable read-only mode?</v-card-title>
-        <v-card-text>
-          This lifts the read-only kill-switch and re-enables writes. Enter your password to
-          confirm.
-          <v-text-field
-            v-model="disablePassword"
-            type="password"
-            label="Password"
-            class="mt-2"
-            @keyup.enter="confirmDisable"
-          ></v-text-field>
-        </v-card-text>
-        <v-card-actions class="justify-end">
-          <v-btn variant="text" @click="cancelDisable">Cancel</v-btn>
-          <v-btn color="primary" variant="flat" :loading="disabling" @click="confirmDisable">
-            Disable
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      v-model="confirmOpen"
+      title="Disable read-only mode?"
+      confirm-label="Disable"
+      cancel-label="Cancel"
+      :loading="disabling"
+      @confirm="confirmDisable"
+      @cancel="cancelDisable"
+    >
+      This lifts the read-only kill-switch and re-enables writes. Enter your password to confirm.
+      <v-text-field
+        v-model="disablePassword"
+        type="password"
+        label="Password"
+        class="mt-2"
+        @keyup.enter="confirmDisable"
+      ></v-text-field>
+    </ConfirmDialog>
   </v-col>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import ConfirmDialog from '@/components/Modal/ConfirmDialog.vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { resetAuthKey } from '@/api/config'
