@@ -142,7 +142,9 @@ tooling without a `just` recipe, (c) generated-doc drift. It writes
 `docs/quality-gates.md`: a lane graph (mermaid `graph TD`: job lanes
 `precommit`, `ci-backend`, `ci-frontend`, `ci-dylint`, `ci-zizmor`,
 `docs`, `audit`, `nightly`, `release` → directly-invoked entry
-recipes → transitive recipe deps; lane nodes only where edged, lane
+recipes → transitive recipe deps; recipe nodes labeled `just X`
+(including the `just precommit` lane, which is entered by running
+it), workflow lanes `ci X`; lane nodes only where edged, lane
 ids prefixed so they cannot collide with recipe ids) plus one section per
 check/test with the annotation taken from the recipe's comment line
 above it in the `justfile` (the `just --list` summary). Check-only by
@@ -174,6 +176,26 @@ gates-check` passes and the doc is regenerated. No tracker or
 pattern-list changes, no workflow-native classification.
 Out: CodeQL/docker/packaging (workflow-native mechanics), check-(b)
 pattern changes, steps 1-6.
+
+### 9. Track reachability, not names; gate mismatches and orphans (done 2026-11-06)
+
+Scope: `scripts/quality-gates.mjs` (+ test), regenerated
+`docs/quality-gates.md`.
+Done: tracked universe = transitive callees of `precommit`/`test`/
+`check`/`audit` plus transitive callees of `just X` invoked in any
+enabled workflow (name heuristic kept only to tell checks apart from
+build/install/format helpers, which stay reachable-but-undisplayed).
+Lanes gain trigger labels parsed from each workflow's `on:` block
+(e.g. `release (tags, manual)`, `nightly (scheduled)`). Lane mapping
+is open-world: unknown jobs map to `ci-<job>`, unknown files to their
+basename, so new CI jobs are tracked instead of silently dropped. Orphans (a), tests not run in CI (b), PR-only recipes unreachable
+from aggregates (c), and inline check tooling outside a `just`
+recipe are all flagged; severity lives in the report printing
+(`WARN:`, exit 0) and only a stale committed `docs/quality-gates.md`
+fails the gate. Seed allowlist (c):
+`dylint-check` — nightly toolchain, CI-only by decision). Graph and
+sections otherwise unchanged in style. `just gates-check` passes.
+Out: steps 1-6, recipe/workflow content changes, new lanes.
 
 ## Verification
 
