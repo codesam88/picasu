@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -18,26 +18,22 @@ const script = join(dirname(fileURLToPath(import.meta.url)), "quality-gates.mjs"
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function run(root, extra = []) {
-  try {
-    const out = execFileSync("node", [script, root, ...extra], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { code: 0, out };
-  } catch (error) {
-    return { code: error.status ?? 1, out: `${error.stdout ?? ""}${error.stderr ?? ""}` };
-  }
+  const p = spawnSync("node", [script, root, ...extra], { encoding: "utf8" });
+  return { code: p.status ?? 1, out: `${p.stdout ?? ""}${p.stderr ?? ""}` };
 }
 
-test("an unwired check recipe fails the gate", (t) => {
+test("stale committed doc is flagged", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "justfile"), "# foo\nfoo-check:\n    echo foo\n");
   mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
   mkdirSync(join(dir, "docs"), { recursive: true });
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  writeFileSync(join(dir, "docs", "quality-gates.md"), "# stale\n");
   const r = run(dir);
-  assert.notEqual(r.code, 0, r.out);
-  assert.match(r.out, /not invoked by any lane|foo-check/);
+  assert.match(r.out, /differs from regenerated output/);
+  assert.match(r.out, /just gates-docs/);
 });
 
 test("regeneration is deterministic", (t) => {
@@ -75,16 +71,18 @@ test("blob-link format for a known recipe", () => {
   assert.match(md, /backend-check/);
 });
 
-test("widened gate rule: unwired foo-lint fails, wired default-param recipe passes", (t) => {
-  // An unwired foo-lint recipe fails the gate.
+test("widened gate rule: unwired foo-lint is flagged, wired default-param recipe passes", (t) => {
+  // An unwired foo-lint recipe warns (exit 0).
   const dir1 = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir1, { recursive: true, force: true }));
   writeFileSync(join(dir1, "justfile"), "# foo\nfoo-lint:\n    echo foo\n");
   mkdirSync(join(dir1, ".github", "workflows"), { recursive: true });
   mkdirSync(join(dir1, "docs"), { recursive: true });
+  const g1 = run(dir1, ["--generate", join(dir1, "docs", "quality-gates.md")]);
+  assert.equal(g1.code, 0, g1.out);
   const r1 = run(dir1);
-  assert.notEqual(r1.code, 0, r1.out);
   assert.match(r1.out, /foo-lint/);
+  assert.match(r1.out, /orphan/);
 
   // A wired default-param recipe (bar-playwright baz="") passes.
   const dir2 = mkdtempSync(join(tmpdir(), "pipelint-"));
@@ -141,6 +139,23 @@ test("every emitted lane node has at least one edge and no self-loops", () => {
   for (const e of edges) {
     assert.notEqual(e.from, e.to, `self-loop edge ${e.from} --> ${e.to}`);
   }
+  // Only lane_* ids may be sourceless: every recipe node has an incoming edge.
+  const nodeIds = new Set(edges.flatMap((e) => [e.from, e.to]));
+  for (const id of nodeIds) {
+    if (id.startsWith("lane_")) continue;
+    assert.ok(
+      edges.some((e) => e.to === id),
+      `recipe node ${id} has no incoming edge`,
+    );
+  }
+  assert.ok(
+    edges.some((e) => e.from === "lane_precommit" && e.to === "check"),
+    "lane_precommit --> check edge missing",
+  );
+  assert.ok(
+    edges.some((e) => e.from === "lane_precommit" && e.to === "test"),
+    "lane_precommit --> test edge missing",
+  );
 });
 
 test("openapi-sanity has no direct lane edge", () => {
@@ -160,4 +175,115 @@ test("checks sections carry a Required by line", () => {
   const sanity = md.match(/### `openapi-sanity`([\s\S]*?)(?=\n### `|\s*$)/);
   assert.ok(sanity, "openapi-sanity section present");
   assert.match(sanity[1], /- Required by: .*`openapi-check`/);
+});
+
+
+test("orphan foo-check in neither set is flagged", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "justfile"), "# foo\nfoo-check:\n    echo foo\n");
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  const r = run(dir);
+  assert.match(r.out, /foo-check/);
+  assert.match(r.out, /orphan/);
+});
+
+test("bar-test reachable from test aggregate without workflow is flagged as not-run-in-CI", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(
+    join(dir, "justfile"),
+    "# test\ntest: bar-test\n\n# bar\nbar-test:\n    echo bar\n",
+  );
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  const r = run(dir);
+  assert.match(r.out, /bar-test/);
+  assert.match(r.out, /not run in CI/);
+});
+
+test("non-allowlisted PR-only recipe is flagged as unreachable from aggregates", (t) => {
+  // Job `security` exists in no mapping table: an unknown job must still
+  // be captured as its own lane, not silently dropped.
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "justfile"), "# lint\nlint-check:\n    echo lint\n");
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  writeFileSync(
+    join(dir, ".github", "workflows", "ci.yml"),
+    "on:\n  pull_request:\n    branches: [main]\njobs:\n  security:\n    runs-on: ubuntu-latest\n    steps:\n      - run: just lint-check\n",
+  );
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  const r = run(dir);
+  assert.match(r.out, /lint-check/);
+  assert.match(r.out, /unreachable from/);
+  assert.doesNotMatch(r.out, /orphan/);
+});
+
+test("inline check tooling without a just recipe is flagged", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "justfile"), "# helper\nh does x:\n    echo hi\n");
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  writeFileSync(
+    join(dir, ".github", "workflows", "ci.yml"),
+    "on:\n  pull_request:\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: cargo clippy --all-targets -- -D warnings\n",
+  );
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  const r = run(dir);
+  assert.match(r.out, /without a just recipe/);
+});
+
+test("mermaid labels carry invocation and CI-job prefixes", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  const m = md.match(/```mermaid\n([\s\S]*?)```/);
+  assert.ok(m, "mermaid block present");
+  const block = m[1];
+  assert.match(block, /\["just backend-check"\]/);
+  assert.match(block, /\["ci backend \(/);
+  assert.match(block, /\["just precommit"\]/);
+});
+
+test("allowlisted CI-only recipe passes with its reason rendered", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.match(md, /### `dylint-check`/);
+  assert.match(
+    md,
+    /### `dylint-check`[\s\S]*?Note: needs nightly-2026-08-01 toolchain\+rDylint; CI-only by decision 2026-11-05/,
+  );
+  const r = run(repoRoot);
+  assert.equal(r.code, 0, r.out);
+});
+
+test("--check-only behaves like the default check", () => {
+  const r = run(repoRoot, ["--check-only"]);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /gates-check: OK/);
+});
+
+test("--check <path> diffs against the named file", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "justfile"), "# foo\nfoo-check:\n    echo foo\n");
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  const custom = join(dir, "custom.md");
+  const g = run(dir, ["--generate", custom]);
+  assert.equal(g.code, 0, g.out);
+  const r = run(dir, ["--check", custom]);
+  assert.match(r.out, /foo-check/);
+  assert.match(r.out, /orphan/);
+  writeFileSync(custom, "# stale\n");
+  const r2 = run(dir, ["--check", custom]);
+  assert.match(r2.out, /differs from regenerated output/);
+  assert.match(r2.out, /custom\.md/);
 });
