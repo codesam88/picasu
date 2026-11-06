@@ -20,9 +20,12 @@ consumes.
 ## Checks
 
 ```sh
-just bench test    # or: just bench-test (root alias)
-just bench lint    # or: just bench-lint (root alias)
+just bench test
+just bench lint
 ```
+
+Recipes live in `utils/bench/justfile`; the root justfile only
+carries `mod bench`, so there are no `bench-*` root aliases.
 
 ## Canonical cell
 

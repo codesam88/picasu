@@ -1,6 +1,7 @@
 # Ruff lint/format configuration for the benchmark harness. The harness is
-# stdlib-only; ruff itself is pinned as `ruff_version` in the root justfile and
-# run through uvx (`just bench-lint`).
+# stdlib-only; ruff itself is pinned as `ruff_version` in
+# utils/bench/justfile and installed into the harness-local .venv/
+# (`just bench lint`).
 
 [project]
 name = "picasu-bench"
