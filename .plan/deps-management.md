@@ -237,10 +237,10 @@ Settled during implementation (2026-11-06): manifest format is
 `deps-install.sh` loop over per-tool shims; Node stays major `24`
 literal in workflows with a check-only range in the manifest; uv goes
 through the sha-pinned tarball via `just install uv`; mdbook is kept
-(manifest entry + `docs-build` wiring).
+(manifest entry + `docs-build` wiring); CI installs
+`just@${{ env.JUST_VERSION }}` with the version read from the manifest
+into `$GITHUB_ENV` (action stays SHA-pinned, upstream sha-verified
+install, same cached path).
 
-Still open:
-
-- just provisioning in CI: bare `tool: just` floats; can the pinned
-  `taiki-e/install-action` take a manifest-derived version, or record
-  as accepted exception?
+No open decisions remain; leftover work is tracked as backlog (shared
+fetch helper, non-x86_64 installer verification).
