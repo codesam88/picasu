@@ -1,47 +1,27 @@
 <template>
-  <v-dialog
+  <ConfirmDialog
     v-if="submit !== undefined"
     v-model="modalStore.showDeleteShareModal"
-    id="delete-share-modal"
-    persistent
-    variant="flat"
-    rounded
-    max-width="400"
+    title="Delete&nbsp;Link"
+    :width="400"
+    confirm-label="OK"
+    cancel-label="Cancel"
+    destructive
+    hide-close
+    @confirm="submit"
+    @cancel="modalStore.showDeleteShareModal = false"
   >
-    <v-confirm-edit
-      v-model="dummy"
-      :disabled="false"
-      @save="submit"
-      @cancel="modalStore.showDeleteShareModal = false"
-    >
-      <template #default="{ actions }">
-        <v-card variant="elevated" rounded="xl" retain-focus>
-          <template #title>Delete&nbsp;Link</template>
-
-          <template #text>
-            <div class="pa-4">
-              <p class="mb-2">Are you sure you want to delete this share link?</p>
-              <p class="text-medium-emphasis text-truncate">
-                {{ shareUrl }}
-              </p>
-            </div>
-          </template>
-
-          <v-divider />
-
-          <template #actions>
-            <v-spacer />
-            <component :is="actions" />
-          </template>
-        </v-card>
-      </template>
-    </v-confirm-edit>
-  </v-dialog>
+    <p class="mb-2">Are you sure you want to delete this share link?</p>
+    <p class="text-medium-emphasis text-truncate">
+      {{ shareUrl }}
+    </p>
+  </ConfirmDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import ConfirmDialog from '@/components/Modal/ConfirmDialog.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useMessageStore } from '@/store/messageStore'
@@ -54,7 +34,6 @@ const modalStore = useModalStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const messageStore = useMessageStore('mainId')
 
-const dummy = ref(true) // Required by v-confirm-edit
 const shareUrl = props.deleteShareData.share.keyFingerprint
 
 const submit = ref<(() => void) | undefined>()

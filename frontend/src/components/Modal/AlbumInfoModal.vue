@@ -1,32 +1,29 @@
 <template>
-  <v-dialog
+  <BaseModal
     v-if="album !== undefined"
     v-model="modalStore.showAlbumInfoModal"
-    persistent
+    title="Album Info"
+    width="480"
     id="album-info-modal"
-    max-width="480"
+    hide-close
   >
-    <v-card variant="elevated">
-      <template #title>Album Info</template>
-      <template #text>
-        <v-form @submit.prevent="save">
-          <v-text-field
-            v-model="titleModel"
-            label="Title"
-            variant="outlined"
-            :placeholder="'Untitled'"
-            density="comfortable"
-          />
-        </v-form>
-      </template>
-      <v-divider />
-      <template #actions>
-        <v-spacer />
-        <v-btn @click="modalStore.showAlbumInfoModal = false">Cancel</v-btn>
-        <v-btn color="primary" :loading="saving" @click="save">Save</v-btn>
-      </template>
-    </v-card>
-  </v-dialog>
+    <v-form @submit.prevent="save">
+      <v-text-field
+        v-model="titleModel"
+        label="Title"
+        variant="outlined"
+        :placeholder="'Untitled'"
+        density="comfortable"
+      />
+    </v-form>
+    <v-divider />
+
+    <template #actions>
+      <v-spacer />
+      <v-btn @click="modalStore.showAlbumInfoModal = false">Cancel</v-btn>
+      <v-btn color="primary" :loading="saving" @click="save">Save</v-btn>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -38,6 +35,7 @@
  * panel and EditTagsModal, not duplicated here.
  */
 import { ref, computed, watch } from 'vue'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'

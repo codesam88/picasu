@@ -1,10 +1,12 @@
 <template>
-  <v-dialog
+  <BaseModal
     v-if="submit !== undefined"
     v-model="modalStore.showBatchEditTagsModal"
-    persistent
+    title="Edit Tags"
+    width="400"
     id="batch-edit-tag-overlay"
-    max-width="400"
+    content-class="pa-0"
+    hide-close
   >
     <v-confirm-edit
       v-model="changedTags"
@@ -14,8 +16,6 @@
     >
       <template #default="{ model: proxyModel, actions }">
         <v-card variant="elevated" retain-focus>
-          <template #title>Edit&nbsp;Tags</template>
-
           <template #text>
             <v-form
               ref="formRef"
@@ -94,7 +94,7 @@
         </v-card>
       </template>
     </v-confirm-edit>
-  </v-dialog>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -108,6 +108,7 @@
  */
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useTagStore } from '@/store/tagStore'

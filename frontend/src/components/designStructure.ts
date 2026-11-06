@@ -13,12 +13,5 @@ export function usesRawDialog(template: string): boolean {
   return template.includes('<v-dialog')
 }
 
-/** Basenames (not paths) grandfathered until migrated to BaseModal. */
-export const KNOWN_MODAL_DEBT: string[] = [
-  'AlbumInfoModal.vue',
-  'AssignAlbumModal.vue',
-  'EditBatchTagsModal.vue',
-  'EditTagsModal.vue',
-  'ShareDeleteConfirmModal.vue',
-  'ShareLoginModal.vue'
-]
+/** Basenames (not paths) grandfathered until migrated to BaseModal. Empty: all debt migrated. */
+export const KNOWN_MODAL_DEBT: string[] = []

@@ -1,155 +1,155 @@
 <template>
-  <v-dialog v-model="modalStore.showAssignAlbumModal" persistent max-width="480" scrollable>
-    <v-card>
+  <BaseModal v-model="modalStore.showAssignAlbumModal" width="480" content-class="pa-0">
+    <template #header>
       <v-card-title class="d-flex align-center gap-2 pt-4 pb-2 px-4">
         <v-icon>mdi-folder-move</v-icon>
         Move to Album
       </v-card-title>
+    </template>
 
-      <v-divider />
-
-      <v-card-text class="pa-0" style="max-height: 60vh; overflow-y: auto">
-        <!-- Search -->
-        <div class="px-4 pt-3 pb-1">
-          <v-text-field
-            v-model="search"
-            density="compact"
-            variant="outlined"
-            prepend-inner-icon="mdi-magnify"
-            label="Search albums"
-            clearable
-            hide-details
-            autofocus
-          />
-        </div>
-
-        <!-- Album tree -->
-        <v-list density="compact" class="pa-0">
-          <template v-for="node in flatTree" :key="node.id">
-            <v-list-item
-              v-if="node.visible"
-              :style="{ paddingLeft: `${node.depth * 20 + 12}px` }"
-              :class="{ 'bg-primary-lighten-4': node.id === selectedAlbumId }"
-              :value="node.id"
-              @click="selectedAlbumId = node.id"
-            >
-              <template #prepend>
-                <v-icon size="small" class="mr-2">
-                  {{ node.id === selectedAlbumId ? 'mdi-folder-open' : 'mdi-folder' }}
-                </v-icon>
-              </template>
-              <v-list-item-title>
-                {{ node.title }}
-                <v-chip
-                  v-if="node.id === currentAlbumId"
-                  size="x-small"
-                  color="secondary"
-                  class="ml-2"
-                  >current</v-chip
-                >
-              </v-list-item-title>
-              <v-list-item-subtitle v-if="node.dirPath" class="text-caption text-truncate">
-                {{ node.dirPath }}
-              </v-list-item-subtitle>
-              <template #append v-if="node.id === selectedAlbumId">
-                <v-icon color="primary" size="small">mdi-check</v-icon>
-              </template>
-            </v-list-item>
-          </template>
-
-          <v-list-item v-if="visibleCount === 0" class="text-medium-emphasis text-caption">
-            No albums match your search.
-          </v-list-item>
-        </v-list>
-
-        <v-divider class="mt-2" />
-
-        <!-- Create new album -->
-        <div class="px-4 py-3">
-          <div class="text-body-2 text-medium-emphasis mb-2">
-            Create new album under:
-            <strong>{{
-              selectedAlbumId
-                ? (albumStore.albums.get(selectedAlbumId)?.displayName ?? '—')
-                : '— (select a parent above)'
-            }}</strong>
-          </div>
-          <div class="d-flex gap-2 align-center">
-            <v-text-field
-              v-model="newAlbumName"
-              density="compact"
-              variant="outlined"
-              label="New album name"
-              hide-details
-              :disabled="!selectedAlbumId"
-              @keyup.enter="handleCreate"
-            />
-            <v-tooltip location="top" text="New">
-              <template #activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  icon="mdi-folder-plus"
-                  size="small"
-                  :disabled="!selectedAlbumId || !newAlbumName.trim()"
-                  :loading="creating"
-                  @click="handleCreate"
-                />
-              </template>
-            </v-tooltip>
-          </div>
-        </div>
-      </v-card-text>
-
-      <v-divider />
-
-      <!-- Conflict resolution mode -->
-      <div class="px-4 py-2">
-        <div class="text-body-2 text-medium-emphasis mb-1">
-          When a file with the same name already exists:
-        </div>
-        <v-radio-group v-model="onConflict" density="compact" hide-details>
-          <v-radio value="rename">
-            <template #label>
-              <div>
-                <div>Rename</div>
-                <div class="text-caption text-medium-emphasis">
-                  Always move the file, renaming if the name already exists.
-                </div>
-              </div>
-            </template>
-          </v-radio>
-          <v-radio value="skip">
-            <template #label>
-              <div>
-                <div>Skip</div>
-                <div class="text-caption text-medium-emphasis">
-                  Leave files with matching names untouched.
-                </div>
-              </div>
-            </template>
-          </v-radio>
-        </v-radio-group>
+    <!-- Scroll region: keeps the conflict options and actions below visible while the list scrolls -->
+    <div style="max-height: 60vh; overflow-y: auto">
+      <!-- Search -->
+      <div class="px-4 pt-3 pb-1">
+        <v-text-field
+          v-model="search"
+          density="compact"
+          variant="outlined"
+          prepend-inner-icon="mdi-magnify"
+          label="Search albums"
+          clearable
+          hide-details
+          autofocus
+        />
       </div>
 
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="cancel">Cancel</v-btn>
-        <v-btn
-          variant="tonal"
-          color="primary"
-          :disabled="!selectedAlbumId || selectedAlbumId === currentAlbumId"
-          :loading="submitting"
-          @click="handleSubmit"
-          >Move</v-btn
-        >
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      <!-- Album tree -->
+      <v-list density="compact" class="pa-0">
+        <template v-for="node in flatTree" :key="node.id">
+          <v-list-item
+            v-if="node.visible"
+            :style="{ paddingLeft: `${node.depth * 20 + 12}px` }"
+            :class="{ 'bg-primary-lighten-4': node.id === selectedAlbumId }"
+            :value="node.id"
+            @click="selectedAlbumId = node.id"
+          >
+            <template #prepend>
+              <v-icon size="small" class="mr-2">
+                {{ node.id === selectedAlbumId ? 'mdi-folder-open' : 'mdi-folder' }}
+              </v-icon>
+            </template>
+            <v-list-item-title>
+              {{ node.title }}
+              <v-chip
+                v-if="node.id === currentAlbumId"
+                size="x-small"
+                color="secondary"
+                class="ml-2"
+                >current</v-chip
+              >
+            </v-list-item-title>
+            <v-list-item-subtitle v-if="node.dirPath" class="text-caption text-truncate">
+              {{ node.dirPath }}
+            </v-list-item-subtitle>
+            <template #append v-if="node.id === selectedAlbumId">
+              <v-icon color="primary" size="small">mdi-check</v-icon>
+            </template>
+          </v-list-item>
+        </template>
+
+        <v-list-item v-if="visibleCount === 0" class="text-medium-emphasis text-caption">
+          No albums match your search.
+        </v-list-item>
+      </v-list>
+
+      <v-divider class="mt-2" />
+
+      <!-- Create new album -->
+      <div class="px-4 py-3">
+        <div class="text-body-2 text-medium-emphasis mb-2">
+          Create new album under:
+          <strong>{{
+            selectedAlbumId
+              ? (albumStore.albums.get(selectedAlbumId)?.displayName ?? '—')
+              : '— (select a parent above)'
+          }}</strong>
+        </div>
+        <div class="d-flex gap-2 align-center">
+          <v-text-field
+            v-model="newAlbumName"
+            density="compact"
+            variant="outlined"
+            label="New album name"
+            hide-details
+            :disabled="!selectedAlbumId"
+            @keyup.enter="handleCreate"
+          />
+          <v-tooltip location="top" text="New">
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                icon="mdi-folder-plus"
+                size="small"
+                :disabled="!selectedAlbumId || !newAlbumName.trim()"
+                :loading="creating"
+                @click="handleCreate"
+              />
+            </template>
+          </v-tooltip>
+        </div>
+      </div>
+    </div>
+
+    <v-divider />
+
+    <!-- Conflict resolution mode -->
+    <div class="px-4 py-2">
+      <div class="text-body-2 text-medium-emphasis mb-1">
+        When a file with the same name already exists:
+      </div>
+      <v-radio-group v-model="onConflict" density="compact" hide-details>
+        <v-radio value="rename">
+          <template #label>
+            <div>
+              <div>Rename</div>
+              <div class="text-caption text-medium-emphasis">
+                Always move the file, renaming if the name already exists.
+              </div>
+            </div>
+          </template>
+        </v-radio>
+        <v-radio value="skip">
+          <template #label>
+            <div>
+              <div>Skip</div>
+              <div class="text-caption text-medium-emphasis">
+                Leave files with matching names untouched.
+              </div>
+            </div>
+          </template>
+        </v-radio>
+      </v-radio-group>
+    </div>
+
+    <template #actions>
+      <v-spacer />
+      <v-btn variant="text" @click="cancel">Cancel</v-btn>
+      <v-btn
+        variant="tonal"
+        color="primary"
+        :disabled="!selectedAlbumId || selectedAlbumId === currentAlbumId"
+        :loading="submitting"
+        @click="handleSubmit"
+        >Move</v-btn
+      >
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useSessionStore } from '@/store/sessionStore'
