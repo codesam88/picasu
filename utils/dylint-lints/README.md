@@ -94,8 +94,12 @@ _not_ workspace members so stable `cargo check --workspace` never touches
 rustup component add --toolchain nightly-2026-08-01 rustc-dev llvm-tools
 ```
 
-Built against `dylint_linting 6.1.0`, driven by `cargo-dylint 6.1.0` (same
-version, installed via `just install dylint`). Re-pin quarterly,
-driven by `dylint_linting` releases: bump the pin here and the
-`dylint_version` justfile var together, since the check toolchain
-must match the toolchain the lint libraries build with.
+Built against `dylint_linting 6.3.1`, driven by `cargo-dylint 6.3.1` (same
+version, installed via `just install dylint`). `DYLINT_VERSION` in
+`scripts/deps/versions.env` is the source of truth, consumed by
+`scripts/deps/dylint.sh` to install/check `cargo-dylint`; the
+`dylint_linting`/`dylint_testing` pins in each crate's `Cargo.toml`
+must match it. Re-pin quarterly, driven by `dylint_linting`
+releases: bump `DYLINT_VERSION` and the crate pins together, since
+the check toolchain must match the toolchain the lint libraries build
+with.

@@ -339,7 +339,7 @@ gates-docs:
 
 # Build mdBook site at target/docs/
 [group('docs')]
-docs-build: docs-openapi
+docs-build: docs-openapi (install "mdbook")
     #!/usr/bin/env bash
     set -e
     mkdir -p target/mdbook/src
