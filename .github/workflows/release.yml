@@ -54,10 +54,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
-        with:
-          targets: x86_64-unknown-linux-gnu
+      # rust-toolchain.toml is the toolchain source of truth (same as CI):
+      # with the repo checked out, rustup selects the pinned channel
+      # automatically. No toolchain input here, so nothing can float.
+      - name: Install Rust target
+        run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Install Frontend Dependencies
         working-directory: ./frontend
@@ -88,16 +89,6 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           just install nextest
           cargo nextest --version
-
-      # Same media-tools cache as CI: the unpacked dirs keyed on justfile;
-      # the install scripts relink the bin entries.
-      - name: Cache pinned media tools
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.local/opt/ffmpeg-*
-            ~/.local/opt/Image-ExifTool-*
-          key: media-tools-${{ runner.os }}-${{ hashFiles('justfile') }}
 
       # The video pipeline spawns ffprobe and ffmpeg. The pinned static build
       # is the one the package ships, so the release-mode tests run against
