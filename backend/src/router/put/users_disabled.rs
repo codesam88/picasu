@@ -215,7 +215,11 @@ mod tests {
             "disabled login rejected"
         );
         assert_eq!(
-            crate::tests::bootstrap::login_status(&client, "s5-u1", "definitely wrong"),
+            crate::tests::bootstrap::login_status(
+                &client,
+                "s5-u1",
+                &test_password("disabled-wrong")
+            ),
             Status::Unauthorized,
             "wrong password rejected the same way"
         );
