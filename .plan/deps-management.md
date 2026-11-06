@@ -7,35 +7,45 @@ area: tooling
 
 ## Notes
 
-External binary/tool versions are scattered across four layers with no
-single source of truth: `justfile` vars, `scripts/install-*.sh` args,
-per-workflow `env` (e.g. `UV_VERSION`), and floating installer refs
-(`just`, `node`, `rust-stable`). Install verification is uneven: some
-tools pin version+sha256, others pipe `curl|sh` unverified.
+Steps 1–8 are implemented (2026-11-06, branch `chore/deps-cleanup`).
+Remaining: renovate rule, `just` version plumbing in CI, shared fetch
+helper (backlog). Per-step status is recorded under Steps.
 
-Survey evidence (2026-11-04, `main`):
+Landed shape (differs from the step-1 sketch): the manifest is
+`scripts/deps/versions.env`, not `tools-pin.env` at root; the installer
+is a run-parts dispatcher `scripts/deps-install.sh` over 14
+`scripts/deps/*.sh` shims, not a single installer. `just` recipes
+delegate to it; no version vars remain in the justfile. Deviations: no
+shared verify helper (each shim duplicates fetch+sha logic — backlog);
+no renovate config in the repo, so the "bot-bumpable" claim in
+`versions.env` is unfulfilled (open).
 
-- `just`: `taiki-e/install-action` without version floats (`ci.yml:46`);
-  same unpinned ref duplicated across ci/release/msrv/fuzz/zizmor/docs/audit.
-- Node: major-only `"24"` duplicated in ci/release/fuzz/audit/docs-check.
-- Rust: `release.yml` uses `dtolnay/rust-toolchain@... # stable` while
-  `rust-toolchain.toml` pins `1.99.1` — release does not build on the
-  repo toolchain.
-- uv: `UV_VERSION: "0.12.18"` in 3 workflows (ci, fuzz-advisory, zizmor x2
-  jobs) with `curl -LsSf https://astral.sh/uv/install.sh | sh`, no sha.
-- Pinned+sha in justfile+scripts: nextest `0.9.138`, cargo-deny `0.20.2`,
-  ffmpeg `7.0.2`, exiftool `13.59`, oasdiff `1.33.0` — the good pattern.
-- dylint `6.3.1`: duplicated in justfile `dylint_version` plus 4 lint
-  crates (`utils/dylint-lints/*/Cargo.toml` x `dylint_linting`/`dylint_testing`).
-- mdbook: invoked unpinned in `docs-build`, no version anywhere.
-- oasdiff: `install-oasdiff.sh` fetches `linux_amd64` only; macOS/dev and
-  aarch64 CI cannot install it.
-- schemathesis `4.30.1` / zizmor `1.31.1` via `uvx <tool>@<version>`:
-  version-pinned, integrity via uv registry, no sha sidecar (accepted).
-- Playwright: implicit via `package-lock.json`; browser install
-  (`npx playwright install chromium`) uncached in release.yml.
-- Media-tools cache (`actions/cache`, keyed on justfile) exists in
-  ci.yml/release.yml but keys do not cover all pinned inputs.
+Re-verified 2026-11-06 (original survey 2026-11-04):
+
+- `taiki-e/install-action` is SHA-pinned at 10 sites, but every site
+  uses bare `tool: just` — `just` itself still floats in CI (open).
+- Node `node-version: "24"` literals remain at 6 sites; accepted
+  exception (`setup-node` needs a literal, manifest range check-only).
+- Release no longer floats stable: plain `rustup target add`, so
+  `rust-toolchain.toml` (1.99.1) governs, same as CI.
+- No `curl * install.sh | sh` remains; 4 uv blocks use
+  `just install uv`. No inline `UV_VERSION` in workflows.
+- dylint justfile var gone; manifest `DYLINT_VERSION` + `dylint.sh`
+  (`cargo install --locked`); 4 crates pin 6.3.1 via crates.io
+  (cannot be single-sited — accepted, no drift check).
+- mdbook manifest entry wired into `docs-build`.
+- oasdiff per-platform assets+shas; only x86_64 Linux exercised in CI
+  (known limitation).
+- schemathesis/zizmor stay uvx-pinned, registry-verified, no sha
+  sidecar (accepted). Incidental fix: `zizmor.yml` SARIF job read a
+  nonexistent just variable; now greps the manifest.
+- Media-tools caches rekeyed to `scripts/deps/versions.env`; release
+  cache step removed (`cache-mode: none`, poisoning risk).
+  Playwright-in-release stays uncached (opt-out under the same mode).
+- New arrivals carry no pins: `gates-check`
+  (`scripts/quality-gates.mjs`, node stdlib only) and `utils/bench`
+  (`ruff 0.17.3` in its own justfile, venv-installed, dev-only, not
+  CI-gated — accepted exception alongside the uvx pins).
 
 ## Goal
 
@@ -106,7 +116,8 @@ distributing versions across per-tool `install-*.sh` scripts
 
 ## Steps
 
-1. Add the manifest + single installer.
+1. Add the manifest + single installer. Status: done (actual shape in
+   Notes; renovate rule still open).
    Scope: new `tools-pin.env` (`TOOL_VERSION` + `TOOL_SHA256` + asset
    template per tool — nextest, cargo-deny, ffmpeg, exiftool, oasdiff,
    dylint, mdbook, uv, just), new `scripts/deps-install.sh`
@@ -116,7 +127,7 @@ distributing versions across per-tool `install-*.sh` scripts
    rust + node excluded from install: `tools-pin.env` holds
    `RUST_SUPPORTED` / `NODE_SUPPORTED` ranges, script only
    `rustc --version` / `node --version` check and report, never install.
-   Done: `tools-pin.env` is the only version definition site
+   Done: `scripts/deps/versions.env` is the only version definition site
    (`grep -rn <version>` shows one hit); installer refuses on sha
    mismatch; `deps-install.sh --check` clean; `just plan-lint` clean.
    Note: uvx-pinned schemathesis/zizmor stay registry-verified
@@ -124,7 +135,9 @@ distributing versions across per-tool `install-*.sh` scripts
    `package-lock.json`. Project deps excluded: `Cargo.lock` /
    `package-lock.json` handled by `cargo`/`npm`.
 
-2. Thin `just` wrapper layer (option (d) as complement).
+2. Thin `just` wrapper layer (option (d) as complement). Status: done
+   (delegation landed; `UV_VERSION` gone from workflows; Node literals
+   stay as accepted exception).
    Scope: `justfile` (install recipes delegate to
    `deps-install.sh`; no hand-maintained version vars, or vars
    echoed from the manifest for cache keys), `.github/workflows/*`
@@ -134,14 +147,17 @@ distributing versions across per-tool `install-*.sh` scripts
    Done: `grep -rn UV_VERSION .github/` shows no inline definition;
    `just --list` exposes the install recipes; CI run green.
 
-3. Verify the uv installer.
+3. Verify the uv installer. Status: done (4 blocks use
+   `just install uv`; no `install.sh | sh` remains).
    Scope: `deps-install.sh` uv entry (sha-pinned tarball) or pinned
    `astral-sh/setup-uv` action driven by the manifest value.
    Done: no `curl * install.sh | sh` remains (`grep -rn
 "install.sh | sh"` empty); install path is sha/pin-verified;
    CI run green.
 
-4. Check toolchains, do not install.
+4. Check toolchains, do not install. Status: done (release uses
+   `rust-toolchain.toml` via plain rustup; no `stable` float; `--check`
+   scripts report ranges, no CI gate — accepted).
    Scope: `tools-pin.env` (`RUST_SUPPORTED`, `NODE_SUPPORTED` ranges),
    `scripts/deps-install.sh` check functions, `docs/` supported-versions
    note, `.github/workflows/release.yml` + `ci.yml` (keep
@@ -151,7 +167,8 @@ distributing versions across per-tool `install-*.sh` scripts
    Done: `deps-install.sh --check` reports rust/node mismatch with
    supported range; no `stable` float in release toolchain step.
 
-5. Pin mdbook or remove it.
+5. Pin mdbook or remove it. Status: done (kept; manifest entry wired
+   into `docs-build`).
    Scope: `tools-pin.env` (new `mdbook` entry if kept), `justfile`
    (`docs-build`), `docs/book.toml` if kept.
    Done: either manifest `mdbook` entry + sha install wired into
@@ -159,7 +176,8 @@ distributing versions across per-tool `install-*.sh` scripts
    `grep -rn mdbook` shows no unpinned invocation;
    `just docs-build` passes.
 
-6. Fix oasdiff portability or document linux-only.
+6. Fix oasdiff portability or document linux-only. Status: done
+   (per-platform assets; non-x86_64 paths untested — known limitation).
    Scope: `tools-pin.env` (per-platform assets+shas),
    `deps-install.sh`, `scripts/openapi-breakcheck.sh`, `justfile`
    (`openapi-breakcheck`), CI job definition.
@@ -167,18 +185,22 @@ distributing versions across per-tool `install-*.sh` scripts
    an explicit documented linux-only gate with a skip message
    elsewhere; `just openapi-breakcheck` passes on CI platforms.
 
-7. Dedup dylint into the manifest.
+7. Dedup dylint into the manifest. Status: done (crates aligned at
+   6.3.1, lint README fixed; no drift check — accepted).
    Scope: `tools-pin.env` (`dylint` entry),
    `utils/dylint-lints/*/Cargo.toml` (4 crates), installer.
-   Done: version defined once in the manifest
-   (`grep -rn "6\.3\.1"` shows manifest + generated lock/derived
-   uses only); `just install dylint` and `just dylint-check` pass.
+   Done: crate pins track `DYLINT_VERSION` (single-siting impossible
+   for crates.io deps — dependabot-cargo-owned);
+   `just install dylint` and `just dylint-check` pass.
 
-8. Tighten playwright/media cache keys.
+8. Tighten playwright/media cache keys. Status: done (keys hash the
+   manifest; release cache removed; Playwright-in-release uncached by
+   design).
    Scope: `.github/workflows/{ci,release}.yml` (cache steps), frontend
    browser install step.
-   Done: cache keys cover manifest hash + lockfile + browser version;
-   `npx playwright install chromium` cache-hit on re-run; CI run green.
+   Done: media-tools keys hash `scripts/deps/versions.env`; release
+   has no media cache (`cache-mode: none`) and no Playwright cache
+   (opt-out under the same mode); CI run green.
 
 ## Out of scope
 
@@ -187,6 +209,11 @@ distributing versions across per-tool `install-*.sh` scripts
 - `cargo deny`/`npm audit` policy changes; only their installer pins move.
 - Backend test parallelism: per AGENTS.md, never run backend test
   commands concurrently with other work touching the same tree.
+- Bench harness pins (`ruff_version` in `utils/bench/justfile`,
+  venv-installed, dev-only) and benchmark input manifests.
+- npm-layer pins (`package.json`/`package-lock.json`, one-shot
+  `widdershins`, spectral CLI) and the `tablethat` git-rev pin.
+- `quality-gates.mjs` (node stdlib only, pattern-based, no pins).
 
 ## Verification
 
@@ -205,19 +232,18 @@ rejected as worse (N definition sites). New direction is manifest +
 single installer per Strategy above (recommendation (b), fallback
 (a) mise).
 
-Open decisions for the user:
+Settled during implementation (2026-11-06): manifest format is
+`scripts/deps/versions.env` shell schema; dispatcher is a
+`deps-install.sh` loop over per-tool shims; Node stays major `24`
+literal in workflows with a check-only range in the manifest; uv goes
+through the sha-pinned tarball via `just install uv`; mdbook is kept
+(manifest entry + `docs-build` wiring).
 
-- Manifest format: `tools-pin.env` custom schema + renovate custom-regex
-  vs `mise.toml` upstream (accepts weaker sha coverage for native
-  tarballs)?
-- Single `deps-install.sh` loop vs per-tool shim calling a shared
-  verify helper?
-- Node: exact version in manifest (e.g. `24.x.y` + sha via setup-node)
-  vs major `24` (less churn, less reproducibility)?
-- uv verification method: sha-pinned tarball in manifest,
-  `astral-sh/setup-uv` action pinned to the manifest value, or
-  cosign-checked tarball?
-- mdbook: keep (add manifest entry) or drop (`docs-build` removed,
-  book served another way)?
-- just provisioning in CI: pinned `taiki-e/install-action` driven by
-  the manifest vs `cargo-binstall`-installed just?
+Still open:
+
+- Renovate: add a custom-regex rule for `scripts/deps/versions.env`,
+  or drop the bot-bumpable claim and rely on dependabot (cargo/npm
+  only, no system tools)?
+- just provisioning in CI: bare `tool: just` floats; can the pinned
+  `taiki-e/install-action` take a manifest-derived version, or record
+  as accepted exception?
