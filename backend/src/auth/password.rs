@@ -122,7 +122,9 @@ static DUMMY_HASH: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| hash_password("dummy"));
 
 /// PHC string used by the unknown-user dummy verify. Generated lazily at
-/// production or weak cost depending on the environment.
+/// production or weak cost depending on the environment. The fixed input
+/// `"dummy"` is not a credential and the resulting hash is not a secret;
+/// it exists solely to keep timing and user-enumeration behavior consistent.
 pub(crate) fn dummy_hash() -> &'static str {
     DUMMY_HASH.as_str()
 }

@@ -331,7 +331,7 @@ fn share_password_is_hashed_at_rest() {
     let stored = stored_share_password(&album_id, &share_id).expect("stored password");
     assert!(
         stored.starts_with("$argon2id$"),
-        "stored share password must be argon2id, got: {stored}"
+        "stored share password must be argon2id"
     );
     assert!(
         !stored.contains("s3cret-share-pw"),
@@ -406,16 +406,17 @@ fn a_legacy_plaintext_share_row_still_grants_access() {
     let share_id = body["link"].as_str().expect("link").trim().to_string();
 
     // Simulate a pre-hashing plaintext row (no migration).
-    set_legacy_share_password(&album_id, &share_id, "legacy-pw");
+    let legacy_pw = test_password("legacy-pw");
+    set_legacy_share_password(&album_id, &share_id, &legacy_pw);
 
     assert_eq!(
-        share_prefetch(&client, &album_id, &share_id, Some("legacy-pw")),
+        share_prefetch(&client, &album_id, &share_id, Some(&legacy_pw)),
         Status::Ok,
         "legacy plaintext password"
     );
 
     let stored = stored_share_password(&album_id, &share_id).expect("stored password");
-    assert_eq!(stored, "legacy-pw", "legacy row must not be rewritten");
+    assert_eq!(stored, legacy_pw, "legacy row must not be rewritten");
 }
 
 /// `get_export` emits the censored view: no bearer, no password, no
