@@ -45,11 +45,11 @@ jobs:
           tool: just
 
       - name: Install uv
-        env:
-          UV_VERSION: "0.12.18"
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install uv
+          uv --version
 
       - name: Offline check
         run: just zizmor-check
@@ -77,20 +77,21 @@ jobs:
           tool: just
 
       - name: Install uv
-        env:
-          UV_VERSION: "0.12.18"
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install uv
+          uv --version
 
       # The installer prints status to stdout, so it runs silenced and the
-      # pin is read via --evaluate: results.sarif must contain only SARIF.
+      # pin is read from scripts/deps/versions.env: results.sarif must
+      # contain only SARIF.
       - name: Online check (SARIF)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           just install zizmor > /dev/null
-          uvx zizmor@"$(just --evaluate zizmor_version)" --format=sarif -q --no-progress . > results.sarif
+          uvx zizmor@"$(grep '^ZIZMOR_VERSION=' scripts/deps/versions.env | cut -d'"' -f2)" --format=sarif -q --no-progress . > results.sarif
 
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1

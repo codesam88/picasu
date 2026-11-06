@@ -91,7 +91,7 @@ jobs:
           path: |
             ~/.local/opt/ffmpeg-*
             ~/.local/opt/Image-ExifTool-*
-          key: media-tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          key: media-tools-${{ runner.os }}-${{ hashFiles('scripts/deps/versions.env') }}
 
       # snapfab writes fixture metadata through ExifTool, an external binary
       # the backend itself never spawns (the backend reads metadata in-process).
@@ -118,11 +118,11 @@ jobs:
           ffmpeg -version
 
       - name: Install uv
-        env:
-          UV_VERSION: "0.12.18"
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install uv
+          uv --version
 
       - name: Build the frontend assets
         run: just frontend-build
@@ -208,7 +208,7 @@ jobs:
           path: |
             ~/.local/opt/ffmpeg-*
             ~/.local/opt/Image-ExifTool-*
-          key: media-tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+          key: media-tools-${{ runner.os }}-${{ hashFiles('scripts/deps/versions.env') }}
 
       # The video pipeline spawns ffprobe and ffmpeg. The pinned static build
       # is the one the release package ships.
