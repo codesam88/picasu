@@ -1,10 +1,13 @@
 //! Bounded, always-on timing record for the tree/snapshot pipeline.
 //!
 //! This is long-lived monitoring, not a debug trace: normal operations record
-//! a sample and emit nothing. Only a stage that exceeds its documented
-//! threshold emits a single rate-limited `warn!` line (at most one per stage
-//! per [`REPORT_INTERVAL_MS`]), and the scan-completion hook emits one compact
-//! per-stage table per scan.
+//! a sample and emit nothing. In release builds a stage that exceeds its
+//! documented threshold emits a single rate-limited `warn!` line (at most one
+//! per stage per [`REPORT_INTERVAL_MS`]); in debug builds the same message is
+//! emitted at `debug!` level instead, because unoptimized debug timings would
+//! make such a `warn!` a false positive. Recording, rings, counters and
+//! `Report` values are identical in every profile. The scan-completion hook
+//! emits one compact per-stage table per scan.
 //!
 //! Compiled only with the `observe` feature (on by default). `observe_stub.rs`
 //! provides a signature-compatible no-op surface when the feature is off.
@@ -21,11 +24,13 @@
 //! boundaries.
 //!
 //! A second, rate-limited guard watches the ring itself: when a push evicts
-//! the oldest sample (a wrap), one `warn!` line dumps the current per-stage
-//! table. This is the safety net for event *rates* the duration thresholds
-//! miss — by the time the ring churns, something is already wrong, so the
-//! dump's own cost lands on top of an observed failure, never on the
-//! healthy path.
+//! the oldest sample (a wrap), one `info!` line reports high event volume
+//! for that stage as a single line (no table). This is the safety net for
+//! event *rates* the duration thresholds miss. A wrap line prints only for a
+//! stage that breached its threshold since the last reset; healthy churn is
+//! silent (see `recorded` vs `n` in the drain table). The full per-stage
+//! table lives in the per-scan `drain_report` (already `info!`); the dump's
+//! own cost lands on top of an observed failure, never on the healthy path.
 //!
 //! # Thresholds
 //!
@@ -47,7 +52,18 @@
 //! | `prefetch_total` | `1_000_000` | the whole prefetch body; storm prefetch med ~3 ms and p95 ~15 ms, with 100 ms–3 s outliers, so 1 s marks the multi-second tail |
 //! | `blocking_queue_wait` | `50_000` | Tokio blocking-pool queueing before prefetch work starts; dispatch normally takes microseconds |
 //! | `interactive_exec` | `500_000` | interactive-lane job bodies; they must stay short, so half a second flags a hog |
-//! | `blocking_queue_wait` | `50_000` | Tokio blocking-pool queueing before prefetch work starts; dispatch is normally microseconds, so 50 ms means the blocking pool itself is backlogged |
+//!
+//! # Debug builds
+//!
+//! Debug timings are unoptimized, so a `warn!`/`info!` on every breach or
+//! wrap would be a false positive; in `debug_assertions` builds the breach
+//! and wrap messages are therefore emitted at `debug!` level while
+//! recording, rings, counters and `Report` values stay identical. In
+//! release builds a breach is `warn!` (slow op) and a wrap is `info!`
+//! (high volume, single line); the full per-stage table lives in the
+//! per-scan `drain_report`. The message is the same in both profiles,
+//! e.g. `Background indexing work stalled; photo processing is delayed.
+//! cpu_exec took 26.0s, normal bound 1.0s. stage=cpu_exec ...`.
 //!
 //! # Synchronization
 //!
@@ -61,7 +77,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, fence};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use log::{info, warn};
+use log::info;
 
 /// Samples retained per stage. 256 is enough for stable p50/p95 inside one
 /// scan while keeping the whole record under ~100 KiB.
@@ -417,8 +433,12 @@ impl Recorder {
             return Some(Report::Breach);
         }
         // Pending wraps survive rate limiting: a churning stage keeps one
-        // wrap report queued until its interval passes.
-        if cell.wraps.load(Ordering::Relaxed) > 0 && claim_report(&cell.last_wrap_report_ms, now_ms)
+        // wrap report queued until its interval passes. A wrap line prints
+        // only for a stage that breached its threshold this phase, so
+        // healthy churn (breaches == 0) stays silent and keeps its backlog.
+        if cell.breaches.load(Ordering::Relaxed) > 0
+            && cell.wraps.load(Ordering::Relaxed) > 0
+            && claim_report(&cell.last_wrap_report_ms, now_ms)
         {
             return Some(Report::Wrap(cell.wraps.swap(0, Ordering::Relaxed)));
         }
@@ -561,8 +581,10 @@ pub fn timed<T>(stage: Stage, context: u64, f: impl FnOnce() -> T) -> T {
 }
 
 /// Record a completed sample. Emits at most one rate-limited breach or
-/// wrap line; a wrap dumps the current per-stage table as the safety net
-/// for event rates the thresholds miss.
+/// wrap line; a wrap reports high event volume for that stage as a single
+/// line (the full table lives in `drain_report`). A wrap line prints only
+/// for a stage that breached its threshold since the last reset; healthy
+/// churn is silent (see `recorded` vs `n` in the drain table).
 pub fn record(stage: Stage, duration_us: u64, context: u64) {
     match OBSERVE.record_at(stage, duration_us, context, mono_ms()) {
         Some(Report::Breach) => emit_breach(stage, duration_us, context),
@@ -592,10 +614,63 @@ pub fn drain_report(context: &str) {
     OBSERVE.reset();
 }
 
-fn emit_breach(stage: Stage, duration_us: u64, context: u64) {
-    let summary = OBSERVE.summary(stage);
-    let permits = crate::tasks::queue::bridge::available_cpu_permits();
-    let (next, writer, cascade) = crate::tasks::queue::writer::watermarks();
+/// Render a microsecond duration in human units: seconds (one decimal) above a
+/// million microseconds, whole milliseconds above a thousand, microseconds
+/// otherwise.
+#[must_use]
+#[allow(clippy::cast_precision_loss)]
+fn human_duration(us: u64) -> String {
+    if us >= 1_000_000 {
+        format!("{:.1}s", us as f64 / 1_000_000.0)
+    } else if us >= 1_000 {
+        format!("{}ms", us / 1_000)
+    } else {
+        format!("{us}µs")
+    }
+}
+
+/// Plain-language description of what a stage does and its user-visible
+/// impact, used as the leading sentence of a breach message.
+#[must_use]
+fn stage_lead(stage: Stage) -> &'static str {
+    match stage {
+        Stage::FilterSnapshotClone | Stage::FilterParIter => {
+            "Filtering step stalled; gallery filtering is delayed."
+        }
+        Stage::ComputeLocate => "Filtering step stalled; locating results is delayed.",
+        Stage::TreeRefreshTotal
+        | Stage::TreeRefreshBuild
+        | Stage::TreeRefreshSort
+        | Stage::TreeRefreshWriteWait => "Index update stalled; the photo index is out of date.",
+        Stage::CpuPermitWait | Stage::BlockingQueueWait => {
+            "Server overloaded queueing; requests are waiting."
+        }
+        Stage::CpuExec => "Background indexing work stalled; photo processing is delayed.",
+        Stage::PrefetchTotal => "Gallery load stalled; loading photos is delayed.",
+        Stage::InteractiveExec => "UI request work stalled; an interactive action is delayed.",
+    }
+}
+
+/// Plain-language (lowercase) tag for the same impact, kept in the tail for
+/// grepping alongside the stage name.
+#[must_use]
+fn stage_tag(stage: Stage) -> &'static str {
+    match stage {
+        Stage::FilterSnapshotClone | Stage::FilterParIter | Stage::ComputeLocate => {
+            "filtering step"
+        }
+        Stage::TreeRefreshTotal
+        | Stage::TreeRefreshBuild
+        | Stage::TreeRefreshSort
+        | Stage::TreeRefreshWriteWait => "index update",
+        Stage::CpuPermitWait | Stage::BlockingQueueWait => "server overloaded queueing",
+        Stage::CpuExec => "background indexing work",
+        Stage::PrefetchTotal => "gallery load",
+        Stage::InteractiveExec => "UI request work",
+    }
+}
+
+fn in_flight_snapshot() -> String {
     let mut in_flight = String::new();
     for other in Stage::ALL {
         if !in_flight.is_empty() {
@@ -608,40 +683,123 @@ fn emit_breach(stage: Stage, duration_us: u64, context: u64) {
             OBSERVE.state(other).in_flight.load(Ordering::Relaxed)
         );
     }
-    warn!(
-        "observe breach: stage={} duration_us={} threshold_us={} context={} | n={} recorded={} p50_us={} p95_us={} max_us={} breaches={} | in_flight [{}] | cpu_permits_available={} seq[next={} writer={} cascade={}]",
-        stage.name(),
-        duration_us,
-        stage.threshold_us(),
-        context,
-        summary.samples,
-        summary.recorded,
-        summary.p50_us,
-        summary.p95_us,
-        summary.max_us,
-        summary.breaches,
-        in_flight,
-        permits,
-        next,
-        writer,
-        cascade
-    );
+    in_flight
+}
+
+/// Build the breach message. Pure formatting over the recorder's current
+/// state; no logging and no side effects beyond reading atomics.
+#[must_use]
+fn format_breach(stage: Stage, duration_us: u64, context: u64) -> String {
+    let summary = OBSERVE.summary(stage);
+    let permits = crate::tasks::queue::bridge::available_cpu_permits();
+    let (next, writer, cascade) = crate::tasks::queue::writer::watermarks();
+    let in_flight = in_flight_snapshot();
+    format!(
+        "{lead} {stage} took {dur}, normal bound {bound}. stage={stage_name} tag={tag} duration_us={duration_us} threshold_us={threshold_us} context={context} | n={n} recorded={recorded} p50_us={p50} p95_us={p95} max_us={max} breaches={breaches} | in_flight [{in_flight}] | server queue: cpu_permits_available={permits} seq[next={next} writer={writer} cascade={cascade}]",
+        lead = stage_lead(stage),
+        stage = stage.name(),
+        dur = human_duration(duration_us),
+        bound = human_duration(stage.threshold_us()),
+        stage_name = stage.name(),
+        tag = stage_tag(stage),
+        duration_us = duration_us,
+        threshold_us = stage.threshold_us(),
+        context = context,
+        n = summary.samples,
+        recorded = summary.recorded,
+        p50 = summary.p50_us,
+        p95 = summary.p95_us,
+        max = summary.max_us,
+        breaches = summary.breaches,
+        in_flight = in_flight,
+        permits = permits,
+        next = next,
+        writer = writer,
+        cascade = cascade,
+    )
+}
+
+/// Neutral per-stage subject for a volume signal. Plain nouns only: no
+/// impact claims (never "overloaded", "stalled" or "delayed").
+#[must_use]
+fn stage_subject(stage: Stage) -> &'static str {
+    match stage {
+        Stage::FilterSnapshotClone | Stage::FilterParIter | Stage::ComputeLocate => {
+            "filtering work"
+        }
+        Stage::TreeRefreshTotal
+        | Stage::TreeRefreshBuild
+        | Stage::TreeRefreshSort
+        | Stage::TreeRefreshWriteWait => "index refresh",
+        Stage::CpuPermitWait => "CPU permit wait",
+        Stage::CpuExec => "background CPU work",
+        Stage::PrefetchTotal => "prefetch",
+        Stage::BlockingQueueWait => "blocking-queue wait",
+        Stage::InteractiveExec => "interactive work",
+    }
+}
+
+/// Build the wrap message. Pure formatting over the recorder's current state.
+#[must_use]
+fn format_wrap(stage: Stage, wraps: u64) -> String {
+    let summary = OBSERVE.summary(stage);
+    let permits = crate::tasks::queue::bridge::available_cpu_permits();
+    let (next, writer, cascade) = crate::tasks::queue::writer::watermarks();
+    let recorded = summary.recorded;
+    let sample_word = if recorded == 1 { "sample" } else { "samples" };
+    let overwrite_clause = if wraps == 1 {
+        "1 overwrote an older sample".to_string()
+    } else {
+        format!("{wraps} overwrote older samples")
+    };
+    format!(
+        "High event volume: {subject} ({stage}) recorded {recorded} {sample_word} (ring holds {cap}, {overwrite}). stage={stage_name} wraps={wraps} | n={n} recorded={recorded} p50={p50} p95={p95} max={max} | server queue: cpu_permits_available={permits} seq[next={next} writer={writer} cascade={cascade}]",
+        subject = stage_subject(stage),
+        stage = stage.name(),
+        recorded = recorded,
+        sample_word = sample_word,
+        cap = RING_CAPACITY,
+        overwrite = overwrite_clause,
+        stage_name = stage.name(),
+        wraps = wraps,
+        n = summary.samples,
+        p50 = human_duration(summary.p50_us),
+        p95 = human_duration(summary.p95_us),
+        max = human_duration(summary.max_us),
+        permits = permits,
+        next = next,
+        writer = writer,
+        cascade = cascade,
+    )
+}
+
+fn emit_breach(stage: Stage, duration_us: u64, context: u64) {
+    let message = format_breach(stage, duration_us, context);
+    // Debug timings are unoptimized, so a warn! here would be a false
+    // positive. Keep recording/rings/counters/Report identical; only the
+    // log level changes with the profile.
+    #[cfg(debug_assertions)]
+    {
+        log::debug!("{message}");
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        log::warn!("{message}");
+    }
 }
 
 fn emit_wrap(stage: Stage, wraps: u64) {
-    let table = OBSERVE.snapshot().table();
-    let permits = crate::tasks::queue::bridge::available_cpu_permits();
-    let (next, writer, cascade) = crate::tasks::queue::writer::watermarks();
-    warn!(
-        "observe wrap: stage={} wraps={} ring dumping current content\n{} | cpu_permits_available={} seq[next={} writer={} cascade={}]",
-        stage.name(),
-        wraps,
-        table,
-        permits,
-        next,
-        writer,
-        cascade
-    );
+    let message = format_wrap(stage, wraps);
+    // Wrap reports high event volume, not a stall: keep it at info! in
+    // release builds (debug builds demote to debug! like breaches).
+    #[cfg(debug_assertions)]
+    {
+        log::debug!("{message}");
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        log::info!("{message}");
+    }
 }
 
 #[cfg(test)]
@@ -769,10 +927,32 @@ mod tests {
                 None
             );
         }
-        // Push 257 overflows the ring: first wrap report fires, carrying n=1.
+        // Push 257 overflows the ring: no breach yet, so no wrap report; the
+        // backlog stays pending.
+        assert_eq!(
+            recorder.record_at(Stage::ComputeLocate, 1, 0, 100_000),
+            None
+        );
+        assert_eq!(
+            stage_state(&recorder, Stage::ComputeLocate)
+                .wraps
+                .load(Ordering::Relaxed),
+            1
+        );
+        // Establish a breach so wraps become eligible volume context.
+        assert!(matches!(
+            recorder.record_at(
+                Stage::ComputeLocate,
+                Stage::ComputeLocate.threshold_us(),
+                0,
+                100_000
+            ),
+            Some(Report::Breach)
+        ));
+        // First wrap report fires now that a breach has occurred.
         assert!(matches!(
             recorder.record_at(Stage::ComputeLocate, 1, 0, 100_000),
-            Some(Report::Wrap(1))
+            Some(Report::Wrap(_))
         ));
         // Churn continues but the window suppresses repeats.
         assert_eq!(
@@ -874,5 +1054,64 @@ mod tests {
         Timer::start(Stage::CpuExec).finish(9);
         assert_eq!(snapshot().stage(Stage::CpuExec).samples, 1);
         assert_eq!(snapshot().stage(Stage::CpuExec).in_flight, 0);
+    }
+
+    #[test]
+    fn human_duration_renders_units() {
+        assert_eq!(human_duration(26_000_000), "26.0s");
+        assert_eq!(human_duration(45_000), "45ms");
+        assert_eq!(human_duration(900), "900µs");
+        assert_eq!(human_duration(1_000_000), "1.0s");
+        assert_eq!(human_duration(1_500), "1ms");
+    }
+
+    #[test]
+    fn breach_message_leads_with_plain_language_and_human_duration() {
+        let msg = format_breach(Stage::CpuExec, 2_000_000, 7);
+        assert!(!msg.contains("observe breach"));
+        assert!(msg.contains("Background indexing work stalled"));
+        assert!(msg.contains("2.0s"));
+        assert!(msg.contains("1.0s"));
+        assert!(msg.contains("cpu_exec"));
+        assert!(msg.contains("background indexing work"));
+    }
+
+    #[test]
+    fn breach_message_per_stage_leads() {
+        let cases = [
+            (Stage::PrefetchTotal, "Gallery load stalled"),
+            (Stage::TreeRefreshTotal, "Index update stalled"),
+            (Stage::CpuPermitWait, "Server overloaded queueing"),
+            (Stage::BlockingQueueWait, "Server overloaded queueing"),
+            (Stage::FilterParIter, "Filtering step stalled"),
+            (Stage::InteractiveExec, "UI request work stalled"),
+        ];
+        for (stage, lead) in cases {
+            let msg = format_breach(stage, stage.threshold_us() + 1, 0);
+            assert!(msg.contains(lead), "{stage:?}: {msg}");
+            assert!(!msg.contains("observe breach"));
+        }
+    }
+
+    #[test]
+    fn wrap_message_leads_with_plain_language() {
+        let msg = format_wrap(Stage::PrefetchTotal, 3);
+        assert!(!msg.contains("observe wrap"));
+        assert!(!msg.contains("overloaded"));
+        assert!(!msg.contains("stalled"));
+        assert!(!msg.contains("delayed"));
+        assert!(!msg.contains("tag="));
+        assert!(!msg.contains('\n'));
+        assert!(!msg.contains("p50_us"));
+        assert!(msg.contains("High event volume"));
+        assert!(msg.contains("prefetch"));
+        assert!(msg.contains("stage="));
+        assert!(msg.contains("prefetch_total"));
+        assert!(msg.contains("wraps=3"));
+        reset();
+        record(Stage::PrefetchTotal, 1, 0);
+        let singular = format_wrap(Stage::PrefetchTotal, 1);
+        assert!(singular.contains("1 sample"));
+        assert!(singular.contains("1 overwrote an older sample"));
     }
 }
