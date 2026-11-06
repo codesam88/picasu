@@ -16,9 +16,9 @@ Landed shape (differs from the step-1 sketch): the manifest is
 is a run-parts dispatcher `scripts/deps-install.sh` over 14
 `scripts/deps/*.sh` shims, not a single installer. `just` recipes
 delegate to it; no version vars remain in the justfile. Deviations: no
-shared verify helper (each shim duplicates fetch+sha logic — backlog);
-no renovate config in the repo, so the "bot-bumpable" claim in
-`versions.env` is unfulfilled (open).
+shared verify helper (each shim duplicates fetch+sha logic — backlog).
+`.github/renovate.json` covers the GitHub/PyPI/crate pins (ffmpeg +
+exiftool stay manual; sha sidecars refresh by hand on bump PRs).
 
 Re-verified 2026-11-06 (original survey 2026-11-04):
 
@@ -117,7 +117,7 @@ distributing versions across per-tool `install-*.sh` scripts
 ## Steps
 
 1. Add the manifest + single installer. Status: done (actual shape in
-   Notes; renovate rule still open).
+   Notes; renovate config added at `.github/renovate.json`).
    Scope: new `tools-pin.env` (`TOOL_VERSION` + `TOOL_SHA256` + asset
    template per tool — nextest, cargo-deny, ffmpeg, exiftool, oasdiff,
    dylint, mdbook, uv, just), new `scripts/deps-install.sh`
@@ -241,9 +241,6 @@ through the sha-pinned tarball via `just install uv`; mdbook is kept
 
 Still open:
 
-- Renovate: add a custom-regex rule for `scripts/deps/versions.env`,
-  or drop the bot-bumpable claim and rely on dependabot (cargo/npm
-  only, no system tools)?
 - just provisioning in CI: bare `tool: just` floats; can the pinned
   `taiki-e/install-action` take a manifest-derived version, or record
   as accepted exception?
