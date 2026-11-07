@@ -6,10 +6,11 @@
 //! per stage per [`REPORT_INTERVAL_MS`]); in debug builds the same message is
 //! emitted at `debug!` level instead, because unoptimized debug timings would
 //! make such a `warn!` a false positive. Recording, rings, counters and
-//! `Report` values are identical in every profile. The scan-completion hook
-//! emits one compact per-stage table per scan.
+//! `Report` values are identical in every profile. Normal operation emits
+//! only breach warnings; the per-scan table and wrap lines require
+//! `PICASU_OBSERVER_STATS=1` (or `--observer-stats`).
 //!
-//! Compiled only with the `observe` feature (on by default). `observe_stub.rs`
+//! Compiled only with the `task-observer` feature (on by default). `observe_stub.rs`
 //! provides a signature-compatible no-op surface when the feature is off.
 //!
 //! # What is recorded
@@ -74,7 +75,7 @@
 
 use std::fmt::Write as _;
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, fence};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering, fence};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use log::info;
@@ -482,6 +483,26 @@ impl Recorder {
 
 static OBSERVE: LazyLock<Recorder> = LazyLock::new(Recorder::new);
 
+/// Environment variable selecting the observer-stats opt-in. Only the
+/// literal value `1` enables it; unset, empty, or any other value keeps
+/// it disabled. Env-only.
+pub const OBSERVER_STATS_ENV_VAR: &str = "PICASU_OBSERVER_STATS";
+
+/// Env/CLI opt-in for the extra observer stats: per-scan drain table and
+/// wrap volume lines. Breach warnings are unaffected. Default-disabled.
+static OBSERVER_STATS: AtomicBool = AtomicBool::new(false);
+
+/// Set the observer-stats opt-in. Called once at startup from `run()`.
+pub fn set_observer_stats(enabled: bool) {
+    OBSERVER_STATS.store(enabled, Ordering::Relaxed);
+}
+
+/// Whether the extra observer stats are enabled.
+#[must_use]
+pub fn observer_stats() -> bool {
+    OBSERVER_STATS.load(Ordering::Relaxed)
+}
+
 static MONO_START: LazyLock<Instant> = LazyLock::new(Instant::now);
 
 fn wall_ms() -> u64 {
@@ -609,8 +630,10 @@ pub fn reset() {
 ///
 /// Called from the scan terminal transition, not per round.
 pub fn drain_report(context: &str) {
-    let table = snapshot().table();
-    info!("observe drain: {context}\n{table}");
+    if observer_stats() {
+        let table = snapshot().table();
+        info!("observe drain: {context}\n{table}");
+    }
     OBSERVE.reset();
 }
 
@@ -798,7 +821,10 @@ fn emit_wrap(stage: Stage, wraps: u64) {
     }
     #[cfg(not(debug_assertions))]
     {
-        log::info!("{message}");
+        // Extra stats are opt-in; breach warnings are unaffected.
+        if observer_stats() {
+            log::info!("{message}");
+        }
     }
 }
 
@@ -1113,5 +1139,28 @@ mod tests {
         let singular = format_wrap(Stage::PrefetchTotal, 1);
         assert!(singular.contains("1 sample"));
         assert!(singular.contains("1 overwrote an older sample"));
+    }
+
+    #[test]
+    fn drain_report_resets_regardless_of_stats_flag() {
+        // Flag off: drain path skips the table but still resets.
+        set_observer_stats(false);
+        reset();
+        record(Stage::CpuExec, 1, 0);
+        assert_eq!(snapshot().stage(Stage::CpuExec).recorded, 1);
+        drain_report("gate off");
+        assert_eq!(snapshot().stage(Stage::CpuExec).samples, 0);
+        assert_eq!(snapshot().stage(Stage::CpuExec).recorded, 0);
+
+        // Flag on: table path runs, then resets.
+        set_observer_stats(true);
+        record(Stage::CpuExec, 1, 0);
+        assert_eq!(snapshot().stage(Stage::CpuExec).recorded, 1);
+        drain_report("gate on");
+        assert_eq!(snapshot().stage(Stage::CpuExec).samples, 0);
+        assert_eq!(snapshot().stage(Stage::CpuExec).recorded, 0);
+
+        // Restore default.
+        set_observer_stats(false);
     }
 }

@@ -5,9 +5,9 @@ use std::sync::LazyLock;
 pub mod actor;
 pub mod batcher;
 pub mod looper;
-// The real recorder under `observe` (default); a signature-compatible no-op
+// The real recorder under `task-observer` (default); a signature-compatible no-op
 // otherwise so call sites compile unchanged.
-#[cfg_attr(not(feature = "observe"), path = "observe_stub.rs")]
+#[cfg_attr(not(feature = "task-observer"), path = "observe_stub.rs")]
 pub mod observe;
 pub mod queue;
 pub mod runtime;
@@ -35,6 +35,11 @@ mod observe_smoke {
         let _ = snapshot.table();
 
         observe::record(Stage::CpuExec, 1, 0);
+        // Flag parity: both feature modes expose the opt-in accessors.
+        observe::set_observer_stats(true);
+        assert!(observe::observer_stats());
+        observe::set_observer_stats(false);
+        assert!(!observe::observer_stats());
         observe::drain_report("observe smoke");
         observe::reset();
     }

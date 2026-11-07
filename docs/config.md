@@ -195,7 +195,7 @@ changed. The tier table is the single source of truth in
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
 | runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration`           | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
 | host     | `address`, `port`, `data_home`, `image_home`, `users_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root` | env var, CLI flag, or `config.toml`                       | yes      |
-| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`                                                                                                                                | env var only                                              | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`, `PICASU_OBSERVER_STATS`                                                                                                       | env var only                                              | yes      |
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
@@ -215,36 +215,37 @@ restart while the env var is pinned (intended host override). `GET /get/admin/co
 
 The following env vars override the config file on every launch:
 
-| Variable                               | Overrides                                                             |
-| -------------------------------------- | --------------------------------------------------------------------- |
-| `PICASU_ADDRESS`                       | `server.address`                                                      |
-| `PICASU_ALLOW_REGISTRATION`            | `gallery.allow_registration`                                          |
-| `PICASU_MAX_UPLOAD_SIZE`               | `server.max_upload_size`                                              |
-| `PICASU_PORT`                          | `server.port`                                                         |
-| `PICASU_BOOTSTRAP_ADMIN`               | `gallery.bootstrap_admin`                                             |
-| `PICASU_DATA_HOME`                     | `gallery.data_home`                                                   |
-| `PICASU_FS_NOTIFY_WATCHER`             | `gallery.fs_notify_watcher`                                           |
-| `PICASU_IMAGE_HOME`                    | `gallery.image_home`                                                  |
-| `PICASU_USERS_HOME`                    | `gallery.users_home`                                                  |
-| `PICASU_READ_ONLY_MODE`                | `gallery.read_only_mode`                                              |
-| `PICASU_TRIVIAL_PASSWORDS`             | `gallery.trivial_passwords`                                           |
-| `PICASU_UPLOAD_FOLDER`                 | `gallery.upload_folder`                                               |
-| `PICASU_WEB_ROOT`                      | `gallery.web_root`                                                    |
-| `PICASU_AUTH_KEY`                      | signing key (in-memory override of the secrets file, never persisted) |
-| `PICASU_TRUST_PROXY_FORWARDED_FOR`     | `server.trust_proxy_forwarded_for`                                    |
-| `PICASU_LOGIN_IP_WINDOW_SECS`          | `server.login_ip_window_secs`                                         |
-| `PICASU_LOGIN_IP_MAX_FAILURES`         | `server.login_ip_max_failures`                                        |
-| `PICASU_LOGIN_IP_BASE_BAN_SECS`        | `server.login_ip_base_ban_secs`                                       |
-| `PICASU_LOGIN_IP_MAX_BAN_SECS`         | `server.login_ip_max_ban_secs`                                        |
-| `PICASU_LOGIN_IP_LONG_WINDOW_SECS`     | `server.login_ip_long_window_secs`                                    |
-| `PICASU_LOGIN_IP_LONG_MAX_FAILURES`    | `server.login_ip_long_max_failures`                                   |
-| `PICASU_LOGIN_IP_LONG_BASE_BAN_SECS`   | `server.login_ip_long_base_ban_secs`                                  |
-| `PICASU_LOGIN_IP_LONG_MAX_BAN_SECS`    | `server.login_ip_long_max_ban_secs`                                   |
-| `PICASU_LOGIN_USER_LONG_WINDOW_SECS`   | `server.login_user_long_window_secs`                                  |
-| `PICASU_LOGIN_USER_LONG_MAX_FAILURES`  | `server.login_user_long_max_failures`                                 |
-| `PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` | `server.login_user_long_base_ban_secs`                                |
-| `PICASU_LOGIN_USER_LONG_MAX_BAN_SECS`  | `server.login_user_long_max_ban_secs`                                 |
-| `PICASU_RATE_LIMITS`                   | env-only kill switch (exact `false` disables all login throttling)    |
+| Variable                               | Overrides                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `PICASU_ADDRESS`                       | `server.address`                                                                                  |
+| `PICASU_ALLOW_REGISTRATION`            | `gallery.allow_registration`                                                                      |
+| `PICASU_MAX_UPLOAD_SIZE`               | `server.max_upload_size`                                                                          |
+| `PICASU_PORT`                          | `server.port`                                                                                     |
+| `PICASU_BOOTSTRAP_ADMIN`               | `gallery.bootstrap_admin`                                                                         |
+| `PICASU_DATA_HOME`                     | `gallery.data_home`                                                                               |
+| `PICASU_FS_NOTIFY_WATCHER`             | `gallery.fs_notify_watcher`                                                                       |
+| `PICASU_IMAGE_HOME`                    | `gallery.image_home`                                                                              |
+| `PICASU_USERS_HOME`                    | `gallery.users_home`                                                                              |
+| `PICASU_READ_ONLY_MODE`                | `gallery.read_only_mode`                                                                          |
+| `PICASU_TRIVIAL_PASSWORDS`             | `gallery.trivial_passwords`                                                                       |
+| `PICASU_UPLOAD_FOLDER`                 | `gallery.upload_folder`                                                                           |
+| `PICASU_WEB_ROOT`                      | `gallery.web_root`                                                                                |
+| `PICASU_AUTH_KEY`                      | signing key (in-memory override of the secrets file, never persisted)                             |
+| `PICASU_TRUST_PROXY_FORWARDED_FOR`     | `server.trust_proxy_forwarded_for`                                                                |
+| `PICASU_LOGIN_IP_WINDOW_SECS`          | `server.login_ip_window_secs`                                                                     |
+| `PICASU_LOGIN_IP_MAX_FAILURES`         | `server.login_ip_max_failures`                                                                    |
+| `PICASU_LOGIN_IP_BASE_BAN_SECS`        | `server.login_ip_base_ban_secs`                                                                   |
+| `PICASU_LOGIN_IP_MAX_BAN_SECS`         | `server.login_ip_max_ban_secs`                                                                    |
+| `PICASU_LOGIN_IP_LONG_WINDOW_SECS`     | `server.login_ip_long_window_secs`                                                                |
+| `PICASU_LOGIN_IP_LONG_MAX_FAILURES`    | `server.login_ip_long_max_failures`                                                               |
+| `PICASU_LOGIN_IP_LONG_BASE_BAN_SECS`   | `server.login_ip_long_base_ban_secs`                                                              |
+| `PICASU_LOGIN_IP_LONG_MAX_BAN_SECS`    | `server.login_ip_long_max_ban_secs`                                                               |
+| `PICASU_LOGIN_USER_LONG_WINDOW_SECS`   | `server.login_user_long_window_secs`                                                              |
+| `PICASU_LOGIN_USER_LONG_MAX_FAILURES`  | `server.login_user_long_max_failures`                                                             |
+| `PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` | `server.login_user_long_base_ban_secs`                                                            |
+| `PICASU_LOGIN_USER_LONG_MAX_BAN_SECS`  | `server.login_user_long_max_ban_secs`                                                             |
+| `PICASU_RATE_LIMITS`                   | env-only kill switch (exact `false` disables all login throttling)                                |
+| `PICASU_OBSERVER_STATS`                | env-only opt-in (exact `1` enables per-scan drain table + wrap lines; breach warnings unaffected) |
 
 ## Runtime changes via the API
 
@@ -282,12 +283,15 @@ read-only guard). The runtime configuration can be exported as a versioned
 envelope via `GET /get/admin/config/export` (`version: 1`,
 `scope: "server-runtime"`).
 
-Three settings are environment-only by construction: `PICASU_CONFIG_HOME`
+Four settings are environment-only by construction: `PICASU_CONFIG_HOME`
 (selects where `config.toml` itself lives, so it cannot come from the
 file or the API), `PICASU_WEAK_PWHASH` (test-only: `=1` runs argon2id at
 trivial cost — never set in production, accepted from neither the file
-nor the API), and `PICASU_RATE_LIMITS` (exact `false` bypasses all login
-throttling for schemathesis fuzzing; failure logging stays on).
+nor the API), `PICASU_RATE_LIMITS` (exact `false` bypasses all login
+throttling for schemathesis fuzzing; failure logging stays on), and
+`PICASU_OBSERVER_STATS` (exact `1` opts into the per-scan drain table and
+wrap volume lines; breach warnings stay on regardless; build opt-out via
+`--no-default-features` / disabling `task-observer`).
 
 ## Advanced: Rocket configuration
 

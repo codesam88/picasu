@@ -160,7 +160,7 @@ static BARRIER_NOTIFY: Notify = Notify::const_new();
 
 /// Current generation watermarks `(next, writer, cascade)`. Diagnostics only;
 /// the values are read individually and may not form one instant.
-#[cfg(feature = "observe")]
+#[cfg(feature = "task-observer")]
 pub(crate) fn watermarks() -> (u64, u64, u64) {
     (
         NEXT_SEQ.load(Ordering::Relaxed),
