@@ -1,9 +1,6 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold">Shares</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
-
+    <SectionCard title="Shares">
       <v-sheet v-if="shares.length > 0" border rounded="lg" class="mx-4 my-4 overflow-hidden">
         <template v-for="(item, i) in shares" :key="item.albumId + '-' + item.share.keyFingerprint">
           <v-divider v-if="i > 0"></v-divider>
@@ -88,7 +85,7 @@
       </v-sheet>
 
       <v-card-text v-else class="text-medium-emphasis">No shares yet</v-card-text>
-    </v-card>
+    </SectionCard>
 
     <EditShareModal v-if="currentEdit !== null" :edit-share-data="currentEdit" />
     <ShareDeleteConfirmModal v-if="currentDelete !== null" :delete-share-data="currentDelete" />
@@ -97,6 +94,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import axios from 'axios'
 import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'

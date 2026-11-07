@@ -1,14 +1,14 @@
 <template>
-  <v-dialog
+  <BaseModal
     v-model="modelValue"
-    :fullscreen="isMobile"
-    :max-width="isMobile ? undefined : 600"
+    :width="isMobile ? undefined : 600"
     :height="isMobile ? undefined : 600"
-    scrollable
+    :fullscreen="isMobile"
     transition="dialog-bottom-transition"
+    content-class="pa-0 d-flex flex-column"
   >
-    <v-card :height="isMobile ? '100%' : 600" class="d-flex flex-column">
-      <div class="folder-picker-header border-b">
+    <template #header>
+      <div class="folder-picker-header">
         <div class="d-flex align-center ga-2 px-3 pt-3">
           <v-btn
             icon="mdi-arrow-left"
@@ -87,6 +87,7 @@
             variant="text"
             density="comfortable"
             title="Close"
+            data-testid="modal-close"
             @click="modelValue = false"
           />
         </div>
@@ -115,83 +116,92 @@
           </v-text-field>
         </div>
       </div>
+    </template>
 
-      <v-card-text class="pa-0 d-flex flex-column">
-        <v-list v-if="loading" disabled>
-          <v-skeleton-loader type="list-item@5" />
-        </v-list>
+    <v-list v-if="loading" disabled>
+      <v-skeleton-loader type="list-item@5" />
+    </v-list>
 
-        <v-empty-state
-          v-else-if="items.length === 0 && roots.length === 0"
-          :icon="emptyStateIcon"
-          title="No folders found"
-          :text="errorMsg || 'This folder has no subfolders.'"
-          class="ma-auto"
-        />
+    <v-empty-state
+      v-else-if="items.length === 0 && roots.length === 0"
+      :icon="emptyStateIcon"
+      title="No folders found"
+      :text="errorMsg || 'This folder has no subfolders.'"
+      class="ma-auto"
+    />
 
-        <v-list v-else lines="one" density="default">
-          <template v-if="isDefault && roots.length > 0">
-            <v-list-subheader>Drives / Roots</v-list-subheader>
-            <v-list-item
-              v-for="item in roots"
-              :key="item"
-              :value="item"
-              color="primary"
-              @click="navigateDown(item)"
-            >
-              <template #prepend>
-                <v-icon icon="mdi-harddisk" />
-              </template>
-              <v-list-item-title>{{ item }}</v-list-item-title>
-              <template #append>
-                <v-icon icon="mdi-chevron-right" size="small" />
-              </template>
-            </v-list-item>
-            <v-divider class="my-2" />
-            <v-list-subheader>Current Directory</v-list-subheader>
+    <v-list v-else lines="one" density="default">
+      <template v-if="isDefault && roots.length > 0">
+        <v-list-subheader>Drives / Roots</v-list-subheader>
+        <v-list-item
+          v-for="item in roots"
+          :key="item"
+          :value="item"
+          color="primary"
+          @click="navigateDown(item)"
+        >
+          <template #prepend>
+            <v-icon icon="mdi-harddisk" />
           </template>
+          <v-list-item-title>{{ item }}</v-list-item-title>
+          <template #append>
+            <v-icon icon="mdi-chevron-right" size="small" />
+          </template>
+        </v-list-item>
+        <v-divider class="my-2" />
+        <v-list-subheader>Current Directory</v-list-subheader>
+      </template>
 
-          <v-list-item
-            v-for="item in items"
-            :key="item"
-            :value="item"
-            color="primary"
-            @click="navigateDown(item)"
+      <v-list-item
+        v-for="item in items"
+        :key="item"
+        :value="item"
+        color="primary"
+        @click="navigateDown(item)"
+      >
+        <template #prepend>
+          <v-icon icon="mdi-folder" />
+        </template>
+
+        <v-list-item-title>
+          {{ getFolderName(item) }}
+        </v-list-item-title>
+
+        <template #append>
+          <v-icon icon="mdi-chevron-right" size="small" />
+        </template>
+      </v-list-item>
+    </v-list>
+
+    <template #actions>
+      <!-- The negative margin cancels BaseModal's v-card-actions padding so
+           the footer keeps its original full-bleed 18px/24px framing. -->
+      <div class="w-100 ma-n2">
+        <v-divider />
+        <div class="folder-picker-actions d-flex">
+          <div class="selected-path text-body-small text-medium-emphasis">
+            Selected:
+            <span class="text-high-emphasis">{{ selectedFolderLabel }}</span>
+          </div>
+
+          <v-btn
+            variant="tonal"
+            class="text-none"
+            @click="confirmSelection"
+            :disabled="!currentPath"
           >
-            <template #prepend>
-              <v-icon icon="mdi-folder" />
-            </template>
-
-            <v-list-item-title>
-              {{ getFolderName(item) }}
-            </v-list-item-title>
-
-            <template #append>
-              <v-icon icon="mdi-chevron-right" size="small" />
-            </template>
-          </v-list-item>
-        </v-list>
-      </v-card-text>
-
-      <v-divider />
-
-      <v-card-actions class="folder-picker-actions">
-        <div class="selected-path text-body-small text-medium-emphasis">
-          Selected:
-          <span class="text-high-emphasis">{{ selectedFolderLabel }}</span>
+            Select Folder
+          </v-btn>
         </div>
-
-        <v-btn variant="tonal" class="text-none" @click="confirmSelection" :disabled="!currentPath">
-          Select Folder
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      </div>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useDisplay } from 'vuetify'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { fetchFsCompletion } from '@/api/fs'
 import axios from 'axios'
 
