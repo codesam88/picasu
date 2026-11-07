@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::users::{self, validate_user_id};
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::{GuardAdmin, GuardMutate, Role};
+use crate::router::auth::{GuardAdmin, GuardMutate, GuardReauth, Role};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// Body for `PUT /put/users/admin`.
@@ -44,19 +44,22 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
 /// with another admin present succeeds (transfer). No-op same-flag writes
 /// succeed without an audit line.
 ///
+/// Requires re-authentication via the `X-Picasu-Password` header (403 when
+/// it is missing or wrong).
+///
 /// Corner cases: Unknown `userId` names no user. The caller id is read from
 /// the dispatch-validated claims, never from the body.
 ///
 /// Errors: 400 invalid `userId` — 401 missing or invalid credentials,
-/// non-admin caller, or share credentials — 404 unknown `userId` — 405
-/// read-only mode — 409 demotion would leave zero admins — 500 storage
-/// failure.
+/// non-admin caller, or share credentials — 403 missing or wrong
+/// re-authentication password — 404 unknown `userId` — 405 read-only mode
+/// — 409 demotion would leave zero admins — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserAdminRequest,
         security(("cookie_jwt" = [])),
         extensions(("x-picasu-auth" = json!({
-            "guards": ["GuardAdmin", "GuardMutate"],
+            "guards": ["GuardAdmin", "GuardMutate", "GuardReauth"],
             "credentials": ["session"],
             "admin": "admin",
             "shareScope": "n-a",
@@ -68,6 +71,7 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
             (status = 400, description = "Invalid input"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 404, description = "User not found"),
             (status = 405, description = "Read-only mode"),
             (status = 409, description = "Demotion would leave zero admins"),
@@ -79,10 +83,12 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
 pub fn set_user_admin_handler(
     auth: GuardResult<GuardAdmin>,
     read_only: GuardResult<GuardMutate>,
+    reauth: GuardResult<GuardReauth>,
     body: Json<SetUserAdminRequest>,
 ) -> AppResult<Status> {
     let _ = read_only?;
     let auth = auth?;
+    let _ = reauth?;
     let GuardAdmin { claims } = auth;
     let Role::User { id: actor_id, .. } = claims.role else {
         return Err(AppError::new(ErrorKind::Auth, "Share token not accepted"));
@@ -109,7 +115,18 @@ mod tests {
             .header(ContentType::JSON)
             .body(body.to_string());
         if let Some(c) = cookie {
+            // GuardReauth requires the caller's password in X-Picasu-Password;
+            // mint it from the seeded default password for that caller.
+            let pw = match crate::tests::bootstrap::decode(c.value()).role {
+                crate::router::auth::Role::User { id, .. } => {
+                    Some(crate::tests::fixtures::test_password(&id))
+                }
+                crate::router::auth::Role::Share(_) => None,
+            };
             req = req.cookie(c);
+            if let Some(p) = pw {
+                req = req.header(Header::new("X-Picasu-Password", p));
+            }
         }
         req.dispatch().status()
     }
@@ -269,6 +286,50 @@ mod tests {
             &json!({ "userId": "s5-root", "admin": false }),
         );
         assert_eq!(status, Status::Unauthorized);
+    }
+
+    /// A live admin session alone is not enough: the re-authentication
+    /// password must travel in `X-Picasu-Password`, and its absence must
+    /// leave the role untouched.
+    #[test]
+    fn missing_reauth_password_is_403() {
+        let _g = lock();
+        let client = setup();
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
+        let status = client
+            .put("/put/users/admin")
+            .header(ContentType::JSON)
+            .cookie(cookie("s5-root", true))
+            .body(json!({ "userId": "s5-bob", "admin": true }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Forbidden);
+        assert!(!admin_flag("s5-bob"), "role must be unchanged");
+    }
+
+    #[test]
+    fn wrong_reauth_password_is_403() {
+        let _g = lock();
+        let client = setup();
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
+        let status = client
+            .put("/put/users/admin")
+            .header(ContentType::JSON)
+            .cookie(cookie("s5-root", true))
+            .header(Header::new("X-Picasu-Password", "definitely-wrong"))
+            .body(json!({ "userId": "s5-bob", "admin": true }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Forbidden);
+        assert!(!admin_flag("s5-bob"), "role must be unchanged");
+    }
+
+    fn admin_flag(user_id: &str) -> bool {
+        crate::auth::users::get_admin(user_id)
+            .expect("get admin")
+            .unwrap_or(false)
     }
 
     #[test]
