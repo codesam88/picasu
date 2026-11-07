@@ -1,10 +1,11 @@
 <template>
+  <!-- Expired state is dismissible (Close/X/Escape); password state stays must-complete. -->
   <BaseModal
     id="share-login-modal"
     v-model="modalStore.showShareLoginModal"
     :title="shareStore.isLinkExpired ? 'Link Expired' : 'Password Required'"
     :width="400"
-    hide-close
+    :hide-close="!shareStore.isLinkExpired"
   >
     <div v-if="shareStore.isLinkExpired">
       This share link has expired and is no longer accessible.
@@ -26,9 +27,17 @@
       ></v-text-field>
     </div>
 
-    <template v-if="!shareStore.isLinkExpired" #actions>
-      <v-spacer />
-      <v-btn color="primary" variant="elevated" :loading="loading" @click="submit"> Unlock </v-btn>
+    <template #actions>
+      <template v-if="shareStore.isLinkExpired">
+        <v-spacer />
+        <v-btn @click="modalStore.showShareLoginModal = false">Close</v-btn>
+      </template>
+      <template v-else>
+        <v-spacer />
+        <v-btn color="primary" variant="elevated" :loading="loading" @click="submit">
+          Unlock
+        </v-btn>
+      </template>
     </template>
   </BaseModal>
 </template>
