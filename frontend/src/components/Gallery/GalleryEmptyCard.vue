@@ -32,6 +32,7 @@
       <!-- Home page: dialog with upload + scan actions -->
       <template v-if="route.meta.baseName === 'timeline'">
         <BaseModal
+          id="empty-state-modal"
           v-model="showDialog"
           title="Database is empty, scan now or upload?"
           width="560"

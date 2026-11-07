@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, ref } from 'vue'
 import BaseModal from './BaseModal.vue'
@@ -8,7 +8,7 @@ import { createTestVuetify } from '@/components/testing/browserSetup'
 /// BaseModal is controlled (`v-model`), so the test mounts a tiny host that
 /// carries the open state. The dialog content is teleported to `document.body`
 /// by Vuetify; `page` locators are body-scoped, so they cover the portal.
-async function mountModal(initialOpen: boolean) {
+async function mountModal(initialOpen: boolean, extraProps: Record<string, unknown> = {}) {
   const open = ref(initialOpen)
 
   const Host = defineComponent({
@@ -19,6 +19,7 @@ async function mountModal(initialOpen: boolean) {
           {
             modelValue: open.value,
             title: 'Test dialog',
+            ...extraProps,
             'onUpdate:modelValue': (value: boolean) => {
               open.value = value
             }
@@ -80,6 +81,58 @@ describe('BaseModal accessibility contract', () => {
     const { result } = await mountModal(false)
 
     await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+
+    await result.unmount()
+  })
+})
+
+describe('BaseModal Escape handling', () => {
+  it('closes an open dialog on Escape', async () => {
+    const { open, result } = await mountModal(true)
+
+    await expect.element(page.getByText('Dialog body')).toBeVisible()
+
+    await userEvent.keyboard('{Escape}')
+
+    await expect.element(page.getByText('Dialog body')).not.toBeInTheDocument()
+    expect(open.value).toBe(false)
+
+    await result.unmount()
+  })
+
+  it('ignores Escape while loading', async () => {
+    const { open, result } = await mountModal(true, { loading: true })
+
+    await expect.element(page.getByText('Dialog body')).toBeVisible()
+
+    await userEvent.keyboard('{Escape}')
+
+    await expect.element(page.getByText('Dialog body')).toBeVisible()
+    expect(open.value).toBe(true)
+
+    await result.unmount()
+  })
+
+  it('ignores Escape when the close button is hidden', async () => {
+    const { open, result } = await mountModal(true, { hideClose: true })
+
+    await expect.element(page.getByText('Dialog body')).toBeVisible()
+
+    await userEvent.keyboard('{Escape}')
+
+    await expect.element(page.getByText('Dialog body')).toBeVisible()
+    expect(open.value).toBe(true)
+
+    await result.unmount()
+  })
+
+  it('ignores Escape while closed', async () => {
+    const { open, result } = await mountModal(false)
+
+    await userEvent.keyboard('{Escape}')
+
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
+    expect(open.value).toBe(false)
 
     await result.unmount()
   })

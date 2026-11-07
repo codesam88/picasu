@@ -1,5 +1,6 @@
 <template>
   <BaseModal
+    id="server-file-picker-modal"
     v-model="modelValue"
     :width="isMobile ? undefined : 600"
     :height="isMobile ? undefined : 600"

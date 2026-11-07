@@ -126,6 +126,7 @@
       </v-sheet>
 
       <ConfirmDialog
+        id="user-role-confirm"
         v-model="confirmOpen"
         :title="pendingAdmin ? 'Make admin?' : 'Demote admin?'"
         :confirm-label="pendingAdmin ? 'Promote' : 'Demote'"
@@ -144,6 +145,7 @@
       </ConfirmDialog>
 
       <ConfirmDialog
+        id="user-delete-confirm"
         v-model="deleteConfirmOpen"
         title="Delete user?"
         confirm-label="Delete"
@@ -164,6 +166,7 @@
       </ConfirmDialog>
 
       <ConfirmDialog
+        id="user-set-password-confirm"
         v-model="setPasswordOpen"
         title="Set password"
         confirm-label="Set"
