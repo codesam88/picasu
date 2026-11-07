@@ -1,8 +1,9 @@
 /** Structural design rules for the Vue frontend.
  *
  * Pages render through PageTemplate; dialogs render through BaseModal (or
- * ShareModalBase for share flows). Files listed in KNOWN_MODAL_DEBT predate
- * the rule and are grandfathered so the test only fails on new bypasses.
+ * ShareModalBase for share flows). The modal scan below fails on any raw
+ * `<v-dialog>` bypass; the historic grandfather list was deleted once it
+ * reached zero (all modals migrated).
  */
 
 export function usesBaseModal(template: string): boolean {
@@ -12,6 +13,3 @@ export function usesBaseModal(template: string): boolean {
 export function usesRawDialog(template: string): boolean {
   return template.includes('<v-dialog')
 }
-
-/** Basenames (not paths) grandfathered until migrated to BaseModal. Empty: all debt migrated. */
-export const KNOWN_MODAL_DEBT: string[] = []

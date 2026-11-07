@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { KNOWN_MODAL_DEBT, usesBaseModal, usesRawDialog } from './designStructure'
+import { usesBaseModal, usesRawDialog } from './designStructure'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const pageDir = join(here, 'Page')
@@ -46,12 +46,11 @@ describe('design structure', () => {
     expect(offenders, `pages bypassing PageTemplate: ${offenders.join(', ')}`).toEqual([])
   })
 
-  test('no new modals bypass BaseModal beyond known debt', () => {
+  test('no modals bypass BaseModal', () => {
     const offenders = modalCandidates().filter((f) => {
       const t = templateOf(f)
       return !usesBaseModal(t)
     })
-    const fresh = offenders.filter((f) => !KNOWN_MODAL_DEBT.includes(basename(f)))
-    expect(fresh, `new modals bypassing BaseModal: ${fresh.join(', ')}`).toEqual([])
+    expect(offenders, `modals bypassing BaseModal: ${offenders.join(', ')}`).toEqual([])
   })
 })
