@@ -16,6 +16,7 @@ frontend/config.ts
 frontend/dist
 frontend/node_modules
 frontend/*.tsbuildinfo
+frontend/.vitest/
 /target/
 .cargo/sccache.toml
 
