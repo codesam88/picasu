@@ -77,6 +77,7 @@
             <v-list-item
               prepend-icon="mdi-cog"
               title="Settings"
+              data-testid="user-menu-settings"
               @click="modalStore.showUserSettingsModal = true"
             />
             <v-list-item

@@ -55,7 +55,7 @@
           class="text-none"
           @click="savePassword"
         >
-          Save Changes
+          Change Password
         </v-btn>
       </template>
     </SectionCard>
@@ -68,6 +68,11 @@ import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import { setUserPassword } from '@/api/users'
 import { useCurrentUser } from '@/script/utils/currentUser'
 import { useMessageStore } from '@/store/messageStore'
+import { useModalStore } from '@/store/modalStore'
+import { useRedirectionStore } from '@/store/redirectionStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { useConstStore } from '@/store/constStore'
+import { applyVuetifyTheme } from '@/script/utils/vuetifyTheme'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { isPasswordChangeSubmittable, submitPasswordChange } from '@utils/passwordChange'
 
@@ -113,7 +118,19 @@ const savePassword = async () => {
     )
     if (!ok) return false
 
+    // The store write bumps the user's token version: every outstanding
+    // token dies with the old password, so this session is over. Mirror
+    // the interceptor's session-death path — drop the profile and land on
+    // login — instead of leaving the settings modal open on red (cleared)
+    // fields. The success toast confirms what happened; the login page
+    // banners on arrival.
     messageStore.success('Password updated successfully')
+    useModalStore('mainId').showUserSettingsModal = false
+    useSessionStore('mainId').clearProfile()
+    const constStore = useConstStore('mainId')
+    await constStore.loadThemeFor(null)
+    applyVuetifyTheme(constStore.theme)
+    await useRedirectionStore('mainId').redirectionToLogin()
 
     // Reset local form state
     oldPassword.value = ''
