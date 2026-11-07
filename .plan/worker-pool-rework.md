@@ -545,6 +545,11 @@ What to look for when analysing (in order):
    codegen runs 10–30× slower; breach/wrap log at `debug!` there by
    design). Compare debug-to-debug only via the drain tables.
 
+Note (2026-11-07): the extra stats are now gated. Per-scan drain table
+and wrap lines require `PICASU_OBSERVER_STATS=1` (or `--observer-stats`);
+breach warnings stay on. The `task-observer` Cargo feature (renamed from
+`observe`) still controls recording at build time.
+
 ### After complexity (Step 8)
 
 | module        | files (b/m/a) | sloc (b/m/a)   | cyclo (b/m/a) | cog (b/m/a) | funcs (b/m/a) |

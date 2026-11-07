@@ -105,11 +105,13 @@ openapi-sanity = { version = "0.1", path = "../utils/openapi-sanity" }
 proptest = "1.11.0"
 
 [features]
-default = ["observe"]
+default = ["task-observer"]
 # Stall observation for the tree/snapshot pipeline. On by default: the
 # recording path is a few atomics per stage and the breach log is the
 # diagnostic. Turn it off to measure its overhead.
-observe = []
+# `PICASU_OBSERVER_STATS` (env) / `--observer-stats` (CLI) gates the
+# extra per-scan table and wrap lines; breach warnings stay on.
+task-observer = []
 embed-frontend = []
 auto-open-browser = ["dep:webbrowser"]
 

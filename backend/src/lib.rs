@@ -35,6 +35,7 @@ use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::looper::start_expire_check_loop;
+use crate::tasks::observe::OBSERVER_STATS_ENV_VAR;
 use crate::tasks::runtime::{CURRENT_NUM_THREADS, RUNTIME};
 use model::metadata_record::MetadataRecord;
 
@@ -85,6 +86,16 @@ pub fn run() {
 
     // Initialize logger first thing
     initialize_logger();
+
+    // Observer-stats opt-in (env-only; --observer-stats bridges here via
+    // set_var in main). Read once at startup.
+    let observer_stats = std::env::var(OBSERVER_STATS_ENV_VAR).ok().as_deref() == Some("1");
+    crate::tasks::observe::set_observer_stats(observer_stats);
+    if observer_stats {
+        warn!(
+            "observer stats enabled (PICASU_OBSERVER_STATS=1): per-scan tables and wrap lines will be logged"
+        );
+    }
 
     // Initialize core subsystems (Config, DB, FFmpeg checks).
     // Must run first so DATA_PATH is resolved from config.

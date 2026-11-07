@@ -9,6 +9,7 @@ use clap::Parser;
 /// instead of serving. Unknown flags are rejected rather than ignored, so
 /// a typo never boots a server with unintended settings.
 #[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)]
 #[command(
     name = "picasu",
     version,
@@ -40,6 +41,12 @@ struct Cli {
     /// Equivalent to `PICASU_BOOTSTRAP_ADMIN=true`.
     #[arg(long)]
     bootstrap_admin: bool,
+
+    /// Enable extra observer stats: the per-scan drain table and wrap
+    /// volume lines. Default disabled; breach warnings are unaffected.
+    /// Equivalent to `PICASU_OBSERVER_STATS=1`.
+    #[arg(long)]
+    observer_stats: bool,
 }
 
 fn main() {
@@ -75,6 +82,14 @@ fn main() {
         }
     }
 
+    if cli.observer_stats {
+        // SAFETY: see the `--trivial-passwords` bridge above — still
+        // single-threaded, and the flag is the most explicit setting.
+        unsafe {
+            std::env::set_var("PICASU_OBSERVER_STATS", "1");
+        }
+    }
+
     picasu::run();
 }
 
@@ -94,6 +109,7 @@ mod tests {
         assert!(!cli.dump_openapi);
         assert!(!cli.trivial_passwords);
         assert!(!cli.bootstrap_admin);
+        assert!(!cli.observer_stats);
         assert!(cli.check_openapi.is_none());
     }
 
@@ -130,6 +146,7 @@ mod tests {
             "--check-openapi",
             "--trivial-passwords",
             "--bootstrap-admin",
+            "--observer-stats",
         ] {
             assert!(text.contains(flag), "help lists {flag}");
         }

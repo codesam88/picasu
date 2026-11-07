@@ -1,4 +1,4 @@
-//! No-op surface for [`crate::tasks::observe`] when the `observe` feature is off.
+//! No-op surface for [`crate::tasks::observe`] when the `task-observer` feature is off.
 //!
 //! Call sites compile unchanged: [`Timer`] and [`timed`] exist with the same
 //! signatures, [`snapshot`] returns an empty [`Snapshot`], and [`record`],
@@ -12,8 +12,27 @@
 // disabled build has no consumer for a field or variant.
 #![allow(dead_code)]
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Environment variable selecting the observer-stats opt-in.
+pub const OBSERVER_STATS_ENV_VAR: &str = "PICASU_OBSERVER_STATS";
+
 /// Samples retained per stage. The stub retains none.
 pub const RING_CAPACITY: usize = 256;
+
+/// Env/CLI opt-in bit. Stored for smoke parity; no stats are emitted.
+static OBSERVER_STATS: AtomicBool = AtomicBool::new(false);
+
+/// Set the observer-stats opt-in (no-op for stats; bit stored for parity).
+pub fn set_observer_stats(enabled: bool) {
+    OBSERVER_STATS.store(enabled, Ordering::Relaxed);
+}
+
+/// Whether the extra observer stats are enabled (always false in stub).
+#[must_use]
+pub fn observer_stats() -> bool {
+    OBSERVER_STATS.load(Ordering::Relaxed)
+}
 
 /// Minimum spacing between breach lines for the same stage.
 pub const REPORT_INTERVAL_MS: u64 = 5_000;

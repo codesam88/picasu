@@ -39,7 +39,7 @@ static CPU_PERMITS: LazyLock<Arc<Semaphore>> = LazyLock::new(|| {
 });
 
 /// Free admittance permits in the shared CPU budget. Diagnostics only.
-#[cfg(feature = "observe")]
+#[cfg(feature = "task-observer")]
 pub(crate) fn available_cpu_permits() -> usize {
     CPU_PERMITS.available_permits()
 }
