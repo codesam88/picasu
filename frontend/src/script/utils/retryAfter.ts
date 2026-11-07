@@ -17,8 +17,8 @@ export const GENERIC_THROTTLE_MESSAGE = 'Too many attempts — try again later'
 export function retryAfterSecs(error: unknown): number | null {
   if (!axios.isAxiosError(error)) return null
   return (
-    parseSecs(error.response?.headers?.['retry-after']) ??
-    parseSecs(error.response?.data?.retryAfter)
+    parseSecs(error.response?.headers['retry-after']) ??
+    parseSecs((error.response?.data as { retryAfter?: unknown } | undefined)?.retryAfter)
   )
 }
 
@@ -76,5 +76,7 @@ export function startRetryCountdown(
       onTick(remaining)
     }
   }, 1000)
-  return () => clearInterval(timer)
+  return () => {
+    clearInterval(timer)
+  }
 }

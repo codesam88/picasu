@@ -10,7 +10,7 @@ const modalDir = join(here, 'Modal')
 
 function templateOf(file: string): string {
   const src = readFileSync(file, 'utf8')
-  const m = src.match(/<template>([\s\S]*)<\/template>/)
+  const m = /<template>([\s\S]*)<\/template>/.exec(src)
   return m?.[1] ?? ''
 }
 

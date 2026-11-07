@@ -8,7 +8,7 @@ export type InviteStatus = 'unused' | 'used' | 'expired' | 'revoked'
 export function inviteStatus(
   invite: InviteView,
   nowSeconds: number = Date.now() / 1000,
-  revoked: boolean = false
+  revoked = false
 ): InviteStatus {
   if (revoked) return 'revoked'
   if (invite.usedBy !== null) return 'used'

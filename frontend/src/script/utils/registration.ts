@@ -80,7 +80,7 @@ export const submitRegistration = async (
     await deps.onRegistered(profile)
     return 'registered'
   } catch (err: unknown) {
-    if ((err as { response?: { status?: number } })?.response?.status === 409) {
+    if ((err as { response?: { status?: number } } | null | undefined)?.response?.status === 409) {
       await deps.onRaceLost(RACE_LOST_NOTICE)
       return 'race-lost'
     }

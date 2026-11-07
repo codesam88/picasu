@@ -114,6 +114,7 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- vue-router deprecated scrollBehavior; migrating to ScrollRestoration/useScrollRestoration from vue-router/experimental resolves this
   scrollBehavior(_to, _from, savedPosition) {
     if (savedPosition) {
       return savedPosition

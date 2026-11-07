@@ -16,7 +16,7 @@ import router from '@/route/routes'
 // router — that flip is what makes repeat redirectionToLogin calls no-ops.
 vi.mock('@/route/routes', () => {
   const currentRoute = { value: { name: 'timeline', fullPath: '/timeline' } }
-  const push = vi.fn(async () => {
+  const push = vi.fn(() => {
     currentRoute.value = { name: 'login', fullPath: '/login' }
   })
   return {
@@ -48,7 +48,7 @@ beforeEach(() => {
 /// axios-shaped response, so the registered response interceptor runs the
 /// same code path it would for a real 429.
 const rejectWith = (status: number, headers: Record<string, string>, body: unknown) => {
-  axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+  axios.defaults.adapter = (config: InternalAxiosRequestConfig) => {
     const response: AxiosResponse = {
       status,
       statusText: String(status),
@@ -56,12 +56,14 @@ const rejectWith = (status: number, headers: Record<string, string>, body: unkno
       headers,
       config
     }
-    throw new AxiosError(
-      `Request failed with status code ${status}`,
-      'ERR_BAD_REQUEST',
-      config,
-      null,
-      response
+    return Promise.reject(
+      new AxiosError(
+        `Request failed with status code ${status}`,
+        'ERR_BAD_REQUEST',
+        config,
+        null,
+        response
+      )
     )
   }
 }

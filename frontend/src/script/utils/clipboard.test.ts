@@ -7,12 +7,12 @@ import { canShowCopyButton, copyTextToClipboard } from './clipboard'
 describe('canShowCopyButton', () => {
   test('true only with a secure context and a Clipboard API', () => {
     expect(
-      canShowCopyButton({ secureContext: true, clipboard: { writeText: async () => {} } })
+      canShowCopyButton({ secureContext: true, clipboard: { writeText: () => Promise.resolve() } })
     ).toBe(true)
     expect(canShowCopyButton({ secureContext: false })).toBe(false)
     expect(canShowCopyButton({ secureContext: true })).toBe(false)
     expect(
-      canShowCopyButton({ secureContext: false, clipboard: { writeText: async () => {} } })
+      canShowCopyButton({ secureContext: false, clipboard: { writeText: () => Promise.resolve() } })
     ).toBe(false)
   })
 })
@@ -23,8 +23,9 @@ describe('copyTextToClipboard', () => {
     const ok = await copyTextToClipboard('abc', {
       secureContext: true,
       clipboard: {
-        writeText: async (text: string) => {
+        writeText: (text: string) => {
           written = text
+          return Promise.resolve()
         }
       }
     })
@@ -37,8 +38,9 @@ describe('copyTextToClipboard', () => {
     const ok = await copyTextToClipboard('abc', {
       secureContext: false,
       clipboard: {
-        writeText: async (text: string) => {
+        writeText: (text: string) => {
           written = text
+          return Promise.resolve()
         }
       }
     })
@@ -52,9 +54,7 @@ describe('copyTextToClipboard', () => {
       copyTextToClipboard('abc', {
         secureContext: true,
         clipboard: {
-          writeText: async () => {
-            throw new Error('denied')
-          }
+          writeText: () => Promise.reject(new Error('denied'))
         }
       })
     ).resolves.toBe(false)

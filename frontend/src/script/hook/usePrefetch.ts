@@ -86,8 +86,7 @@ export async function processPrefetchChain(
   includePersonalOverride?: boolean
 ) {
   // 1. Fetch main data (Critical step)
-  const includePersonal =
-    includePersonalOverride !== undefined ? includePersonalOverride : getIncludePersonal()
+  const includePersonal = includePersonalOverride ?? getIncludePersonal()
   const prefetchReturn = await prefetch(
     filterJsonString,
     priorityId,

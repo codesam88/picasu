@@ -21,7 +21,7 @@ function readWorker(file: string): string {
 
 /// Minimal Worker stand-in: only the listener surface the from* handlers use.
 function makeFakeWorker() {
-  const listeners = new Map<string, Array<(e: MessageEvent) => void>>()
+  const listeners = new Map<string, ((e: MessageEvent) => void)[]>()
   return {
     addEventListener: (type: string, fn: (e: MessageEvent) => void) => {
       listeners.set(type, [...(listeners.get(type) ?? []), fn])

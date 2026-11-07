@@ -19,15 +19,15 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked.map((config) => ({
     ...config,
-    files: ['src/**/*']
+    files: ['src/**/*.{ts,vue}']
   })),
   ...tseslint.configs.stylisticTypeChecked.map((config) => ({
     ...config,
-    files: ['src/**/*']
+    files: ['src/**/*.{ts,vue}']
   })),
   ...pluginVue.configs['flat/strongly-recommended'],
   {
-    files: ['src/**/*'],
+    files: ['src/**/*.{ts,vue}'],
     languageOptions: {
       parser: vueParser,
       parserOptions: {
