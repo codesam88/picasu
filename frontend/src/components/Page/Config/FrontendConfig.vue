@@ -2,6 +2,22 @@
   <v-col cols="12">
     <SectionCard title="Frontend">
       <v-list-item class="pt-4">
+        <v-list-item-title class="mb-2">Theme</v-list-item-title>
+        <v-select
+          v-model="themeValue"
+          data-testid="frontend-theme-select"
+          :items="themeItems"
+          item-title="label"
+          item-value="value"
+          density="compact"
+          hide-details
+          color="primary"
+        ></v-select>
+      </v-list-item>
+
+      <v-divider></v-divider>
+
+      <v-list-item class="pt-4">
         <v-list-item-title class="mb-2">Thumbnail size</v-list-item-title>
         <v-slider
           v-model="subRowHeightScaleValue"
@@ -78,14 +94,16 @@
 import { computed, onMounted, ref } from 'vue'
 import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import { useRoute } from 'vue-router'
-import { useConstStore } from '@/store/constStore'
+import { useConstStore, type ThemeName } from '@/store/constStore'
 import { useConfigStore } from '@/store/configStore'
 import { getIncludePersonal, setIncludePersonal } from '@/script/utils/personalTimelineToggle'
 import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
+import { useTheme } from 'vuetify'
 
 const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
 const route = useRoute()
+const vuetifyTheme = useTheme()
 
 const includePersonal = ref(getIncludePersonal())
 const personalAlbumsEnabled = computed(() => configStore.config?.personalAlbumsEnabled === true)
@@ -149,5 +167,28 @@ const onDisableImgUpdate = (newValue: boolean | null) => {
   constStore.updateDisableImg(newValue ?? false).catch((error: unknown) => {
     console.error('Failed to update disableImg:', error)
   })
+}
+
+// One entry per ThemeName (see its definition): a new theme adds an option
+// here plus a Vuetify `themes` entry.
+const themeItems: { label: string; value: ThemeName }[] = [
+  { label: 'Dark', value: 'dark' },
+  { label: 'Light', value: 'light' }
+]
+
+const themeValue = computed<ThemeName>({
+  get: () => constStore.theme,
+  set: (value: ThemeName) => {
+    void applyThemeUpdate(value)
+  }
+})
+
+async function applyThemeUpdate(value: ThemeName): Promise<void> {
+  try {
+    await constStore.updateTheme(value)
+    vuetifyTheme.global.name.value = constStore.theme
+  } catch (error: unknown) {
+    console.error('Failed to update theme (via FrontendConfig):', error)
+  }
 }
 </script>
