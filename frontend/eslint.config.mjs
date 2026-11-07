@@ -102,13 +102,9 @@ export default tseslint.config(
     }
   },
   {
-    // SectionCard owns its raw card; AdvancedConfig keeps its raw card until
-    // a title slot can satisfy the Danger Zone source pin. The dialog ban
-    // still applies to both.
-    files: [
-      'src/components/Page/Config/SectionCard.vue',
-      'src/components/Page/Config/AdvancedConfig.vue'
-    ],
+    // SectionCard owns its raw card, so the Config-section v-card ban is
+    // lifted here only; the dialog ban still applies.
+    files: ['src/components/Page/Config/SectionCard.vue'],
     rules: {
       'vue/no-restricted-html-elements': [
         'error',

@@ -1,8 +1,9 @@
 <template>
   <v-col cols="12">
-    <v-card border flat class="danger-zone-card">
-      <v-card-title class="font-weight-bold text-error">Danger Zone</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
+    <SectionCard class="danger-zone-card">
+      <template #title>
+        <span class="text-error">Danger Zone</span>
+      </template>
 
       <v-list-item
         title="Read Only Mode"
@@ -56,14 +57,15 @@
           </v-btn>
         </template>
       </v-list-item>
-      <v-card-actions class="justify-end px-4 pb-4">
+      <template #actions>
         <v-btn color="primary" variant="flat" :loading="loading" class="text-none" @click="save">
           Save Changes
         </v-btn>
-      </v-card-actions>
-    </v-card>
+      </template>
+    </SectionCard>
 
     <ConfirmDialog
+      id="read-only-disable-confirm"
       v-model="confirmOpen"
       title="Disable read-only mode?"
       confirm-label="Disable"
@@ -87,6 +89,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import ConfirmDialog from '@/components/Modal/ConfirmDialog.vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { resetAuthKey } from '@/api/config'
