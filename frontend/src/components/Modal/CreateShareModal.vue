@@ -1,5 +1,6 @@
 <template>
   <ShareModalBase
+    id="create-share-modal"
     v-model="modalStore.showShareModal"
     v-model:form-state="formState"
     title="Share Settings"

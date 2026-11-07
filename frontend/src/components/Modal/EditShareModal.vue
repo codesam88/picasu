@@ -1,6 +1,7 @@
 <template>
   <ShareModalBase
     v-if="modalStore.showEditShareModal"
+    id="edit-share-modal"
     v-model="modalStore.showEditShareModal"
     v-model:form-state="formState"
     title="Edit Share Settings"

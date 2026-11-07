@@ -1,6 +1,7 @@
 <template>
   <ConfirmDialog
     v-if="submit !== undefined"
+    id="delete-share-modal"
     v-model="modalStore.showDeleteShareModal"
     title="Delete&nbsp;Link"
     :width="400"

@@ -1,5 +1,6 @@
 <template>
   <BaseModal
+    :id="id"
     v-model="modelValue"
     :title="title"
     :width="width"
@@ -30,6 +31,7 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
+    id: string
     title?: string
     message?: string
     width?: string | number

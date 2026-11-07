@@ -1,5 +1,6 @@
 <template>
   <BaseModal
+    :id="id"
     v-model="modelValue"
     :title="title"
     :width="mobile ? '100%' : 450"
@@ -68,6 +69,7 @@ import { useMessageStore } from '@/store/messageStore'
 
 const props = withDefaults(
   defineProps<{
+    id: string
     title: string
     shareLink?: string | null
     loading?: boolean

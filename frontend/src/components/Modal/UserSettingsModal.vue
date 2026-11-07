@@ -1,5 +1,5 @@
 <template>
-  <BaseModal v-model="show" title="Settings" width="600">
+  <BaseModal id="user-settings-modal" v-model="show" title="Settings" width="600">
     <template #header>
       <v-toolbar color="transparent" density="compact">
         <v-toolbar-title>{{ headerTitle }}</v-toolbar-title>

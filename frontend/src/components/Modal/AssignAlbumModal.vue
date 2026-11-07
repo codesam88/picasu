@@ -1,5 +1,10 @@
 <template>
-  <BaseModal v-model="modalStore.showAssignAlbumModal" width="480" content-class="pa-0">
+  <BaseModal
+    id="assign-album-modal"
+    v-model="modalStore.showAssignAlbumModal"
+    width="480"
+    content-class="pa-0"
+  >
     <template #header>
       <v-card-title class="d-flex align-center gap-2 pt-4 pb-2 px-4">
         <v-icon>mdi-folder-move</v-icon>

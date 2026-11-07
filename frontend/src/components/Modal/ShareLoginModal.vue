@@ -1,5 +1,6 @@
 <template>
   <BaseModal
+    id="share-login-modal"
     v-model="modalStore.showShareLoginModal"
     :title="shareStore.isLinkExpired ? 'Link Expired' : 'Password Required'"
     :width="400"

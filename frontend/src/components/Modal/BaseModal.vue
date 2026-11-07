@@ -57,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
@@ -85,6 +85,31 @@ const internalValue = computed({
   set: (val) => {
     emit('update:modelValue', val)
   }
+})
+
+// An open dialog owns Escape: close it unless a close is disallowed, and stop
+// the event from reaching the page-level handlers in PageTemplate/ViewPage so
+// they do not also exit edit mode or navigate back. Listening in the capture
+// phase is what makes stopPropagation effective against those window-level
+// bubble listeners. While loading or with `hideClose`, the dialog stays open
+// but still swallows Escape, otherwise those same page handlers would close
+// the store-tracked dialog behind the guard.
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape' || !props.modelValue) return
+
+  event.stopPropagation()
+
+  if (props.loading || props.hideClose) return
+
+  internalValue.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown, { capture: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown, { capture: true })
 })
 </script>
 
