@@ -7,8 +7,7 @@ export const selfProfileUserSchema = z.object({
   home: z.string().nullable()
 })
 
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- zod v4 keeps passthrough(); migrating the settings schema to z.looseObject() is a separate zod-API change
-export const selfProfileSettingsSchema = z.object({}).passthrough()
+export const selfProfileSettingsSchema = z.object({}).loose()
 
 export const selfProfileSchema = z.object({
   user: selfProfileUserSchema,
