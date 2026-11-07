@@ -1,9 +1,6 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold">Invites</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
-
+    <SectionCard title="Invites">
       <v-card-text>
         <v-row dense>
           <v-col cols="12" sm="4">
@@ -83,12 +80,13 @@
           </v-list-item>
         </v-list>
       </v-sheet>
-    </v-card>
+    </SectionCard>
   </v-col>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import {
   listInvites,
   createInvite,

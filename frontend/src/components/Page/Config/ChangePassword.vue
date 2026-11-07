@@ -1,9 +1,6 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold">Change Password</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
-
+    <SectionCard title="Change Password">
       <v-list-item>
         <v-text-field
           class="pt-2"
@@ -49,7 +46,7 @@
           @click:append-inner="showConfirmPassword = !showConfirmPassword"
         ></v-text-field
       ></v-list-item>
-      <v-card-actions class="justify-end px-4 pb-4">
+      <template #actions>
         <v-btn
           color="primary"
           variant="flat"
@@ -60,13 +57,14 @@
         >
           Save Changes
         </v-btn>
-      </v-card-actions>
-    </v-card>
+      </template>
+    </SectionCard>
   </v-col>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import { setUserPassword } from '@/api/users'
 import { useCurrentUser } from '@/script/utils/currentUser'
 import { useMessageStore } from '@/store/messageStore'

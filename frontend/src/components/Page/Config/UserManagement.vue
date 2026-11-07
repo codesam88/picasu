@@ -1,9 +1,6 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold">User Management</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
-
+    <SectionCard title="User Management">
       <v-card-text v-if="isAdmin">
         <v-row dense>
           <v-col cols="12" sm="5">
@@ -192,12 +189,13 @@
           @keyup.enter="confirmSetPassword"
         ></v-text-field>
       </ConfirmDialog>
-    </v-card>
+    </SectionCard>
   </v-col>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import ConfirmDialog from '@/components/Modal/ConfirmDialog.vue'
 import axios from 'axios'
 import {

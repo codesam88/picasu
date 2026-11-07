@@ -42,13 +42,11 @@
             <div v-if="isAdmin" class="config-block">
               <v-row class="ma-0">
                 <v-col cols="12">
-                  <v-card border flat>
-                    <v-card-title class="font-weight-bold">Export</v-card-title>
-                    <v-divider thickness="4" variant="double"></v-divider>
-                    <v-card-text class="text-medium-emphasis">
-                      Download the current server configuration as JSON.
-                    </v-card-text>
-                    <v-card-actions class="justify-end px-4 pb-4">
+                  <SectionCard
+                    title="Export"
+                    description="Download the current server configuration as JSON."
+                  >
+                    <template #actions>
                       <v-btn
                         color="primary"
                         variant="flat"
@@ -58,8 +56,8 @@
                       >
                         Export Config
                       </v-btn>
-                    </v-card-actions>
-                  </v-card>
+                    </template>
+                  </SectionCard>
                 </v-col>
               </v-row>
             </div>
@@ -102,6 +100,7 @@ import { useMessageStore } from '@/store/messageStore'
 import type { AppConfig } from '@/api/config'
 import { getAdminConfig, updateAdminConfig, exportAdminConfig } from '@/api/adminConfig'
 import PageTemplate from './PageLayout/PageTemplate.vue'
+import SectionCard from './Config/SectionCard.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
 import UserManagement from './Config/UserManagement.vue'

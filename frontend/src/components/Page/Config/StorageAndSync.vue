@@ -1,9 +1,6 @@
 <template>
   <v-col cols="12">
-    <v-card border flat>
-      <v-card-title class="font-weight-bold">Image Library</v-card-title>
-      <v-divider thickness="4" variant="double"></v-divider>
-
+    <SectionCard title="Image Library">
       <!-- Image Path (always first) -->
       <v-list-item
         v-if="imagePath"
@@ -174,7 +171,7 @@
         </template>
       </v-list-item>
 
-      <v-card-actions class="justify-end px-4 pb-4">
+      <template #actions>
         <v-btn
           color="primary"
           variant="flat"
@@ -185,8 +182,8 @@
         >
           Save Changes
         </v-btn>
-      </v-card-actions>
-    </v-card>
+      </template>
+    </SectionCard>
   </v-col>
 
   <!-- Upload folder browser -->
@@ -200,6 +197,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import SectionCard from '@/components/Page/Config/SectionCard.vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import {

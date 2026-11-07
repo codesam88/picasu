@@ -31,42 +31,41 @@
     <v-row v-else justify="center">
       <!-- Home page: dialog with upload + scan actions -->
       <template v-if="route.meta.baseName === 'timeline'">
-        <v-dialog v-model="showDialog" max-width="560">
-          <v-card class="pa-6">
-            <v-card-title class="text-h5 font-weight-bold text-center">
-              Database is empty, scan now or upload?
-            </v-card-title>
+        <BaseModal
+          v-model="showDialog"
+          title="Database is empty, scan now or upload?"
+          width="560"
+          content-class="pa-6"
+        >
+          <v-row dense>
+            <v-col cols="12" sm="6">
+              <v-card
+                class="d-flex flex-column align-center justify-center pa-6 text-center"
+                style="cursor: pointer; min-height: 180px"
+                variant="outlined"
+                rounded="lg"
+                @click="onUploadClick"
+              >
+                <v-icon size="64" color="grey">mdi-cloud-upload</v-icon>
+                <div class="text-body-1 font-weight-medium mt-3">Upload Image</div>
+              </v-card>
+            </v-col>
 
-            <v-row dense>
-              <v-col cols="12" sm="6">
-                <v-card
-                  class="d-flex flex-column align-center justify-center pa-6 text-center"
-                  style="cursor: pointer; min-height: 180px"
-                  variant="outlined"
-                  rounded="lg"
-                  @click="onUploadClick"
-                >
-                  <v-icon size="64" color="grey">mdi-cloud-upload</v-icon>
-                  <div class="text-body-1 font-weight-medium mt-3">Upload Image</div>
-                </v-card>
-              </v-col>
-
-              <v-col cols="12" sm="6">
-                <v-card
-                  class="d-flex flex-column align-center justify-center pa-6 text-center"
-                  style="cursor: pointer; min-height: 180px"
-                  variant="outlined"
-                  rounded="lg"
-                  :disabled="!canScan"
-                  @click="onStartScan"
-                >
-                  <v-icon size="64" color="grey">mdi-folder-refresh-outline</v-icon>
-                  <div class="text-body-1 font-weight-medium mt-3">Scan now</div>
-                </v-card>
-              </v-col>
-            </v-row>
-          </v-card>
-        </v-dialog>
+            <v-col cols="12" sm="6">
+              <v-card
+                class="d-flex flex-column align-center justify-center pa-6 text-center"
+                style="cursor: pointer; min-height: 180px"
+                variant="outlined"
+                rounded="lg"
+                :disabled="!canScan"
+                @click="onStartScan"
+              >
+                <v-icon size="64" color="grey">mdi-folder-refresh-outline</v-icon>
+                <div class="text-body-1 font-weight-medium mt-3">Scan now</div>
+              </v-card>
+            </v-col>
+          </v-row>
+        </BaseModal>
       </template>
 
       <!-- Other pages: existing layout -->
@@ -133,6 +132,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useUploadStore } from '@/store/uploadStore'
 import { useConfigStore } from '@/store/configStore'
 import { useCurrentUser } from '@/script/utils/currentUser'
