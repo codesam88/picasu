@@ -80,11 +80,6 @@
               data-testid="user-menu-settings"
               @click="modalStore.showUserSettingsModal = true"
             />
-            <v-list-item
-              :prepend-icon="themeIsLight ? 'mdi-weather-night' : 'mdi-weather-sunny'"
-              :title="themeIsLight ? 'Dark mode' : 'Light mode'"
-              @click="themeIsLight = !themeIsLight"
-            />
             <v-list-item prepend-icon="mdi-logout" title="Log out" @click="handleLogout" />
           </v-list>
         </v-menu>
@@ -101,10 +96,8 @@ import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { useConstStore } from '@/store/constStore'
 import { useModalStore } from '@/store/modalStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
-import { useTheme } from 'vuetify'
 import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 import { leaveView } from '@utils/leaveView'
 import { performLogout } from '@utils/logout'
@@ -114,18 +107,7 @@ const showNavPanel = inject('showNavPanel')
 const albumStore = useAlbumStore('mainId')
 const uploadStore = useUploadStore('mainId')
 const filterStore = useFilterStore('mainId')
-const constStore = useConstStore('mainId')
 const modalStore = useModalStore('mainId')
-const vuetifyTheme = useTheme()
-
-const themeIsLight = computed<boolean>({
-  get: () => constStore.theme === 'light',
-  set: () => {
-    constStore.toggleTheme(vuetifyTheme).catch((err: unknown) => {
-      console.error('Failed to update theme (via InfoBar):', err)
-    })
-  }
-})
 
 const route = useRoute()
 const router = useRouter()
