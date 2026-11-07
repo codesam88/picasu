@@ -177,18 +177,20 @@ def _token_for_credential(kind):
 
 
 def _demoted_token():
+    # Role changes re-auth: GuardReauth answers 403 without the password
+    # header, leaving the editor promoted and the probe mis-seeded.
     if "demoted" not in _cache:
         _api(
             "PUT",
             "/put/users/admin",
-            headers={"Cookie": ADMIN_COOKIE},
+            headers={"Cookie": ADMIN_COOKIE, "X-Picasu-Password": PASSWORD},
             body={"userId": "editor", "admin": True},
         )
         token = _login_token("editor", PASSWORD)
         _api(
             "PUT",
             "/put/users/admin",
-            headers={"Cookie": ADMIN_COOKIE},
+            headers={"Cookie": ADMIN_COOKIE, "X-Picasu-Password": PASSWORD},
             body={"userId": "editor", "admin": False},
         )
         _cache["demoted"] = token

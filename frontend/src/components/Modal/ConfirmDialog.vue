@@ -29,6 +29,8 @@
 </template>
 
 <script setup lang="ts">
+import BaseModal from '@/components/Modal/BaseModal.vue'
+
 withDefaults(
   defineProps<{
     id: string

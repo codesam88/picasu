@@ -130,8 +130,7 @@
         v-model="confirmOpen"
         :title="pendingAdmin ? 'Make admin?' : 'Demote admin?'"
         :confirm-label="pendingAdmin ? 'Promote' : 'Demote'"
-        :loading="saving"
-        @confirm="confirmRoleChange"
+        @confirm="askRolePassword"
         @cancel="cancelRoleChange"
       >
         <span v-if="pendingAdmin">
@@ -145,9 +144,44 @@
       </ConfirmDialog>
 
       <ConfirmDialog
+        id="user-role-password"
+        v-model="rolePasswordOpen"
+        title="Confirm with password"
+        :confirm-label="pendingAdmin ? 'Promote' : 'Demote'"
+        :loading="saving"
+        @confirm="confirmRoleChange"
+        @cancel="cancelRoleChange"
+      >
+        <span v-if="pendingAdmin">Promote {{ pendingTarget?.userId }} to admin.</span>
+        <span v-else>Demote {{ pendingTarget?.userId }} from admin.</span>
+        Enter your password to authorize this change.
+        <v-text-field
+          v-model="rolePassword"
+          type="password"
+          label="Your password"
+          class="mt-2"
+          autofocus
+          @keyup.enter="confirmRoleChange"
+        ></v-text-field>
+      </ConfirmDialog>
+
+      <ConfirmDialog
         id="user-delete-confirm"
         v-model="deleteConfirmOpen"
         title="Delete user?"
+        confirm-label="Delete"
+        cancel-label="Cancel"
+        destructive
+        @confirm="askDeletePassword"
+        @cancel="cancelDelete"
+      >
+        Delete {{ pendingDelete?.userId }}? This cannot be undone.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        id="user-delete-password"
+        v-model="deletePasswordOpen"
+        title="Confirm with password"
         confirm-label="Delete"
         cancel-label="Cancel"
         :loading="saving"
@@ -155,12 +189,13 @@
         @confirm="confirmDelete"
         @cancel="cancelDelete"
       >
-        Delete {{ pendingDelete?.userId }}? This cannot be undone.
+        Delete {{ pendingDelete?.userId }}? This cannot be undone. Enter your password to authorize.
         <v-text-field
           v-model="deletePassword"
           type="password"
           label="Your password"
           class="mt-2"
+          autofocus
           @keyup.enter="confirmDelete"
         ></v-text-field>
       </ConfirmDialog>
@@ -171,17 +206,31 @@
         title="Set password"
         confirm-label="Set"
         cancel-label="Cancel"
+        @confirm="askSetPasswordAuth"
+        @cancel="cancelSetPassword"
+      >
+        Set a new password for {{ pendingSetPassword?.userId }}. Enter your admin password to
+        confirm.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        id="user-set-password-auth"
+        v-model="setPasswordAuthOpen"
+        title="Confirm with password"
+        confirm-label="Set"
+        cancel-label="Cancel"
         :loading="settingPassword"
         @confirm="confirmSetPassword"
         @cancel="cancelSetPassword"
       >
         Set a new password for {{ pendingSetPassword?.userId }}. Enter your admin password to
-        confirm.
+        authorize.
         <v-text-field
           v-model="newSetPassword"
           type="password"
           label="New password"
           class="mt-2"
+          autofocus
           @keyup.enter="confirmSetPassword"
         ></v-text-field>
         <v-text-field
@@ -227,14 +276,18 @@ const saving = ref(false)
 const confirmOpen = ref(false)
 const pendingTarget = ref<UserSummary | null>(null)
 const pendingAdmin = ref<boolean | null>(null)
+const rolePasswordOpen = ref(false)
+const rolePassword = ref('')
 const deleteConfirmOpen = ref(false)
 const pendingDelete = ref<UserSummary | null>(null)
+const deletePasswordOpen = ref(false)
 const deletePassword = ref('')
 const newUsername = ref('')
 const newPassword = ref('')
 const creating = ref(false)
 const setPasswordOpen = ref(false)
 const pendingSetPassword = ref<UserSummary | null>(null)
+const setPasswordAuthOpen = ref(false)
 const newSetPassword = ref('')
 const adminPassword = ref('')
 const settingPassword = ref(false)
@@ -276,11 +329,11 @@ const refreshUsers = async () => {
   })
 }
 
-const applyRoleChange = async (target: UserSummary, admin: boolean) => {
+const applyRoleChange = async (target: UserSummary, admin: boolean, reauthPassword: string) => {
   const previous = !admin
   saving.value = true
   try {
-    await setUserAdmin(target.userId, admin)
+    await setUserAdmin(target.userId, admin, reauthPassword)
     messageStore.success(
       admin ? `${target.userId} is now an admin` : `${target.userId} is no longer an admin`
     )
@@ -355,21 +408,31 @@ const onToggle = (user: UserSummary, admin: boolean) => {
   confirmOpen.value = true
 }
 
+const askRolePassword = () => {
+  confirmOpen.value = false
+  rolePassword.value = ''
+  rolePasswordOpen.value = true
+}
+
 const cancelRoleChange = () => {
   confirmOpen.value = false
+  rolePasswordOpen.value = false
   pendingTarget.value = null
   pendingAdmin.value = null
+  rolePassword.value = ''
 }
 
 const confirmRoleChange = async () => {
   const target = pendingTarget.value
   const admin = pendingAdmin.value
-  confirmOpen.value = false
+  const password = rolePassword.value
+  rolePasswordOpen.value = false
   pendingTarget.value = null
   pendingAdmin.value = null
+  rolePassword.value = ''
   if (target === null || admin === null) return
   target.admin = admin
-  await applyRoleChange(target, admin)
+  await applyRoleChange(target, admin, password)
 }
 
 const askDelete = (user: UserSummary) => {
@@ -378,15 +441,22 @@ const askDelete = (user: UserSummary) => {
   deleteConfirmOpen.value = true
 }
 
+const askDeletePassword = () => {
+  deleteConfirmOpen.value = false
+  deletePassword.value = ''
+  deletePasswordOpen.value = true
+}
+
 const cancelDelete = () => {
   deleteConfirmOpen.value = false
+  deletePasswordOpen.value = false
   pendingDelete.value = null
   deletePassword.value = ''
 }
 
 const confirmDelete = async () => {
   const target = pendingDelete.value
-  deleteConfirmOpen.value = false
+  deletePasswordOpen.value = false
   pendingDelete.value = null
   if (target === null) return
   const password = deletePassword.value
@@ -435,8 +505,14 @@ const askSetPassword = (user: UserSummary) => {
   setPasswordOpen.value = true
 }
 
+const askSetPasswordAuth = () => {
+  setPasswordOpen.value = false
+  setPasswordAuthOpen.value = true
+}
+
 const cancelSetPassword = () => {
   setPasswordOpen.value = false
+  setPasswordAuthOpen.value = false
   pendingSetPassword.value = null
   newSetPassword.value = ''
   adminPassword.value = ''
@@ -445,7 +521,7 @@ const cancelSetPassword = () => {
 const confirmSetPassword = async () => {
   const target = pendingSetPassword.value
   if (target === null) return
-  setPasswordOpen.value = false
+  setPasswordAuthOpen.value = false
   settingPassword.value = true
   const newPasswordValue = newSetPassword.value
   const adminPwd = adminPassword.value
