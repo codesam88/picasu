@@ -5186,7 +5186,7 @@
     },
     "/put/users/admin": {
       "put": {
-        "description": "Admin-only: a non-admin, share, or missing credential is denied at\ndispatch with 401. A change that would leave zero admins is refused,\nwhether the target is the caller or the sole other admin; self-demotion\nwith another admin present succeeds (transfer). No-op same-flag writes\nsucceed without an audit line.\n\nCorner cases: Unknown `userId` names no user. The caller id is read from\nthe dispatch-validated claims, never from the body.\n\nErrors: 400 invalid `userId` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 404 unknown `userId` — 405\nread-only mode — 409 demotion would leave zero admins — 500 storage\nfailure.",
+        "description": "Admin-only: a non-admin, share, or missing credential is denied at\ndispatch with 401. A change that would leave zero admins is refused,\nwhether the target is the caller or the sole other admin; self-demotion\nwith another admin present succeeds (transfer). No-op same-flag writes\nsucceed without an audit line.\n\nRequires re-authentication via the `X-Picasu-Password` header (403 when\nit is missing or wrong).\n\nCorner cases: Unknown `userId` names no user. The caller id is read from\nthe dispatch-validated claims, never from the body.\n\nErrors: 400 invalid `userId` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 403 missing or wrong\nre-authentication password — 404 unknown `userId` — 405 read-only mode\n— 409 demotion would leave zero admins — 500 storage failure.",
         "operationId": "set_user_admin_handler",
         "requestBody": {
           "content": {
@@ -5207,6 +5207,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "404": {
             "description": "User not found"
@@ -5243,7 +5246,8 @@
           ],
           "guards": [
             "GuardAdmin",
-            "GuardMutate"
+            "GuardMutate",
+            "GuardReauth"
           ],
           "invariants": [
             "AUTH-11",
