@@ -1,12 +1,12 @@
 # Brief: Vue code-structure enforcement + Vitest testing layers
 
-Researched: 2026-11-06 | Versions: Vitest 5.0.5, Vue 3, Vuetify 3, Vue Router 4, Pinia, @vue/test-utils v2, vitest-browser-vue, ESLint 10 + eslint-plugin-vue (flat config), TypeScript + vue-tsc, Node >= 22 | Overall confidence: high on tier assignment and ESLint rule targets (primary docs agree); medium on vitest-browser-vue API details (some claims read from `main` docs — pin against the installed 5.0.5 before depending on them).
+Researched: 2026-11-06 | Versions: Vitest 5.0.5, Vue 3, Vuetify 4 (verified against 4.3.1), Vue Router 4, Pinia, @vue/test-utils v2, vitest-browser-vue, ESLint 10 + eslint-plugin-vue (flat config), TypeScript + vue-tsc, Node >= 22 | Overall confidence: high on tier assignment and ESLint rule targets (primary docs agree); medium on vitest-browser-vue API details (some claims read from `main` docs — pin against the installed 5.0.5 before depending on them).
 
 ## 1. Baseline
 
 Vitest runs in Node by default and offers three DOM-bearing options: `jsdom`, `happy-dom`, and a real **Browser Mode** project (Playwright/WebdriverIO provider). `environmentMatchGlobs` is gone — scope per file with `// @vitest-environment <name>` comments or split suites with `test.projects`. Vitest 5 renames the old `workspace` key to `projects`; inline projects inherit the root config by default (`extends: true` is the v5 default), are filtered with `vitest -p <name>`, and are defined with `defineProject` inside project files; the root config is not itself a project unless listed.
 
-Component tests follow a contract-first shape: props in, events/rendered output out, authored with `mount()` from `@vue/test-utils` v2. Vuetify components need a fresh `createVuetify({ components, directives })` per test (shared instances leak display/theme state) and the framework's documented jsdom recipe: `server.deps.inline: ['vuetify']`, a `resize-observer-polyfill` assigned to `global.ResizeObserver` in setup, and `global: { plugins: [vuetify], stubs: { transition: false, 'transition-group': false } }` — no mocking of transitions or other internals. Teleported content (dialog bodies) is absent from `wrapper.html()`; reach it with `getComponent`/`findComponent` (VDOM level) or stub with `teleport: true`, creating the teleport target in `beforeEach` and clearing `document.body` in `afterEach`.
+Component tests follow a contract-first shape: props in, events/rendered output out, authored with `mount()` from `@vue/test-utils` v2. Vuetify components need a fresh `createVuetify({ components, directives })` per test (shared instances leak display/theme state) and the framework's documented jsdom recipe: `server.deps.inline: ['vuetify']`, a `resize-observer-polyfill` assigned to `global.ResizeObserver` in setup, and `global: { plugins: [vuetify], stubs: { transition: false, 'transition-group': false } }` — no mocking of transitions or other internals. Vuetify 4's default theme is `system`, so pass `theme: { defaultTheme: 'light' }` to `createVuetify` for deterministic renders. Teleported content (dialog bodies) is absent from `wrapper.html()`; reach it with `getComponent`/`findComponent` (VDOM level) or stub with `teleport: true`, creating the teleport target in `beforeEach` and clearing `document.body` in `afterEach`.
 
 Vuetify's own docs recommend a **real browser** over jsdom for Vuetify components and name Vitest browser mode, Playwright, and Cypress as the runners. In browser mode, `render()` from `vitest-browser-vue` supports all VTU mount options except `attachTo` (use `container`); `baseElement` defaults to `document.body` (or the container) and is the scope for locators; `emitted()` exists but is flagged as an implementation detail — assert the displayed result via locators instead. Auto-retrying assertions (`await expect.element(...)`) and role locators absorb async render without manual waits.
 
@@ -74,6 +74,7 @@ ESLint enforces structure at authoring time: `vue/no-restricted-html-elements` b
 - `emitted()`-only close tests pass while the dialog stays visibly open — pair with a visibility/content assertion [browser-vue] (verified).
 - `no-restricted-syntax` misused for element bans — it targets template expressions, not element usage; use `no-restricted-html-elements` [eslint-plugin-vue] (verified).
 - `no-restricted-component-names` misused for template bans — it targets the declared `name` property [eslint-plugin-vue] (verified).
+- Vuetify 4 `useDisplay` breakpoints moved (md 960→840, lg 1280→1145, xl 1920→1545, xxl 2560→2138) — re-baseline any display assertion copied from v3 examples [vuetify] (verified).
 
 ### Alternatives and when NOT to use the recommended path
 
@@ -87,7 +88,7 @@ ESLint enforces structure at authoring time: `vue/no-restricted-html-elements` b
 Do:
 
 - [ ] Confirm installed Vitest is 5.0.5 and pin `vitest-browser-vue` against it; re-check `attachTo`→`container`, `config` export, and `emitted` semantics against installed docs, not `main`.
-- [ ] Confirm installed Vuetify major against the testing docs you follow (repo pins 4.x; docs here target v3).
+- [ ] Confirm the installed Vuetify is 4.x against the v4 testing docs this brief targets (verified against 4.3.1).
 - [ ] Add a `browser` test project (name it, e.g. `component`) with Playwright provider before writing component behavior tests [projects].
 - [ ] Keep a `unit` node project for pure logic and a `component` browser project; filter runs with `vitest -p unit` / `vitest -p component`.
 - [ ] Write the first modal-dialog browser test: open → role/focus/`aria-modal` → `Escape`/close-button → closed-content assertion [component].
@@ -110,7 +111,7 @@ Validate: a new browser test fails on a component regression (e.g. remove `aria-
 
 Primary (depend on these):
 
-- Vuetify unit-testing docs (vuetifyjs.com) — real-browser recommendation, jsdom recipe (inline dep, ResizeObserver polyfill, per-test `createVuetify`, transition stubs), `data-testid`, Playwright/Cypress runners [vuetify].
+- Vuetify 4 unit-testing docs (vuetifyjs.com/en/getting-started/unit-testing/) — real-browser recommendation, jsdom recipe (inline dep, ResizeObserver polyfill, per-test `createVuetify`, transition stubs), `data-testid`, Playwright/Cypress runners [vuetify].
 - Vitest Browser Mode guide (v5.0.5) — provider/instance config, headless/UI defaults, thread-blocking dialog mocks, spying limits [browser].
 - Vitest Component Testing guide (v5.0.5) — contract-first behavior, auto-retry assertions, accessible-Modal example, Testing Library bridge [component].
 - Vitest Test Projects guide (v5.0.5) — inline projects, `extends` inheritance, `defineProject`, `-p` filtering, nested projects [projects].
