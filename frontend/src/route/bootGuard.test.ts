@@ -15,11 +15,13 @@ function okDeps(overrides?: {
     profilePresent: false,
     toName: 'timeline' as string | undefined,
     hasInviteToken: false,
-    serverInfo: vi.fn(async (): Promise<ServerInfo> => ({
-      enrolled: true,
-      enrollmentOpen: false,
-      captcha: null
-    })),
+    serverInfo: vi.fn((): Promise<ServerInfo> =>
+      Promise.resolve({
+        enrolled: true,
+        enrollmentOpen: false,
+        captcha: null
+      })
+    ),
     ...overrides
   }
 }
@@ -40,11 +42,13 @@ describe('decideBootRoute', () => {
   })
 
   test('needs-enrollment redirects to register unless already there', async () => {
-    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
-      enrolled: false,
-      enrollmentOpen: true,
-      captcha: null
-    }))
+    const serverInfo = vi.fn((): Promise<ServerInfo> =>
+      Promise.resolve({
+        enrolled: false,
+        enrollmentOpen: true,
+        captcha: null
+      })
+    )
 
     await expect(decideBootRoute(okDeps({ toName: 'timeline', serverInfo }))).resolves.toEqual({
       name: 'register'
@@ -54,11 +58,13 @@ describe('decideBootRoute', () => {
   })
 
   test('enrolled store with no profile redirects to login unless already there', async () => {
-    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
-      enrolled: true,
-      enrollmentOpen: false,
-      captcha: null
-    }))
+    const serverInfo = vi.fn((): Promise<ServerInfo> =>
+      Promise.resolve({
+        enrolled: true,
+        enrollmentOpen: false,
+        captcha: null
+      })
+    )
 
     await expect(decideBootRoute(okDeps({ toName: 'login', serverInfo }))).resolves.toBe(true)
     await expect(decideBootRoute(okDeps({ toName: 'timeline', serverInfo }))).resolves.toEqual({
@@ -68,11 +74,13 @@ describe('decideBootRoute', () => {
   })
 
   test('closed install with no profile falls through to login, never register', async () => {
-    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
-      enrolled: false,
-      enrollmentOpen: false,
-      captcha: null
-    }))
+    const serverInfo = vi.fn((): Promise<ServerInfo> =>
+      Promise.resolve({
+        enrolled: false,
+        enrollmentOpen: false,
+        captcha: null
+      })
+    )
 
     await expect(decideBootRoute(okDeps({ toName: 'timeline', serverInfo }))).resolves.toEqual({
       name: 'login'
@@ -80,11 +88,13 @@ describe('decideBootRoute', () => {
   })
 
   test('invite token on register renders even on an enrolled store', async () => {
-    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
-      enrolled: true,
-      enrollmentOpen: false,
-      captcha: null
-    }))
+    const serverInfo = vi.fn((): Promise<ServerInfo> =>
+      Promise.resolve({
+        enrolled: true,
+        enrollmentOpen: false,
+        captcha: null
+      })
+    )
 
     await expect(
       decideBootRoute(okDeps({ toName: 'register', serverInfo, hasInviteToken: true }))
@@ -92,11 +102,13 @@ describe('decideBootRoute', () => {
   })
 
   test('no invite token on register still redirects to login on an enrolled store', async () => {
-    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
-      enrolled: true,
-      enrollmentOpen: false,
-      captcha: null
-    }))
+    const serverInfo = vi.fn((): Promise<ServerInfo> =>
+      Promise.resolve({
+        enrolled: true,
+        enrollmentOpen: false,
+        captcha: null
+      })
+    )
 
     await expect(
       decideBootRoute(okDeps({ toName: 'register', serverInfo, hasInviteToken: false }))
@@ -104,7 +116,7 @@ describe('decideBootRoute', () => {
   })
 
   test('rejected server-info ping degrades to the login fall-through without aborting', async () => {
-    const serverInfo = vi.fn(async (): Promise<ServerInfo> => {
+    const serverInfo = vi.fn((): Promise<ServerInfo> => {
       throw new Error('ping failed')
     })
 

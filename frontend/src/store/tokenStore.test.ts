@@ -77,8 +77,8 @@ describe('tokenStore', () => {
       get?: (name: string) => string
       Authorization?: string
     }
-    if (typeof headers?.get === 'function') return headers.get('Authorization')
-    return headers?.Authorization
+    if (typeof headers.get === 'function') return headers.get('Authorization')
+    return headers.Authorization
   }
 
   const record = (seen: SeenRequest[], config: InternalAxiosRequestConfig) => {
@@ -89,13 +89,14 @@ describe('tokenStore', () => {
     })
   }
 
-  const okResponse = (config: InternalAxiosRequestConfig, token: string): AxiosResponse => ({
-    data: { token },
-    status: 200,
-    statusText: 'OK',
-    headers: {},
-    config
-  })
+  const okResponse = (config: InternalAxiosRequestConfig, token: string): Promise<AxiosResponse> =>
+    Promise.resolve({
+      data: { token },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config
+    })
 
   describe('renew buffer gate', () => {
     const originalAdapter = axios.defaults.adapter
@@ -106,7 +107,7 @@ describe('tokenStore', () => {
       vi.useFakeTimers()
       vi.setSystemTime(NOW_MS)
       seen = []
-      axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      axios.defaults.adapter = (config: InternalAxiosRequestConfig) => {
         record(seen, config)
         return okResponse(config, makeJwt(nowSec + 300))
       }
@@ -155,7 +156,7 @@ describe('tokenStore', () => {
       vi.useFakeTimers()
       vi.setSystemTime(NOW_MS)
       seen = []
-      axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      axios.defaults.adapter = (config: InternalAxiosRequestConfig) => {
         record(seen, config)
         return okResponse(config, makeJwt(nowSec + 300))
       }
@@ -223,7 +224,7 @@ describe('tokenStore', () => {
       const renewedAsset = makeJwt(nowSec + 300, 1700000001)
       tokenStore.timestampToken = timestampToken
       tokenStore.assetTokenMap.set('asset_a', currentAsset)
-      axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      axios.defaults.adapter = (config: InternalAxiosRequestConfig) => {
         record(seen, config)
         return okResponse(config, renewedAsset)
       }
@@ -246,11 +247,11 @@ describe('tokenStore', () => {
       const renewedAsset = makeJwt(nowSec + 300, 1700000001)
       tokenStore.timestampToken = staleTimestamp
       tokenStore.assetTokenMap.set('asset_a', currentAsset)
-      axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      axios.defaults.adapter = (config: InternalAxiosRequestConfig) => {
         record(seen, config)
         if (config.url === '/post/renew-timestamp-token') return okResponse(config, freshTimestamp)
         if (config.url === '/post/renew-hash-token') return okResponse(config, renewedAsset)
-        throw new Error(`unexpected POST ${config.url}`)
+        return Promise.reject(new Error(`unexpected POST ${config.url}`))
       }
 
       await tokenStore.forceRenewAssetToken('asset_a')
@@ -272,8 +273,8 @@ describe('tokenStore', () => {
       setActivePinia(createPinia())
       vi.useFakeTimers()
       vi.setSystemTime(NOW_MS)
-      vi.spyOn(console, 'error').mockImplementation(() => {})
-      axios.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      axios.defaults.adapter = (config: InternalAxiosRequestConfig) => {
         const response: AxiosResponse = {
           data: {},
           status: 401,
@@ -281,12 +282,14 @@ describe('tokenStore', () => {
           headers: {},
           config
         }
-        throw new AxiosError(
-          'Request failed with status code 401',
-          'ERR_BAD_REQUEST',
-          config,
-          null,
-          response
+        return Promise.reject(
+          new AxiosError(
+            'Request failed with status code 401',
+            'ERR_BAD_REQUEST',
+            config,
+            null,
+            response
+          )
         )
       }
     })

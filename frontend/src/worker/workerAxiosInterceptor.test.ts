@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
 
 const rejectWithStatus = (instance: ReturnType<typeof axios.create>, status: number) => {
-  instance.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+  instance.defaults.adapter = (config: InternalAxiosRequestConfig) => {
     const response: AxiosResponse = {
       status,
       statusText: String(status),
@@ -11,20 +11,21 @@ const rejectWithStatus = (instance: ReturnType<typeof axios.create>, status: num
       headers: {},
       config
     }
-    throw new AxiosError(
-      `Request failed with status code ${status}`,
-      'ERR_BAD_REQUEST',
-      config,
-      null,
-      response
+    return Promise.reject(
+      new AxiosError(
+        `Request failed with status code ${status}`,
+        'ERR_BAD_REQUEST',
+        config,
+        null,
+        response
+      )
     )
   }
 }
 
 const rejectWithoutResponse = (instance: ReturnType<typeof axios.create>) => {
-  instance.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
-    throw new AxiosError('Network Error', 'ERR_NETWORK', config, null, undefined)
-  }
+  instance.defaults.adapter = (config: InternalAxiosRequestConfig) =>
+    Promise.reject(new AxiosError('Network Error', 'ERR_NETWORK', config, null, undefined))
 }
 
 beforeEach(() => {
@@ -56,7 +57,10 @@ describe('setupWorkerAxiosInterceptor', () => {
 
     expect(notify).toHaveBeenCalledTimes(1)
     expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'error', text: expect.stringContaining('boom 500') })
+      expect.objectContaining({
+        color: 'error',
+        text: expect.stringContaining('boom 500') as string
+      })
     )
     expect(onUnauthorized).not.toHaveBeenCalled()
   })
@@ -67,7 +71,7 @@ describe('setupWorkerAxiosInterceptor', () => {
       const instance = axios.create()
       const notify = vi.fn()
       const onUnauthorized = vi.fn()
-      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
       setupWorkerAxiosInterceptor(instance, { notify, onUnauthorized }, 'data')
       rejectWithStatus(instance, status)
 
@@ -84,7 +88,7 @@ describe('setupWorkerAxiosInterceptor', () => {
   test('401 without onUnauthorized logs like an unexpected code (image-worker shape)', async () => {
     const instance = axios.create()
     const notify = vi.fn()
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     setupWorkerAxiosInterceptor(instance, { notify }, 'image')
     rejectWithStatus(instance, 401)
 
@@ -99,7 +103,7 @@ describe('setupWorkerAxiosInterceptor', () => {
     const instance = axios.create()
     const notify = vi.fn()
     const onUnauthorized = vi.fn()
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     setupWorkerAxiosInterceptor(instance, { notify, onUnauthorized }, 'data')
     rejectWithoutResponse(instance)
 

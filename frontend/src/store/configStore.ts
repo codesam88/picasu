@@ -62,7 +62,7 @@ export const useConfigStore = (isolationId: IsolationId) =>
           // Merge updates into local state
           if (this.config) {
             Object.assign(this.config, newConfig)
-            if (response?.config) Object.assign(this.config, response.config)
+            Object.assign(this.config, response.config)
           } else {
             const data = await getConfig()
             this.config = data

@@ -7,7 +7,7 @@ export async function prefetch(
   _priorityId: string | undefined = 'default',
   _reverse: string | undefined = 'false',
   locate: null | string = null,
-  includePersonal: boolean = false
+  includePersonal = false
 ): Promise<PrefetchReturn> {
   const params: string[] = []
   if (locate !== null) params.push(`locate=${locate}`)
