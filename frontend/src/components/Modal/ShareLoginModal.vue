@@ -17,17 +17,17 @@
         type="password"
         variant="outlined"
         :error-messages="errorMessage"
-        @keyup.enter="submit"
         autofocus
         :loading="loading"
         :disabled="loading"
         class="mt-3"
+        @keyup.enter="submit"
       ></v-text-field>
     </div>
 
     <template v-if="!shareStore.isLinkExpired" #actions>
       <v-spacer />
-      <v-btn color="primary" variant="elevated" @click="submit" :loading="loading"> Unlock </v-btn>
+      <v-btn color="primary" variant="elevated" :loading="loading" @click="submit"> Unlock </v-btn>
     </template>
   </BaseModal>
 </template>

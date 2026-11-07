@@ -4,12 +4,12 @@
       <v-menu location="start">
         <template #activator="{ props: menuProps }">
           <v-btn
+            v-testid="'photo-menu'"
             v-bind="mergeProps(tooltipProps, menuProps)"
             icon="mdi-dots-vertical"
             variant="text"
             size="small"
             class="control-btn"
-            v-testid="'photo-menu'"
           ></v-btn>
         </template>
         <v-list role="menu">

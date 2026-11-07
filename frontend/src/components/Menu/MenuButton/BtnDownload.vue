@@ -1,7 +1,7 @@
 <template>
   <v-tooltip location="top" text="Download">
     <template #activator="{ props: btnProps }">
-      <v-btn v-bind="btnProps" icon="mdi-download" @click="downloadAllFiles" class="wrap" />
+      <v-btn v-bind="btnProps" icon="mdi-download" class="wrap" @click="downloadAllFiles" />
     </template>
   </v-tooltip>
 </template>

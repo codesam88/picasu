@@ -5,9 +5,9 @@
       <v-menu>
         <template #activator="{ props: menuProps }">
           <v-btn
+            v-testid="'batch-menu'"
             v-bind="mergeProps(tooltipProps, menuProps)"
             icon="mdi-dots-vertical"
-            v-testid="'batch-menu'"
           ></v-btn>
         </template>
         <v-list role="menu">

@@ -1,7 +1,7 @@
 <template>
   <nav class="nav-panel no-select" :class="{ 'nav-panel--open': showNavPanel }">
     <div v-show="showNavPanel" class="nav-panel__inner">
-      <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
+      <v-list :key="route.fullPath" nav :disabled="!initializedStore.initialized">
         <v-list-item slim prepend-icon="mdi-home" title="Home" :to="{ name: 'timeline' }" />
         <v-list-item slim prepend-icon="mdi-image-album" title="Albums" to="/albums" />
         <v-list-item
@@ -15,7 +15,7 @@
         <v-list-item slim prepend-icon="mdi-share-variant" title="Shares" to="/shares" />
       </v-list>
 
-      <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized" class="mt-auto">
+      <v-list :key="route.fullPath" nav :disabled="!initializedStore.initialized" class="mt-auto">
         <v-divider />
         <v-list-item
           v-if="isAdmin"

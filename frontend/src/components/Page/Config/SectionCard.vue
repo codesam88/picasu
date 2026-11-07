@@ -20,4 +20,9 @@ defineProps<{
   title: string
   description?: string
 }>()
+
+defineSlots<{
+  default?: () => unknown
+  actions?: () => unknown
+}>()
 </script>

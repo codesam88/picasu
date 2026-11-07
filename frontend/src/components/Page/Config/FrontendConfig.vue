@@ -4,8 +4,8 @@
       <v-list-item class="pt-4">
         <v-list-item-title class="mb-2">Thumbnail size</v-list-item-title>
         <v-slider
-          show-ticks="always"
           v-model="subRowHeightScaleValue"
+          show-ticks="always"
           :min="250"
           :max="450"
           :step="10"
@@ -30,10 +30,10 @@
           <v-switch
             data-testid="frontend-show-filename-chip-switch"
             :model-value="showFilenameChipValue"
-            @update:model-value="onShowFilenameChipUpdate"
             color="primary"
             inset
             hide-details
+            @update:model-value="onShowFilenameChipUpdate"
             @click.stop
           ></v-switch>
         </template>
@@ -49,10 +49,10 @@
           <v-switch
             data-testid="frontend-include-personal-switch"
             :model-value="includePersonal"
-            @update:model-value="onToggle"
             color="primary"
             inset
             hide-details
+            @update:model-value="onToggle"
             @click.stop
           ></v-switch>
         </template>
@@ -62,10 +62,10 @@
         <template #append>
           <v-switch
             :model-value="disableImgValue"
-            @update:model-value="onDisableImgUpdate"
             color="primary"
             inset
             hide-details
+            @update:model-value="onDisableImgUpdate"
             @click.stop
           ></v-switch>
         </template>

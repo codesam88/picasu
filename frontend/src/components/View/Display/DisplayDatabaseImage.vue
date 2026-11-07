@@ -1,7 +1,7 @@
 <template>
   <img
-    :key="index"
     v-if="abstractData?.type === 'image' && imgStore.imgOriginal.get(index)"
+    :key="index"
     :src="imgStore.imgOriginal.get(index)"
     :style="{
       maxWidth: '98%',

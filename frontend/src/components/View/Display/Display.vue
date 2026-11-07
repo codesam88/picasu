@@ -1,8 +1,8 @@
 <template>
   <div id="image-display-col" class="h-100 w-100 position-relative image-col d-flex flex-column">
     <DisplayMobile
-      class="flex-grow-1 position-relative view-content"
       v-if="configStore.isMobile"
+      class="flex-grow-1 position-relative view-content"
       :isolation-id="isolationId"
       :asset-id="assetId"
       :index="index"
@@ -14,8 +14,8 @@
     />
 
     <DisplayDesktop
-      class="flex-grow-1 position-relative view-content"
       v-if="!configStore.isMobile"
+      class="flex-grow-1 position-relative view-content"
       :isolation-id="isolationId"
       :asset-id="assetId"
       :index="index"

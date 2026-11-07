@@ -9,9 +9,9 @@
       :resistance="true"
       :resistance-ratio="0.3"
       :allow-touch-move="true"
+      class="h-100"
       @slide-change="onSlideChange"
       @swiper="onSwiper"
-      class="h-100"
     >
       <swiper-slide v-if="previousAssetId !== undefined">
         <div class="slide-content">

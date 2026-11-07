@@ -32,6 +32,9 @@
         aria-label="Description"
         rows="1"
         auto-grow
+        :placeholder="
+          !isShareMode && userDefinedDescriptionModel === '' ? 'Add description' : undefined
+        "
         @blur="
           !isShareMode &&
           editUserDefinedDescription(
@@ -40,9 +43,6 @@
             props.index,
             props.isolationId
           )
-        "
-        :placeholder="
-          !isShareMode && userDefinedDescriptionModel === '' ? 'Add description' : undefined
         "
       />
     </v-card-item>

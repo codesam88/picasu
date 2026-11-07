@@ -3,8 +3,8 @@
     <SectionCard title="Change Password">
       <v-list-item>
         <v-text-field
-          class="pt-2"
           v-model="oldPassword"
+          class="pt-2"
           prepend-icon="mdi-lock-outline"
           label="Current Password"
           :type="showOldPassword ? 'text' : 'password'"
@@ -18,9 +18,9 @@
       </v-list-item>
       <v-list-item>
         <v-text-field
+          v-model="newPassword"
           class="pt-2"
           prepend-icon="mdi-lock"
-          v-model="newPassword"
           label="New Password"
           :type="showNewPassword ? 'text' : 'password'"
           :append-inner-icon="showNewPassword ? 'mdi-eye' : 'mdi-eye-off'"
@@ -33,9 +33,9 @@
       ></v-list-item>
       <v-list-item>
         <v-text-field
+          v-model="confirmPassword"
           class="pt-2"
           prepend-icon="mdi-lock-check"
-          v-model="confirmPassword"
           label="Confirm New Password"
           :type="showConfirmPassword ? 'text' : 'password'"
           :append-inner-icon="showConfirmPassword ? 'mdi-eye' : 'mdi-eye-off'"
@@ -52,8 +52,8 @@
           variant="flat"
           :loading="loading"
           :disabled="!canSubmit"
-          @click="savePassword"
           class="text-none"
+          @click="savePassword"
         >
           Save Changes
         </v-btn>

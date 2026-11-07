@@ -1,6 +1,7 @@
 <template>
   <video
     v-if="tokenReady"
+    ref="videoRef"
     controls
     :autoplay="enableWatch !== false"
     :src="getSrc(hash, false, 'mp4', database.updateAt)"
@@ -11,7 +12,6 @@
       maxHeight: '100%'
     }"
     inline
-    ref="videoRef"
     crossorigin="anonymous"
   >
     >

@@ -5,16 +5,16 @@
     class="h-100 d-flex align-center justify-center"
   >
     <DisplayDatabaseImage
-      :key="index"
       v-if="abstractData.type === 'image'"
+      :key="index"
       :isolation-id="isolationId"
       :index="index"
       :abstract-data="abstractData"
     />
 
     <DisplayDatabaseVideo
-      :key="index"
       v-if="abstractData.type === 'video' && !abstractData.pending"
+      :key="index"
       :database="abstractData"
       :hash="abstractData.id"
       :isolation-id="isolationId"

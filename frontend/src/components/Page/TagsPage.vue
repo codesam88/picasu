@@ -10,8 +10,8 @@
               variant="tonal"
               class="ma-1"
               link
-              @click="searchByTag(tagsData.tag, router)"
               :style="{ fontSize: chipFontSize(tagsData.number) + 'rem' }"
+              @click="searchByTag(tagsData.tag, router)"
             >
               {{ tagsData.tag }}
             </v-chip>

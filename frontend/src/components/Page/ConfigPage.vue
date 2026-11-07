@@ -19,11 +19,11 @@
             <div class="config-block">
               <v-row class="ma-0">
                 <StorageAndSync
-                  :image-path="imagePath"
-                  :users-home-path="usersHomePath"
                   v-model:upload-folder="localSettings.uploadFolder"
                   v-model:max-upload-size="localSettings.maxUploadSize"
                   v-model:fs-notify-watcher="localSettings.fsNotifyWatcher"
+                  :image-path="imagePath"
+                  :users-home-path="usersHomePath"
                 />
               </v-row>
             </div>
@@ -51,8 +51,8 @@
                         color="primary"
                         variant="flat"
                         :loading="exporting"
-                        @click="exportConfig"
                         class="text-none"
+                        @click="exportConfig"
                       >
                         Export Config
                       </v-btn>

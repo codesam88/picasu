@@ -49,6 +49,10 @@ import { useUploadStore } from '@/store/uploadStore'
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
+defineSlots<{
+  default?: () => unknown
+}>()
+
 const uploadStore = useUploadStore('mainId')
 const shareStore = useShareStore('mainId')
 const messageStore = useMessageStore('mainId')

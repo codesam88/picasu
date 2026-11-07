@@ -1,9 +1,9 @@
 <template>
   <v-toolbar flat height="2" class="no-select bg-surface">
     <v-progress-linear
+      v-if="!initializedStore.initialized"
       id="progress-bar"
       class="bg-surface"
-      v-if="!initializedStore.initialized"
       indeterminate
       color="primary"
       height="2"

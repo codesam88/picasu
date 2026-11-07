@@ -1,10 +1,10 @@
 <template>
   <BaseModal
     v-if="submit !== undefined"
+    id="batch-edit-tag-overlay"
     v-model="modalStore.showBatchEditTagsModal"
     title="Edit Tags"
     width="400"
-    id="batch-edit-tag-overlay"
     content-class="pa-0"
     hide-close
   >
@@ -20,8 +20,8 @@
             <v-form
               ref="formRef"
               v-model="formIsValid"
-              @submit.prevent="submit"
               validate-on="input"
+              @submit.prevent="submit"
             >
               <v-container>
                 <v-combobox

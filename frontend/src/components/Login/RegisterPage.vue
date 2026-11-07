@@ -7,9 +7,9 @@
           v-bind="props"
           class="theme-toggle-btn"
           :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-          @click="themeIsLight = !themeIsLight"
           size="large"
           variant="text"
+          @click="themeIsLight = !themeIsLight"
         />
       </template>
     </v-tooltip>
@@ -31,7 +31,7 @@
               </p>
             </div>
 
-            <v-form @submit.prevent="handleRegister" ref="form">
+            <v-form ref="form" @submit.prevent="handleRegister">
               <v-text-field
                 v-model="userId"
                 label="User ID"
@@ -51,10 +51,10 @@
                 variant="outlined"
                 density="comfortable"
                 :append-inner-icon="showPassword ? 'mdi-eye' : 'mdi-eye-off'"
-                @click:append-inner="showPassword = !showPassword"
                 required
                 class="mb-4"
                 :rules="[rules.required]"
+                @click:append-inner="showPassword = !showPassword"
               ></v-text-field>
 
               <v-text-field

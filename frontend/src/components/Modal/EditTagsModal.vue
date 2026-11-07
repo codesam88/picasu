@@ -1,10 +1,10 @@
 <template>
   <BaseModal
     v-if="submit !== undefined"
+    id="edit-tag-overlay"
     v-model="modalStore.showEditTagsModal"
     title="Edit Tags"
     width="400"
-    id="edit-tag-overlay"
     content-class="pa-0"
     hide-close
   >
@@ -17,7 +17,7 @@
       <template #default="{ model: proxyModel, actions }">
         <v-card variant="elevated" retain-focus>
           <template #text>
-            <v-form v-model="formIsValid" @submit.prevent validate-on="input">
+            <v-form v-model="formIsValid" validate-on="input" @submit.prevent>
               <v-combobox
                 v-model="proxyModel.value"
                 chips

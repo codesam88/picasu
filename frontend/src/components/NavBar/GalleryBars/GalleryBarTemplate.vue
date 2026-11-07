@@ -10,4 +10,8 @@ import ProgressBar from '@/components/NavBar/ProgressBar.vue'
 defineProps<{
   isolationId: IsolationId
 }>()
+
+defineSlots<{
+  content?: () => unknown
+}>()
 </script>

@@ -1,18 +1,18 @@
 <template>
   <div
-    class="w-100 position-absolute"
     ref="placeholderRef"
+    class="w-100 position-absolute"
     :style="{
       transform: `translateY(${modifyTopPixel ? topPixel - placeholderRefHeight : topPixel}px)`,
       willChange: 'transform'
     }"
   >
-    <div class="d-flex flex-wrap" v-for="index in placeholderRowNumScaled" :key="`extra-${index}`">
+    <div v-for="index in placeholderRowNumScaled" :key="`extra-${index}`" class="d-flex flex-wrap">
       <div
         v-for="subindex in placeholderColNum"
-        class="bg-placeholder ma-1"
         ref="placeholderRowRef"
         :key="`extra-${subindex}`"
+        class="bg-placeholder ma-1"
         :style="{
           flexGrow: '1',
           position: 'relative',
