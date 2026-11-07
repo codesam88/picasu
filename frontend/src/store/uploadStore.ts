@@ -4,6 +4,7 @@ import axios, { type AxiosProgressEvent } from 'axios'
 import { useMessageStore } from './messageStore'
 import { useModalStore } from './modalStore'
 import { errorDisplay } from '@/script/utils/errorDisplay'
+import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
 import { IsolationId } from '@type/types'
 
 /** Build the upload endpoint URL with the target album (if any) and the
@@ -28,7 +29,11 @@ export const useUploadStore = (isolationId: IsolationId) =>
       // Files picked but not yet confirmed via the pre-upload options dialog.
       pendingFiles: [] as File[],
       pendingAlbumId: undefined as string | undefined,
-      autoRename: true
+      autoRename: true,
+      // Files in the batch being uploaded; shown by the Processing subtitle.
+      fileCount: 0,
+      // Epoch ms when the upload entered Processing; drives the elapsed ticker.
+      processingStart: undefined as number | undefined
     }),
 
     getters: {
@@ -128,6 +133,7 @@ export const useUploadStore = (isolationId: IsolationId) =>
         this.abortController = abortController
         this.total = this.loaded = 0
         this.startTime = Date.now()
+        this.fileCount = files.length
 
         try {
           await axios.post(uploadUrl, formData, {
@@ -141,7 +147,12 @@ export const useUploadStore = (isolationId: IsolationId) =>
                   this.loaded = e.loaded
                 }
                 if (this.loaded !== undefined && this.total === this.loaded) {
-                  this.status = 'Processing'
+                  if (this.status !== 'Processing') {
+                    this.status = 'Processing'
+                    // Once the body is sent remainingTime is 0 forever, so the
+                    // server phase gets its own start time for elapsed seconds.
+                    this.processingStart = Date.now()
+                  }
                 }
               }
             }
@@ -149,6 +160,16 @@ export const useUploadStore = (isolationId: IsolationId) =>
 
           this.status = 'Completed'
           messageStore.success('Files uploaded successfully')
+          // Same grid reload as assign-album/batch-tag mutations; a failed
+          // refresh must not flip the finished upload back to Canceled.
+          try {
+            // The router module pulls in the whole page tree, so load it only
+            // when a refresh is actually needed.
+            const { default: router } = await import('@/route/routes')
+            await refreshGalleryAfterMutation(isolationId, router.currentRoute.value)
+          } catch {
+            // No-op: the upload itself succeeded and is already toasted.
+          }
         } catch (err: unknown) {
           this.status = 'Canceled'
           // The global axios interceptor already displayed axios errors

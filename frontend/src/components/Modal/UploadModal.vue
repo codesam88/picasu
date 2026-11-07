@@ -4,11 +4,7 @@
     class="mx-auto position-fixed"
     append-icon=""
     :title="`${uploadStore.status}`"
-    :subtitle="`${humanizeDuration(uploadStore.remainingTime * 1000, {
-      units: ['h', 'm', 's'],
-      largest: 1,
-      round: true
-    })} remaining`"
+    :subtitle="subtitle"
     variant="elevated"
     retain-focus
     :style="{
@@ -21,7 +17,7 @@
       <div class="progress-container">
         <Transition name="fade-scale" mode="out-in">
           <v-progress-circular
-            key="progress-{{uploadStore.status}}"
+            :key="`progress-${uploadStore.status}`"
             color="primary"
             :model-value="circularValue"
             :indeterminate="uploadStore.status === 'Processing'"
@@ -63,9 +59,50 @@
 import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
 import humanizeDuration from 'humanize-duration'
-import { computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 const uploadStore = useUploadStore('mainId')
 const modalStore = useModalStore('mainId')
+
+// Ticking clock, refreshed only while the server-side phase runs.
+const now = ref(Date.now())
+let processingTimer: ReturnType<typeof setInterval> | undefined
+watch(
+  () => uploadStore.status,
+  (status) => {
+    if (status === 'Processing') {
+      now.value = Date.now()
+      processingTimer ??= setInterval(() => {
+        now.value = Date.now()
+      }, 1000)
+    } else if (processingTimer !== undefined) {
+      clearInterval(processingTimer)
+      processingTimer = undefined
+    }
+  },
+  { immediate: true }
+)
+onUnmounted(() => {
+  if (processingTimer !== undefined) {
+    clearInterval(processingTimer)
+    processingTimer = undefined
+  }
+})
+
+// remainingTime reads 0 through the whole Processing phase (the body is
+// already sent), so that branch shows file count + elapsed seconds instead.
+const subtitle = computed(() => {
+  if (uploadStore.status === 'Processing') {
+    const count = uploadStore.fileCount
+    const start = uploadStore.processingStart
+    const elapsed = start === undefined ? 0 : Math.max(0, Math.floor((now.value - start) / 1000))
+    return `${count} ${count === 1 ? 'file' : 'files'} · processing on server… ${elapsed}s`
+  }
+  return `${humanizeDuration(uploadStore.remainingTime * 1000, {
+    units: ['h', 'm', 's'],
+    largest: 1,
+    round: true
+  })} remaining`
+})
 
 const circularValue = computed(() => {
   if (uploadStore.status === 'Uploading') {
