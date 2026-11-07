@@ -58,9 +58,9 @@
         </template>
       </v-list-item>
       <template #actions>
-        <v-btn color="primary" variant="flat" :loading="loading" class="text-none" @click="save">
-          Save Changes
-        </v-btn>
+        <span class="text-caption text-medium-emphasis px-4">
+          Changes apply immediately — no save needed.
+        </span>
       </template>
     </SectionCard>
 
@@ -95,7 +95,6 @@ import { useMessageStore } from '@/store/messageStore'
 import { resetAuthKey } from '@/api/config'
 import { disableReadOnly } from '@/api/adminConfig'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
-import type { AppConfig } from '@/api/config'
 import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 
 const readOnlyMode = defineModel<boolean>('readOnlyMode', { required: true })
@@ -109,16 +108,29 @@ const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
-const loading = ref(false)
 const resetting = ref(false)
 const disabling = ref(false)
 const confirmOpen = ref(false)
 const disablePassword = ref('')
 
-const onReadOnlyToggle = (value: unknown) => {
+const onReadOnlyToggle = async (value: unknown) => {
   const next = value === true
   if (next) {
+    // Enabling applies immediately like every other control here; the
+    // section has no save step. Revert on failure so the switch reflects
+    // server state.
     readOnlyMode.value = true
+    disabling.value = true
+    const success = await tryWithMessageStore('mainId', async () => {
+      await configStore.updateConfig({ readOnlyMode: true })
+      return true
+    })
+    disabling.value = false
+    if (success === true) {
+      messageStore.success('Read-only mode enabled')
+    } else {
+      readOnlyMode.value = false
+    }
     return
   }
   if (readOnlyMode.value) {
@@ -159,21 +171,6 @@ const resetKey = async () => {
     messageStore.success('Authentication key rotated — all sessions signed out')
   }
   resetting.value = false
-}
-
-const save = async () => {
-  loading.value = true
-
-  const payload: Partial<AppConfig> = {
-    readOnlyMode: readOnlyMode.value
-  }
-
-  const success = await configStore.updateConfig(payload)
-
-  if (success === true) {
-    messageStore.success('Advanced settings saved successfully')
-  }
-  loading.value = false
 }
 </script>
 
