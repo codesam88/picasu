@@ -3036,13 +3036,16 @@ whether the target is the caller or the sole other admin; self-demotion
 with another admin present succeeds (transfer). No-op same-flag writes
 succeed without an audit line.
 
+Requires re-authentication via the `X-Picasu-Password` header (403 when
+it is missing or wrong).
+
 Corner cases: Unknown `userId` names no user. The caller id is read from
 the dispatch-validated claims, never from the body.
 
 Errors: 400 invalid `userId` — 401 missing or invalid credentials,
-non-admin caller, or share credentials — 404 unknown `userId` — 405
-read-only mode — 409 demotion would leave zero admins — 500 storage
-failure.
+non-admin caller, or share credentials — 403 missing or wrong
+re-authentication password — 404 unknown `userId` — 405 read-only mode
+— 409 demotion would leave zero admins — 500 storage failure.
 
 > Body parameter
 
@@ -3078,6 +3081,7 @@ failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Admin role updated                                                                         | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Demotion would leave zero admins                                                           | None                                        |

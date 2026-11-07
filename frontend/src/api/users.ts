@@ -46,11 +46,24 @@ export const bootstrapUser = async (userId: string, password: string): Promise<U
   return response.data
 }
 
-export const setUserAdmin = async (userId: string, admin: boolean): Promise<void> => {
-  await axios.put('/put/users/admin', {
-    userId,
-    admin
-  })
+/// Elevate or demote a user via `PUT /put/users/admin`. The caller's own
+/// password travels in the `X-Picasu-Password` header (re-authentication);
+/// the body carries only `{ userId, admin }`.
+export const setUserAdmin = async (
+  userId: string,
+  admin: boolean,
+  reauthPassword: string
+): Promise<void> => {
+  await axios.put(
+    '/put/users/admin',
+    {
+      userId,
+      admin
+    },
+    {
+      headers: { 'X-Picasu-Password': reauthPassword }
+    }
+  )
 }
 
 export const deleteUser = async (userId: string, reauthPassword: string): Promise<void> => {

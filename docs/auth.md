@@ -406,7 +406,7 @@ expiry.
 | `GuardHash`         | `ClaimsAsset` whose `hash` claim equals the URL path segment                              | `GET /object/compressed/...`                                                                                                                                               |
 | `GuardHashOriginal` | `ClaimsAsset` with `allowOriginal` + matching `asset_id` claim                            | `GET /object/imported/...`                                                                                                                                                 |
 | `GuardMutate`       | rejects with 405 when `readOnlyMode` is on                                                | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
-| `GuardReauth`       | valid session plus the account password in the `X-Picasu-Password` header (403 otherwise) | `POST /post/admin/config/disable-read-only` (lift) and `PUT /put/users/password` (self-change) — re-authentication for privileged operations                               |
+| `GuardReauth`       | valid session plus the account password in the `X-Picasu-Password` header (403 otherwise) | `POST /post/admin/config/disable-read-only` (lift), `PUT /put/users/password` (self-change) and `PUT /put/users/admin` (role change) — re-auth for privileged operations   |
 
 The OpenAPI contract now declares its four security schemes — `cookie_jwt`,
 `bearer_token`, `album_id` and `share_id` — in `backend/openapi.json`,

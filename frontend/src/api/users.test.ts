@@ -42,13 +42,19 @@ describe('listUsers', () => {
 })
 
 describe('setUserAdmin', () => {
-  test('puts the admin flag to /put/users/admin', async () => {
+  test('puts the admin flag to /put/users/admin with re-auth header', async () => {
     mockedAxios.put = vi.fn().mockResolvedValue({ data: '' })
-    await setUserAdmin('bob', true)
-    expect(mockedAxios.put).toHaveBeenCalledWith('/put/users/admin', {
-      userId: 'bob',
-      admin: true
-    })
+    await setUserAdmin('bob', true, 'reauth-secret')
+    expect(mockedAxios.put).toHaveBeenCalledWith(
+      '/put/users/admin',
+      {
+        userId: 'bob',
+        admin: true
+      },
+      {
+        headers: { 'X-Picasu-Password': 'reauth-secret' }
+      }
+    )
   })
 })
 

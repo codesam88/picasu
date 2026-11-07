@@ -70,7 +70,14 @@ async function resolveLocator(
   } catch {
     return page.getByRole(role, { name })
   }
-  return (await exact.count()) === 1 ? exact : page.getByRole(role, { name })
+  if ((await exact.count()) === 1) return exact
+  // More than one exact-name hit (e.g. the same confirm button in a closed
+  // dialog and in the open one — Vuetify keeps closed dialog content in the
+  // DOM): an action can only land on the visible one, so prefer it when it
+  // is unique. Anything still ambiguous falls back to substring matching.
+  const visibleExact = exact.filter({ visible: true })
+  if ((await visibleExact.count()) === 1) return visibleExact
+  return page.getByRole(role, { name })
 }
 
 export async function executeWhen(
@@ -340,7 +347,12 @@ export async function executeAssert(
       })
     } else if ('ui.modal' in assertion) {
       tracer?.recordUI('ui.modal', target)
-      const dialog = page.getByRole('dialog')
+      // Match only ACTIVE overlays: Vuetify keeps closed dialogs in the DOM
+      // (their content stays queryable and even passes visibility checks),
+      // so a bare role query counts stale dialogs and trips strict mode on
+      // back-to-back flows. The --active class follows dialog state
+      // synchronously, independent of enter/leave transitions.
+      const dialog = page.locator('[role="dialog"].v-overlay--active')
       if (assertion['ui.modal'] === 'open') {
         await expect(dialog).toBeVisible({ timeout: SMALL_TIMEOUT_MS })
       } else {

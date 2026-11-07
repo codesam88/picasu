@@ -1,9 +1,32 @@
 import { defineConfig } from '@playwright/test'
+import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { TEST_DIR } from './tests/playwright/paths'
 
 const isCI = !!process.env.CI
+
+// Local runs pin the downloaded Chromium (plus the LD_LIBRARY_PATH below),
+// but the revision directory (`chromium-NNNN`) changes with every Playwright
+// bump. Resolve whatever is actually installed instead of hardcoding it;
+// fall back to Playwright's default resolution when the cache is empty.
+function localChromiumExecutable(): string | undefined {
+  try {
+    const cacheDir = path.join(os.homedir(), '.cache', 'ms-playwright')
+    const entries = fs
+      .readdirSync(cacheDir)
+      .filter((e) => /^chromium-\d+$/.test(e))
+      .sort()
+      .reverse()
+    for (const entry of entries) {
+      const exe = path.join(cacheDir, entry, 'chrome-linux64', 'chrome')
+      if (fs.existsSync(exe)) return exe
+    }
+  } catch {
+    // No readable browser cache — fall through to default resolution.
+  }
+  return undefined
+}
 
 export default defineConfig({
   testDir: './tests/playwright',
@@ -45,16 +68,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     launchOptions: {
-      executablePath: isCI
-        ? undefined
-        : path.join(
-            os.homedir(),
-            '.cache',
-            'ms-playwright',
-            'chromium-1228',
-            'chrome-linux64',
-            'chrome'
-          ),
+      executablePath: isCI ? undefined : localChromiumExecutable(),
       env: {
         ...process.env,
         LD_LIBRARY_PATH: '/tmp/nss-libs/usr/lib/x86_64-linux-gnu'

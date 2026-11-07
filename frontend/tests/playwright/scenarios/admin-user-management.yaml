@@ -8,6 +8,13 @@ covers:
     - textbox/User ID
     - route:/timeline
     - route:/config
+    - User Management
+    - editor
+    - Make admin?
+    - modal:open
+    - Confirm with password
+    - modal:closed
+    - toast:success:is now an admin
 given:
   - empty: true
   - user:
@@ -36,3 +43,66 @@ steps:
       - ui.text_visible: admin
       - ui.disabled: button/Cannot demote admin - promote another user first
       - ui.disabled: button/Cannot delete admin - promote another user first
+  # Role changes re-auth (GuardReauth): the admin session alone is refused.
+  - when:
+      - navigate: /config
+    assert:
+      - api.response:
+          url: /put/users/admin
+          method: PUT
+          body:
+            userId: admin
+            admin: true
+          headers:
+            x-picasu-password: e2e_test_pwd
+          status: 200 # same-flag no-op succeeds once the password proof is sent
+      - api.response:
+          url: /put/users/admin
+          method: PUT
+          body:
+            userId: admin
+            admin: false
+          status: 403 # missing X-Picasu-Password
+      - api.response:
+          url: /put/users/admin
+          method: PUT
+          body:
+            userId: admin
+            admin: false
+          headers:
+            x-picasu-password: wrong-password-9
+          status: 403 # wrong password
+  # Promote flow is two dialogs: question, then password authorization.
+  - when:
+      - navigate: /config
+      - click: tab/Users
+    assert:
+      - ui.text_visible: User Management
+  - when:
+      - fill: textbox/Username
+        value: editor
+      - fill: textbox/Initial password
+        value: e2e_test_pwd2
+      - click: button/Create
+    assert:
+      - ui.text_visible: editor
+  - when:
+      - click: button/Make admin
+    assert:
+      - ui.modal: open
+      - ui.text_visible: Make admin?
+  - when:
+      - click: button/Promote
+    assert:
+      - ui.modal: open
+      - ui.text_visible: Confirm with password
+      - ui.text_hidden: Make admin?
+  - when:
+      - fill: textbox/Your password
+        value: e2e_test_pwd
+      - click: button/Promote
+    assert:
+      - ui.modal: closed
+      - ui.toast:
+          type: success
+          contains: is now an admin

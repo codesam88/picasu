@@ -172,10 +172,11 @@ def demoted_cookie():
     # The session token only exists in Set-Cookie, so read it from the raw
     # response rather than through the JSON helper.
     token = login_token(EDITOR, PASSWORD)
+    # GuardReauth: without X-Picasu-Password the demotion is refused 403.
     api(
         "PUT",
         "/put/users/admin",
-        headers={"Cookie": f"jwt={ADMIN_JWT}"},
+        headers={"Cookie": f"jwt={ADMIN_JWT}", "X-Picasu-Password": PASSWORD},
         body={"userId": EDITOR, "admin": False},
     )
     return token
