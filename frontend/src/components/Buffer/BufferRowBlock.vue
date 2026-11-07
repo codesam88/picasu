@@ -28,8 +28,8 @@
           @click="(event: MouseEvent) => handleClick(event, row.start + subIndex)"
         ></div>
         <DesktopHoverIcon
-          class="icon-hover child"
           v-if="!mobile"
+          class="icon-hover child"
           :on-click="(event: MouseEvent) => handleClickIcon(event, row.start + subIndex)"
         />
         <HoverGradientDiv :mobile="mobile" />

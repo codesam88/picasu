@@ -2,9 +2,9 @@
   <div class="h-100 py-2" :style="{ width: `${scrollBarWidth}px` }">
     <div
       v-if="imageContainerRef"
-      class="h-100 v-sheet"
-      ref="scrollbarRef"
       id="scroll-bar"
+      ref="scrollbarRef"
+      class="h-100 v-sheet"
       :style="{
         position: 'relative',
         zIndex: 3,

@@ -49,15 +49,15 @@
             color="primary"
             variant="flat"
             :loading="resetting"
-            @click.stop="resetKey"
             class="text-none"
+            @click.stop="resetKey"
           >
             Reset Key
           </v-btn>
         </template>
       </v-list-item>
       <v-card-actions class="justify-end px-4 pb-4">
-        <v-btn color="primary" variant="flat" :loading="loading" @click="save" class="text-none">
+        <v-btn color="primary" variant="flat" :loading="loading" class="text-none" @click="save">
           Save Changes
         </v-btn>
       </v-card-actions>

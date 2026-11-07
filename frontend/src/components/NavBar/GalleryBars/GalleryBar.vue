@@ -4,7 +4,7 @@
       <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
         <v-tooltip v-if="route.meta.level === 1" location="top" text="Menu">
           <template #activator="{ props }">
-            <v-btn v-bind="props" @click="showNavPanel = !showNavPanel" icon="mdi-menu" />
+            <v-btn v-bind="props" icon="mdi-menu" @click="showNavPanel = !showNavPanel" />
           </template>
         </v-tooltip>
         <v-tooltip v-else location="top" text="Back">
@@ -37,13 +37,10 @@
           <v-card-text class="pa-0 bg-surface">
             <v-text-field
               id="nav-search-input"
+              v-model="searchQuery"
               rounded
               class="mx-3"
-              v-model="searchQuery"
               bg-color="surface-light"
-              @click:prepend-inner="handleSearch"
-              @click:clear="handleSearch"
-              @keyup.enter="handleSearch"
               clearable
               persistent-clear
               variant="solo"
@@ -51,6 +48,9 @@
               prepend-inner-icon="mdi-magnify"
               single-line
               hide-details
+              @click:prepend-inner="handleSearch"
+              @click:clear="handleSearch"
+              @keyup.enter="handleSearch"
             >
               <template #label>
                 <span class="text-body-small">Search</span>

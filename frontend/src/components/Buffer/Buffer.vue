@@ -7,8 +7,8 @@
     }"
   >
     <BufferPlaceholder
-      id="placeholderTop"
       v-if="visibleRows[0] !== undefined && !(prefetchStore.totalHeight <= windowHeight)"
+      id="placeholderTop"
       :top-pixel="
         visibleRows[0].topPixelAccumulated! -
         scrollTopStore.scrollTop +
@@ -31,8 +31,8 @@
       <RowBlock :row="row" :isolation-id="isolationId" />
     </div>
     <BufferPlaceholder
-      id="placeholderBottom"
       v-if="visibleRows.length > 0 && !(prefetchStore.totalHeight <= windowHeight)"
+      id="placeholderBottom"
       :top-pixel="
         (() => {
           const lastData = getArrayValue(visibleRows, visibleRows.length - 1)
@@ -48,9 +48,9 @@
       :modify-top-pixel="false"
     />
     <BufferPlaceholder
+      v-if="rowStore.firstRowFetched && visibleRows.length === 0 && windowWidth > 0"
       id="placeholderNone"
       ref="placeholderNoneRef"
-      v-if="rowStore.firstRowFetched && visibleRows.length === 0 && windowWidth > 0"
       :top-pixel="
         ((lastRowBottom - scrollTopStore.scrollTop + windowHeight) %
           (placeholderNoneRowRefHeight + 2 * paddingPixel)) +

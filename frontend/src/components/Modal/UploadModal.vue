@@ -1,5 +1,6 @@
 <template>
   <v-card
+    id="upload-vcard"
     class="mx-auto position-fixed"
     append-icon=""
     :title="`${uploadStore.status}`"
@@ -9,7 +10,6 @@
       round: true
     })} remaining`"
     variant="elevated"
-    id="upload-vcard"
     retain-focus
     :style="{
       bottom: '50px',
@@ -36,11 +36,11 @@
     </template>
     <template #append>
       <v-btn
+        v-if="uploadStore.status === 'Completed' || uploadStore.status === 'Canceled'"
         variant="outlined"
         class="ma-4"
         style="width: 100px"
         @click="modalStore.showUploadModal = false"
-        v-if="uploadStore.status === 'Completed' || uploadStore.status === 'Canceled'"
       >
         Close
       </v-btn>

@@ -1,10 +1,10 @@
 <template>
   <BaseModal
+    id="upload-options-modal"
     v-model="modalStore.showUploadOptionsModal"
     title="Upload Options"
     width="500"
     content-class="pa-2"
-    id="upload-options-modal"
   >
     <v-list lines="two" class="bg-transparent pa-0">
       <v-list-item v-for="(file, i) in uploadStore.pendingFiles" :key="`${file.name}-${i}`">

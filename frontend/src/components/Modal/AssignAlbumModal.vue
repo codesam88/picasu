@@ -51,7 +51,7 @@
             <v-list-item-subtitle v-if="node.dirPath" class="text-caption text-truncate">
               {{ node.dirPath }}
             </v-list-item-subtitle>
-            <template #append v-if="node.id === selectedAlbumId">
+            <template v-if="node.id === selectedAlbumId" #append>
               <v-icon color="primary" size="small">mdi-check</v-icon>
             </template>
           </v-list-item>

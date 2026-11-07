@@ -56,6 +56,10 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+defineSlots<{
+  default?: () => unknown
+}>()
+
 const modelValue = defineModel<boolean>({ required: true })
 
 const handleConfirm = () => {

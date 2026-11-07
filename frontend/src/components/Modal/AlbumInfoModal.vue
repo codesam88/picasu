@@ -1,10 +1,10 @@
 <template>
   <BaseModal
     v-if="album !== undefined"
+    id="album-info-modal"
     v-model="modalStore.showAlbumInfoModal"
     title="Album Info"
     width="480"
-    id="album-info-modal"
     hide-close
   >
     <v-form @submit.prevent="save">

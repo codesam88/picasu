@@ -1,5 +1,6 @@
 <template>
   <v-dialog
+    :id="id"
     v-model="internalValue"
     :max-width="width"
     variant="flat"
@@ -8,7 +9,6 @@
     scrollable
     :fullscreen="fullscreen"
     :transition="transition"
-    :id="id"
   >
     <v-card rounded="lg" class="d-flex flex-column" elevation="12">
       <slot name="header">
@@ -73,6 +73,12 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
+
+defineSlots<{
+  header?: () => unknown
+  default?: () => unknown
+  actions?: () => unknown
+}>()
 
 const internalValue = computed({
   get: () => props.modelValue,

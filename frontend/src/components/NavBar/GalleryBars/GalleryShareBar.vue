@@ -19,9 +19,6 @@
               rounded
               class="ma-0"
               bg-color="surface-light"
-              @click:prepend-inner="handleSearch"
-              @click:clear="handleSearch"
-              @keyup.enter="handleSearch"
               clearable
               persistent-clear
               variant="solo"
@@ -30,6 +27,9 @@
               single-line
               hide-details
               style="margin-right: 10px"
+              @click:prepend-inner="handleSearch"
+              @click:clear="handleSearch"
+              @keyup.enter="handleSearch"
             >
               <template #label>
                 <span class="text-body-small">Search</span>

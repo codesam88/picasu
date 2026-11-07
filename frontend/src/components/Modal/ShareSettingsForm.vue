@@ -61,8 +61,8 @@
         :key="item.key"
         :title="item.title"
         class="mb-1 rounded-lg"
-        @click="toggleSetting(item.key)"
         link
+        @click="toggleSetting(item.key)"
       >
         <template #append>
           <v-switch

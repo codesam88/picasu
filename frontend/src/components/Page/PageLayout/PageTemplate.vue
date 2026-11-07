@@ -135,6 +135,12 @@ const props = withDefaults(
   }
 )
 
+defineSlots<{
+  overlay?: () => unknown
+  content?: () => unknown
+  loading?: () => unknown
+}>()
+
 const showNavPanel = ref(window.innerWidth > window.innerHeight)
 const route = useRoute()
 const collectionStore = useCollectionStore('mainId')

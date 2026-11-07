@@ -79,6 +79,10 @@ const props = defineProps<{
   includePersonal?: boolean
 }>()
 
+defineSlots<{
+  'home-toolbar'?: () => unknown
+}>()
+
 const scrollTopStore = useScrollTopStore(props.isolationId)
 const offsetStore = useOffsetStore(props.isolationId)
 const rowStore = useRowStore(props.isolationId)

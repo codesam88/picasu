@@ -1,7 +1,7 @@
 <template>
   <div
-    id="abstractData-col"
     v-if="abstractData"
+    id="abstractData-col"
     class="h-100 flex-grow-0 flex-shrink-0 bg-surface"
     style="z-index: 1"
   >

@@ -133,17 +133,17 @@
             <v-tooltip location="top" text="Reveal">
               <template #activator="{ props }">
                 <v-btn
+                  v-if="!isRevealed(item)"
                   v-bind="props"
                   icon="mdi-eye"
                   variant="text"
                   size="small"
                   :loading="isRevealing(item)"
                   @click="reveal(item)"
-                  v-if="!isRevealed(item)"
                 />
               </template>
             </v-tooltip>
-            <v-tooltip location="top" text="Open" v-if="isRevealed(item)">
+            <v-tooltip v-if="isRevealed(item)" location="top" text="Open">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"
@@ -156,7 +156,7 @@
                 />
               </template>
             </v-tooltip>
-            <v-tooltip location="top" text="Copy" v-if="isRevealed(item)">
+            <v-tooltip v-if="isRevealed(item)" location="top" text="Copy">
               <template #activator="{ props }">
                 <v-btn
                   v-bind="props"

@@ -7,10 +7,10 @@
     </template>
     <v-list-item-subtitle class="text-wrap">
       <v-chip
-        variant="flat"
-        color="primary"
         v-for="tag in tags"
         :key="tag"
+        variant="flat"
+        color="primary"
         link
         class="ma-1"
         @click="searchByTag(tag, router)"

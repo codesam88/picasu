@@ -176,9 +176,9 @@
           color="primary"
           variant="flat"
           :loading="saving"
-          @click="save"
           class="text-none"
           aria-label="Save storage settings"
+          @click="save"
         >
           Save Changes
         </v-btn>

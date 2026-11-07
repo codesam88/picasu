@@ -187,8 +187,8 @@
           <v-btn
             variant="tonal"
             class="text-none"
-            @click="confirmSelection"
             :disabled="!currentPath"
+            @click="confirmSelection"
           >
             Select Folder
           </v-btn>

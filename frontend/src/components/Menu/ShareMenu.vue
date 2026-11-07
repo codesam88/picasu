@@ -4,9 +4,9 @@
       <v-menu location="start">
         <template #activator="{ props: menuProps }">
           <v-btn
+            v-testid="'share-menu'"
             v-bind="mergeProps(tooltipProps, menuProps)"
             icon="mdi-dots-vertical"
-            v-testid="'share-menu'"
           ></v-btn>
         </template>
         <v-list>
