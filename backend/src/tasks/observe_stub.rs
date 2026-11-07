@@ -28,7 +28,8 @@ pub fn set_observer_stats(enabled: bool) {
     OBSERVER_STATS.store(enabled, Ordering::Relaxed);
 }
 
-/// Whether the extra observer stats are enabled (always false in stub).
+/// Whether the extra observer stats are enabled. Stored for parity; the
+/// stub emits no stats.
 #[must_use]
 pub fn observer_stats() -> bool {
     OBSERVER_STATS.load(Ordering::Relaxed)
