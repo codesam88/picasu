@@ -44,6 +44,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useShareStore } from '@/store/shareStore'
@@ -52,6 +53,8 @@ import axios from 'axios'
 const modalStore = useModalStore('mainId')
 
 const shareStore = useShareStore('mainId')
+
+const router = useRouter()
 
 const password = ref('')
 
@@ -65,6 +68,11 @@ watch(
       errorMessage.value = ''
       password.value = ''
       loading.value = false
+    } else if (shareStore.isLinkExpired) {
+      // Expired links are a dead end: any dismissal (Close, header X,
+      // Escape) returns home with `replace` so Back cannot reopen the
+      // dead share URL. Password-state closes skip this branch.
+      void router.replace('/')
     }
   }
 )
