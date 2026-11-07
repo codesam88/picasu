@@ -3,6 +3,13 @@ const SETTINGS_STORE_NAME = 'settings'
 
 function openSettingsDB(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
+    // No IndexedDB (node test env, blocked storage): behave like any other
+    // open failure so callers fall back to defaults instead of rejecting.
+    if (typeof indexedDB === 'undefined') {
+      resolve(null)
+      return
+    }
+
     const request = indexedDB.open(DB_NAME, 1)
 
     request.onupgradeneeded = (event) => {
@@ -319,8 +326,26 @@ export async function deleteLimitRation(): Promise<void> {
   })
 }
 
-// Theme persistence: store string 'dark' or 'light'
-export async function storeTheme(value: 'dark' | 'light'): Promise<void> {
+// Theme persistence. Key scheme: `theme` is the logged-out/global default,
+// `theme:<userId>` is per-user. Reads fall back to the global key when the
+// scoped key is absent (migrates pre-scoping choices); writes always target
+// the scoped key.
+//
+// A new theme = a new union member here, plus a Vuetify `themes` entry and
+// a FrontendConfig select option.
+export type ThemeName = 'dark' | 'light'
+
+const GLOBAL_THEME_KEY = 'theme'
+
+function themeKey(userId?: string): string {
+  return userId === undefined ? GLOBAL_THEME_KEY : `theme:${userId}`
+}
+
+function asTheme(raw: unknown): ThemeName | null {
+  return raw === 'dark' || raw === 'light' ? raw : null
+}
+
+export async function storeTheme(value: ThemeName, userId?: string): Promise<void> {
   const db = await openSettingsDB()
   if (!db) {
     console.error('Failed to open database for storing theme')
@@ -330,7 +355,7 @@ export async function storeTheme(value: 'dark' | 'light'): Promise<void> {
   return new Promise<void>((resolve) => {
     const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(SETTINGS_STORE_NAME)
-    const request = store.put(value, 'theme')
+    const request = store.put(value, themeKey(userId))
 
     request.onsuccess = () => {
       resolve()
@@ -343,35 +368,38 @@ export async function storeTheme(value: 'dark' | 'light'): Promise<void> {
   })
 }
 
-export async function getTheme(): Promise<'dark' | 'light' | null> {
+export async function getTheme(userId?: string): Promise<ThemeName | null> {
   const db = await openSettingsDB()
   if (!db) {
     console.error('Failed to open database for retrieving theme')
     return null
   }
 
-  return new Promise<'dark' | 'light' | null>((resolve) => {
-    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readonly')
-    const store = transaction.objectStore(SETTINGS_STORE_NAME)
-    const request = store.get('theme')
+  const read = (key: string): Promise<ThemeName | null> =>
+    new Promise<ThemeName | null>((resolve) => {
+      const transaction = db.transaction(SETTINGS_STORE_NAME, 'readonly')
+      const store = transaction.objectStore(SETTINGS_STORE_NAME)
+      const request = store.get(key)
 
-    request.onsuccess = () => {
-      const rawResult: unknown = request.result
-      if (rawResult === 'dark' || rawResult === 'light') {
-        resolve(rawResult)
-      } else {
+      request.onsuccess = () => {
+        resolve(asTheme(request.result))
+      }
+
+      request.onerror = () => {
+        console.error('Error retrieving theme')
         resolve(null)
       }
-    }
+    })
 
-    request.onerror = () => {
-      console.error('Error retrieving theme')
-      resolve(null)
-    }
-  })
+  const scoped = await read(themeKey(userId))
+  if (scoped !== null || userId === undefined) {
+    return scoped
+  }
+  // Per-user key absent: fall back to the global key (legacy migration).
+  return read(GLOBAL_THEME_KEY)
 }
 
-export async function deleteTheme(): Promise<void> {
+export async function deleteTheme(userId?: string): Promise<void> {
   const db = await openSettingsDB()
   if (!db) {
     console.error('Failed to open database for deleting theme')
@@ -381,7 +409,7 @@ export async function deleteTheme(): Promise<void> {
   return new Promise<void>((resolve) => {
     const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(SETTINGS_STORE_NAME)
-    const request = store.delete('theme')
+    const request = store.delete(themeKey(userId))
 
     request.onsuccess = () => {
       resolve()

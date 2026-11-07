@@ -19,6 +19,7 @@ import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { useConstStore } from '@/store/constStore'
+import { registerVuetifyTheme } from '@/script/utils/vuetifyTheme'
 import { setupMainAxiosInterceptor } from '@/axiosInterceptor'
 
 setupMainAxiosInterceptor()
@@ -48,6 +49,10 @@ const vuetify = createVuetify({
     defaultTheme: constStore.theme === 'light' ? 'light' : 'dark'
   }
 })
+
+// Identity changes outside component context (logout, 401 interceptor) apply
+// reloaded themes through this handle; in-component toggles use useTheme().
+registerVuetifyTheme(vuetify.theme)
 
 // Custom directive that adds data-testid to the root DOM element after mount.
 // Useful when a component (e.g. Vuetify VBtn) strips custom HTML attributes.

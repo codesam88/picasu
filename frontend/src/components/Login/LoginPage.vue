@@ -218,6 +218,10 @@ const handleLogin = async () => {
       // keep only the display profile in the session store.
       useSessionStore('mainId').setProfile(profile)
 
+      // Switch to the new user's theme before navigating away.
+      await constStore.loadThemeFor(profile.userId)
+      vuetifyTheme.global.name.value = constStore.theme
+
       // Remember the id for the next login's User ID prefill.
       localStorage.setItem(LAST_USER_ID_KEY, userId.value)
 

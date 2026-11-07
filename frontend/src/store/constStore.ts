@@ -14,8 +14,20 @@ import {
   storeShowFilenameChip,
   getShowFilenameChip,
   storeDisableImg,
-  getDisableImg
+  getDisableImg,
+  type ThemeName
 } from '@/db/settingsDb'
+import { useSessionStore } from '@/store/sessionStore'
+
+export type { ThemeName }
+
+const DEFAULT_THEME: ThemeName = 'dark'
+
+// Session identity for theme scoping: `undefined` (global key) when logged
+// out. Read at action time, mirroring how albumStore reads session state.
+function scopedThemeUserId(): string | undefined {
+  return useSessionStore('mainId').profile?.userId
+}
 
 export const useConstStore = (isolationId: IsolationId) =>
   defineStore('constStore' + isolationId, {
@@ -24,7 +36,7 @@ export const useConstStore = (isolationId: IsolationId) =>
       showInfo: boolean
       concurrencyNumber: number
       limitRatio: boolean
-      theme: 'dark' | 'light'
+      theme: ThemeName
       showFilenameChip: boolean
       disableImg: boolean
     } => ({
@@ -33,17 +45,16 @@ export const useConstStore = (isolationId: IsolationId) =>
       concurrencyNumber: Math.max(Math.floor(navigator.hardwareConcurrency / 2), 1),
       // default: false
       limitRatio: false,
-      // default theme: dark
-      theme: 'dark',
+      theme: DEFAULT_THEME,
       showFilenameChip: false,
       disableImg: false
     }),
 
     actions: {
       async toggleTheme(vuetifyTheme?: { global: { name: { value: string } } }): Promise<void> {
-        const newTheme = this.theme === 'light' ? 'dark' : 'light'
+        const newTheme: ThemeName = this.theme === 'light' ? 'dark' : 'light'
         this.theme = newTheme
-        await storeTheme(newTheme)
+        await storeTheme(newTheme, scopedThemeUserId())
 
         // Update Vuetify theme if provided
         if (vuetifyTheme) {
@@ -99,16 +110,23 @@ export const useConstStore = (isolationId: IsolationId) =>
           this.limitRatio = stored
         }
       },
-      async updateTheme(value: 'dark' | 'light'): Promise<void> {
+      async updateTheme(value: ThemeName): Promise<void> {
         this.theme = value
-        await storeTheme(value)
+        await storeTheme(value, scopedThemeUserId())
       },
 
+      // Load the theme for `userId` (`null` = logged out → global key),
+      // falling back to the app default when nothing is stored. Resolves the
+      // store only — callers apply `this.theme` to Vuetify.
+      async loadThemeFor(userId: string | null): Promise<void> {
+        const stored = await getTheme(userId ?? undefined)
+        this.theme = stored ?? DEFAULT_THEME
+      },
+
+      // Boot entry: load the theme for the persisted session identity, so a
+      // reload while signed in keeps that user's theme.
       async loadTheme(): Promise<void> {
-        const stored = await getTheme()
-        if (stored === 'dark' || stored === 'light') {
-          this.theme = stored
-        }
+        await this.loadThemeFor(scopedThemeUserId() ?? null)
       },
 
       async updateShowFilenameChip(value: boolean): Promise<void> {

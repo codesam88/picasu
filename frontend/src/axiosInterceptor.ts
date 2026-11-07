@@ -2,10 +2,12 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { AUTHENTICATE_URL, retryAfterSecs, throttleMessage } from '@/script/utils/retryAfter'
 import { errorDisplay } from '@/script/utils/errorDisplay'
 import { useSessionStore } from '@/store/sessionStore'
+import { useConstStore } from '@/store/constStore'
 import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { applyVuetifyTheme } from '@/script/utils/vuetifyTheme'
 
 const HEADERS = {
   ALBUM_ID: 'x-album-id',
@@ -83,7 +85,7 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
   const status = error.response?.status
 
   switch (status) {
-    case 401:
+    case 401: {
       // Tier taxonomy: the backend means 401 to be "the presented cookie
       // was rejected" — a session-tier failure. The only other source is
       // the failed login itself (POST /post/users/authenticate, a wired 401),
@@ -102,8 +104,14 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
       // double-navigate: redirectionToLogin is a no-op once the route
       // is login.
       useSessionStore('mainId').clearProfile()
+      // Session gone: reload the logged-out (global) theme so the login
+      // page never keeps the expired user's theme.
+      const constStore = useConstStore('mainId')
+      await constStore.loadThemeFor(null)
+      applyVuetifyTheme(constStore.theme)
       await redirectionStore.redirectionToLogin()
       break
+    }
 
     case 403: {
       const displayMsg = errorDisplay(error)
