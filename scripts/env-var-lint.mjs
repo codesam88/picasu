@@ -28,7 +28,8 @@
 //
 // Excluded from the read set (test/dev-only knobs, not supported server
 // configuration): PICASU_RANDOM_SEEDS (randomized test scenario seeds),
-// PICASU_STORE_TEST_CHILD / _PATH / _READY (cross-process user-store tests).
+// PICASU_STORE_TEST_CHILD / _PATH / _READY (cross-process user-store tests),
+// PICASU_TEST_INDEX_TIMEOUT_MS (test-only index-wait timeout).
 //
 // Failures (exit 1): read not documented, documented with no read, README
 // token missing from the config.md table, unverifiable dynamic lookup.
@@ -47,6 +48,7 @@ const EXCLUDED = new Set([
   'PICASU_STORE_TEST_CHILD',
   'PICASU_STORE_TEST_PATH',
   'PICASU_STORE_TEST_READY',
+  'PICASU_TEST_INDEX_TIMEOUT_MS',
 ])
 
 const TOKEN_RE = /PICASU_[A-Z0-9_]+/g

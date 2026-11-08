@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use snapfab::{PhotoSpec, generate_batch};
 
 use crate::tests::bootstrap::test_image_home;
+use crate::tests::fixtures::wait::index_timeout_ms;
 use crate::tests::fixtures::{
     auth_cookie, discover_album_id, discover_asset_id, wait_for_album_index,
 };
@@ -44,7 +45,7 @@ pub fn create_album(client: &Client, photo_rel: &str) -> (String, String) {
         .body(json!({ "album": format!("/{dir}") }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Accepted, "index {dir}");
-    wait_for_album_index(client, 30_000);
+    wait_for_album_index(client, index_timeout_ms());
 
     let album_id = discover_album_id(client, &dir);
     let asset_id = discover_asset_id(client, photo_rel.trim_start_matches('/'));

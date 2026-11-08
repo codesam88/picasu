@@ -342,6 +342,43 @@ pub fn cancel_album_index() -> AppResult<()> {
     Ok(())
 }
 
+/// Test-harness quiescence helper: cancel any in-flight index job and wait
+/// (polling, no async) until it reaches a terminal state or `timeout_ms`
+/// elapses. Operates directly on the module statics so callers do not need
+/// an HTTP client or a Tokio runtime handle. Safe to call when no job is
+/// running (returns immediately). On timeout, logs via `eprintln` and
+/// returns without panicking.
+#[cfg(test)]
+pub(crate) fn cancel_and_wait_index_idle(timeout_ms: u64) {
+    // Best-effort cancel; ignore the "no active job" error.
+    let _ = cancel_album_index();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    loop {
+        let active = ACTIVE_INDEX.lock().expect("lock poisoned").is_some();
+        let slot = INDEX_STATUS.lock().expect("lock poisoned");
+        let state = slot.status.state.clone();
+        let scanned = slot.status.scanned;
+        let matched = slot.status.matched;
+        let processed = slot.status.processed;
+        drop(slot);
+
+        let idle = !active && !matches!(state, AlbumIndexState::Running);
+        if idle {
+            return;
+        }
+
+        if std::time::Instant::now() >= deadline {
+            eprintln!(
+                "cancel_and_wait_index_idle: timed out after {timeout_ms} ms (active={active}, state={state:?}, scanned={scanned}, matched={matched}, processed={processed})"
+            );
+            return;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 pub fn album_index_status() -> AlbumIndexStatus {
     INDEX_STATUS.lock().expect("lock poisoned").status.clone()
 }

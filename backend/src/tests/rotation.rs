@@ -19,13 +19,13 @@ use crate::process::misc::generate_thumbhash;
 use crate::process::xmp::extract_xmp_data_from_file;
 use crate::storage::asset_store;
 use crate::tests::bootstrap::{cookie, lock, seed, setup_image_home, test_image_home};
+use crate::tests::fixtures::wait::index_timeout_ms;
 use crate::tests::fixtures::{auth_cookie, discover_asset_id, test_password, wait_for_album_index};
 
 const PHOTO_REL: &str = "rotation/album/photo.jpg";
 const ALBUM_REL: &str = "/rotation/album";
 const PHOTO_WIDTH: u32 = 48;
 const PHOTO_HEIGHT: u32 = 32;
-const INDEX_TIMEOUT_MS: u64 = 30_000;
 
 fn generate_photo() -> PathBuf {
     let photo = test_image_home().join(PHOTO_REL);
@@ -51,7 +51,7 @@ fn post_index_album(client: &Client) {
         .body(json!({ "album": ALBUM_REL }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Accepted, "index {ALBUM_REL}");
-    wait_for_album_index(client, INDEX_TIMEOUT_MS);
+    wait_for_album_index(client, index_timeout_ms());
 }
 
 fn record(asset_id: &str) -> AbstractData {
