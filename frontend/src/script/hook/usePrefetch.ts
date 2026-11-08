@@ -15,7 +15,6 @@ import { useFilterStore } from '@/store/filterStore'
 import { useQueueStore } from '@/store/queueStore'
 import { useRowStore } from '@/store/rowStore'
 import { useOffsetStore } from '@/store/offsetStore'
-import { useImgStore } from '@/store/imgStore'
 import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 
 export function usePrefetch(
@@ -186,5 +185,7 @@ export async function refreshGalleryAfterMutation(
   useQueueStore(isolationId).clearAll()
   useRowStore(isolationId).clearAll()
   useOffsetStore(isolationId).clearAll()
-  useImgStore(isolationId).clearForResize()
+  // Thumbnail URLs in imgStore survive: they are keyed by asset identity and
+  // output box, so tiles whose asset is unchanged keep their URL and only
+  // changed/new assets miss and get re-queued.
 }

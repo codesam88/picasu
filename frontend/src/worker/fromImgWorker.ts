@@ -11,11 +11,11 @@ export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
   const messageStore = useMessageStore('mainId')
 
   const handler = createHandler<typeof fromImgWorker>({
-    smallImageProcessed({ index, url }) {
-      imgStore.imgUrl.set(index, url)
+    smallImageProcessed({ assetId, cacheKey, albumMode, url }) {
+      imgStore.setImgUrl(assetId, albumMode, cacheKey, url)
     },
     imageProcessed({ index, url }) {
-      imgStore.imgOriginal.set(index, url)
+      imgStore.setImgOriginal(index, url)
     },
     tokenExpired: ({ assetId }) => {
       console.info('image worker token expired, renewing asset token')
