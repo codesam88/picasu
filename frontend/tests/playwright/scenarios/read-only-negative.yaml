@@ -8,7 +8,7 @@ covers:
   ui:
     - route:/timeline
     - route:/config
-    - toast:success:Advanced settings saved successfully
+    - toast:success:Read-only mode enabled
 given:
   - empty: true
   - user:
@@ -26,11 +26,10 @@ steps:
   - when:
       - navigate: /config
       - click: checkbox/Read Only Mode
-      - click: button/Save Changes
     assert:
       - ui.toast:
           type: success
-          contains: Advanced settings saved successfully
+          contains: Read-only mode enabled
       - ui.route: /config
 
   - when:
