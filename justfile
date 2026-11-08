@@ -101,10 +101,14 @@ frontend-playwright filter="": frontend-build-maybe
 [group('frontend')]
 frontend-test: frontend-vitest frontend-playwright
 
-# npm run build; installs deps if missing
+[private]
+frontend-ci-maybe:
+    cd frontend && (test node_modules/.package-lock.json -nt package.json -a node_modules/.package-lock.json -nt package-lock.json || npm ci)
+
+# npm run build; resyncs deps when package.json/lock changed since install
 [group('frontend')]
-frontend-build:
-    cd frontend && (test -d node_modules || npm ci) && npm run build
+frontend-build: frontend-ci-maybe
+    cd frontend && npm run build
 
 [private]
 frontend-build-maybe:
