@@ -29,21 +29,16 @@
 
     <!-- General empty state -->
     <v-row v-else justify="center">
-      <!-- Home page: dialog with upload + scan actions -->
+      <!-- Home page: inline actions, part of the page (no modal) -->
       <template v-if="route.meta.baseName === 'timeline'">
-        <BaseModal
-          id="empty-state-modal"
-          v-model="showDialog"
-          title="Database is empty, scan now or upload?"
-          width="560"
-          content-class="pa-6"
-        >
-          <v-row dense>
+        <v-col cols="12" md="8" lg="6" class="mx-auto text-center">
+          <div class="text-h6 font-weight-medium mb-4">Database is empty, scan now or upload?</div>
+          <v-row dense justify="center">
             <v-col cols="12" sm="6">
               <v-card
                 class="d-flex flex-column align-center justify-center pa-6 text-center"
                 style="cursor: pointer; min-height: 180px"
-                variant="outlined"
+                :elevation="2"
                 rounded="lg"
                 @click="onUploadClick"
               >
@@ -56,7 +51,7 @@
               <v-card
                 class="d-flex flex-column align-center justify-center pa-6 text-center"
                 style="cursor: pointer; min-height: 180px"
-                variant="outlined"
+                :elevation="2"
                 rounded="lg"
                 :disabled="!canScan"
                 @click="onStartScan"
@@ -66,7 +61,7 @@
               </v-card>
             </v-col>
           </v-row>
-        </BaseModal>
+        </v-col>
       </template>
 
       <!-- Other pages: existing layout -->
@@ -131,9 +126,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import BaseModal from '@/components/Modal/BaseModal.vue'
 import { useUploadStore } from '@/store/uploadStore'
 import { useConfigStore } from '@/store/configStore'
 import { useCurrentUser } from '@/script/utils/currentUser'
@@ -150,7 +144,6 @@ const route = useRoute()
 const uploadStore = useUploadStore('mainId')
 const configStore = useConfigStore('mainId')
 
-const showDialog = ref(true)
 // Scanning rewrites the shared index: admin-only. Viewers get the upload
 // card instead of a button that would only answer 401.
 const canScan = computed(() => useCurrentUser().value?.isAdmin === true)
@@ -280,11 +273,10 @@ const ui = computed<UIState>(() => {
 
 function onUploadClick() {
   uploadStore.triggerFileInput(undefined)
-  showDialog.value = false
 }
 
 async function onStartScan() {
-  showDialog.value = false
+  if (!canScan.value) return
   await tryWithMessageStore('mainId', async () => {
     await startAlbumIndex()
     return true
