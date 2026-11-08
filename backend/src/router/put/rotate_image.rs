@@ -1,8 +1,10 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::openapi_components::Unauthorized;
-use crate::process::misc::{generate_phash, generate_thumbhash};
+use crate::process::misc::{apply_rotation, generate_phash, generate_thumbhash};
 use crate::process::thumbnail::generate_thumbnail_for_image;
+use crate::process::xmp::extract_xmp_data_from_file;
+use crate::process::xmp_write::write_rotation_for;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
 use crate::storage::files::write_gate;
@@ -18,7 +20,7 @@ use log::info;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(crate = "rocket::serde")]
+#[serde(crate = "rocket::serde", rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
 pub struct RotateImageRequest {
     /// Asset ID of the image to rotate
@@ -28,18 +30,21 @@ pub struct RotateImageRequest {
 /// Rotate an image 90° counter-clockwise and rebuild its derivatives.
 ///
 /// The compressed JPEG is loaded, rotated and written back, `width` and
-/// `height` are swapped, and `thumbhash` and `phash` are recomputed. Each
-/// parent album's `updatedAt` is bumped before the records are flushed.
+/// `height` are swapped, and `thumbhash` and `phash` are recomputed. The
+/// accumulated rotation (90°, 180°, 270°, then back to 0°) is persisted to the
+/// asset's XMP sidecar as `picasu:Rotation`, which is the source of truth a
+/// later reindex reads to reproduce this display state. Each parent album's
+/// `updatedAt` is bumped before the records are flushed.
 ///
-/// Corner cases: only the compressed JPEG is re-rendered — the original file,
-/// its EXIF orientation and the `.albuminfo.xmp` sidecar are left as they were,
-/// so the rotation is a display-level transform that accumulates across
-/// repeated calls.
+/// Corner cases: only the compressed JPEG is re-rendered — the original file
+/// and its EXIF data are left as they were — so the rotation is a display-level
+/// transform that accumulates across repeated calls. The original content hash
+/// is not recomputed.
 ///
 /// Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
 /// missing or invalid credentials; share tokens are not accepted — 404
 /// `asset_id` names no asset record — 405 read-only mode — 500 decode,
-/// thumbnail write, or storage failure.
+/// thumbnail write, XMP sidecar write, or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = RotateImageRequest,
@@ -103,9 +108,15 @@ pub async fn rotate_image(
                 ));
             }
 
+            // The sidecar is the rotation source of truth; each call adds one
+            // quarter turn counter-clockwise.
+            let current_rotation =
+                extract_xmp_data_from_file(&abstract_data.source_path()).rotation;
+            let next_rotation = (current_rotation + 90) % 360;
+
             // Load the compressed image (not the original)
             let compressed_path = abstract_data.compressed_path();
-            let mut dyn_img = image::open(&compressed_path).map_err(|e| {
+            let dyn_img = image::open(&compressed_path).map_err(|e| {
                 AppError::new(
                     ErrorKind::IO,
                     format!(
@@ -115,11 +126,8 @@ pub async fn rotate_image(
                 )
             })?;
 
-            // Rotate counter-clockwise (270 degrees clockwise = 90 degrees counter-clockwise)
-            dyn_img = dyn_img.rotate270();
-
-            // Swap width and height after rotation
-            abstract_data.swap_width_height();
+            // Rotate counter-clockwise and swap the display dimensions.
+            let dyn_img = apply_rotation(&mut abstract_data, dyn_img, 90);
 
             // Generate and save the rotated thumbnail
             generate_thumbnail_for_image(&mut abstract_data, &dyn_img.clone()).or_raise(|| {
@@ -133,6 +141,16 @@ pub async fn rotate_image(
             abstract_data.set_thumbhash(generate_thumbhash(&dyn_img));
             abstract_data.set_phash(generate_phash(&dyn_img));
             abstract_data.update_update_at();
+
+            // Persist the new display rotation before the records are flushed:
+            // a failed sidecar write aborts the request, leaving the database
+            // and the sidecar on the previous rotation together.
+            write_rotation_for(&abstract_data, next_rotation).map_err(|e| {
+                AppError::new(
+                    ErrorKind::IO,
+                    format!("Failed to persist rotation to the XMP sidecar: {e}"),
+                )
+            })?;
 
             let album_ids: Vec<_> = abstract_data.album().into_iter().collect();
 

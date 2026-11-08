@@ -96,7 +96,7 @@ Annotation: ensure auth-matrix artifacts match generator
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Underlying:
-  - [backend/auth-matrix.json:1-2152](https://github.com/codesam88/picasu/blob/main/backend/auth-matrix.json#L1-L2152) `backend/auth-matrix.json:1-2152`
+  - [backend/auth-matrix.json:1-2153](https://github.com/codesam88/picasu/blob/main/backend/auth-matrix.json#L1-L2153) `backend/auth-matrix.json:1-2153`
   - [docs/auth-matrix.md:1-139](https://github.com/codesam88/picasu/blob/main/docs/auth-matrix.md#L1-L139) `docs/auth-matrix.md:1-139`
   - [scripts/auth-matrix.mjs:1-249](https://github.com/codesam88/picasu/blob/main/scripts/auth-matrix.mjs#L1-L249) `scripts/auth-matrix.mjs:1-249`
 - Required by: `openapi-check`
@@ -305,7 +305,7 @@ Annotation: Ensure that committed/staged json matches current --dump-openapi out
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Underlying:
-  - [backend/openapi.json:1-5859](https://github.com/codesam88/picasu/blob/main/backend/openapi.json#L1-L5859) `backend/openapi.json:1-5859`
+  - [backend/openapi.json:1-5863](https://github.com/codesam88/picasu/blob/main/backend/openapi.json#L1-L5863) `backend/openapi.json:1-5863`
 - Required by: `openapi-check`
 
 ### `openapi-lint`

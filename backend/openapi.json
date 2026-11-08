@@ -1263,13 +1263,13 @@
       },
       "RotateImageRequest": {
         "properties": {
-          "asset_id": {
+          "assetId": {
             "description": "Asset ID of the image to rotate",
             "type": "string"
           }
         },
         "required": [
-          "asset_id"
+          "assetId"
         ],
         "type": "object"
       },
@@ -4914,7 +4914,7 @@
     },
     "/put/rotate-image": {
       "put": {
-        "description": "The compressed JPEG is loaded, rotated and written back, `width` and\n`height` are swapped, and `thumbhash` and `phash` are recomputed. Each\nparent album's `updatedAt` is bumped before the records are flushed.\n\nCorner cases: only the compressed JPEG is re-rendered — the original file,\nits EXIF orientation and the `.albuminfo.xmp` sidecar are left as they were,\nso the rotation is a display-level transform that accumulates across\nrepeated calls.\n\nErrors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401\nmissing or invalid credentials; share tokens are not accepted — 404\n`asset_id` names no asset record — 405 read-only mode — 500 decode,\nthumbnail write, or storage failure.",
+        "description": "The compressed JPEG is loaded, rotated and written back, `width` and\n`height` are swapped, and `thumbhash` and `phash` are recomputed. The\naccumulated rotation (90°, 180°, 270°, then back to 0°) is persisted to the\nasset's XMP sidecar as `picasu:Rotation`, which is the source of truth a\nlater reindex reads to reproduce this display state. Each parent album's\n`updatedAt` is bumped before the records are flushed.\n\nCorner cases: only the compressed JPEG is re-rendered — the original file\nand its EXIF data are left as they were — so the rotation is a display-level\ntransform that accumulates across repeated calls. The original content hash\nis not recomputed.\n\nErrors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401\nmissing or invalid credentials; share tokens are not accepted — 404\n`asset_id` names no asset record — 405 read-only mode — 500 decode,\nthumbnail write, XMP sidecar write, or storage failure.",
         "operationId": "rotate_image",
         "requestBody": {
           "content": {

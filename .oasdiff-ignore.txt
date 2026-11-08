@@ -16,3 +16,9 @@
 # boundary. The route moves to `POST /post/upload` with no contract change
 # besides the path; old `/upload` callers get a JSON 404 like any unknown path.
 api path removed without deprecation in API POST /upload
+# 2026-11-08 (rotate contract fix: RotateImageRequest gains the camelCase
+# rename every other PUT body already has. The old snake_case property never
+# worked with the frontend, which always sent assetId and got 422, so no
+# working caller can depend on it. Single-line form matching oasdiff's
+# singleline rendering, minus the volatile spec path.)
+in API PUT /put/rotate-image added the new required request property `assetId`

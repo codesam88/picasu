@@ -1,5 +1,5 @@
 <template>
-  <v-list-item prepend-icon="mdi-rotate-left" @click="rotateImage">
+  <v-list-item prepend-icon="mdi-rotate-left" data-testid="menu-rotate-left" @click="rotateImage">
     <v-list-item-title class="wrap">Rotate Left</v-list-item-title>
     <template #append>
       <span class="text-body-small text-medium-emphasis ms-4">Shift + R</span>

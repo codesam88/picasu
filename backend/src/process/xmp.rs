@@ -15,6 +15,9 @@ pub struct XmpData {
     /// in the sidecar so a database rebuild from the filesystem keeps trashed
     /// assets trashed; absent marker means not trashed.
     pub trashed: bool,
+    /// Counter-clockwise display rotation in degrees, from `picasu:Rotation`.
+    /// Applied on top of the EXIF orientation. Absent means 0 (unrotated).
+    pub rotation: u32,
 }
 
 /// The app's own XMP namespace, for properties no standard namespace has a
@@ -24,6 +27,9 @@ pub const NS_PICASU: &str = "http://picasu.app/xmp/1.0/";
 
 /// Prefix `NS_PICASU` is written with.
 pub const NS_PICASU_PREFIX: &str = "picasu";
+
+/// Property holding the counter-clockwise display rotation in degrees.
+pub const NS_PICASU_ROTATION: &str = "Rotation";
 
 /// Register [`NS_PICASU`] with xmpkit's namespace registry.
 ///
@@ -108,6 +114,7 @@ fn normalize(meta: &XmpMeta) -> XmpData {
         rating: rating_from_property(meta.get_property(ns::XMP, "Rating")),
         title: text_from_property(meta.get_property(ns::DC, "title")),
         trashed: trashed_from_property(meta.get_property(NS_PICASU, "Trashed")),
+        rotation: rotation_from_property(meta.get_property(NS_PICASU, NS_PICASU_ROTATION)),
     }
 }
 
@@ -190,6 +197,27 @@ fn trashed_from_property(value: Option<XmpValue>) -> bool {
         Some(XmpValue::Integer(value)) => value != 0,
         _ => false,
     }
+}
+
+/// `picasu:Rotation` → counter-clockwise degrees in 0/90/180/270.
+///
+/// xmpkit reads numeric packet values back as `String`, so both shapes are
+/// accepted. Values are reduced modulo 360; anything outside the quarter-turn
+/// set (a hand-written `45`, say) reads as 0 — the display pipeline only has
+/// quarter turns.
+fn rotation_from_property(value: Option<XmpValue>) -> u32 {
+    let degrees = match value {
+        Some(XmpValue::Integer(value)) => value,
+        Some(XmpValue::String(raw)) => match raw.trim().parse::<i64>() {
+            Ok(value) => value,
+            Err(_) => return 0,
+        },
+        _ => return 0,
+    };
+    u32::try_from(degrees.rem_euclid(360))
+        .ok()
+        .filter(|&degrees| matches!(degrees, 0 | 90 | 180 | 270))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -300,6 +328,7 @@ mod tests {
         assert_eq!(data.rating, None);
         assert_eq!(data.title, None);
         assert!(!data.trashed, "expected not trashed");
+        assert_eq!(data.rotation, 0, "expected no rotation");
     }
 
     /// A packet carrying the picasu-trash marker as attribute-form Boolean
@@ -328,6 +357,31 @@ mod tests {
  <rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/">
  <picasu:Trashed>{value}</picasu:Trashed>
  </rdf:Description>
+ </rdf:RDF>
+ </x:xmpmeta>"#
+        )
+    }
+
+    /// Element form of the rotation marker, as a hand-written packet carries it.
+    fn xmp_with_rotation_element(value: &str) -> String {
+        format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/">
+ <picasu:Rotation>{value}</picasu:Rotation>
+ </rdf:Description>
+ </rdf:RDF>
+ </x:xmpmeta>"#
+        )
+    }
+
+    /// Compact attribute form of the rotation marker.
+    fn xmp_with_rotation_attribute(value: &str) -> String {
+        format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/"
+                  picasu:Rotation="{value}"/>
  </rdf:RDF>
  </x:xmpmeta>"#
         )
@@ -388,6 +442,53 @@ mod tests {
     fn absent_marker_reads_as_untrashed() {
         let data = extract_xmp_data_from_packet(xmp_full(&["sunset"], "desc", 3).as_bytes());
         assert!(!data.trashed);
+    }
+
+    /// The rotation marker's absence means zero (unrotated), so packets written
+    /// before the property existed keep their current display behavior.
+    #[test]
+    fn absent_rotation_reads_as_zero() {
+        let data = extract_xmp_data_from_packet(xmp_full(&["sunset"], "desc", 3).as_bytes());
+        assert_eq!(data.rotation, 0);
+    }
+
+    #[test]
+    fn rotation_reads_from_element_and_attribute_forms() {
+        let element = xmp_with_rotation_element("90");
+        assert_eq!(
+            extract_xmp_data_from_packet(element.as_bytes()).rotation,
+            90
+        );
+
+        let attribute = xmp_with_rotation_attribute("270");
+        assert_eq!(
+            extract_xmp_data_from_packet(attribute.as_bytes()).rotation,
+            270
+        );
+    }
+
+    /// Repeated rotations wrap modulo 360, and values the display pipeline
+    /// cannot represent read as unrotated rather than as a partial turn.
+    #[test]
+    fn rotation_is_reduced_to_quarter_turns() {
+        for (raw, expected) in [
+            ("0", 0),
+            ("90", 90),
+            ("180", 180),
+            ("270", 270),
+            ("360", 0),
+            ("450", 90),
+            ("-90", 270),
+            ("45", 0),
+            ("banana", 0),
+        ] {
+            let packet = xmp_with_rotation_element(raw);
+            assert_eq!(
+                extract_xmp_data_from_packet(packet.as_bytes()).rotation,
+                expected,
+                "{raw} must read as {expected}"
+            );
+        }
     }
 
     #[test]
