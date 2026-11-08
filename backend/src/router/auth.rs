@@ -1527,7 +1527,9 @@ pub async fn renew_hash_token(
             };
 
         if claims.timestamp != auth.claims.timestamp {
-            warn!(
+            // Expected during snapshot rollovers (upload refresh, reconnect):
+            // the client tolerates this and re-seeds from a fresh prefetch.
+            info!(
                 "Timestamp does not match. Received: {}, Expected: {}",
                 claims.timestamp, auth.claims.timestamp
             );
@@ -1802,7 +1804,8 @@ impl<'r> FromRequest<'r> for GuardSnapshot {
         };
 
         if query_timestamp != claims.timestamp {
-            warn!(
+            // Same tolerated rollover as the hash-token path below.
+            info!(
                 "Timestamp does not match; received: {}; expected: {}",
                 query_timestamp, claims.timestamp
             );

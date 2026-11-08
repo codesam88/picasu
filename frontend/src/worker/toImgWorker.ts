@@ -6,7 +6,6 @@ import {
   ProcessImagePayload,
   ProcessSmallImagePayload
 } from '@/worker/workerApi'
-import axiosRetry from 'axios-retry'
 import axios from 'axios'
 import { getSrc } from '@utils/getter'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
@@ -15,15 +14,10 @@ const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(se
 const controllerMap = new Map<number, AbortController>()
 const workerAxios = axios.create()
 
-axiosRetry(workerAxios, {
-  retries: 0,
-  retryDelay: () => 200,
-  retryCondition: (error) => {
-    if (axios.isCancel(error)) return false
-    const response = error.response
-    return response ? response.status !== 200 : true
-  }
-})
+// No retries here by design: a failed fetch (expired token, 401, network
+// error) goes straight to the catch block, and recovery is owned by the
+// token/prefetch layer (silent renewal, fresh snapshot) — retrying the same
+// stale request would only repeat the failure.
 
 setupWorkerAxiosInterceptor(workerAxios, { notify: postToMainImg.notification }, 'image')
 
