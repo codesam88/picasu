@@ -1,1 +1,3 @@
 # xtask alias removed — replaced by utils/snapfab; plan tool is external (tablethat)
+# Generated sccache include (optional): run `just setup-sccache`.
+include = [{ path = "sccache.toml", optional = true }]
