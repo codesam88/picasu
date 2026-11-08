@@ -46,7 +46,11 @@ export interface ProcessAbortPayload {
 
 // === From ImgWorker Payloads ===
 export interface SmallImageProcessedPayload {
-  index: number
+  /** Asset identity — the main thread keys thumbnails by it, not by index. */
+  assetId: string
+  /** Output-box key; the main thread only reuses a URL produced for this key. */
+  cacheKey: string
+  albumMode: boolean
   url: string
 }
 

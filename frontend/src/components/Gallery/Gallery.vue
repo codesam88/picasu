@@ -134,7 +134,8 @@ watch([windowWidth, () => constStore.subRowHeightScale], async () => {
   rowStore.clearForResize()
   offsetStore.clearAll()
   queueStore.clearAll()
-  imgStore.clearForResize()
+  // Thumbnails are not cleared here: the URL is keyed by the requested output
+  // box, so unchanged tiles are reused and only re-sized tiles miss the key.
   const locationRowIndex = Math.floor(locationStore.locationIndex / layoutBatchNumber)
 
   locationStore.anchor = initializedStore.initialized ? locationRowIndex : null

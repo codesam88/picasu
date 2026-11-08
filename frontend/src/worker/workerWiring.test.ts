@@ -7,6 +7,8 @@ import { fromDataWorker, fromImgWorker } from './workerApi'
 import { handleDataWorkerReturn } from './fromDataWorker'
 import { handleImgWorker } from './fromImgWorker'
 import { useTokenStore } from '@/store/tokenStore'
+import { useImgStore } from '@/store/imgStore'
+import { thumbnailCacheKey } from './imgCache'
 
 /// Worker-realm sources reference `self` at module scope, so they cannot be
 /// imported under node vitest (same reason routes.test.ts checks source
@@ -79,6 +81,22 @@ describe('worker token-expired wiring', () => {
     expect(source).not.toContain('unauthorized')
   })
 
+  test('grid thumbnails are re-encoded below maximum quality', () => {
+    const source = readWorker('toImgWorker.ts')
+    expect(source).toMatch(/THUMBNAIL_QUALITY = 0\.8/)
+    expect(source).toContain('quality: THUMBNAIL_QUALITY')
+    expect(source).not.toMatch(/quality:\s*1[\s,}]/)
+  })
+
+  test('thumbnail cache lookup wraps the decode instead of following it', () => {
+    const source = readWorker('toImgWorker.ts')
+    const encodeCall = source.indexOf('getOrEncodeThumbnail(resizedBlobCache')
+    const decodeCall = source.indexOf('createImageBitmap(sourceBlob)')
+    expect(encodeCall).toBeGreaterThan(-1)
+    expect(decodeCall).toBeGreaterThan(encodeCall)
+    expect(source).toContain('resizedBlobCache.deleteWhere')
+  })
+
   test('data tokenExpired round-trips to forceRenewTimestampToken', () => {
     const fake = makeFakeWorker()
     handleDataWorkerReturn(fake as unknown as Worker, 'mainId')
@@ -110,5 +128,72 @@ describe('worker token-expired wiring', () => {
 
     expect(renewSpy).toHaveBeenCalledTimes(1)
     expect(renewSpy).toHaveBeenCalledWith('asset_1')
+  })
+})
+
+describe('thumbnail refresh reuse wiring', () => {
+  const keyFor = (assetId: string, width = 320) =>
+    thumbnailCacheKey({
+      assetId,
+      width,
+      height: 240,
+      devicePixelRatio: 2,
+      albumMode: false
+    })
+
+  test('the worker posts the output key and asset identity, not the tile index', () => {
+    const source = readWorker('toImgWorker.ts')
+    expect(source).toContain('cacheKey: resizedKey')
+    expect(source).toContain('assetId: event.assetId')
+    expect(source).toContain('albumMode')
+    expect(source).not.toContain('smallImageProcessed({ index: event.index')
+  })
+
+  test('the main thread keys tile URLs by asset identity and output key', () => {
+    const source = readFileSync(
+      resolve(workerDir, '../components/Buffer/FunctionalComponent/SmallImageContainer.ts'),
+      'utf8'
+    )
+    expect(source).toContain('thumbnailCacheKey')
+    expect(source).toContain('getImgUrl(serving.assetId')
+    expect(source).not.toContain('imgUrl.get(props.index)')
+  })
+
+  test('refresh paths do not blanket-clear tile URLs', () => {
+    const prefetch = readFileSync(resolve(workerDir, '../script/hook/usePrefetch.ts'), 'utf8')
+    const gallery = readFileSync(resolve(workerDir, '../components/Gallery/Gallery.vue'), 'utf8')
+    // Both paths still drop the per-index row/queue state so misses re-queue...
+    expect(prefetch).toContain('useQueueStore(isolationId).clearAll()')
+    expect(gallery).toContain('queueStore.clearAll()')
+    // ...but neither drops the asset-keyed tile URLs.
+    expect(prefetch).not.toContain('imgStore.clearForResize')
+    expect(gallery).not.toContain('imgStore.clearForResize')
+  })
+
+  test('purge still drops the blob, every resized variant, and the disk entry', () => {
+    const source = readWorker('toImgWorker.ts')
+    expect(source).toContain('blobCache.delete(assetId)')
+    expect(source).toContain('resizedBlobCache.deleteWhere((key) => key.startsWith(`${assetId}|`))')
+    expect(source).toContain('cache.delete(imgCacheKey(assetId))')
+  })
+
+  test('a processed thumbnail round-trips into reuse by asset and key', () => {
+    const fake = makeFakeWorker()
+    handleImgWorker(fake as unknown as Worker, 'mainId')
+    const post = bindActionDispatch(fromImgWorker, (action) => {
+      fake.emit(action)
+    })
+    const store = useImgStore('mainId')
+
+    post.smallImageProcessed({
+      assetId: 'asset_1',
+      cacheKey: keyFor('asset_1'),
+      albumMode: false,
+      url: 'blob:thumb'
+    })
+
+    expect(store.getImgUrl('asset_1', false, keyFor('asset_1'))).toBe('blob:thumb')
+    expect(store.getImgUrl('asset_1', false, keyFor('asset_1', 640))).toBeUndefined()
+    expect(store.getImgUrl('asset_2', false, keyFor('asset_2'))).toBeUndefined()
   })
 })

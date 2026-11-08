@@ -9,6 +9,13 @@ import {
 import axios from 'axios'
 import { getSrc } from '@utils/getter'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
+import {
+  getOrEncodeThumbnail,
+  LruCache,
+  RESIZED_BLOB_CACHE_LIMIT,
+  SOURCE_BLOB_CACHE_LIMIT,
+  thumbnailCacheKey
+} from './imgCache'
 
 const postToMainImg = bindActionDispatch(fromImgWorker, self.postMessage.bind(self))
 const controllerMap = new Map<number, AbortController>()
@@ -26,16 +33,31 @@ setupWorkerAxiosInterceptor(workerAxios, { notify: postToMainImg.notification },
 const IMG_CACHE_NAME = 'img-blob-cache-v1'
 
 /**
- * In-memory cache of fetched image Blobs, keyed by image hash.
+ * In-memory cache of fetched image Blobs, keyed by assetId (LRU-bounded).
  *
- * On resize, the main thread clears imgStore.imgUrl and re-queues visible
- * images. Without this cache every image would repeat the full network fetch.
- * With this cache the worker skips straight to createImageBitmap → resize,
- * which is sub-millisecond for typical thumbnails. The cache lives for the
- * lifetime of the worker (terminated on component unmount via
+ * A thumbnail-size or window resize re-queues visible images under a new
+ * output key. Without this cache every re-queue would repeat the full network
+ * fetch; with it the worker skips straight to the encode step below. The cache
+ * lives for the lifetime of the worker (terminated on component unmount via
  * workerStore.terminateWorker()).
  */
-const blobCache = new Map<string, Blob>()
+const blobCache = new LruCache<string, Blob>(SOURCE_BLOB_CACHE_LIMIT)
+
+/**
+ * In-memory cache of already re-encoded thumbnails, keyed by
+ * (assetId, width, height, dpr, albumMode). Survives gallery refreshes and
+ * resizes, so re-queued tiles skip decode + resize + JPEG encode entirely.
+ */
+const resizedBlobCache = new LruCache<string, Blob>(RESIZED_BLOB_CACHE_LIMIT)
+
+/**
+ * Grid thumbnails are re-encoded at 0.8 rather than the library default (0.5)
+ * or the previous maximum (1). At tile size 0.8 and 1.0 are not visibly
+ * distinguishable, while quality 1 forces the least-quantised JPEG tables and
+ * a larger blob for no visible gain. 0.8 stays above the library default,
+ * which is tuned for much smaller previews.
+ */
+const THUMBNAIL_QUALITY = 0.8
 
 function imgCacheKey(hash: string): string {
   return `https://img-blob-cache.internal/${hash}`
@@ -67,12 +89,13 @@ async function putToDiskCache(hash: string, blob: Blob): Promise<void> {
   }
 }
 
-async function purgeFromCaches(hash: string): Promise<void> {
-  blobCache.delete(hash)
+async function purgeFromCaches(assetId: string): Promise<void> {
+  blobCache.delete(assetId)
+  resizedBlobCache.deleteWhere((key) => key.startsWith(`${assetId}|`))
   if (typeof caches === 'undefined') return
   try {
     const cache = await caches.open(IMG_CACHE_NAME)
-    await cache.delete(imgCacheKey(hash))
+    await cache.delete(imgCacheKey(assetId))
   } catch {
     // Non-critical
   }
@@ -127,26 +150,46 @@ const handler = createHandler<typeof toImgWorker>({
       }
 
       controllerMap.delete(event.index)
-      const img = await createImageBitmap(blob)
 
       const albumMode = event.albumMode === true
-      const converted: Blob = await readAndCompressImage(img, {
-        argorithm: 'bilinear',
-        quality: 1,
-        maxWidth: albumMode
-          ? img.width *
-            Math.max(event.width / img.width, event.height / img.height) *
-            event.devicePixelRatio
-          : event.width * event.devicePixelRatio,
-        maxHeight: albumMode
-          ? img.height *
-            Math.max(event.width / img.width, event.height / img.height) *
-            event.devicePixelRatio
-          : event.height * event.devicePixelRatio
+      const resizedKey = thumbnailCacheKey({
+        assetId: event.assetId,
+        width: event.width,
+        height: event.height,
+        devicePixelRatio: event.devicePixelRatio,
+        albumMode
+      })
+      const sourceBlob: Blob = blob
+
+      const converted = await getOrEncodeThumbnail(resizedBlobCache, resizedKey, async () => {
+        const img = await createImageBitmap(sourceBlob)
+        try {
+          return await readAndCompressImage(img, {
+            argorithm: 'bilinear',
+            quality: THUMBNAIL_QUALITY,
+            maxWidth: albumMode
+              ? img.width *
+                Math.max(event.width / img.width, event.height / img.height) *
+                event.devicePixelRatio
+              : event.width * event.devicePixelRatio,
+            maxHeight: albumMode
+              ? img.height *
+                Math.max(event.width / img.width, event.height / img.height) *
+                event.devicePixelRatio
+              : event.height * event.devicePixelRatio
+          })
+        } finally {
+          img.close()
+        }
       })
 
       const objectUrl = URL.createObjectURL(converted)
-      postToMainImg.smallImageProcessed({ index: event.index, url: objectUrl })
+      postToMainImg.smallImageProcessed({
+        assetId: event.assetId,
+        cacheKey: resizedKey,
+        albumMode,
+        url: objectUrl
+      })
     } catch (error) {
       if (axios.isCancel(error)) return
       if (axios.isAxiosError(error) && error.response?.status === 401) {

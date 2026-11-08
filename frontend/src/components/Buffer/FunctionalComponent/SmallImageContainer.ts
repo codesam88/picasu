@@ -9,6 +9,26 @@ import { coverServingIds, getArrayValue } from '@utils/getter'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
+import { thumbnailCacheKey } from '@/worker/imgCache'
+
+interface ServingIds {
+  hash: string
+  assetId: string
+  albumMode: boolean
+}
+
+/**
+ * Resolves the asset a tile stands for. Album tiles serve their cover's
+ * content; every other type is its own asset.
+ */
+function servingIds(abstractData: EnrichedUnifiedData): ServingIds | null {
+  if (abstractData.type === 'album') {
+    const serving = coverServingIds(abstractData.cover, abstractData.coverHash)
+    if (serving === null) return null
+    return { ...serving, albumMode: true }
+  }
+  return { hash: abstractData.id, assetId: abstractData.assetId, albumMode: false }
+}
 
 interface SmallImageContainerProps {
   abstractData: EnrichedUnifiedData
@@ -26,7 +46,19 @@ const SmallImageContainer: FunctionalComponent<SmallImageContainerProps> = (prop
   const imgStore = useImgStore(props.isolationId)
   const queueStore = useQueueStore(props.isolationId)
 
-  const src = imgStore.imgUrl.get(props.index)
+  const serving = servingIds(props.abstractData)
+  if (serving === null) return null
+
+  const cacheKey = thumbnailCacheKey({
+    assetId: serving.assetId,
+    width: props.displayElement.displayWidth,
+    height: props.displayElement.displayHeight,
+    devicePixelRatio: window.devicePixelRatio,
+    albumMode: serving.albumMode
+  })
+  // Reuse the URL only when it was encoded for the same asset and output box;
+  // a settings/resize change makes the key miss and re-queues the tile.
+  const src = imgStore.getImgUrl(serving.assetId, serving.albumMode, cacheKey)
 
   if (src === undefined) {
     if (!queueStore.img.has(props.index)) {
@@ -34,6 +66,7 @@ const SmallImageContainer: FunctionalComponent<SmallImageContainerProps> = (prop
       checkAndFetch(
         props.abstractData,
         props.index,
+        serving,
         props.displayElement.displayWidth,
         props.displayElement.displayHeight,
         props.isolationId
@@ -112,6 +145,7 @@ SmallImageContainer.props = {
 async function checkAndFetch(
   abstractData: EnrichedUnifiedData,
   index: number,
+  serving: ServingIds,
   displayWidth: number,
   displayHeight: number,
   isolationId: IsolationId
@@ -133,56 +167,28 @@ async function checkAndFetch(
     return
   }
 
-  if (abstractData.type === 'image' || abstractData.type === 'video') {
-    const hash = abstractData.id
-    const assetId = abstractData.assetId
-    await tokenStore.refreshAssetTokenIfExpired(assetId)
-    const assetToken = tokenStore.assetTokenMap.get(assetId)
-    if (assetToken === undefined) {
-      throw new Error(`assetToken is undefined after refresh for assetId: ${assetId}`)
-    }
+  await tokenStore.refreshAssetTokenIfExpired(serving.assetId)
 
-    getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
-      index,
-      hash,
-      assetId,
-      width: displayWidth,
-      height: displayHeight,
-      devicePixelRatio: window.devicePixelRatio,
-      albumId: shareStore.albumId,
-      shareId: shareStore.shareId,
-      password: shareStore.password,
-      timestampToken,
-      hashToken: assetToken,
-      updatedAt: abstractData.updateAt
-    })
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  } else if (abstractData.type === 'album' && abstractData.cover != null) {
-    const serving = coverServingIds(abstractData.cover, abstractData.coverHash)
-    if (serving === null) return
-    await tokenStore.refreshAssetTokenIfExpired(serving.assetId)
-
-    const assetToken = tokenStore.assetTokenMap.get(serving.assetId)
-    if (assetToken === undefined) {
-      throw new Error(`assetToken is undefined after refresh for cover: ${abstractData.cover}`)
-    }
-
-    getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
-      index,
-      hash: serving.hash,
-      assetId: serving.assetId,
-      width: displayWidth,
-      height: displayHeight,
-      devicePixelRatio: window.devicePixelRatio,
-      albumMode: true,
-      albumId: shareStore.albumId,
-      shareId: shareStore.shareId,
-      password: shareStore.password,
-      timestampToken,
-      hashToken: assetToken,
-      updatedAt: abstractData.updateAt
-    })
+  const assetToken = tokenStore.assetTokenMap.get(serving.assetId)
+  if (assetToken === undefined) {
+    throw new Error(`assetToken is undefined after refresh for assetId: ${serving.assetId}`)
   }
+
+  getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
+    index,
+    hash: serving.hash,
+    assetId: serving.assetId,
+    width: displayWidth,
+    height: displayHeight,
+    devicePixelRatio: window.devicePixelRatio,
+    albumMode: serving.albumMode,
+    albumId: shareStore.albumId,
+    shareId: shareStore.shareId,
+    password: shareStore.password,
+    timestampToken,
+    hashToken: assetToken,
+    updatedAt: abstractData.updateAt
+  })
 }
 
 export default SmallImageContainer
