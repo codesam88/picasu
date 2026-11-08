@@ -172,6 +172,13 @@ fn reset_login_throttle_knobs(config: &mut AppConfig) {
 /// This prevents data contamination across serialized scenarios
 /// by clearing the database, caches, filesystem, and config mutations.
 pub fn reset_backend_state() {
+    // Quiesce any in-flight index job before wiping shared state, so a
+    // leaked job from a previous scenario cannot race the wipe or compete
+    // for the shared writer/cascade/worker resources.
+    crate::tasks::actor::album_index::cancel_and_wait_index_idle(
+        crate::tests::fixtures::wait::index_timeout_ms(),
+    );
+
     // Clear in-memory caches.
     TREE_SNAPSHOT.in_memory.clear();
     TREE.in_memory.write().expect("TREE in_memory lock").clear();

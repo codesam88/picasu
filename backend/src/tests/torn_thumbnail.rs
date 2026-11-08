@@ -30,6 +30,7 @@ use crate::router::auth::ClaimsAsset;
 use crate::tests::bootstrap::{
     TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, test_image_home,
 };
+use crate::tests::fixtures::wait::index_timeout_ms;
 use crate::tests::fixtures::{auth_cookie, wait_for_album_index};
 
 /// Photo indexed for this test, relative to `IMAGE_HOME`.
@@ -39,8 +40,6 @@ const PHOTO_REL: &str = "torn_thumb/album/photo.jpg";
 const ROUNDS: usize = 6;
 /// Reader threads hammering the serving endpoint for the whole test.
 const READERS: usize = 2;
-/// How long to wait for one re-index job to report `completed`.
-const INDEX_TIMEOUT_MS: u64 = 30_000;
 
 /// A complete JPEG starts with the SOI marker and ends with the EOI marker.
 /// A body cut short by a concurrent truncate cannot end with EOI, because the
@@ -227,7 +226,7 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
     let before_first = thumbnail_signature(&thumb_path);
     let album = photo_album();
     post_index_album(&client, &album);
-    wait_for_album_index(&client, INDEX_TIMEOUT_MS);
+    wait_for_album_index(&client, index_timeout_ms());
     assert_round_rewrote_thumbnail(&thumb_path, before_first, 0);
 
     let hash =
@@ -267,7 +266,7 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
     for round in 1..=ROUNDS {
         let before = thumbnail_signature(&thumb_path);
         post_index_album(&client, &album);
-        wait_for_album_index(&client, INDEX_TIMEOUT_MS);
+        wait_for_album_index(&client, index_timeout_ms());
         assert_round_rewrote_thumbnail(&thumb_path, before, round);
     }
 

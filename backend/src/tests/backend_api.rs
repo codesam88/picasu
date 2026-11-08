@@ -1191,7 +1191,7 @@ fn dispatch_when_item<'c>(
         .get("wait_index")
         .is_some_and(|v| v.as_bool() == Some(true))
     {
-        wait_for_album_index(client, 30000);
+        wait_for_album_index(client, index_timeout_ms());
         let cookie = auth_cookie(client);
         return client.get("/get/index/status").cookie(cookie).dispatch();
     }
@@ -1743,7 +1743,7 @@ fn scan_materialized(
             .body(serde_json::json!({"album": "/"}).to_string())
             .dispatch();
         assert_eq!(scan_resp.status(), Status::Accepted, "scan trigger");
-        wait_for_album_index(&client, 30000);
+        wait_for_album_index(&client, index_timeout_ms());
 
         for rp in &materials.remove_files {
             std::fs::remove_file(data.join(rp)).expect("remove file");
