@@ -14,15 +14,11 @@
         :key="`extra-${subindex}`"
         class="bg-placeholder ma-1"
         :style="{
-          flexGrow: '1',
           position: 'relative',
           width: `${placeholderWidth}px`
         }"
       >
-        <i
-          class="d-block"
-          :style="{ paddingBottom: `${(placeHolderHeight / placeholderWidth) * 100}%` }"
-        ></i>
+        <i class="d-block" :style="{ paddingBottom: `${placeHolderHeight}px` }"></i>
       </div>
     </div>
   </div>
@@ -32,6 +28,7 @@
 import { useConstStore } from '@/store/constStore'
 import { paddingPixel } from '@/type/constants'
 import { getInjectValue } from '@utils/getter'
+import { rowBaseHeight } from '@utils/rowHeight'
 import { computed, onMounted, Ref, ref, watchEffect } from 'vue'
 const constStore = useConstStore('mainId')
 
@@ -48,18 +45,18 @@ defineProps<{
   modifyTopPixel: boolean
 }>()
 
+// Same call and inputs as the layout worker: rows are exactly this tall
+const placeHolderHeight = computed(() => {
+  return rowBaseHeight(windowWidth.value, constStore.subRowHeightScale)
+})
+
+// 3:2 cells echo the loaded geometry: width follows the shared row height
 const placeholderWidth = computed(() => {
-  return windowWidth.value !== 0
-    ? Math.min(constStore.subRowHeightScale, windowWidth.value) - 2 * paddingPixel
-    : constStore.subRowHeightScale
+  return 1.5 * placeHolderHeight.value
 })
 
 const placeholderWidthWithPadding = computed(() => {
   return placeholderWidth.value + 2 * paddingPixel
-})
-
-const placeHolderHeight = computed(() => {
-  return (placeholderWidth.value * 2) / 3
 })
 
 const placeholderColNum = computed(() => {
@@ -67,7 +64,7 @@ const placeholderColNum = computed(() => {
 })
 
 const placeholderRowNum = computed(() => {
-  return Math.ceil(windowHeight.value / placeHolderHeight.value)
+  return placeHolderHeight.value > 0 ? Math.ceil(windowHeight.value / placeHolderHeight.value) : 0
 })
 
 const placeholderRowNumScaled = computed(() => {

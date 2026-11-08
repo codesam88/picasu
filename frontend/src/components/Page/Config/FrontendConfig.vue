@@ -21,6 +21,7 @@
         <v-list-item-title class="mb-2">Thumbnail size</v-list-item-title>
         <v-slider
           v-model="subRowHeightScaleValue"
+          :label="`${subRowHeightScaleValue} px`"
           show-ticks="always"
           :min="250"
           :max="450"

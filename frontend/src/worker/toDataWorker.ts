@@ -11,6 +11,7 @@ import {
 import { batchNumber, fixedBigRowHeight, paddingPixel } from '@/type/constants'
 import { getArrayValue } from '@utils/getter'
 import { enrichWithThumbhash } from '@utils/createData'
+import { rowBaseHeight } from '@utils/rowHeight'
 
 import axios from 'axios'
 
@@ -228,12 +229,13 @@ async function fetchRow(
   // Setting row.topPixelAccumulated
   row.topPixelAccumulated = row.rowIndex * fixedBigRowHeight
 
-  const subRowHeight = Math.round(Math.min(windowWidth / 2, subRowHeightScale))
+  // The row height is the thumbnail-size setting (px), shared with the placeholder
+  const subRowHeight = rowBaseHeight(windowWidth, subRowHeightScale)
 
   // Perform Algorithm to wrap row into subrows
   const subRows = KnuthPlassLayout(row, windowWidth, subRowHeight)
 
-  // Normalize subrows by scaling their widths and heights to fit within the window width
+  // Normalize subrows: heights stay at subRowHeight, widths fill the window width
   const scaledTotalHeight = normalizeSubrows(subRows, windowWidth, isLastRow, subRowHeight)
 
   // Setting row.rowHeight
@@ -333,11 +335,15 @@ function KnuthPlassLayout(row: Row, windowWidth: number, subRowHeight: number): 
 }
 
 /**
- * Normalize subrows by scaling their widths and heights to fit within the window width.
+ * Normalize subrows so every element, including the last in a line, gets the
+ * shared base height and its natural aspect width. Widths are scaled by a fill
+ * ratio capped at 1 (heights never inflate), so a line that does not fill the
+ * window ends ragged-right instead of stretching its last element.
  *
  * @param subRows - Array of subrows to normalize.
  * @param windowWidth - The width of the window/container.
  * @param paddingLastSubrow - Whether to skip scaling logic for the last subrow.
+ * @param subRowHeight - The shared base row height (see rowBaseHeight).
  * @returns The total scaled height of all subrows.
  */
 function normalizeSubrows(
@@ -350,8 +356,6 @@ function normalizeSubrows(
   let displayTopPixelAccumulated = 0
 
   subRows.forEach((subRow, rowIndex) => {
-    let widthSum = 0
-
     // Adjust for the last subrow if paddingLastSubrow is true
     const isLastSubrow = paddingLastSubrow && rowIndex === subRows.length - 1
     // Scale elements in the subrow
@@ -366,25 +370,24 @@ function normalizeSubrows(
 
     if (!isLastSubrow) {
       // Calculate total width of elements in the subrow
-      widthSum = subRow.displayElements.reduce(
+      const widthSum = subRow.displayElements.reduce(
         (sum, displayElement) => sum + displayElement.displayWidth,
         0
       )
 
-      const ratio = (windowWidth - subRow.displayElements.length * 2 * paddingPixel) / widthSum
+      // Fill-to-width scaling capped at 1: never upscale, so heights stay at
+      // subRowHeight. Every element keeps its aspect width; a short line ends
+      // ragged-right instead of stretching its last element to the edge.
+      const ratio = Math.min(
+        1,
+        (windowWidth - subRow.displayElements.length * 2 * paddingPixel) / widthSum
+      )
       const scaledHeight = subRowHeight * ratio
 
-      // Adjust elements' width and height based on the ratio
-      widthSum = paddingPixel // Reset width sum with initial padding
-      subRow.displayElements.forEach((displayElement, index) => {
-        if (index < subRow.displayElements.length - 1) {
-          displayElement.displayWidth = Math.round(displayElement.displayWidth * ratio)
-          displayElement.displayHeight = Math.round(scaledHeight)
-          widthSum += displayElement.displayWidth + 2 * paddingPixel
-        } else {
-          displayElement.displayWidth = windowWidth - widthSum - paddingPixel
-          displayElement.displayHeight = Math.round(scaledHeight)
-        }
+      // Scale widths by the ratio; heights stay at the shared base height
+      subRow.displayElements.forEach((displayElement) => {
+        displayElement.displayWidth = Math.round(displayElement.displayWidth * ratio)
+        displayElement.displayHeight = Math.round(scaledHeight)
         displayElement.displayTopPixelAccumulated = displayTopPixelAccumulated
       })
 
