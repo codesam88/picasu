@@ -6,6 +6,9 @@ import { useMessageStore } from '@/store/messageStore'
 import { useModalStore } from '@/store/modalStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { useConstStore } from '@/store/constStore'
+import { useShareStore } from '@/store/shareStore'
+import { RENEW_HASH_TOKEN_URL, RENEW_TIMESTAMP_TOKEN_URL } from '@/store/tokenStore'
 import router from '@/route/routes'
 
 // The router module imports .vue page components, which the node-env vitest
@@ -232,5 +235,57 @@ describe('401 handling', () => {
     await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
 
     expect(mockedRouter.push).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('token-renewal 401 handling', () => {
+  // A renewal 401 means the presented token is stale, never that the
+  // session cookie was rejected: the caller resolves to null and the next
+  // prefetch re-seeds tokens.
+  test.each([RENEW_TIMESTAMP_TOKEN_URL, RENEW_HASH_TOKEN_URL])(
+    '%s 401 keeps the profile, the theme, and redirects nowhere',
+    async (url) => {
+      useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+      const redirectionStore = useRedirectionStore('mainId')
+      const redirectSpy = vi.spyOn(redirectionStore, 'redirectionToLogin')
+      const themeSpy = vi.spyOn(useConstStore('mainId'), 'loadThemeFor')
+      rejectWith(401, {}, { message: 'Timestamp mismatch' })
+
+      await expect(axios.post(url, {})).rejects.toBeTruthy()
+
+      expect(useSessionStore('mainId').profile).toEqual({ userId: 'alice', admin: true })
+      expect(redirectSpy).not.toHaveBeenCalled()
+      expect(mockedRouter.push).not.toHaveBeenCalled()
+      expect(themeSpy).not.toHaveBeenCalled()
+      expect(useMessageStore('mainId').queue).toHaveLength(0)
+    }
+  )
+
+  test('a renew 401 on a share page does not open the share-password modal', async () => {
+    const shareStore = useShareStore('mainId')
+    shareStore.albumId = 'album'
+    shareStore.shareId = 'share'
+    const redirectionStore = useRedirectionStore('mainId')
+    const redirectSpy = vi.spyOn(redirectionStore, 'redirectionToLogin')
+    rejectWith(401, {}, { message: 'Timestamp mismatch' })
+
+    await expect(axios.post(RENEW_HASH_TOKEN_URL, {})).rejects.toBeTruthy()
+
+    expect(useModalStore('mainId').showShareLoginModal).toBe(false)
+    expect(shareStore.isLinkExpired).toBe(false)
+    expect(redirectSpy).not.toHaveBeenCalled()
+  })
+
+  test('a normal API 401 still redirects and wipes the profile', async () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+    const redirectionStore = useRedirectionStore('mainId')
+    const redirectSpy = vi.spyOn(redirectionStore, 'redirectionToLogin')
+    rejectWith(401, {}, {})
+
+    await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
+
+    expect(useSessionStore('mainId').profile).toBeNull()
+    expect(redirectSpy).toHaveBeenCalledTimes(1)
+    expect(mockedRouter.push).toHaveBeenCalledWith({ name: 'login' })
   })
 })

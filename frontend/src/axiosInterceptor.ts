@@ -7,12 +7,24 @@ import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { RENEW_HASH_TOKEN_URL, RENEW_TIMESTAMP_TOKEN_URL } from '@/store/tokenStore'
 import { applyVuetifyTheme } from '@/script/utils/vuetifyTheme'
 
 const HEADERS = {
   ALBUM_ID: 'x-album-id',
   SHARE_ID: 'x-share-id',
   SHARE_PASSWORD: 'x-share-password'
+}
+
+/// Token-tier 401s: renewal endpoints answer 401 when the presented token is
+/// stale (expired, or minted against a snapshot generation the server has
+/// since rolled over), not when the session cookie was rejected. The callers
+/// are null-tolerant and re-seed tokens on the next prefetch, so these must
+/// not trigger session eviction or the share-password prompt.
+const TOKEN_RENEW_URLS: readonly string[] = [RENEW_TIMESTAMP_TOKEN_URL, RENEW_HASH_TOKEN_URL]
+
+function isTokenRenewUrl(url: string | undefined): boolean {
+  return url !== undefined && TOKEN_RENEW_URLS.includes(url)
 }
 
 // --- Helpers ---
@@ -87,9 +99,11 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
   switch (status) {
     case 401: {
       // Tier taxonomy: the backend means 401 to be "the presented cookie
-      // was rejected" — a session-tier failure. The only other source is
-      // the failed login itself (POST /post/users/authenticate, a wired 401),
-      // which the login page owns its display for; it is caller-owned.
+      // was rejected" — a session-tier failure. Two sources never reach
+      // this handler: token-renewal 401s (token tier, see isTokenRenewUrl)
+      // and the failed login itself (POST /post/users/authenticate, a
+      // wired 401), which the login page owns its display for. This branch
+      // is caller-owned for that login call.
       if (error.config?.url === AUTHENTICATE_URL) break
       // Dialog flags are route-independent: without an explicit close the
       // settings modal (rendered globally in App.vue) would stay open on
@@ -148,6 +162,11 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
  */
 async function handleAxiosResponseError(error: AxiosError) {
   if (!error.response) return Promise.reject(error)
+
+  // Token staleness is caller-owned: renewals resolve to null and the next
+  // prefetch re-seeds tokens. Checked before the share/general split so a
+  // renew 401 on a share page cannot misfire the password modal either.
+  if (isTokenRenewUrl(error.config?.url)) return Promise.reject(error)
 
   const stores = getStores()
   /* eslint-disable @typescript-eslint/no-unnecessary-condition */

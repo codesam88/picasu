@@ -17,6 +17,11 @@ interface JwtPayload {
  */
 export const RENEW_BUFFER_SECS = 120
 
+/// Token-tier renewals: a 401 here means the presented token is stale, not
+/// that the session cookie was rejected (see the interceptor's 401 carve-out).
+export const RENEW_TIMESTAMP_TOKEN_URL = '/post/renew-timestamp-token'
+export const RENEW_HASH_TOKEN_URL = '/post/renew-hash-token'
+
 export const useTokenStore = (isolationId: IsolationId) =>
   defineStore('tokenStore' + isolationId, {
     state: (): {
@@ -71,7 +76,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
 
       async _updateTimestampToken(): Promise<void> {
         try {
-          const response = await axios.post('/post/renew-timestamp-token', {
+          const response = await axios.post(RENEW_TIMESTAMP_TOKEN_URL, {
             token: this.timestampToken
           })
           const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
@@ -89,7 +94,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
 
         try {
           const response = await axios.post(
-            '/post/renew-hash-token',
+            RENEW_HASH_TOKEN_URL,
             { expiredHashToken: expiredToken },
             { headers: { Authorization: `Bearer ${this.timestampToken}` } }
           )
