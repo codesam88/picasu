@@ -354,7 +354,7 @@ fn viewer_rotate_and_regenerate() {
     let resp = anon
         .put("/put/rotate-image")
         .header(ContentType::JSON)
-        .body(json!({ "asset_id": asset_id }).to_string())
+        .body(json!({ "assetId": asset_id }).to_string())
         .dispatch();
     anon_denied(resp.status(), "PUT /put/rotate-image");
 
@@ -362,7 +362,7 @@ fn viewer_rotate_and_regenerate() {
         .put("/put/rotate-image")
         .cookie(viewer.clone())
         .header(ContentType::JSON)
-        .body(json!({ "asset_id": asset_id }).to_string())
+        .body(json!({ "assetId": asset_id }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Ok, "viewer rotate-image: {resp:?}");
 
@@ -658,7 +658,7 @@ fn cross_user_personal_writes_refused_and_target_unchanged() {
         .put("/put/rotate-image")
         .cookie(cookie("owner-b", false))
         .header(ContentType::JSON)
-        .body(json!({ "asset_id": a_asset }).to_string())
+        .body(json!({ "assetId": a_asset }).to_string())
         .dispatch();
     assert_eq!(
         resp.status(),

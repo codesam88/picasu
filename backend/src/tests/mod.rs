@@ -44,6 +44,9 @@ mod seeds;
 mod torn_thumbnail;
 
 #[cfg(test)]
+mod rotation;
+
+#[cfg(test)]
 mod matrix_negatives;
 
 #[cfg(test)]

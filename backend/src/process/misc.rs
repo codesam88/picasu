@@ -37,6 +37,33 @@ pub fn fix_image_width_height(abstract_data: &mut AbstractData) {
     }
 }
 
+/// Apply a counter-clockwise display rotation to a decoded image.
+///
+/// `degrees` is the `picasu:Rotation` value applied on top of the EXIF
+/// orientation: 90 rotates the image 90° counter-clockwise and swaps the
+/// record's display dimensions, 180 rotates 180° without swapping, 270
+/// rotates 90° clockwise and swaps. Other values are ignored (the read path
+/// only admits quarter turns). Shared by the rotate endpoint and the index
+/// pipeline so a reindex reproduces the displayed rotation.
+pub fn apply_rotation(
+    abstract_data: &mut AbstractData,
+    dynamic_image: DynamicImage,
+    degrees: u32,
+) -> DynamicImage {
+    match degrees % 360 {
+        90 => {
+            abstract_data.swap_width_height();
+            dynamic_image.rotate270()
+        }
+        180 => dynamic_image.rotate180(),
+        270 => {
+            abstract_data.swap_width_height();
+            dynamic_image.rotate90()
+        }
+        _ => dynamic_image,
+    }
+}
+
 pub fn fix_video_width_height(abstract_data: &mut AbstractData) {
     let should_swap = if let Some(exif_vec) = abstract_data.exif_vec() {
         if let Some(rotation) = exif_vec.get("rotation") {

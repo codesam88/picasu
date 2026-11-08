@@ -1,6 +1,6 @@
 use crate::model::abstract_data::AbstractData;
 use crate::process::sanitize::is_valid_xml_char;
-use crate::process::xmp::{NS_PICASU, ensure_picasu_namespace_registered};
+use crate::process::xmp::{NS_PICASU, NS_PICASU_ROTATION, ensure_picasu_namespace_registered};
 use log::warn;
 use std::collections::HashSet;
 use std::io;
@@ -85,6 +85,47 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
     )?;
     let content = meta.serialize_packet().map_err(|e| xmp_error_to_io(&e))?;
     write_sidecar_content(&sidecar, &content)
+}
+
+/// Persist the asset's counter-clockwise display rotation in its sidecar.
+///
+/// The sidecar is the source of truth for rotation, so this is a read-modify-
+/// write beside the image file like [`write_sidecar_for`]: only
+/// `picasu:Rotation` changes and every other property survives. `degrees` is
+/// reduced modulo 360; 0 removes the property (absent means unrotated), so a
+/// fourth rotation leaves no marker behind.
+///
+/// Items without a file path have nowhere to write and are skipped. Sidecar
+/// write failures are returned; rotation callers must treat them as fatal so
+/// the database and the sidecar cannot disagree.
+pub fn write_rotation_for(abstract_data: &AbstractData, degrees: u32) -> io::Result<()> {
+    let Some(file_entry) = abstract_data.path() else {
+        return Ok(());
+    };
+    let sidecar = Path::new(&file_entry.file).with_extension("xmp");
+    let mut meta = load_sidecar(&sidecar)?;
+    set_rotation_property(&mut meta, degrees)?;
+    let content = meta.serialize_packet().map_err(|e| xmp_error_to_io(&e))?;
+    write_sidecar_content(&sidecar, &content)
+}
+
+fn set_rotation_property(meta: &mut XmpMeta, degrees: u32) -> io::Result<()> {
+    let degrees = degrees % 360;
+    if degrees == 0 {
+        if meta.has_property(NS_PICASU, NS_PICASU_ROTATION) {
+            ensure_picasu_namespace_registered();
+            meta.delete_property(NS_PICASU, NS_PICASU_ROTATION)
+                .map_err(|e| xmp_error_to_io(&e))?;
+        }
+        return Ok(());
+    }
+    ensure_picasu_namespace_registered();
+    meta.set_property(
+        NS_PICASU,
+        NS_PICASU_ROTATION,
+        XmpValue::Integer(i64::from(degrees)),
+    )
+    .map_err(|e| xmp_error_to_io(&e))
 }
 
 /// Open the existing sidecar for the read-modify-write, or start from an
@@ -425,6 +466,87 @@ mod tests {
             !read_meta(&sidecar).has_property(NS_PICASU, "Trashed"),
             "an untrashed item's sidecar must not claim it is trashed"
         );
+    }
+
+    // ── Display rotation ─────────────────────────────────────────────────────
+
+    /// The endpoint's writer and the index reader must agree on the value
+    /// scheme: a written rotation reads back through the production reader.
+    #[test]
+    fn rotation_round_trips_through_the_reader() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+        let image = make_image(&photo, &[], None, None);
+
+        write_rotation_for(&image, 90).expect("failed to write rotation");
+
+        assert_eq!(written_data(&sidecar).rotation, 90);
+        assert_eq!(
+            read_meta(&sidecar).get_property(NS_PICASU, NS_PICASU_ROTATION),
+            Some(XmpValue::String("90".to_string())),
+            "xmpkit reads scalar packet values back as String"
+        );
+    }
+
+    /// A write → read → write cycle at the same angle must not drift: the
+    /// rotate endpoint rewrites the accumulated value on every call.
+    #[test]
+    fn rewriting_the_same_rotation_is_byte_identical() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+        let image = make_image(&photo, &[], None, None);
+
+        write_rotation_for(&image, 90).expect("first write");
+        let first = written_packet(&sidecar);
+        assert_eq!(written_data(&sidecar).rotation, 90);
+
+        write_rotation_for(&image, 90).expect("second write");
+        assert_eq!(
+            written_packet(&sidecar),
+            first,
+            "rewriting the same orientation must not drift the packet"
+        );
+    }
+
+    /// Four quarter turns return to unrotated, which is represented by the
+    /// absent property rather than by a written zero.
+    #[test]
+    fn full_turn_removes_the_rotation_marker() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+        let image = make_image(&photo, &[], None, None);
+
+        for degrees in [90, 180, 270, 0] {
+            write_rotation_for(&image, degrees).expect("write rotation");
+            assert_eq!(written_data(&sidecar).rotation, degrees);
+        }
+
+        assert!(
+            !read_meta(&sidecar).has_property(NS_PICASU, NS_PICASU_ROTATION),
+            "an unrotated asset must carry no marker"
+        );
+    }
+
+    /// Rotation is not in the managed metadata set, so an edit of another
+    /// field must leave it untouched — the sidecar is read-modify-write.
+    #[test]
+    fn managed_edits_preserve_rotation() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+        let image = make_image(&photo, &[], None, None);
+        write_rotation_for(&image, 270).expect("write rotation");
+
+        let edited = make_image(&photo, &["edited"], Some("a description"), Some(4));
+        write_sidecar_for(&edited).expect("failed to write sidecar");
+
+        let data = written_data(&sidecar);
+        assert_eq!(data.rotation, 270);
+        assert_eq!(data.tags, HashSet::from(["edited".to_string()]));
+        assert_eq!(data.rating, Some(4));
     }
 
     // ── Read-modify-write pins ───────────────────────────────────────────────

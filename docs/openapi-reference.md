@@ -7249,7 +7249,7 @@ Accept: application/json
 
 ```javascript
 const inputBody = '{
-  "asset_id": "string"
+  "assetId": "string"
 }';
 const headers = {
   'Content-Type':'application/json',
@@ -7378,24 +7378,27 @@ func main() {
 `PUT /put/rotate-image`
 
 The compressed JPEG is loaded, rotated and written back, `width` and
-`height` are swapped, and `thumbhash` and `phash` are recomputed. Each
-parent album's `updatedAt` is bumped before the records are flushed.
+`height` are swapped, and `thumbhash` and `phash` are recomputed. The
+accumulated rotation (90°, 180°, 270°, then back to 0°) is persisted to the
+asset's XMP sidecar as `picasu:Rotation`, which is the source of truth a
+later reindex reads to reproduce this display state. Each parent album's
+`updatedAt` is bumped before the records are flushed.
 
-Corner cases: only the compressed JPEG is re-rendered — the original file,
-its EXIF orientation and the `.albuminfo.xmp` sidecar are left as they were,
-so the rotation is a display-level transform that accumulates across
-repeated calls.
+Corner cases: only the compressed JPEG is re-rendered — the original file
+and its EXIF data are left as they were — so the rotation is a display-level
+transform that accumulates across repeated calls. The original content hash
+is not recomputed.
 
 Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
 missing or invalid credentials; share tokens are not accepted — 404
 `asset_id` names no asset record — 405 read-only mode — 500 decode,
-thumbnail write, or storage failure.
+thumbnail write, XMP sidecar write, or storage failure.
 
 > Body parameter
 
 ```json
 {
-  "asset_id": "string"
+  "assetId": "string"
 }
 ```
 
@@ -16213,15 +16216,15 @@ field: registration always creates standard users; elevation is
 
 ```json
 {
-  "asset_id": "string"
+  "assetId": "string"
 }
 ```
 
 ### Properties
 
-| Name     | Type   | Required | Restrictions | Description                     |
-| -------- | ------ | -------- | ------------ | ------------------------------- |
-| asset_id | string | true     | none         | Asset ID of the image to rotate |
+| Name    | Type   | Required | Restrictions | Description                     |
+| ------- | ------ | -------- | ------------ | ------------------------------- |
+| assetId | string | true     | none         | Asset ID of the image to rotate |
 
 <h2 id="tocS_Row">Row</h2>
 <!-- backwards compatibility -->

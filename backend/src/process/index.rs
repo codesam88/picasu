@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use crate::model::abstract_data::AbstractData;
 use crate::process::exif::{generate_exif_for_image, generate_exif_for_video};
 use crate::process::misc::{
-    fix_image_orientation, fix_image_width_height, fix_video_width_height, generate_dynamic_image,
-    generate_image_width_height, generate_phash, generate_thumbhash,
+    apply_rotation, fix_image_orientation, fix_image_width_height, fix_video_width_height,
+    generate_dynamic_image, generate_image_width_height, generate_phash, generate_thumbhash,
 };
 use crate::process::xmp::extract_xmp_data_from_file;
 
@@ -42,6 +42,7 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
 
     // Extract XMP metadata from sidecar (preferred) or embedded packet.
     let xmp = extract_xmp_data_from_file(&abstract_data.source_path());
+    let xmp_rotation = xmp.rotation;
     abstract_data.tag_mut().extend(xmp.tags);
     if abstract_data.description().is_none() {
         abstract_data.set_description(xmp.description);
@@ -69,6 +70,9 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
 
     // Adjust orientation if required
     fix_image_orientation(abstract_data, &mut dynamic_image);
+    // The sidecar's rotation is applied on top of the EXIF orientation, the
+    // same transform the rotate endpoint baked into the compressed image.
+    dynamic_image = apply_rotation(abstract_data, dynamic_image, xmp_rotation);
 
     // Compute perceptual hashes
     abstract_data.set_thumbhash(generate_thumbhash(&dynamic_image));

@@ -1,0 +1,94 @@
+name: Rotate swaps photo dimensions
+covers:
+  api:
+    - POST /post/upload
+    - PUT /put/rotate-image
+  ui:
+    - route:/timeline
+    - route:/view/
+    - modal:closed
+    - toast:success:Files uploaded successfully
+    - 64 × 32
+    - 32 × 64
+# Rotation is a backend mutation (compressed JPEG re-rendered, dimensions
+# swapped, XMP sidecar records picasu:Rotation); the grid and viewer show
+# the new state. This flow pins the UI-visible contract end to end: upload
+# a 64×32 JPEG, open it, verify 64 × 32 in the sidepane, rotate, verify
+# 32 × 64. The upload round-trip follows the format-jpeg scenario so
+# `click.first` is unambiguous (item under test alone in the Uploads album).
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - photo: seed/img01.jpg
+  - source_file: 'picasu-still-64x64.jpeg'
+    format: jpeg
+    width: 64
+    height: 32
+    id_as: $src_jpeg
+  - index: '/'
+
+steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.modal: closed
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${src_jpeg}']
+    assert:
+      - ui.modal: open
+      - ui.text_visible: picasu-still-64x64.jpeg
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: Uploads
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+      - ui.count: '#col-ref > img'
+        equals: 1
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.text_visible: Info
+      - ui.sidebar_visible: 64 × 32
+
+  # Rotate Left rewrites the compressed JPEG and swaps stored dimensions.
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: menu-rotate-left
+    assert:
+      - ui.sidebar_visible: 32 × 64
