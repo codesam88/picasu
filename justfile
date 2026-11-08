@@ -392,9 +392,31 @@ install-dev:
     ./scripts/deps-install.sh
     npm ci --prefix frontend
 
+# Generate gitignored .cargo/sccache.toml when sccache is installed
+[group('deps')]
+setup-sccache:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    f="{{justfile_directory()}}/.cargo/sccache.toml"
+    if ! command -v sccache >/dev/null 2>&1; then
+        rm -f "$f"
+        exit 0
+    fi
+    mkdir -p "$HOME/.cache/sccache"
+    printf '%s\n' \
+      '[build]' \
+      'rustc-wrapper = "sccache"' \
+      'incremental = false' \
+      '' \
+      '[env]' \
+      "SCCACHE_DIR = \"$HOME/.cache/sccache\"" \
+      'SCCACHE_CACHE_SIZE = "10G"' \
+      'SCCACHE_IGNORE_SERVER_IO_ERROR = "1"' > "$f"
+    echo "✓ sccache enabled via $f"
+
 # install dev tools + precommit hook
 [group('deps')]
-setup-dev: install-dev
+setup-dev: install-dev setup-sccache
     git config core.hooksPath .githooks
     @echo "✓ Pre-commit hook enabled — ready to develop"
 

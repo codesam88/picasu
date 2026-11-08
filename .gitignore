@@ -17,6 +17,7 @@ frontend/dist
 frontend/node_modules
 frontend/*.tsbuildinfo
 /target/
+.cargo/sccache.toml
 
 # Standalone nightly-pinned lint workspaces (not part of the main build;
 # kept out of `cargo check --workspace` by design, see utils/dylint-lints)
