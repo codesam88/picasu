@@ -68,6 +68,12 @@ just setup-dev    # install tooling + enable pre-commit hook
 The hook runs format + lint + typecheck on staged changes before every commit.
 On `main` it also runs the full test suite.
 
+Shared compile cache (optional): `just setup-dev` writes a gitignored
+`.cargo/sccache.toml` when `sccache` is on `PATH`. Install it with
+`just install sccache`, then `just setup-sccache`. Inspect with
+`sccache --show-stats`; run `sccache --stop-server` after a toolchain bump.
+Local workspace crates are usually cache misses; dependencies are shared.
+
 - `just check` — lint + format check (backend, frontend, docs)
 - `just test` — run all tests (backend cargo-nextest + frontend vitest/playwright)
 - `just run` — build and launch against `sandbox/`
