@@ -95,7 +95,7 @@ Trivial single-fix tasks skip the plan file; say so in one line and do the work.
 - **Update:** set `status` to match reality, and append refinements and decisions while keeping the task concise — focused on the problem, the goal, and the implementation steps. Treat a task file as WIP spec, folding updates into those sections or extending as appropriate.
   **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
-- **Validate:** run `just plan-lint` to check; `just plan-format` to auto-format.
+- **Validate:** run `just plan-check` to check; `just plan-format` to auto-format.
 
 ## Code comments and documentation
 

@@ -130,7 +130,7 @@ The goal is an exact, auditable mapping between:
 
 4. **`just docs-openapi`** — chains `openapi-gen` with:
    - `widdershins` to convert `openapi.json` → `docs/openapi-reference.md`
-   - `prettier` for consistent markdown formatting
+   - `plan format` for consistent markdown formatting
 
 5. **`just openapi-check`** — the API contract gate, in two phases (see
    [The contract gate](#the-contract-gate)). It is part of `just check`, so it

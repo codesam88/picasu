@@ -366,7 +366,7 @@ plan *args:
 [group('docs')]
 docs-openapi: openapi-gen
     npx --yes widdershins@4.0.1 --summary backend/openapi.json -o docs/openapi-reference.md
-    npx prettier --write docs/openapi-reference.md
+    plan format docs/openapi-reference.md
 
 # Regenerate the gates doc (checked by gates-check)
 [group('docs')]
@@ -397,12 +397,14 @@ docs-serve:
 [group('docs')]
 docs-format:
     plan format docs
+    find . -maxdepth 1 -name \*.md |xargs plan format
     find utils scripts -name \*.md |xargs plan format
 
 # check markdown (docs, .plan, utils)
 [group('docs')]
 docs-check:
     plan format --check docs
+    find . -maxdepth 1 -name \*.md |xargs plan format --check
     find utils scripts -name \*.md |xargs plan format --check
 
 # ── Global ─────────────────────────────────────────────────────────────────────
