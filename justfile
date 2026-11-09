@@ -309,10 +309,10 @@ auth-matrix-check:
     fi
     echo "auth-matrix artifacts match the generated output"
 
-# Install 'plan' and 'gloss' tools (pinned)
+# Install 'plan' tool (pinned)
 [group('deps')]
 install-plan:
-    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
+    ./scripts/deps-install.sh --tool plan
 
 # Auto-format .plan task frontmatter and body
 [group('utils')]
