@@ -17,7 +17,7 @@ graph LR
   check --> frontend-check
   check --> gates-check
   check --> openapi-check
-  check --> plan-lint
+  check --> plan-check
   check --> quint-check
   check --> spec-check
   check --> utils-check
@@ -144,8 +144,8 @@ graph TD
   openapi-routes-release
   openapi-sanity
   plan
+  plan-check
   plan-format
-  plan-lint
   quint-check
   spec-check
   utils-check
@@ -158,7 +158,7 @@ graph TD
   openapi-check --> openapi-lint
   openapi-check --> openapi-sanity
   utils-check --> zizmor-check
-  auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & plan & plan-format & plan-lint & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
+  auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & plan & plan-check & plan-format & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
 ```
 
 | Rule (justfile)             | Description                                                                                 | CI Workflow           | Trigger             |
@@ -182,8 +182,8 @@ graph TD
 | `openapi-routes-release`    | Run the already-built release binary's route-set gate against the committed spec.           | release               | tags                |
 | `openapi-sanity`            | check OpenAPI annotation conventions                                                        | (openapi-check)       | local, PR, main     |
 | `plan`                      | run plan <args> (needs install-plan)                                                        | ❌️                    | -                   |
+| `plan-check`                | check .plan task frontmatter correctness                                                    | ci, docs-check        | local, PR, main     |
 | `plan-format`               | Auto-format .plan task frontmatter and body                                                 | ❌️                    | -                   |
-| `plan-lint`                 | check .plan task frontmatter correctness                                                    | ci, docs-check        | local, PR, main     |
 | `quint-check`               | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️                    | local               |
 | `spec-check`                | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️                    | local               |
 | `utils-check`               | utils fmt + clippy (all targets)                                                            | ci                    | local, PR, main     |
@@ -233,14 +233,14 @@ graph TD
   install-dev ~~~ check-tools & install & install-plan
 ```
 
-| Rule (justfile) | Description                                                       | CI Workflow                                                                                   | Trigger                          |
-| --------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
-| `check-tools`   | verify installed tool versions                                    | ❌️                                                                                            | -                                |
-| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, fuzz-advisory, release, zizmor, (fuzz-check), (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
-| `install-dev`   | install managed dev tools                                         | ❌️                                                                                            | -                                |
-| `install-plan`  | Install 'plan' and 'gloss' tools (pinned)                         | ❌️                                                                                            | -                                |
-| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                                            | -                                |
-| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                                            | -                                |
+| Rule (justfile) | Description                                                       | CI Workflow                                                                                               | Trigger                          |
+| --------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `check-tools`   | verify installed tool versions                                    | ❌️                                                                                                        | -                                |
+| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, docs-check, fuzz-advisory, release, zizmor, (fuzz-check), (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
+| `install-dev`   | install managed dev tools                                         | ❌️                                                                                                        | -                                |
+| `install-plan`  | Install 'plan' tool (pinned)                                      | ❌️                                                                                                        | -                                |
+| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                                                        | -                                |
+| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                                                        | -                                |
 
 ### Global
 
