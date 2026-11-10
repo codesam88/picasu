@@ -1,0 +1,252 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Index pipeline catalog schemas",
+  "description": "Shapes for specs/events.json, specs/goals.json, specs/requirements.json, specs/assumptions.json and specs/scope.json. Enforcement is by the manual field walk in scripts/events-check.mjs and scripts/catalog-check.mjs (no JSON-schema runtime); the enums below are the single source those validators read.",
+  "definitions": {
+    "event": {
+      "required": [
+        "name",
+        "status",
+        "description",
+        "actor",
+        "target",
+        "preconditions",
+        "affected_state",
+        "code_ref",
+        "effects",
+        "faults",
+        "notes"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "FS_CREATE",
+            "FS_MODIFY",
+            "FS_MODIFY_INFLIGHT",
+            "FS_DELETE",
+            "FS_RENAME_FILE",
+            "FS_ATOMIC_REPLACE",
+            "FS_RENAME_DIR",
+            "FS_SIDECAR_CREATE",
+            "FS_SIDECAR_MODIFY",
+            "FS_SIDECAR_DELETE",
+            "API_ASSIGN_ALBUM_DIR_MOVE",
+            "API_UPLOAD",
+            "API_DELETE",
+            "API_READ_COMPRESSED",
+            "API_READ_ORIGINAL",
+            "API_READ_MISSING",
+            "API_READ_MOVED",
+            "API_EDIT_METADATA",
+            "API_ROTATE_IMAGE",
+            "WATCHER_GAP",
+            "PROCESS_CRASH",
+            "DERIVED_STORE_LOSS",
+            "DB_LOSS"
+          ]
+        },
+        "status": {
+          "enum": ["established", "proposed"]
+        },
+        "description": { "type": "string" },
+        "actor": { "type": "string" },
+        "target": { "type": "string" },
+        "preconditions": { "type": "array", "items": { "type": "string" } },
+        "affected_state": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "files",
+              "rows",
+              "intake",
+              "generations",
+              "sweepPending",
+              "nextAssetId",
+              "derived-bytes"
+            ]
+          }
+        },
+        "code_ref": { "type": "string" },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "faults": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/fault" }
+        },
+        "notes": { "type": "string" },
+        "variants": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/variant" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "variant": {
+      "required": ["name", "code_ref", "notes"],
+      "properties": {
+        "name": { "type": "string" },
+        "code_ref": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "fault": {
+      "required": ["fault", "consequence", "status"],
+      "properties": {
+        "fault": { "type": "string" },
+        "consequence": { "type": "string" },
+        "status": { "enum": ["covered", "open", "tbd"] }
+      },
+      "additionalProperties": false
+    },
+    "goal": {
+      "required": ["id", "decision", "title", "description", "anchors"],
+      "properties": {
+        "id": { "enum": ["G0", "G1", "G2", "G3", "G4"] },
+        "decision": {
+          "description": "proposed: S6 must commit, queue or drop.",
+          "enum": ["proposed", "committed", "queued", "dropped"]
+        },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "anchors": {
+          "description": "What grounds the goal; empty means unanchored.",
+          "type": "array",
+          "items": { "$ref": "#/definitions/anchor" }
+        },
+        "assumptions": {
+          "description": "Goal holds only under these assumption ids.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "anchor": {
+      "required": ["kind", "ref"],
+      "properties": {
+        "kind": {
+          "description": "predicate: .qnt symbol; code: backend source; test: run name.",
+          "enum": ["predicate", "code", "test"]
+        },
+        "ref": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "requirement": {
+      "required": [
+        "id",
+        "title",
+        "statement",
+        "derived_from",
+        "owner",
+        "gate",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "REQ-1",
+            "REQ-2",
+            "REQ-3",
+            "REQ-4",
+            "REQ-5",
+            "REQ-6",
+            "REQ-7",
+            "REQ-8",
+            "REQ-9",
+            "REQ-10",
+            "REQ-11",
+            "REQ-12",
+            "REQ-13",
+            "REQ-14"
+          ]
+        },
+        "title": { "type": "string" },
+        "statement": {
+          "description": "The obligation the implementation must satisfy.",
+          "type": "string"
+        },
+        "derived_from": {
+          "description": "Committed goals this requirement derives from.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["G0", "G1", "G2", "G3", "G4"] }
+        },
+        "owner": { "type": "string" },
+        "gate": {
+          "description": "The test that fails without the behaviour; open until the test exists.",
+          "type": "string"
+        },
+        "status": {
+          "description": "open: no gate yet; imposed: gate exists; verified: gate green on the implementation.",
+          "enum": ["open", "imposed", "verified"]
+        },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "required": ["id", "title", "bound", "why_safe", "lifting"],
+      "properties": {
+        "id": {
+          "enum": [
+            "SCOPE-1",
+            "SCOPE-2",
+            "SCOPE-3",
+            "SCOPE-4",
+            "SCOPE-5",
+            "SCOPE-6",
+            "SCOPE-7"
+          ]
+        },
+        "title": { "type": "string" },
+        "bound": {
+          "description": "The precise statement of what the model does not represent.",
+          "type": "string"
+        },
+        "why_safe": {
+          "description": "The argument that the properties under proof survive the simplification.",
+          "type": "string"
+        },
+        "lifting": {
+          "description": "The concrete modeling step that would remove the bound.",
+          "type": "string"
+        },
+        "provisional": {
+          "description": "True when why_safe is provisional: the model matches a weaker implementation guarantee, not a stronger one.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "assumption": {
+      "required": ["id", "title", "owner", "status"],
+      "properties": {
+        "id": {
+          "enum": [
+            "QUINT-ASS-1",
+            "QUINT-ASS-2",
+            "QUINT-ASS-3",
+            "QUINT-ASS-4",
+            "QUINT-ASS-5",
+            "QUINT-ASS-6",
+            "QUINT-ASS-7"
+          ]
+        },
+        "title": { "type": "string" },
+        "owner": { "type": "string" },
+        "status": {
+          "description": "held: in place; partial: some mechanisms exist; unverified: nothing checks it; open: nothing provides it.",
+          "enum": ["held", "partial", "unverified", "open"]
+        },
+        "status_note": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Sidecar identity for the hash short-circuit",
+      "statement": "If the hash short-circuit is enabled, the submit snapshot or the stored row carries sidecar identity, so deleting or changing a sidecar changes the identity and forces reprocessing rather than a skip.",
+      "derived_from": ["G1"],
+      "owner": "index pipeline skip predicate (when re-enabled)",
+      "gate": "Backend test with the hash short-circuit enabled: index an asset whose sidecar was present, delete the sidecar, resubmit/scan; the row's sidecar identity changes and sidecar-derived state is cleared.",
+      "status": "open",
+      "notes": "The hash short-circuit is not implemented in the current tree, so rescans reprocess and clear sidecar-derived state; without this identity a skip would retain it. IntakeItem carries mtime/len only (tasks/queue/intake.rs:62), and AssetRecord has no sidecar field (model/asset.rs:58). The model keeps the skip action, snapshotMatches with sidecar identity, and ExternalSidecarDelete."
+    },
+    {
+      "id": "REQ-2",
+      "title": "File rename submits old-path remove plus new-path create",
+      "statement": "A rename delivered by the watcher submits a remove for the old path and an index for the new path, so the row follows without waiting for a sweep.",
+      "derived_from": ["G1"],
+      "owner": "watcher submit (tasks/batcher/start_watcher.rs)",
+      "gate": "Backend test: rename a watched file; the row disappears at the old path and appears at the new one without a sweep.",
+      "status": "open",
+      "notes": "The Modify arm submits the new path only; the old path ghosts until sweep (start_watcher.rs:249-263). The model prescribes ExternalRenameFile (renameFileTest)."
+    },
+    {
+      "id": "REQ-3",
+      "title": "Directory rename follows descendants atomically",
+      "statement": "A watched directory rename updates every contained asset's row to the renamed path in one step, preserving assetId and sidecar association, with no ghosts and no re-decode.",
+      "derived_from": ["G1"],
+      "owner": "watcher and index (tasks/batcher/start_watcher.rs, tasks/actor/album_index.rs)",
+      "gate": "Backend test: rename a watched directory; every descendant row follows to the new path with assetId preserved.",
+      "status": "open",
+      "notes": "Directory events are dropped today (the Modify arm filters is_file, start_watcher.rs:249-263), so descendants get neither remove nor index submits. The model prescribes ExternalRenameDir and ApiAssignDirMove (subtreeMoveTest, assignDirMoveTest)."
+    },
+    {
+      "id": "REQ-4",
+      "title": "Per-root sweep isolation is verified",
+      "statement": "A scan of one root reaps only rows under that root; rows outside the scanned root survive even when their files are absent.",
+      "derived_from": ["G1"],
+      "owner": "album index sweep (tasks/actor/album_index.rs)",
+      "gate": "Backend test: scan one sub-root with a ghost row outside it; the outside row survives the sweep.",
+      "status": "open",
+      "notes": "Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499) but no isolation test exists. The model pins it (SweepRoot, perRootSweepTest)."
+    },
+    {
+      "id": "REQ-5",
+      "title": "Rescan on the watcher's Flag::Rescan signal",
+      "statement": "An inotify overflow or rescan flag triggers a full rescan of the affected root instead of being ignored.",
+      "derived_from": ["G1", "G2"],
+      "owner": "watcher (tasks/batcher/start_watcher.rs)",
+      "gate": "Backend test with a forced overflow or synthetic Flag::Rescan event: the affected root is rescanned.",
+      "status": "open",
+      "notes": "Ignored today (start_watcher.rs:273 `_` arm); notify emits EventKind::Other with Flag::Rescan on overflow. This is the fairness trigger that exists only while the watcher is enabled (QUINT-ASS-7). The model expresses recovery as ScanRoot."
+    },
+    {
+      "id": "REQ-6",
+      "title": "Configurable per-root periodic backstop scan",
+      "statement": "The server can run a per-root full scan on a configurable interval; when enabled, a change missed by the watcher converges within one backstop cycle.",
+      "derived_from": ["G1", "G2"],
+      "owner": "scheduler and config (model/config.rs, lib.rs startup)",
+      "gate": "Integration test: with the backstop enabled and the watcher disabled, a missed change converges within one backstop interval; config test covers interval and root scope.",
+      "status": "open",
+      "notes": "No periodic scan exists; the only periodic loop is the 24h query-snapshot expiry (tasks/looper/mod.rs). Implements the QUINT-ASS-7 operating condition (user enables the backstop at regular intervals). The model expresses it as ScanRoot (boundedConvergenceTest)."
+    },
+    {
+      "id": "REQ-7",
+      "title": "Scans coordinate with in-flight mutating API work",
+      "statement": "A scan or sweep running concurrently with an in-flight assign (or other multi-file mutation) neither prunes the moved row nor separates the asset from its sidecar; coordination is by exclusion or in-flight detection.",
+      "derived_from": ["G1"],
+      "owner": "album index and assign_album (tasks/actor/album_index.rs, router/put/assign_album.rs)",
+      "gate": "Concurrency test: an assign overlapping a scan/sweep keeps the moved row and its sidecar intact.",
+      "status": "open",
+      "notes": "No shared exclusion exists; only two album-index jobs are serialized (album_index.rs:147-154). The model treats assign atomically (SCOPE-5), so this closes the implementation race recorded in the API_ASSIGN_ALBUM_DIR_MOVE faults."
+    },
+    {
+      "id": "REQ-8",
+      "title": "Per-row thumbnail checksum with scan regeneration",
+      "statement": "Rows carry a thumbnail checksum; a scan regenerates the artifact when the bytes do not match, and a missing artifact still forces reprocessing.",
+      "derived_from": ["G1"],
+      "owner": "asset model and scan (model/asset.rs, workflow/mod.rs)",
+      "gate": "Backend test: corrupt a thumbnail's bytes; the next scan detects the mismatch and regenerates it.",
+      "status": "open",
+      "notes": "Only thumbnail presence is checked; no checksum field exists. Closes derived-store corruption and the interrupted-rotate stale-thumbnail window (DERIVED_STORE_LOSS)."
+    },
+    {
+      "id": "REQ-9",
+      "title": "Orphan .xmp detection is logged only",
+      "statement": "A restart or scan reports sidecars without a media file in the log and never deletes them; the detection must not act concurrently with an in-flight mutation.",
+      "derived_from": ["G1"],
+      "owner": "startup and scan",
+      "gate": "Backend test: leave an .xmp with no media; scan/restart logs it and does not delete it.",
+      "status": "open",
+      "notes": "No orphan detection exists; sweep inspects media rows only (album_index.rs:485-510). Log-only by decision: a delayed sidecar is a legitimate transient, and cleanup overlapping an in-flight assign would separate metadata (API_ASSIGN_ALBUM_DIR_MOVE faults)."
+    },
+    {
+      "id": "REQ-10",
+      "title": "Stale upload temp files are swept",
+      "statement": "Upload crash residue ({filename}-{uuid}.tmp) is removed at startup or scan and is never indexed.",
+      "derived_from": ["G1"],
+      "owner": "startup and scan (router/post/post_upload.rs, init.rs)",
+      "gate": "Backend test: leave a tmp file; startup/scan removes it and no row is created for it.",
+      "status": "open",
+      "notes": "Upload writes tmp then renames (post_upload.rs:432-466); no cleanup path exists. Tmp files never reach the index because the extension gate rejects them, so the residue is inert but unbounded."
+    },
+    {
+      "id": "REQ-11",
+      "title": "Rotate writes the sidecar before the thumbnail and DB",
+      "statement": "A rotate writes the sidecar rotation first, then the thumbnail, then the DB records, so any interruption leaves a present sidecar that forces reprocess.",
+      "derived_from": ["G1"],
+      "owner": "rotate_image (router/put/rotate_image.rs)",
+      "gate": "Backend test: fail the sidecar write and assert thumbnail and DB are unchanged; crash after the sidecar write and assert a rescan restores the rotation.",
+      "status": "open",
+      "notes": "Current order is thumbnail, then sidecar, then DB (rotate_image.rs:132-175); the adopted order is sidecar -> thumbnail -> DB. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest)."
+    },
+    {
+      "id": "REQ-12",
+      "title": "Assign copies the sidecar before moving the asset",
+      "statement": "A multi-file assign copies the destination sidecar first, moves the asset, then removes the old sidecar; an interruption leaves at most an orphan copy, never an asset without its metadata.",
+      "derived_from": ["G1"],
+      "owner": "assign_album (router/put/assign_album.rs)",
+      "gate": "Backend test: interrupt after the sidecar copy and before the asset move; metadata is not separated.",
+      "status": "open",
+      "notes": "Current order renames the asset, then renames the sidecar with the error ignored, then updates rows (assign_album.rs:240-264). Orphan copies from an interruption are acceptable and covered by REQ-9's logging."
+    },
+    {
+      "id": "REQ-13",
+      "title": "Sidecar and albuminfo writes are atomic under partial-write failure",
+      "statement": "A sidecar or albuminfo write either replaces the target completely or leaves the previous bytes untouched; no partial content is ever visible.",
+      "derived_from": ["G0"],
+      "owner": "sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs)",
+      "gate": "Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.",
+      "status": "open",
+      "notes": "Implemented with temp+rename (sidecar_edit.rs:73-82, xmp_write.rs:268-280). Existing scenarios cover read-only-directory failures and batch rollback, but no test injects a partial write inside the helper, and the temp name is deterministic (no fsync)."
+    },
+    {
+      "id": "REQ-14",
+      "title": "Backstop cycles are non-overlapping and drain-complete",
+      "statement": "Each per-root backstop cycle runs to completion before another cycle for that root may start: the scan enqueues every difference observed at scan time and the worker queue drains. A tick that arrives while a cycle runs coalesces into at most one follow-up cycle.",
+      "derived_from": ["G2"],
+      "owner": "scheduler and album index (model/config.rs, tasks/actor/album_index.rs)",
+      "gate": "Scheduler test: a cycle slower than the interval does not overlap itself and leaves exactly one coalesced follow-up; cycle completion is defined by the queue draining.",
+      "status": "open",
+      "notes": "G2's N is counted in backstop cycles, so the count is undefined without non-overlap and a drain-complete definition. The model treats a scan cycle as one unit (ScanRoot plus worker drain); boundedConvergenceTest pins the two-cycle worst case."
+    }
+  ]
+}

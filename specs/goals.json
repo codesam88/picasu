@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "goals": [
+    {
+      "id": "G0",
+      "decision": "committed",
+      "title": "Safety floor",
+      "description": "The index removes or relocates an asset only in response to an explicit user action; auxiliary and derived writes are atomic.",
+      "anchors": [
+        {
+          "kind": "code",
+          "ref": "backend/src/process/thumbnail.rs:write_atomically"
+        },
+        {
+          "kind": "code",
+          "ref": "backend/src/process/sidecar_edit.rs:write_bytes_atomically"
+        },
+        {
+          "kind": "code",
+          "ref": "backend/src/process/xmp_write.rs:write_sidecar_content"
+        }
+      ],
+      "assumptions": [],
+      "notes": "Non-goal for this model: torn-byte reads are not modeled (the read path is an observer; API_READ_* faults track serving behavior). Byte integrity rests on the fs-first/DB-last crash survey plus atomic writes; transcode atomicity unverified."
+    },
+    {
+      "id": "G1",
+      "decision": "committed",
+      "title": "Quiescent convergence",
+      "description": "After changes stop and a full scan completes, every asset path has exactly one correct row, no ghosts persist, and nothing stays queued.",
+      "anchors": [
+        {
+          "kind": "predicate",
+          "ref": "eventual-consistency-goal.qnt:Converged"
+        }
+      ],
+      "assumptions": ["QUINT-ASS-3", "QUINT-ASS-6"],
+      "notes": "Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (QUINT-ASS-7). With the watcher off the backstop is the sole trigger."
+    },
+    {
+      "id": "G2",
+      "decision": "committed",
+      "title": "Bounded convergence",
+      "description": "After changes stop, convergence by the end of the first backstop scan cycle that starts (one backstop interval; at most two scan cycles counting a scan already in flight).",
+      "anchors": [
+        {
+          "kind": "test",
+          "ref": "eventual-consistency.qnt:boundedConvergenceTest"
+        }
+      ],
+      "assumptions": ["QUINT-ASS-3", "QUINT-ASS-6", "QUINT-ASS-7"],
+      "notes": "N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (QUINT-ASS-7); with it disabled there is no periodic bound."
+    },
+    {
+      "id": "G3",
+      "decision": "queued",
+      "title": "Read-after-write",
+      "description": "A 200 response implies subsequent reads observe the mutation.",
+      "anchors": [],
+      "assumptions": [],
+      "notes": "Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. The upload path waits on the flush batch (backend/src/router/post/post_upload.rs:330); assign and delete have no verified equivalent."
+    },
+    {
+      "id": "G4",
+      "decision": "dropped",
+      "title": "Graceful-degradation contract",
+      "description": "What readers see for missing or in-flight assets: today compressed/original serving returns 500 where the OpenAPI contract lists 404.",
+      "anchors": [],
+      "assumptions": [],
+      "notes": "Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision."
+    }
+  ]
+}
