@@ -1291,4 +1291,84 @@ mod tests {
 
         reset_backend_state();
     }
+
+    #[test]
+    fn index_album_sweep_is_scoped_to_scanned_root() {
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        use arrayvec::ArrayString;
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let scanned = image_home.join("scanned_root");
+        let outside = image_home.join("outside_root");
+        fs::create_dir_all(&scanned).expect("create scanned root");
+        fs::create_dir_all(&outside).expect("create outside root");
+
+        let scanned_ghost = scanned.join("ghost.jpg");
+        let outside_ghost = outside.join("ghost.jpg");
+
+        let scanned_hash: ArrayString<64> = "scannedghosthash"
+            .parse()
+            .expect("test content hash parses");
+        let outside_hash: ArrayString<64> = "outsideghosthash"
+            .parse()
+            .expect("test content hash parses");
+        let rec_scanned = AssetRecord::new_media(
+            AssetKind::Image,
+            scanned_ghost.to_string_lossy().into_owned(),
+            Some(scanned_hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        let rec_outside = AssetRecord::new_media(
+            AssetKind::Image,
+            outside_ghost.to_string_lossy().into_owned(),
+            Some(outside_hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        asset_store::insert_asset(&rec_scanned).expect("insert scanned ghost");
+        asset_store::insert_asset(&rec_outside).expect("insert outside ghost");
+
+        // Make the on-disk rows visible to the sweep's in-memory read.
+        crate::tasks::batcher::update_tree::refresh_tree_cache();
+
+        index_album_with_root("/scanned_root", false, None).expect("index accepted");
+        wait_for_index_completion();
+
+        let tree = TREE.in_memory.read().expect("tree lock");
+        let scanned_survives = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == scanned_ghost.to_string_lossy())
+        });
+        let outside_survives = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == outside_ghost.to_string_lossy())
+        });
+        drop(tree);
+
+        assert!(
+            !scanned_survives,
+            "stale row under the scanned root must be pruned"
+        );
+        assert!(
+            outside_survives,
+            "ghost row outside the scanned root must survive the sweep"
+        );
+
+        fs::remove_dir_all(&scanned).ok();
+        fs::remove_dir_all(&outside).ok();
+        reset_backend_state();
+    }
 }

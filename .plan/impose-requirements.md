@@ -51,7 +51,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
 
 ### Phase 1 - local correctness and verification
 
-- **S1 [ ] REQ-4: per-root sweep isolation** (test-only).
+- **S1 [DONE] REQ-4: per-root sweep isolation** (test-only).
   Scope: `backend/src/tasks/actor/album_index.rs` tests.
   RED: none; sweep is already root-scoped. Add a test with a ghost row
   under an unscanned sub-root and scan a sibling root; assert the outside
