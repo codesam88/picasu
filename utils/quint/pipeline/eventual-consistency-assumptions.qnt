@@ -3,9 +3,9 @@
 // formal element — or an explicit pointer to where it lives — shows
 // how the model relies on it. An assumption with no formal element
 // of its own says so instead of implying coverage.
-// specs/assumptions.json keeps the index of IDs with owner and status;
+// utils/quint/pipeline/assumptions.json keeps the index of IDs with owner and status;
 // model refs come from the generated traceability map. Purpose, scope,
-// and writing rules live in specs/README.md.
+// and writing rules live in utils/quint/README.md.
 module eventual_consistency_assumptions {
   import eventual_consistency_state.* from "./eventual-consistency-state"
 

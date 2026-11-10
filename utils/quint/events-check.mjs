@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Validate specs/events.json against specs/catalog.schema.json.
+// Validate utils/quint/pipeline/events.json against utils/quint/pipeline/catalog.schema.json.
 // Inputs carry no references into the model that consumes them; the
 // event-to-action mapping lives in the model module's header.
 //
@@ -19,7 +19,7 @@ for (const a of args) {
 function resolveBase(input) {
   const p = resolve(input ?? '.')
   if (existsSync(join(p, 'events.json'))) return p
-  if (existsSync(join(p, 'specs', 'events.json'))) return join(p, 'specs')
+  if (existsSync(join(p, 'utils', 'quint', 'pipeline', 'events.json'))) return join(p, 'utils', 'quint', 'pipeline')
   return p
 }
 

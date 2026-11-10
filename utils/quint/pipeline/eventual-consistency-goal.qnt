@@ -3,7 +3,7 @@
 // of the spec — the state (eventual-consistency-state.qnt) and the
 // assumption predicates (eventual-consistency-assumptions.qnt) are
 // generic and reusable across models. Imported by
-// specs/eventual-consistency.qnt, whose runs assert it per diverged
+// utils/quint/pipeline/eventual-consistency.qnt, whose runs assert it per diverged
 // shape.
 module eventual_consistency_goal {
   import eventual_consistency_state.* from "./eventual-consistency-state"

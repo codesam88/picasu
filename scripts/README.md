@@ -2,7 +2,9 @@
 
 Helper scripts behind `just` recipes. Recipes stay thin wrappers (argument
 parsing, variable defaults); all logic lives here so it is reviewable,
-shellcheck-clean, and testable outside `just`.
+shellcheck-clean, and testable outside `just`. Modeling-specific checkers
+live in `utils/quint/` instead; this directory holds the repository-wide
+scripts and the managed-tool installers.
 
 ## Layout
 

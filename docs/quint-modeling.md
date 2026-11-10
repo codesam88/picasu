@@ -49,11 +49,11 @@ premises. Classifying a new element:
    reason. No → hidden assumption: classify before merge.
 
 Implemented as `just spec-check` over committed files (the
-`events-check.mjs` pattern): machine-readable `@assumes` /
+`utils/quint/events-check.mjs` pattern): machine-readable `@assumes` /
 `@requires` / `@scope` tags on every spec definition, registries in
-`specs/assumptions.json`, `specs/requirements.json` and
-`specs/scope.json`, and a generated traceability map
-(`specs/traceability.json`) that fails on drift. Requirements are not
+`utils/quint/pipeline/assumptions.json`, `utils/quint/pipeline/requirements.json` and
+`utils/quint/pipeline/scope.json`, and a generated traceability map
+(`utils/quint/pipeline/traceability.json`) that fails on drift. Requirements are not
 reverse-covered: they derive from committed goals and are gated by
 implementation tests. No new tooling beyond node; no CI wiring — the
 just rule is the gate for now. Human judgment keeps exactly three jobs:
@@ -62,7 +62,7 @@ review of each classification.
 
 ## Components
 
-- `specs/<subsystem>.qnt`: the model — actors, shared state, actions
+- `utils/quint/pipeline/<subsystem>.qnt`: the model — actors, shared state, actions
   with enabling conditions, invariants (`NoLostUpload`-style safety
   properties on finite bounds), and `quint test` runs asserting
   settled states. Run `quint typecheck` and `quint test`; explore
@@ -70,11 +70,11 @@ review of each classification.
 - `scripts/deps/quint.sh` + `QUINT_VERSION`: pinned toolchain,
   installed via `just install quint`, no JDK required.
 - `just quint-check`: typecheck plus `quint test` over the model entry
-  point (`specs/eventual-consistency.qnt`), wired into the `check`
+  point (`utils/quint/pipeline/eventual-consistency.qnt`), wired into the `check`
   aggregate so every precommit runs it.
-- Requirement registry: `specs/requirements.json` carries each derived
+- Requirement registry: `utils/quint/pipeline/requirements.json` carries each derived
   obligation with owner, gate and status; the generated
-  `specs/traceability.json` maps model definitions to their assumption
+  `utils/quint/pipeline/traceability.json` maps model definitions to their assumption
   and scope parents.
 
 Currently used checks:

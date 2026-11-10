@@ -23,7 +23,7 @@
 // The model checks bounded convergence under those triggers, not that they run.
 //
 // Every action/val/def/run carries @assumes/@scope/@exempt, or an
-// @requires tag resolving against specs/requirements.json.
+// @requires tag resolving against utils/quint/pipeline/requirements.json.
 module eventual_consistency {
   import eventual_consistency_state.* from "./eventual-consistency-state"
   import eventual_consistency_assumptions.* from "./eventual-consistency-assumptions"
