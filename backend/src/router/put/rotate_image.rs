@@ -129,6 +129,18 @@ pub async fn rotate_image(
             // Rotate counter-clockwise and swap the display dimensions.
             let dyn_img = apply_rotation(&mut abstract_data, dyn_img, 90);
 
+            // Persist the rotation before the thumbnail and DB: the sidecar is
+            // the source of truth, so an interruption after this point leaves a
+            // present sidecar that a later reindex applies, while the thumbnail
+            // and DB stay on their previous state. A failed sidecar write
+            // aborts the request before the thumbnail is touched.
+            write_rotation_for(&abstract_data, next_rotation).map_err(|e| {
+                AppError::new(
+                    ErrorKind::IO,
+                    format!("Failed to persist rotation to the XMP sidecar: {e}"),
+                )
+            })?;
+
             // Generate and save the rotated thumbnail
             generate_thumbnail_for_image(&mut abstract_data, &dyn_img.clone()).or_raise(|| {
                 (
@@ -141,16 +153,6 @@ pub async fn rotate_image(
             abstract_data.set_thumbhash(generate_thumbhash(&dyn_img));
             abstract_data.set_phash(generate_phash(&dyn_img));
             abstract_data.update_update_at();
-
-            // Persist the new display rotation before the records are flushed:
-            // a failed sidecar write aborts the request, leaving the database
-            // and the sidecar on the previous rotation together.
-            write_rotation_for(&abstract_data, next_rotation).map_err(|e| {
-                AppError::new(
-                    ErrorKind::IO,
-                    format!("Failed to persist rotation to the XMP sidecar: {e}"),
-                )
-            })?;
 
             let album_ids: Vec<_> = abstract_data.album().into_iter().collect();
 
