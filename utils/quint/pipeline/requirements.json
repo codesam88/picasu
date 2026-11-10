@@ -88,8 +88,8 @@
       "derived_from": ["G1"],
       "owner": "startup and scan",
       "gate": "Backend test: leave an .xmp with no media; scan/restart logs it and does not delete it.",
-      "status": "open",
-      "notes": "No orphan detection exists; sweep inspects media rows only (album_index.rs:485-510). Log-only by decision: a delayed sidecar is a legitimate transient, and cleanup overlapping an in-flight assign would separate metadata (API_ASSIGN_ALBUM_DIR_MOVE faults)."
+      "status": "verified",
+      "notes": "Implemented in album_index.rs: orphan_sidecars pure helper plus scan-time collection of .xmp paths and media stem keys during the existing file walk; one warn! per orphan (\"Orphan sidecar (no media file): {path}\"). Log only, never deletes. Detection runs after intake drain and sweep, so it does not act concurrently with in-flight mutations. Tests: orphan_sidecars_returns_sidecar_without_media, orphan_sidecars_ignores_sidecar_with_sibling_media, orphan_sidecars_ignores_album_sidecar, index_album_orphan_sidecar_survives_scan."
     },
     {
       "id": "REQ-10",

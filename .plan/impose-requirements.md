@@ -62,7 +62,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
   RED: none; add a failure-injection seam around the temp write and
   assert the target keeps its previous bytes. If the helper leaks a
   partial target, fix it. Mark `verified`.
-- **S3 [ ] REQ-9: orphan `.xmp` detection is log-only**.
+- **S3 [DONE] REQ-9: orphan `.xmp` detection is log-only**.
   Scope: `album_index.rs`, `init.rs`/startup, logging.
   RED: pure `find_orphan_sidecars(root, known_assets)` returns a sidecar
   with no media; integration scans/restarts, logs it, never deletes it.

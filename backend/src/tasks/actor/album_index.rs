@@ -11,7 +11,7 @@ use std::{
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{AppError, ErrorKind};
-use crate::model::media::{MediaOutcome, SkipReason, classify_media_file};
+use crate::model::media::{MediaOutcome, SkipReason, classify_media_file, is_valid_media_file};
 use crate::router::AppResult;
 use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
@@ -228,6 +228,11 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
             }
         }
 
+        // Collected during the single file walk below. Detection runs after
+        // the walk (log only, never deletes) and checks sibling media on
+        // demand, so the walk holds no per-media state.
+        let mut sidecar_paths: Vec<PathBuf> = Vec::new();
+
         'files: for scan_root in &scan_roots_clone {
             let walker = WalkDir::new(scan_root)
                 .follow_links(false)
@@ -255,6 +260,14 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
                 increment_scanned(job_id);
 
                 let abs_path = entry.into_path();
+                let is_xmp = abs_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| e.eq_ignore_ascii_case("xmp"));
+                if is_xmp {
+                    sidecar_paths.push(abs_path.clone());
+                }
+
                 if let MediaOutcome::Skip(reason) = classify_media_file(&abs_path) {
                     if !matches!(reason, SkipReason::UnsupportedExtension) {
                         info!(
@@ -301,6 +314,12 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         // The users_home root itself must never carry an album record.
         if let Some(users_root) = get_resolved_users_home() {
             prune_users_root_album(&users_root).await;
+        }
+
+        // Orphan sidecar detection: log only, never delete. Observation is
+        // safe while a mutation is in flight; cleanup would not be.
+        for orphan in orphan_sidecars(sidecar_paths) {
+            warn!("Orphan sidecar (no media file): {}", orphan.display());
         }
 
         // Barrier on the sweep's writer ops, then on the tree rebuild
@@ -584,6 +603,51 @@ async fn sweep_stale_asset_paths(root: &Path) {
             warn!("sweep remove submit failed: {err:#}");
         }
     }
+}
+
+/// Return the sidecar paths that have no media file sharing their stem.
+///
+/// A sidecar is orphaned when its directory holds no file with the same
+/// stem and a supported media extension. Sibling media is checked on demand,
+/// so the walk does not retain a second path list for every asset in the
+/// library. Album sidecars named `.albuminfo.xmp` are ignored: they describe
+/// a directory, not a single media file. Log-only detection: this helper
+/// never deletes anything.
+fn orphan_sidecars(sidecars: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    sidecars
+        .into_iter()
+        .filter(|sidecar| {
+            if sidecar
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case(".albuminfo.xmp"))
+            {
+                return false;
+            }
+            let is_sidecar = sidecar
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("xmp"));
+            is_sidecar && !sibling_media_exists(sidecar)
+        })
+        .collect()
+}
+
+/// Whether `sidecar`'s directory contains a media file with the same stem.
+fn sibling_media_exists(sidecar: &Path) -> bool {
+    let Some(parent) = sidecar.parent() else {
+        return false;
+    };
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return false;
+    };
+    let stem = sidecar.file_stem();
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        entry.file_type().is_ok_and(|kind| kind.is_file())
+            && path.file_stem() == stem
+            && is_valid_media_file(&path)
+    })
 }
 
 fn is_inside_internal_subtree(path: &std::path::Path, internal_roots: &[PathBuf]) -> bool {
@@ -1370,5 +1434,61 @@ mod tests {
         fs::remove_dir_all(&scanned).ok();
         fs::remove_dir_all(&outside).ok();
         reset_backend_state();
+    }
+
+    #[test]
+    fn index_album_orphan_sidecar_survives_scan() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let sidecar = image_home.join("orphan.xmp");
+        std::fs::write(&sidecar, b"<x:xmpmeta/>").expect("write orphan sidecar");
+
+        index_album_with_root("/", false, None).expect("index_album accepted");
+        wait_for_index_completion();
+
+        assert!(
+            sidecar.exists(),
+            "orphan sidecar must not be deleted by the scan"
+        );
+
+        std::fs::remove_file(&sidecar).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn orphan_sidecars_returns_sidecar_without_media() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = dir.path().join("orphan.xmp");
+        fs::write(&sidecar, b"<x:xmpmeta/>").expect("write sidecar");
+
+        let out = orphan_sidecars(vec![sidecar.clone()]);
+        assert_eq!(out, vec![sidecar]);
+    }
+
+    #[test]
+    fn orphan_sidecars_ignores_sidecar_with_sibling_media() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = dir.path().join("photo.xmp");
+        fs::write(&sidecar, b"<x:xmpmeta/>").expect("write sidecar");
+        fs::write(dir.path().join("photo.jpg"), b"jpeg").expect("write media");
+
+        let out = orphan_sidecars(vec![sidecar]);
+        assert!(out.is_empty(), "got {out:?}");
+    }
+
+    #[test]
+    fn orphan_sidecars_ignores_album_sidecar() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = dir.path().join(".albuminfo.xmp");
+        fs::write(&sidecar, b"<x:xmpmeta/>").expect("write sidecar");
+
+        let out = orphan_sidecars(vec![sidecar]);
+        assert!(out.is_empty(), "got {out:?}");
     }
 }
