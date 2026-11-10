@@ -4,7 +4,7 @@
     {
       "id": "SCOPE-1",
       "title": "Initial converged state",
-      "bound": "Every run starts from fully matching files and rows (initialFile, initialRow, init in specs/eventual-consistency-state.qnt).",
+      "bound": "Every run starts from fully matching files and rows (initialFile, initialRow, init in utils/quint/pipeline/eventual-consistency-state.qnt).",
       "why_safe": "Convergence is about healing divergence, so runs introduce divergence explicitly before asserting the heal.",
       "lifting": "Start runs from arbitrary states (not yet modeled).",
       "provisional": false
@@ -12,7 +12,7 @@
     {
       "id": "SCOPE-2",
       "title": "Finite bounds",
-      "bound": "Five paths, three content hashes, three small mtime/len values (PATHS, HASHES, SMALL in specs/eventual-consistency-state.qnt).",
+      "bound": "Five paths, three content hashes, three small mtime/len values (PATHS, HASHES, SMALL in utils/quint/pipeline/eventual-consistency-state.qnt).",
       "why_safe": "The properties checked (identity match, no lost intake, no permanent staleness) are per-path and pairwise; bounds are sized to exhibit every guard outcome (match, mismatch, superseded, stale, missing) and to hold one two-asset subtree move plus a second sweep root.",
       "lifting": "Bound-escalation runs at larger sizes (not yet modeled).",
       "provisional": false
@@ -20,7 +20,7 @@
     {
       "id": "SCOPE-3",
       "title": "Collapsed intake lanes",
-      "bound": "The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in specs/eventual-consistency.qnt).",
+      "bound": "The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in utils/quint/pipeline/eventual-consistency.qnt).",
       "why_safe": "No checked property depends on lane order — guards are per-item (generation, snapshot), never positional.",
       "lifting": "Lane-aware scheduling with fairness properties (explicitly out of scope; Apalache/TLC stay out as well).",
       "provisional": false
@@ -36,7 +36,7 @@
     {
       "id": "SCOPE-5",
       "title": "Synchronous direct writes",
-      "bound": "Actions that write the projection without the intake (ApiUpload, ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in specs/eventual-consistency.qnt).",
+      "bound": "Actions that write the projection without the intake (ApiUpload, ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt).",
       "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away.",
       "lifting": "A writerInbox pending state mirroring the serial writer.",
       "provisional": true
@@ -52,7 +52,7 @@
     {
       "id": "SCOPE-7",
       "title": "Flat directory paths",
-      "bound": "Path IDs carry no directory hierarchy. A directory rename is a fixed finite set of path pairs (SUBTREE_PAIRS in specs/eventual-consistency.qnt) moved atomically; arbitrary subtrees are not modeled.",
+      "bound": "Path IDs carry no directory hierarchy. A directory rename is a fixed finite set of path pairs (SUBTREE_PAIRS in utils/quint/pipeline/eventual-consistency.qnt) moved atomically; arbitrary subtrees are not modeled.",
       "why_safe": "The property under proof is per-descendant row/path consistency plus all-or-nothing row updates, which a fixed two-asset pair set exhibits at the model's bounds.",
       "lifting": "Hierarchical path IDs with arbitrary subtree enumeration.",
       "provisional": false

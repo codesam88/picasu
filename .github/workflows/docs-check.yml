@@ -7,11 +7,13 @@ on:
       - "*.md"
       - "docs/**"
       - ".plan/**"
+      - "utils/quint/**/*.md"
   pull_request:
     paths:
       - "*.md"
       - "docs/**"
       - ".plan/**"
+      - "utils/quint/**/*.md"
 
 permissions:
   contents: read

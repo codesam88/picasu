@@ -247,8 +247,8 @@ zizmor-check: (install "zizmor")
 # Typecheck + test the eventual-consistency spec (Node-only, no JDK)
 [group('utils')]
 quint-check: (install "quint")
-    quint typecheck specs/eventual-consistency.qnt
-    quint test specs/eventual-consistency.qnt
+    quint typecheck utils/quint/pipeline/eventual-consistency.qnt
+    quint test utils/quint/pipeline/eventual-consistency.qnt
 
 # Non-blocking by design: MSRV floor check (nightly lane).
 [group('utils')]
@@ -327,26 +327,26 @@ plan-lint:
 # Validate the eventual-consistency event catalog
 [group('utils')]
 events-check:
-    node {{justfile_directory()}}/scripts/events-check.mjs {{justfile_directory()}}/specs
+    node {{justfile_directory()}}/utils/quint/events-check.mjs {{justfile_directory()}}/utils/quint/pipeline
 
 # Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references
 [group('utils')]
 catalog-check:
-    node {{justfile_directory()}}/scripts/catalog-check.mjs {{justfile_directory()}}/specs
+    node {{justfile_directory()}}/utils/quint/catalog-check.mjs {{justfile_directory()}}/utils/quint/pipeline
 
 # Regenerate docs/eventual-consistency.md from the JSON catalogs
 [group('utils')]
 docs-eventual-consistency:
-    node {{justfile_directory()}}/scripts/gen-eventual-consistency-doc.mjs {{justfile_directory()}}/specs {{justfile_directory()}}
+    node {{justfile_directory()}}/utils/quint/gen-eventual-consistency-doc.mjs {{justfile_directory()}}/utils/quint/pipeline {{justfile_directory()}}
     cd {{justfile_directory()}}/frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../docs/eventual-consistency.md'
 
-# Closed-world audit over specs/*.qnt: every definition carries a
-# resolving tag, every registry ID is cited. Regenerate the
-# traceability map (specs/traceability.json) with:
-# node scripts/specs-check.mjs specs --generate
+# Closed-world audit over utils/quint/pipeline/*.qnt: every definition
+# carries a resolving tag, every registry ID is cited. Regenerate the
+# traceability map (utils/quint/pipeline/traceability.json) with:
+# node utils/quint/specs-check.mjs utils/quint/pipeline --generate
 [group('utils')]
 spec-check:
-    node {{justfile_directory()}}/scripts/specs-check.mjs {{justfile_directory()}}/specs
+    node {{justfile_directory()}}/utils/quint/specs-check.mjs {{justfile_directory()}}/utils/quint/pipeline
 
 # ensure all test/check rules are called from CI and global rules
 [group('utils')]

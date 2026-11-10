@@ -4,22 +4,22 @@
 //
 // Usage: specs-check.mjs [repo-root | specs-dir] [--generate]
 //   Default mode validates and fails on any violation, including a
-//   specs/traceability.json map that differs from the generated one.
+//   utils/quint/pipeline/traceability.json map that differs from the generated one.
 //   --generate rewrites that map instead of checking it.
 //
 // Rules enforced:
-//   1. Every `action`, `val`, `pure def`, and `run` in specs/*.qnt carries
+//   1. Every `action`, `val`, `pure def`, and `run` in utils/quint/pipeline/*.qnt carries
 //      at least one machine tag (`// @assumes ASS-N`,
 //      `// @requires REQ-N`, `// @scope SCOPE-N`) or an explicit
 //      `// @exempt <reason>` with reason in {environment, no-backing, observer}.
-//   2. Every tag references a registered ID: ASS from specs/assumptions.json,
-//      REQ from specs/requirements.json, SCOPE from specs/scope.json.
+//   2. Every tag references a registered ID: ASS from utils/quint/pipeline/assumptions.json,
+//      REQ from utils/quint/pipeline/requirements.json, SCOPE from utils/quint/pipeline/scope.json.
 //   3. Every ASS and SCOPE ID is referenced at least once. Requirements are
 //      not reverse-covered here: they derive from committed goals and are
 //      evidenced by the implementation gate recorded in requirements.json.
 //   4. Every scope entry carries non-empty bound, why_safe and lifting
 //      fields.
-//   5. In check mode, the generated specs/traceability.json matches.
+//   5. In check mode, the generated utils/quint/pipeline/traceability.json matches.
 import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -31,7 +31,7 @@ const specs = resolveBase(positional[0])
 function resolveBase(input) {
   const p = resolve(input ?? '.')
   if (existsSync(join(p, 'events.json'))) return p
-  if (existsSync(join(p, 'specs', 'events.json'))) return join(p, 'specs')
+  if (existsSync(join(p, 'utils', 'quint', 'pipeline', 'events.json'))) return join(p, 'utils', 'quint', 'pipeline')
   return p
 }
 
@@ -159,7 +159,7 @@ const noBacking = defs.filter(d => d.tags.some(t => t.kind === 'exempt' && t.id 
 if (noBacking.length > 0) warn(`no-backing exemptions: ${noBacking.map(d => `${d.file}:${d.name}`).join(', ')}`)
 
 // ---- generated traceability --------------------------------------------------
-// specs/traceability.json is the machine-readable map written here. Rows
+// utils/quint/pipeline/traceability.json is the machine-readable map written here. Rows
 // carry title plus citing refs.
 const rows = []
 function pushRow(id, kind, title, refs) {
@@ -190,10 +190,10 @@ const traceText = (() => {
   if (wantGenerate) {
     if (traceText !== generatedTrace) {
       writeFileSync(tracePath, generatedTrace)
-      console.error('specs-check: regenerated specs/traceability.json')
+      console.error('specs-check: regenerated utils/quint/pipeline/traceability.json')
     }
   } else if (traceText !== generatedTrace) {
-    fail('specs/traceability.json is stale (run `just spec-check --generate` after reviewing the diff)')
+    fail('utils/quint/pipeline/traceability.json is stale (run `just spec-check --generate` after reviewing the diff)')
   }
 }
 

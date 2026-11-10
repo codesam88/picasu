@@ -1,8 +1,8 @@
 // Index pipeline shared state: the filesystem projection, the
 // per-path submission versions, the intake queue, the redb row
 // projection, and the initial state every run starts from.
-// Imported by specs/eventual-consistency-assumptions.qnt (predicates
-// over this state) and specs/eventual-consistency.qnt (actions and runs).
+// Imported by utils/quint/pipeline/eventual-consistency-assumptions.qnt (predicates
+// over this state) and utils/quint/pipeline/eventual-consistency.qnt (actions and runs).
 module eventual_consistency_state {
   // @scope SCOPE-2: finite bounds; every run stays inside them.
   pure val PATHS = Set("p1", "p2", "p3", "p4", "p5")

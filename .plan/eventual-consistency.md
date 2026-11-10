@@ -13,7 +13,7 @@ reads of missing or in-flight assets degrade gracefully, and the UI
 presents each consistency gap honestly instead of as authoritative
 data.
 
-Verdicts (S6/S7, 2026-11-10; catalog `specs/goals.json`):
+Verdicts (S6/S7, 2026-11-10; catalog `utils/quint/pipeline/goals.json`):
 
 - **G0 [COMMITTED] — safety floor**, narrowed to what is evidenced:
   the index removes or relocates an asset only in response to an
@@ -24,7 +24,7 @@ Verdicts (S6/S7, 2026-11-10; catalog `specs/goals.json`):
   explicit non-goal of this model; the `API_READ_*` faults track
   serving behavior.
 - **G1 [COMMITTED] — quiescent convergence**, anchored to
-  `Converged` and the 33 runs (`specs/eventual-consistency-goal.qnt`).
+  `Converged` and the 33 runs (`utils/quint/pipeline/eventual-consistency-goal.qnt`).
   Conditional on quiescence plus a completed scan; the scan premise
   is owned by the periodic backstop below.
 - **G2 [COMMITTED] — bounded convergence.** N = one backstop interval
@@ -76,25 +76,25 @@ These constrain the design; they are not assumptions about the world.
 
 ## Steps
 
-- **S1 [DONE]: Map the events** — `specs/events.json` (23 events,
+- **S1 [DONE]: Map the events** — `utils/quint/pipeline/events.json` (23 events,
   all established: FS/API boundary events plus 4 agreed
   catastrophic events — `WATCHER_GAP`, `PROCESS_CRASH`,
   `DERIVED_STORE_LOSS`, `DB_LOSS`; no implementation-internal steps
-  as entries), validated against `specs/catalog.schema.json`,
+  as entries), validated against `utils/quint/pipeline/catalog.schema.json`,
   `just events-check` gate,
   wired into `check`. The `SubtreeMove` model action and the four
   unmodeled catastrophic events are resolved in
-  `specs/eventual-consistency.qnt` (see Decisions); 12 TODO
+  `utils/quint/pipeline/eventual-consistency.qnt` (see Decisions); 12 TODO
   code_refs remain (implementation not built). Each entry
   carries `description`, `effects` (settled state), and `faults`
   (error cases with status). Goals and assumptions converted to the
-  same catalog style (`specs/goals.json`, `specs/assumptions.json`,
+  same catalog style (`utils/quint/pipeline/goals.json`, `utils/quint/pipeline/assumptions.json`,
   `just catalog-check`): goals G0–G4 with anchors and decision
   fields, assumptions ASS-1..7 with owner/status (model refs
   live in the generated map).
-  `specs/assumptions.md` removed (registry moved to the JSON catalog,
-  methodology rules moved into `specs/README.md`);
-  `specs/TRACEABILITY.md` replaced by `specs/traceability.json`
+  the `assumptions.md` registry was removed (registry moved to the JSON catalog,
+  methodology rules moved into `utils/quint/README.md`);
+  `TRACEABILITY.md` was replaced by `utils/quint/pipeline/traceability.json`
   (written by `just spec-check --generate`, machine-readable only);
   `docs/eventual-consistency.md` is generated from the four JSON
   catalogs by `just docs-eventual-consistency`.
@@ -155,7 +155,7 @@ These constrain the design; they are not assumptions about the world.
   backstop scans do run concurrently with API mutations.
 - **S8 [DONE]: Encode per-root sweep.** Decided: sweep is
   constrained to the scan root. Encoded in
-  `specs/eventual-consistency.qnt`: `sweepPending` is keyed by root,
+  `utils/quint/pipeline/eventual-consistency.qnt`: `sweepPending` is keyed by root,
   `ScanRoot` marks the root pending, `SweepRoot` prunes only that
   root; `perRootSweepTest` pins the isolation.
 - **S9 [DONE]: Proc-scoped convergence.** Decided: `Converged`
@@ -166,7 +166,7 @@ These constrain the design; they are not assumptions about the world.
   `failingForeverTest` pins it. The unprocessable-files
   contradiction (formerly REQ-2) is closed at the model level.
 - **S10 [DONE]: Derive requirements from committed goals**
-  (2026-11-10). 14 open obligations in `specs/requirements.json`
+  (2026-11-10). 14 open obligations in `utils/quint/pipeline/requirements.json`
   covering sidecar identity, file and directory rename, per-root
   sweep verification, the rescan signal, the periodic backstop,
   scan-vs-assign coordination, thumbnail checksum, orphan logging,
@@ -195,8 +195,8 @@ The model may lean only on approved assumptions plus the registered
 scope delimiters; anything else is a hidden assumption
 and blocks the merge. Enforced by `just spec-check` over committed
 files (machine-readable `@assumes`/`@requires`/`@scope` tags,
-registries in `specs/assumptions.json`, `specs/scope.json` and
-`specs/requirements.json`, generated `specs/traceability.json` map) —
+registries in `utils/quint/pipeline/assumptions.json`, `utils/quint/pipeline/scope.json` and
+`utils/quint/pipeline/requirements.json`, generated `utils/quint/pipeline/traceability.json` map) —
 node only, deliberately not CI-wired. Requirements are not
 reverse-covered by model tags: they derive from committed goals and
 are gated by implementation tests. Human judgment
@@ -208,12 +208,12 @@ review of each classification.
 
 1. **Propose**: new ASS/SCOPE with owner, status, and a
    falsifier (ASS) or gate (REQ); speculative items stay out of
-   `specs/` until reviewed.
+   `utils/quint/pipeline/` until reviewed.
 2. **Human review**: approve, reword, or reject. Unapproved content
    never merges — `just spec-check` fails untagged definitions and
    unregistered IDs, but only a human judges truth.
 3. **Annotate**: tag the model elements (`@assumes`/`@requires`/`@scope`);
-   the generated `specs/traceability.json` map must stay green.
+   the generated `utils/quint/pipeline/traceability.json` map must stay green.
 4. **Impose**: a REQ moves `open` → `imposed` → `verified` only with
    a live gate; a gate is code plus a test that fails without it.
 5. **Revisit**: every step-back re-examines unowned ASS, gateless
@@ -222,7 +222,7 @@ review of each classification.
 
 ## Requirements
 
-Derived registry: `specs/requirements.json` (REQ-1..14), all `open`
+Derived registry: `utils/quint/pipeline/requirements.json` (REQ-1..14), all `open`
 — obligations derived from committed G0/G1/G2, each with an owner
 and the gate test that would impose it. `just catalog-check` enforces
 the derivation direction: only committed goals may source a
@@ -238,8 +238,8 @@ filed before any requirement had model evidence.
 
 ## Assumptions
 
-World-given premises live in `specs/assumptions.json` with their
-formal elements in `specs/eventual-consistency-assumptions.qnt` — nothing is
+World-given premises live in `utils/quint/pipeline/assumptions.json` with their
+formal elements in `utils/quint/pipeline/eventual-consistency-assumptions.qnt` — nothing is
 restated here. Each entry there carries owner and status; model
 refs come from the generated traceability map. This plan tracks only the
 open findings (unowned or unverified premises), which live in the
@@ -247,7 +247,7 @@ open backlog — not in a shadow registry here.
 
 ## Maintenance
 
-Single source rule: `specs/` holds content (assumptions, scope,
+Single source rule: `utils/quint/pipeline/` holds content (assumptions, scope,
 catalogs, mapping); this plan tracks status, decisions, and
 open questions only. No prose duplication — point at files.
 
@@ -257,7 +257,7 @@ open questions only. No prose duplication — point at files.
   `just events-check` as applicable).
 - Review trigger: any ASS without a verified owner gets revisited on
   every step-back; unowned items are findings, never background.
-- SCOPE items live in `specs/scope.json` with bound, why_safe, and
+- SCOPE items live in `utils/quint/pipeline/scope.json` with bound, why_safe, and
   lifting step; a scope item whose justification stops holding
   becomes an open question here.
 
@@ -278,7 +278,7 @@ open questions only. No prose duplication — point at files.
 - 2026-11-08: No Watchman adoption (C++ daemon breaks the
   self-contained shape); keep the `notify` crate and implement the
   recovery patterns on top of it.
-- 2026-11-08: Event catalog lives in `specs/`, validated by a
+- 2026-11-08: Event catalog lives in `utils/quint/pipeline/`, validated by a
   dependency-free `.mjs` script. Hazard fixes wait until the overview
   exists, except S3/S4 which the overflow evidence already justifies.
 - 2026-11-09: Prove-first method adopted (`docs/quint-modeling.md`
@@ -290,7 +290,7 @@ open questions only. No prose duplication — point at files.
   not tracked or proven — the pipeline model serializes before the
   store. Left with the REQS removal.
 - 2026-11-10: Requirements derived and the channel re-enabled:
-  14 open obligations in `specs/requirements.json`, sourced only from
+  14 open obligations in `utils/quint/pipeline/requirements.json`, sourced only from
   committed goals. `catalog-check` enforces that a requirement derives
   from a committed goal and that every committed goal derives at least
   one requirement; `@requires` tags resolve against the registry again.
@@ -328,8 +328,8 @@ open questions only. No prose duplication — point at files.
   intervals (`ASS-7`, unverified). With the watcher off the
   backstop is the sole trigger; the one-interval bound is conditional
   on the backstop running.
-- 2026-11-09: New model `specs/eventual-consistency.qnt` replaces
-  `specs/index-pipeline.qnt`: every catalog event maps to an action,
+- 2026-11-09: New model `utils/quint/pipeline/eventual-consistency.qnt` replaces
+  `utils/quint/pipeline/index-pipeline.qnt`: every catalog event maps to an action,
   including recovery (`ScanRoot`/`SweepRoot`, `ProcessCrash`,
   `LoseThumbs`, `DbLoss`), directory rename
   (`ExternalRenameDir`/`ApiAssignDirMove`), file rename as
@@ -340,12 +340,12 @@ open questions only. No prose duplication — point at files.
   SCOPE-7 (flat directory paths) added. 32 runs green under
   `just quint-check`; the requirements channel stays dormant.
 - 2026-11-09: Requirements channel removed as premature:
-  `specs/REQS.md` and `specs/REQS-NO-WATCHER.md` deleted, no archive;
+  `utils/quint/pipeline/REQS.md` and `utils/quint/pipeline/REQS-NO-WATCHER.md` deleted, no archive;
   `@requires` tags stripped (8 sites) and the five definitions they
   solely grounded re-tagged (`AppSidecarEdit`/`uploadTest`/
   `apiRemoveTest` → SCOPE-5, `ReadMissing` → `@exempt observer`,
   `WorkerOpenFails` → `@exempt no-backing` pending the new model).
-  `specs/SCOPE.md` converted to `specs/scope.json` (validated by
+  `utils/quint/pipeline/SCOPE.md` converted to `utils/quint/pipeline/scope.json` (validated by
   `just catalog-check`); `spec-check` fails any `@requires` tag while
   the channel is dormant. New requirements derive only from the
   proven model.
@@ -366,11 +366,11 @@ open questions only. No prose duplication — point at files.
   anything. Fairness ownership recorded as an open gap, not an
   assumed property.
 - 2026-11-09: Plan tracks status/decisions/open questions only;
-  specs/ hold content (single-source rule). Maintenance triggers:
+  utils/quint/pipeline/ hold content (single-source rule). Maintenance triggers:
   update on every status change or new decision/question; review
   every unowned ASS and every gateless open REQ on each step-back.
 - 2026-11-09: Plan upleveled from item tracker to procedure tracker:
-  Goals/Assumptions/Requirements sections point at specs/ files and
+  Goals/Assumptions/Requirements sections point at utils/quint/pipeline/ files and
   record only status, owners, and open questions; per-item state
   (including owner/status) lives in the specs annotations. Added
   explicit curation loop (propose → human review → annotate →

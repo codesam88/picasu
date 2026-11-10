@@ -298,7 +298,7 @@
           "status": "covered"
         }
       ],
-      "notes": "Synchronous row write; no intake involved. Placement verified: tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), atomic rename (post_upload.rs). See G3 in specs/goals.json for the barrier."
+      "notes": "Synchronous row write; no intake involved. Placement verified: tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), atomic rename (post_upload.rs). See G3 in utils/quint/pipeline/goals.json for the barrier."
     },
     {
       "name": "API_DELETE",

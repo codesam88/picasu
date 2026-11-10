@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Validate specs/goals.json, specs/requirements.json,
-// specs/assumptions.json and specs/scope.json against
-// specs/catalog.schema.json (manual field walk, same approach as
+// Validate utils/quint/pipeline/goals.json, utils/quint/pipeline/requirements.json,
+// utils/quint/pipeline/assumptions.json and utils/quint/pipeline/scope.json against
+// utils/quint/pipeline/catalog.schema.json (manual field walk, same approach as
 // events-check.mjs), plus the cross-catalog references: goals ->
 // assumptions ids, requirements -> committed goals, and every committed
 // goal must derive at least one requirement.
@@ -16,7 +16,7 @@ const base = resolveBase(arg)
 function resolveBase(input) {
   const p = resolve(input)
   if (existsSync(join(p, 'goals.json'))) return p
-  if (existsSync(join(p, 'specs', 'goals.json'))) return join(p, 'specs')
+  if (existsSync(join(p, 'utils', 'quint', 'pipeline', 'goals.json'))) return join(p, 'utils', 'quint', 'pipeline')
   return p
 }
 

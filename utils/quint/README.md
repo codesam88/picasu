@@ -1,7 +1,7 @@
-# specs/
+# utils/quint
 
 Checkable models of subsystem protocols, one file per subsystem:
-`specs/<subsystem>.qnt`. Each spec is exercised by `just quint-check`
+`utils/quint/pipeline/<subsystem>.qnt`. Each spec is exercised by `just quint-check`
 (typecheck plus `quint test`); exploratory simulation is `quint run`
 and never gates.
 
@@ -17,7 +17,7 @@ by components out of scope here.
 - If the assumption has no formalized representation in the model,
   it is likely vacuous or redundant. Consider consolidating.
 
-Current contents:
+Current contents of `pipeline/`:
 
 - `eventual-consistency.qnt` — the pipeline protocol as prescribed
   event handling: watcher/API boundary events, recovery events
@@ -77,6 +77,17 @@ and record every derived contract where its enforcement lives (see
 `docs/quint-modeling.md` for the full flow). Simulator
 counterexamples become regression tests or documented transients —
 never silent.
+
+## Tooling
+
+- `specs-check.mjs` — closed-world tag audit and the generated
+  `pipeline/traceability.json` map.
+- `events-check.mjs`, `catalog-check.mjs` — catalog validation against
+  `pipeline/catalog.schema.json`.
+- `gen-eventual-consistency-doc.mjs` — writes `docs/eventual-consistency.md`.
+
+The Quint toolchain installer stays in `scripts/deps/quint.sh` with the
+shared pins in `scripts/deps/versions.env`.
 
 Modeling scope (not assumptions, no formal counterpart required):
 no cross-root identity in v1 — moves across watched-root
