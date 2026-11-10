@@ -108,8 +108,8 @@
       "derived_from": ["G1"],
       "owner": "rotate_image (router/put/rotate_image.rs)",
       "gate": "Backend test: fail the sidecar write and assert thumbnail and DB are unchanged; crash after the sidecar write and assert a rescan restores the rotation.",
-      "status": "open",
-      "notes": "Current order is thumbnail, then sidecar, then DB (rotate_image.rs:132-175); the adopted order is sidecar -> thumbnail -> DB. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest)."
+      "status": "verified",
+      "notes": "Reordered to sidecar -> thumbnail -> DB (rotate_image.rs): the image is loaded and the rotation applied read-only, then write_rotation_for, then generate_thumbnail_for_image, thumbhash/phash, and finally album stats and DB flush. Verified by backend test rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged (read-only album dir makes the sidecar write fail with Permission denied; thumbnail bytes and DB record stay unchanged) and rotate_persists_to_xmp_and_reindex_preserves_display. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest)."
     },
     {
       "id": "REQ-12",

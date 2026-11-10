@@ -27,6 +27,20 @@ const ALBUM_REL: &str = "/rotation/album";
 const PHOTO_WIDTH: u32 = 48;
 const PHOTO_HEIGHT: u32 = 32;
 
+#[cfg(unix)]
+struct RestoreMode<'a> {
+    path: &'a Path,
+    mode: u32,
+}
+
+#[cfg(unix)]
+impl Drop for RestoreMode<'_> {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(self.path, std::fs::Permissions::from_mode(self.mode));
+    }
+}
+
 fn generate_photo() -> PathBuf {
     let photo = test_image_home().join(PHOTO_REL);
     std::fs::create_dir_all(photo.parent().expect("photo parent")).expect("create photo dir");
@@ -190,5 +204,94 @@ fn rotate_persists_to_xmp_and_reindex_preserves_display() {
             .as_str(),
         asset_id.as_str(),
         "reindex must reuse the path's asset id"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = lock();
+    let client = setup_image_home();
+    let photo = generate_photo();
+    seed(
+        "rotation-writer",
+        false,
+        Some(test_password("rotation-writer").as_str()),
+    );
+    let viewer = cookie("rotation-writer", false);
+
+    post_index_album(&client);
+    let asset_id = discover_asset_id(&client, PHOTO_REL);
+
+    let baseline = record(&asset_id);
+    let compressed_path = baseline.compressed_path();
+    let baseline_thumb_bytes =
+        std::fs::read(&compressed_path).expect("read baseline thumbnail bytes");
+    let baseline_width = baseline.width();
+    let baseline_height = baseline.height();
+    let baseline_thumbhash = baseline.thumbhash().cloned();
+    let baseline_phash = match &baseline {
+        AbstractData::Image(img) => img.metadata.phash.clone(),
+        _ => None,
+    };
+    let baseline_sidecar_rotation = extract_xmp_data_from_file(&photo).rotation;
+
+    // Make the album directory read-only so the sidecar write fails.
+    let album_dir = test_image_home().join(ALBUM_REL.trim_start_matches('/'));
+    let original_mode = std::fs::metadata(&album_dir)
+        .expect("stat album dir")
+        .permissions()
+        .mode();
+    std::fs::set_permissions(&album_dir, std::fs::Permissions::from_mode(0o555))
+        .expect("chmod album dir read-only");
+
+    let restore = RestoreMode {
+        path: &album_dir,
+        mode: original_mode,
+    };
+
+    let resp = client
+        .put("/put/rotate-image")
+        .cookie(viewer.clone())
+        .header(ContentType::JSON)
+        .body(json!({ "assetId": asset_id }).to_string())
+        .dispatch();
+    assert_ne!(
+        resp.status(),
+        Status::Ok,
+        "rotate must fail when the sidecar cannot be written"
+    );
+
+    // Restore permissions before reading back.
+    drop(restore);
+
+    let after = record(&asset_id);
+    let after_thumb_bytes = std::fs::read(&compressed_path).expect("read thumbnail bytes after");
+    assert_eq!(
+        after_thumb_bytes, baseline_thumb_bytes,
+        "thumbnail bytes must be unchanged when the sidecar write fails"
+    );
+    assert_eq!(after.width(), baseline_width, "DB width must be unchanged");
+    assert_eq!(
+        after.height(),
+        baseline_height,
+        "DB height must be unchanged"
+    );
+    assert_eq!(
+        after.thumbhash(),
+        baseline_thumbhash.as_ref(),
+        "DB thumbhash must be unchanged"
+    );
+    let after_phash = match &after {
+        AbstractData::Image(img) => img.metadata.phash.clone(),
+        _ => None,
+    };
+    assert_eq!(after_phash, baseline_phash, "DB phash must be unchanged");
+    assert_eq!(
+        extract_xmp_data_from_file(&photo).rotation,
+        baseline_sidecar_rotation,
+        "sidecar rotation must be unchanged"
     );
 }

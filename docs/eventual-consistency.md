@@ -170,7 +170,7 @@ Gate: Backend test: leave a tmp file; startup/scan removes it and no row is crea
 
 Notes: Startup sweep implemented in init::sweep_upload_tmp_files (called from initialize_folder for image_home and users_home). Pure predicate init::is_upload_tmp_name. Upload writes tmp then renames (post_upload.rs:432-466); tmp files never reach the index because the extension gate rejects them. Verified by tests: init::tests::is_upload_tmp_name_accepts_upload_tmp, init::tests::is_upload_tmp_name_rejects_notes_tmp, init::tests::is_upload_tmp_name_rejects_non_tmp_extension, init::tests::is_upload_tmp_name_rejects_malformed_uuid, init::tests::sweep_upload_tmp_files_removes_residue, tasks::actor::album_index::tests::index_album_upload_tmp_not_indexed_and_swept.
 
-### REQ-11: Rotate writes the sidecar before the thumbnail and DB (status: open)
+### REQ-11: Rotate writes the sidecar before the thumbnail and DB (status: verified)
 
 A rotate writes the sidecar rotation first, then the thumbnail, then the DB records, so any interruption leaves a present sidecar that forces reprocess.
 
@@ -178,7 +178,7 @@ Derived from: G1. Owner: rotate_image (router/put/rotate_image.rs).
 
 Gate: Backend test: fail the sidecar write and assert thumbnail and DB are unchanged; crash after the sidecar write and assert a rescan restores the rotation.
 
-Notes: Current order is thumbnail, then sidecar, then DB (rotate_image.rs:132-175); the adopted order is sidecar -> thumbnail -> DB. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest).
+Notes: Reordered to sidecar -> thumbnail -> DB (rotate_image.rs): the image is loaded and the rotation applied read-only, then write_rotation_for, then generate_thumbnail_for_image, thumbhash/phash, and finally album stats and DB flush. Verified by backend test rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged (read-only album dir makes the sidecar write fail with Permission denied; thumbnail bytes and DB record stay unchanged) and rotate_persists_to_xmp_and_reindex_preserves_display. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest).
 
 ### REQ-12: Assign copies the sidecar before moving the asset (status: open)
 

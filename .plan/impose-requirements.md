@@ -71,7 +71,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
   Scope: `init.rs` or scan sweep, `router/post/post_upload.rs` naming.
   RED: a `{name}-{uuid}.tmp` under an image root survives startup/scan;
   after the change it is removed and no row is created.
-- **S5 [ ] REQ-11: rotate sidecar before thumbnail and DB**.
+- **S5 [DONE] REQ-11: rotate sidecar before thumbnail and DB**.
   Scope: `router/put/rotate_image.rs`.
   RED: force the sidecar write to fail; today the thumbnail is already
   rewritten. Reorder to sidecar -> thumbnail -> DB and assert thumbnail
