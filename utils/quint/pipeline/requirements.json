@@ -38,8 +38,8 @@
       "derived_from": ["G1"],
       "owner": "album index sweep (tasks/actor/album_index.rs)",
       "gate": "Backend test: scan one sub-root with a ghost row outside it; the outside row survives the sweep.",
-      "status": "open",
-      "notes": "Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499) but no isolation test exists. The model pins it (SweepRoot, perRootSweepTest)."
+      "status": "verified",
+      "notes": "Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499). The model pins it (SweepRoot, perRootSweepTest); verified by backend test index_album_sweep_is_scoped_to_scanned_root."
     },
     {
       "id": "REQ-5",

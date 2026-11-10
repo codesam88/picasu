@@ -100,7 +100,7 @@ Gate: Backend test: rename a watched directory; every descendant row follows to 
 
 Notes: Directory events are dropped today (the Modify arm filters is_file, start_watcher.rs:249-263), so descendants get neither remove nor index submits. The model prescribes ExternalRenameDir and ApiAssignDirMove (subtreeMoveTest, assignDirMoveTest).
 
-### REQ-4: Per-root sweep isolation is verified (status: open)
+### REQ-4: Per-root sweep isolation is verified (status: verified)
 
 A scan of one root reaps only rows under that root; rows outside the scanned root survive even when their files are absent.
 
@@ -108,7 +108,7 @@ Derived from: G1. Owner: album index sweep (tasks/actor/album_index.rs).
 
 Gate: Backend test: scan one sub-root with a ghost row outside it; the outside row survives the sweep.
 
-Notes: Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499) but no isolation test exists. The model pins it (SweepRoot, perRootSweepTest).
+Notes: Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499). The model pins it (SweepRoot, perRootSweepTest); verified by backend test index_album_sweep_is_scoped_to_scanned_root.
 
 ### REQ-5: Rescan on the watcher's Flag::Rescan signal (status: open)
 
