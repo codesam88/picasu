@@ -62,7 +62,8 @@ pub fn initialize_logger() {
         .ok();
 }
 
-use log::{error, info};
+use log::{error, info, warn};
+use std::path::PathBuf;
 use std::process::Command;
 
 pub fn check_ffmpeg_and_ffprobe() {
@@ -94,15 +95,16 @@ pub fn check_ffmpeg_and_ffprobe() {
 }
 
 pub fn initialize_folder() {
-    let (data_home, image_home, upload_folder) = {
+    let (data_home, image_home, users_home, upload_folder) = {
         let config = crate::model::config::with_config(crate::model::config::AppConfig::clone);
         let data_home = config
             .data_home
             .clone()
             .unwrap_or_else(|| get_data_path().clone());
         let image_home = config.image_home.clone();
+        let users_home = config.users_home.clone();
         let upload_folder = config.upload_folder.clone();
-        (data_home, image_home, upload_folder)
+        (data_home, image_home, users_home, upload_folder)
     };
 
     info!("Storage root initialized at: {}", data_home.display());
@@ -117,6 +119,113 @@ pub fn initialize_folder() {
         std::fs::create_dir_all(root.join(&upload_folder))
             .expect("failed to create upload folder directory");
     }
+
+    // Sweep stale upload crash residue from configured roots only.
+    let mut sweep_roots: Vec<PathBuf> = Vec::new();
+    if let Some(root) = image_home {
+        sweep_roots.push(root);
+    }
+    if let Some(root) = users_home {
+        sweep_roots.push(root);
+    }
+    sweep_temp_files(&sweep_roots);
+}
+
+/// Parse an owned temp name into `(pid, seq)`. The callers all produce
+/// `.{event}-{filename}.{pid}.{seq}.tmp` with `event` of `upload` or
+/// `sidecar`; the filename may contain dots, so the two trailing numeric
+/// components are parsed from the end.
+fn parse_temp_name(name: &str) -> Option<(u32, u64)> {
+    let stem = name.strip_suffix(".tmp")?;
+    let rest = stem
+        .strip_prefix(".upload-")
+        .or_else(|| stem.strip_prefix(".sidecar-"))?;
+    let last_dot = rest.rfind('.')?;
+    let seq: u64 = rest[last_dot + 1..].parse().ok()?;
+    let before_seq = &rest[..last_dot];
+    let pid_dot = before_seq.rfind('.')?;
+    let pid: u32 = before_seq[pid_dot + 1..].parse().ok()?;
+    if before_seq[..pid_dot].is_empty() {
+        return None;
+    }
+    Some((pid, seq))
+}
+
+/// Returns true when `pid` refers to a live process. `EPERM` counts as
+/// alive; `ESRCH` as dead; pids above `i32::MAX` are dead.
+#[allow(unsafe_code)]
+fn pid_is_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        let Ok(pid_i32) = i32::try_from(pid) else {
+            return false;
+        };
+        // SAFETY: `kill(pid, 0)` performs permission/existence checks without
+        // delivering a signal.
+        let ret = unsafe { libc::kill(pid_i32, 0) };
+        if ret == 0 {
+            return true;
+        }
+        let err = std::io::Error::last_os_error();
+        err.raw_os_error() == Some(libc::EPERM)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+/// Walks `roots` and removes owned temp files whose owning pid is dead, or
+/// whose owning pid is alive but whose mtime is older than one hour.
+/// Returns the number of files successfully removed. A `warn!` is emitted
+/// per failed removal and a single `info!` summarizes the count.
+pub(crate) fn sweep_temp_files(roots: &[PathBuf]) -> usize {
+    use std::time::{Duration, SystemTime};
+
+    let mut removed = 0usize;
+    for root in roots {
+        if !root.exists() {
+            continue;
+        }
+        for entry in walkdir::WalkDir::new(root)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let Some(name) = entry.file_name().to_str() else {
+                continue;
+            };
+            let Some((pid, _seq)) = parse_temp_name(name) else {
+                continue;
+            };
+            let path = entry.path();
+            let metadata = std::fs::metadata(path).ok();
+
+            let mut remove = !pid_is_alive(pid);
+            if !remove
+                && let Some(md) = &metadata
+                && let Ok(mtime) = md.modified()
+                && let Ok(age) = SystemTime::now().duration_since(mtime)
+                && age > Duration::from_secs(3600)
+            {
+                remove = true;
+            }
+
+            if !remove {
+                continue;
+            }
+
+            match std::fs::remove_file(path) {
+                Ok(()) => removed += 1,
+                Err(err) => warn!("failed to remove temp file {}: {}", path.display(), err),
+            }
+        }
+    }
+    info!("swept {removed} stale temp file(s)");
+    removed
 }
 
 use crate::storage::db::METADATA_TABLE;
@@ -201,4 +310,64 @@ pub fn initialize() -> anyhow::Result<()> {
     check_ffmpeg_and_ffprobe();
     initialize_file();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use filetime::{FileTime, set_file_mtime};
+    use std::fs;
+    use std::time::{Duration, SystemTime};
+    use tempfile::TempDir;
+
+    #[test]
+    fn sweep_removes_dead_pid_temp() {
+        let dir = TempDir::new().expect("create tempdir");
+        let dead_pid = u32::MAX;
+        let name = format!(".upload-residue.{dead_pid}.1.tmp");
+        let residue = dir.path().join(&name);
+        fs::write(&residue, b"x").expect("write residue");
+        let n = sweep_temp_files(&[dir.path().to_path_buf()]);
+        assert_eq!(n, 1);
+        assert!(!residue.exists());
+    }
+
+    #[test]
+    fn sweep_keeps_live_pid_fresh_temp() {
+        let dir = TempDir::new().expect("create tempdir");
+        let pid = std::process::id();
+        let name = format!(".upload-live.{pid}.1.tmp");
+        let kept = dir.path().join(&name);
+        fs::write(&kept, b"x").expect("write");
+        let n = sweep_temp_files(&[dir.path().to_path_buf()]);
+        assert_eq!(n, 0);
+        assert!(kept.exists());
+    }
+
+    #[test]
+    fn sweep_removes_live_pid_old_temp() {
+        let dir = TempDir::new().expect("create tempdir");
+        let pid = std::process::id();
+        let name = format!(".upload-live.{pid}.2.tmp");
+        let old = dir.path().join(&name);
+        fs::write(&old, b"x").expect("write");
+        let past = SystemTime::now() - Duration::from_secs(2 * 3600);
+        set_file_mtime(&old, FileTime::from_system_time(past)).expect("set mtime");
+        let n = sweep_temp_files(&[dir.path().to_path_buf()]);
+        assert_eq!(n, 1);
+        assert!(!old.exists());
+    }
+
+    #[test]
+    fn sweep_keeps_unrelated_and_malformed() {
+        let dir = TempDir::new().expect("create tempdir");
+        let notes = dir.path().join("notes.tmp");
+        fs::write(&notes, b"y").expect("write");
+        let malformed = dir.path().join(".upload-name.tmp");
+        fs::write(&malformed, b"z").expect("write");
+        let n = sweep_temp_files(&[dir.path().to_path_buf()]);
+        assert_eq!(n, 0);
+        assert!(notes.exists());
+        assert!(malformed.exists());
+    }
 }

@@ -1491,4 +1491,36 @@ mod tests {
         let out = orphan_sidecars(vec![sidecar]);
         assert!(out.is_empty(), "got {out:?}");
     }
+
+    #[test]
+    fn index_album_upload_tmp_not_indexed_and_swept() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let tmp_path = image_home.join(format!(".upload-residue.{}.0.tmp", u32::MAX));
+        std::fs::write(&tmp_path, b"x").expect("write upload tmp residue");
+
+        index_album_with_root("/", false, None).expect("index accepted");
+        wait_for_index_completion();
+
+        let tree = TREE.in_memory.read().expect("tree lock");
+        let indexed = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == tmp_path.to_string_lossy())
+        });
+        drop(tree);
+        assert!(!indexed, "upload tmp residue must not be indexed");
+
+        let removed = crate::init::sweep_temp_files(std::slice::from_ref(&image_home));
+        assert_eq!(removed, 1, "sweep must remove the residue");
+        assert!(!tmp_path.exists(), "residue must be gone after sweep");
+
+        reset_backend_state();
+    }
 }
