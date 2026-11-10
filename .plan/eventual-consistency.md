@@ -32,7 +32,7 @@ Verdicts (S6/S7, 2026-11-10; catalog `specs/goals.json`):
   cycle that starts after changes stop (two scan cycles at most
   counting a scan already in flight). Anchored by
   `boundedConvergenceTest`; holds while the user enables the backstop
-  (`QUINT-ASS-7`).
+  (`ASS-7`).
 - **G3 [QUEUED] — read-after-write.** The upload path waits on the
   flush batch; assign and delete have no verified barrier. Needs an
   inbox-lag model or a per-route barrier gate.
@@ -44,7 +44,7 @@ Verdicts (S6/S7, 2026-11-10; catalog `specs/goals.json`):
 watcher's `Flag::Rescan` signal (inotify overflow, S3) repairs known
 gaps; it exists only while the watcher is enabled. (2) A per-root
 periodic backstop scan, which the user enables at regular intervals
-(`QUINT-ASS-7`) and which supplies G2's bound. With the watcher off,
+(`ASS-7`) and which supplies G2's bound. With the watcher off,
 the backstop is the sole trigger. REQ-5 and REQ-6 track the two
 triggers; REQ-7 tracks scan-vs-assign exclusion.
 
@@ -90,7 +90,7 @@ These constrain the design; they are not assumptions about the world.
   (error cases with status). Goals and assumptions converted to the
   same catalog style (`specs/goals.json`, `specs/assumptions.json`,
   `just catalog-check`): goals G0–G4 with anchors and decision
-  fields, assumptions QUINT-ASS-1..7 with owner/status (model refs
+  fields, assumptions ASS-1..7 with owner/status (model refs
   live in the generated map).
   `specs/assumptions.md` removed (registry moved to the JSON catalog,
   methodology rules moved into `specs/README.md`);
@@ -142,12 +142,12 @@ These constrain the design; they are not assumptions about the world.
   product decision, kept open). Fairness owner: rescan on the
   watcher's `Flag::Rescan` signal while the watcher is enabled (S3)
   plus a per-root periodic backstop that the user enables at regular
-  intervals (`QUINT-ASS-7`).
+  intervals (`ASS-7`).
 - **S7 [DONE]: Strategy selection** (2026-11-10). NO-WATCHER is a
   modeling baseline (the scan-only convergence runs), not an
   implementation option; the deployment target is the hybrid: watcher
   fast path, rescan on `Flag::Rescan` while the watcher is enabled,
-  and the user-enabled regular backstop (`QUINT-ASS-7`). Convergence
+  and the user-enabled regular backstop (`ASS-7`). Convergence
   bound: one backstop interval after quiescence (two scan cycles at
   most). Consequence: blocking mutating API
   during scans (the former NO-WATCHER requirement) is not imposed;
@@ -299,7 +299,7 @@ open questions only. No prose duplication — point at files.
   quiescence (convergence by the end of the first backstop cycle that
   starts after changes stop; two scan cycles at most counting a scan
   already in flight), anchored by `boundedConvergenceTest`; conditional
-  on the user-enabled backstop (`QUINT-ASS-7`).
+  on the user-enabled backstop (`ASS-7`).
 - 2026-11-10: Model hardening. Every run that settles in `Converged`
   now also asserts `NoLostUpload` and `NoPermanentStale`; the skip
   runs pin their intake states; `skipStaleTest` pins the
@@ -311,7 +311,7 @@ open questions only. No prose duplication — point at files.
   an implementation option; deployment target is the hybrid (watcher
   fast path + `Flag::Rescan` while the watcher is enabled +
   user-enabled regular backstop). Convergence bound: one backstop
-  interval (`QUINT-ASS-7`). The former NO-WATCHER requirement to
+  interval (`ASS-7`). The former NO-WATCHER requirement to
   block mutating API during scans is dropped; scan-vs-assign
   coordination remains, because rescans run concurrently with API
   mutations in the hybrid.
@@ -325,7 +325,7 @@ open questions only. No prose duplication — point at files.
   Fairness owner: rescan on the watcher's `Flag::Rescan` signal while
   the watcher is enabled (inotify overflow, S3, unimplemented), plus a
   per-root periodic backstop that the user enables at regular
-  intervals (`QUINT-ASS-7`, unverified). With the watcher off the
+  intervals (`ASS-7`, unverified). With the watcher off the
   backstop is the sole trigger; the one-interval bound is conditional
   on the backstop running.
 - 2026-11-09: New model `specs/eventual-consistency.qnt` replaces
@@ -350,7 +350,7 @@ open questions only. No prose duplication — point at files.
   the channel is dormant. New requirements derive only from the
   proven model.
 - 2026-11-09: Assumptions pruned to world-given premises
-  (QUINT-ASS-1..6); atomic writes, unprocessable handling,
+  (ASS-1..6); atomic writes, unprocessable handling,
   read-after-write coherence, and store concurrency promoted to
   REQs; scan exclusivity recorded as QUINT-REQ-NW-1, not an
   assumption. Spec split into state/assumptions/goal/pipeline

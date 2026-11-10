@@ -229,13 +229,13 @@
       "properties": {
         "id": {
           "enum": [
-            "QUINT-ASS-1",
-            "QUINT-ASS-2",
-            "QUINT-ASS-3",
-            "QUINT-ASS-4",
-            "QUINT-ASS-5",
-            "QUINT-ASS-6",
-            "QUINT-ASS-7"
+            "ASS-1",
+            "ASS-2",
+            "ASS-3",
+            "ASS-4",
+            "ASS-5",
+            "ASS-6",
+            "ASS-7"
           ]
         },
         "title": { "type": "string" },

@@ -23,7 +23,7 @@ Enforcing the structure is a closed-world audit of the model.
 Every constraining element — actions, invariants, predicates —
 carries at least one registered tag:
 
-- `QUINT-ASS-N`: the element constrains, or relies on, the world
+- `ASS-N`: the element constrains, or relies on, the world
   (filesystem behavior, hash properties, deployment topology).
   The list is closed; new IDs land through human review.
 - `REQ-N`: something the team must build (atomicity, barriers,

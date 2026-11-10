@@ -49,7 +49,7 @@
       "owner": "watcher (tasks/batcher/start_watcher.rs)",
       "gate": "Backend test with a forced overflow or synthetic Flag::Rescan event: the affected root is rescanned.",
       "status": "open",
-      "notes": "Ignored today (start_watcher.rs:273 `_` arm); notify emits EventKind::Other with Flag::Rescan on overflow. This is the fairness trigger that exists only while the watcher is enabled (QUINT-ASS-7). The model expresses recovery as ScanRoot."
+      "notes": "Ignored today (start_watcher.rs:273 `_` arm); notify emits EventKind::Other with Flag::Rescan on overflow. This is the fairness trigger that exists only while the watcher is enabled (ASS-7). The model expresses recovery as ScanRoot."
     },
     {
       "id": "REQ-6",
@@ -59,7 +59,7 @@
       "owner": "scheduler and config (model/config.rs, lib.rs startup)",
       "gate": "Integration test: with the backstop enabled and the watcher disabled, a missed change converges within one backstop interval; config test covers interval and root scope.",
       "status": "open",
-      "notes": "No periodic scan exists; the only periodic loop is the 24h query-snapshot expiry (tasks/looper/mod.rs). Implements the QUINT-ASS-7 operating condition (user enables the backstop at regular intervals). The model expresses it as ScanRoot (boundedConvergenceTest)."
+      "notes": "No periodic scan exists; the only periodic loop is the 24h query-snapshot expiry (tasks/looper/mod.rs). Implements the ASS-7 operating condition (user enables the backstop at regular intervals). The model expresses it as ScanRoot (boundedConvergenceTest)."
     },
     {
       "id": "REQ-7",

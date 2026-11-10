@@ -2,7 +2,7 @@
   "version": 1,
   "rows": [
     {
-      "id": "QUINT-ASS-1",
+      "id": "ASS-1",
       "kind": "ASS",
       "title": "path is identity (keyed state, identity runs)",
       "refs": [
@@ -16,7 +16,7 @@
       ]
     },
     {
-      "id": "QUINT-ASS-2",
+      "id": "ASS-2",
       "kind": "ASS",
       "title": "content identified by hash (snapshot comparison)",
       "refs": [
@@ -25,7 +25,7 @@
       ]
     },
     {
-      "id": "QUINT-ASS-3",
+      "id": "ASS-3",
       "kind": "ASS",
       "title": "filesystem wins (converged direction, sweep, rescan heals)",
       "refs": [
@@ -50,7 +50,7 @@
       ]
     },
     {
-      "id": "QUINT-ASS-4",
+      "id": "ASS-4",
       "kind": "ASS",
       "title": "derived store is pipeline-private (walk roots disjoint)",
       "refs": [
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "id": "QUINT-ASS-5",
+      "id": "ASS-5",
       "kind": "ASS",
       "title": "hash is the authority (snapshot comparison)",
       "refs": [
@@ -75,7 +75,7 @@
       ]
     },
     {
-      "id": "QUINT-ASS-6",
+      "id": "ASS-6",
       "kind": "ASS",
       "title": "quiescence (safety invariants asserted at settled state)",
       "refs": [
@@ -97,7 +97,7 @@
       ]
     },
     {
-      "id": "QUINT-ASS-7",
+      "id": "ASS-7",
       "kind": "ASS",
       "title": "user enables backstop scans at regular intervals",
       "refs": [

@@ -13,8 +13,8 @@ module eventual_consistency_goal {
   // missing, no ghosts, nothing left queued. Excluded by design:
   // scan_time (ordering tiebreak, not correctness) and assetId values
   // (move preservation is a move property, not a convergence property).
-  // @assumes QUINT-ASS-3
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-3
+  // @assumes ASS-6
   val Converged = PATHS.forall(p =>
     p.in(unprocessable) or (
     (files.get(p).present ==
