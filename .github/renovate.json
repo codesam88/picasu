@@ -76,6 +76,13 @@
       "depNameTemplate": "koalaman/shellcheck",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["QUINT_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "@informalsystems/quint",
+      "datasourceTemplate": "npm"
     }
   ]
 }
