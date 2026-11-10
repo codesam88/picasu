@@ -76,7 +76,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
   RED: force the sidecar write to fail; today the thumbnail is already
   rewritten. Reorder to sidecar -> thumbnail -> DB and assert thumbnail
   and DB unchanged on sidecar failure.
-- **S6 [ ] REQ-12: assign copies the sidecar before moving the asset**.
+- **S6 [DONE] REQ-12: assign copies the sidecar before moving the asset**.
   Scope: `router/put/assign_album.rs`.
   RED: fail the asset move after the sidecar copy; assert the destination
   sidecar exists and metadata is not separated. Reorder to copy sidecar,

@@ -180,7 +180,7 @@ Gate: Backend test: fail the sidecar write and assert thumbnail and DB are uncha
 
 Notes: Reordered to sidecar -> thumbnail -> DB (rotate_image.rs): the image is loaded and the rotation applied read-only, then write_rotation_for, then generate_thumbnail_for_image, thumbhash/phash, and finally album stats and DB flush. Verified by backend test rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged (read-only album dir makes the sidecar write fail with Permission denied; thumbnail bytes and DB record stay unchanged) and rotate_persists_to_xmp_and_reindex_preserves_display. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest).
 
-### REQ-12: Assign copies the sidecar before moving the asset (status: open)
+### REQ-12: Assign copies the sidecar before moving the asset (status: verified)
 
 A multi-file assign copies the destination sidecar first, moves the asset, then removes the old sidecar; an interruption leaves at most an orphan copy, never an asset without its metadata.
 
@@ -188,7 +188,7 @@ Derived from: G1. Owner: assign_album (router/put/assign_album.rs).
 
 Gate: Backend test: interrupt after the sidecar copy and before the asset move; metadata is not separated.
 
-Notes: Current order renames the asset, then renames the sidecar with the error ignored, then updates rows (assign_album.rs:240-264). Orphan copies from an interruption are acceptable and covered by REQ-9's logging.
+Notes: Reordered to copy destination sidecar -> move asset -> remove old sidecar (assign_album.rs move_asset_into_album): sidecar bytes are read and written atomically to final_dest.xmp before fs::rename; a failed copy aborts before the asset moves, and a failed move leaves only an orphan destination sidecar copy; the old sidecar is removed best-effort after the asset move (missing is fine, failure logged). DB updates stay after the asset move. Album-move behaviour unchanged. Verified by backend test assign_copies_sidecar_before_asset_move (read-only source album dir makes the asset rename fail with Permission denied; the destination sidecar copy exists and the DB record path is unchanged).
 
 ### REQ-13: Sidecar and albuminfo writes are atomic under partial-write failure (status: verified)
 
