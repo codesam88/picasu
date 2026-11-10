@@ -71,14 +71,9 @@ fn sidecar_path(abstract_data: &AbstractData) -> Option<PathBuf> {
 /// the same staging the writer uses, so restoring a backup cannot leave a
 /// half-written sidecar either.
 fn write_bytes_atomically(target: &Path, bytes: &[u8]) -> io::Result<()> {
-    let parent = target.parent().unwrap_or(Path::new("."));
-    let tmp_name = format!(
-        ".{}.tmp",
-        target.file_name().and_then(|n| n.to_str()).unwrap_or("xmp")
-    );
-    let tmp = parent.join(tmp_name);
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, target)
+    crate::process::atomic_write::write_via_temp(target, "sidecar", |tmp| {
+        std::fs::write(tmp, bytes)
+    })
 }
 
 /// Write every item's sidecar, and only then store every payload.

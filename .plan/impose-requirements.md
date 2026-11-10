@@ -56,7 +56,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
   RED: none; sweep is already root-scoped. Add a test with a ghost row
   under an unscanned sub-root and scan a sibling root; assert the outside
   row survives. Run before/after; mark `verified`.
-- **S2 [ ] REQ-13: atomic sidecar/albuminfo writes** (test-only unless the
+- **S2 [DONE] REQ-13: atomic sidecar/albuminfo writes** (test-only unless the
   gate fails).
   Scope: `process/sidecar_edit.rs`, `process/xmp_write.rs`.
   RED: none; add a failure-injection seam around the temp write and

@@ -266,17 +266,9 @@ fn xmp_error_to_io(e: &xmpkit::XmpError) -> io::Error {
 }
 
 fn write_sidecar_content(sidecar: &Path, content: &str) -> io::Result<()> {
-    let parent = sidecar.parent().unwrap_or(Path::new("."));
-    let tmp_name = format!(
-        ".{}.tmp",
-        sidecar
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("xmp")
-    );
-    let tmp = parent.join(tmp_name);
-    std::fs::write(&tmp, content.as_bytes())?;
-    std::fs::rename(&tmp, sidecar)
+    crate::process::atomic_write::write_via_temp(sidecar, "sidecar", |tmp| {
+        std::fs::write(tmp, content.as_bytes())
+    })
 }
 
 #[cfg(test)]

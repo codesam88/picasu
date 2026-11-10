@@ -128,8 +128,8 @@
       "derived_from": ["G0"],
       "owner": "sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs)",
       "gate": "Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.",
-      "status": "open",
-      "notes": "Implemented with temp+rename (sidecar_edit.rs:73-82, xmp_write.rs:268-280). Existing scenarios cover read-only-directory failures and batch rollback, but no test injects a partial write inside the helper, and the temp name is deterministic (no fsync)."
+      "status": "verified",
+      "notes": "Implemented with temp+rename (sidecar_edit.rs:73-82, xmp_write.rs:268-280). Existing scenarios cover read-only-directory failures and batch rollback; partial-write injection covered by process::atomic_write::tests::a_failed_temp_write_leaves_the_existing_target_unchanged. The temp name is deterministic (no fsync)."
     },
     {
       "id": "REQ-14",
