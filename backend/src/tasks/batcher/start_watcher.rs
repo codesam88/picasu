@@ -7,7 +7,7 @@ use crate::storage::files::get_resolved_users_home;
 use crate::tasks::queue::{submit_watcher_index, submit_watcher_remove};
 use crate::tasks::runtime::spawn;
 use anyhow::Result;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use mini_executor::BatchTask;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
@@ -90,7 +90,7 @@ fn start_watcher_task_internal() -> Result<()> {
     let image_path = raw_image_path;
 
     // Build the watcher.
-    let mut watcher = new_watcher()?;
+    let mut watcher = new_watcher(image_path.clone(), raw_users_path.clone())?;
     if image_path.exists() {
         watcher
             .watch(&image_path, RecursiveMode::Recursive)
@@ -218,64 +218,208 @@ pub(crate) fn handle_removed_file(removed: &Path) -> Option<RemovalAction> {
     }
 }
 
-fn new_watcher() -> Result<RecommendedWatcher> {
-    notify::recommended_watcher(move |result: Result<Event, notify::Error>| match result {
-        Ok(event) => {
-            match event.kind {
-                EventKind::Create(_) => {
-                    let mut path_list: HashSet<PathBuf> = HashSet::new();
-
-                    for path in event.paths {
-                        if path.is_file() {
-                            path_list.insert(path);
-                        } else if path.is_dir() {
-                            WalkDir::new(&path)
-                                .into_iter()
-                                .filter_map(std::result::Result::ok)
-                                .filter(|dir_entry| dir_entry.file_type().is_file())
-                                .for_each(|dir_entry| {
-                                    path_list.insert(dir_entry.into_path());
-                                });
-                        }
-                    }
-
-                    for path in path_list {
-                        if is_valid_media_file(&path) {
-                            submit_to_debounce_pool(path);
-                        }
-                    }
-                }
-
-                EventKind::Modify(_) => {
-                    let mut path_list: HashSet<PathBuf> = HashSet::new();
-
-                    for path in event.paths {
-                        if path.is_file() {
-                            path_list.insert(path);
-                        }
-                    }
-
-                    for path in path_list {
-                        if is_valid_media_file(&path) {
-                            submit_to_debounce_pool(path);
-                        }
-                    }
-                }
-
-                EventKind::Remove(_) => {
-                    for path in event.paths {
-                        if is_valid_media_file(&path) {
-                            submit_removal_to_watcher(path);
-                        }
-                    }
-                }
-
-                _ => { /* ignore other kinds */ }
-            }
+/// Map a set of watcher-observed paths to a scan-root selector for a full
+/// rescan: `"global"` when every path is under the image root, `"personal"`
+/// when every path is under the users root, and `"auto"` (both roots) for a
+/// mixed or unknown set.
+pub(crate) fn rescan_mode_for(
+    paths: &[PathBuf],
+    image_root: &Path,
+    users_root: Option<&Path>,
+) -> &'static str {
+    if paths.is_empty() {
+        return "auto";
+    }
+    let mut all_image = true;
+    let mut all_users = true;
+    for path in paths {
+        let under_image = path.starts_with(image_root);
+        let under_users = users_root.is_some_and(|r| path.starts_with(r));
+        if !under_image {
+            all_image = false;
         }
+        if !under_users {
+            all_users = false;
+        }
+        if !all_image && !all_users {
+            return "auto";
+        }
+    }
+    if all_image {
+        "global"
+    } else if all_users {
+        "personal"
+    } else {
+        "auto"
+    }
+}
+
+fn new_watcher(image_root: PathBuf, users_root: Option<PathBuf>) -> Result<RecommendedWatcher> {
+    notify::recommended_watcher(move |result: Result<Event, notify::Error>| match result {
+        Ok(event) => handle_event(event, &image_root, users_root.as_deref()),
         Err(err) => {
             handle_error(anyhow::anyhow!("Watch error: {err:#?}"));
         }
     })
     .map_err(|e| anyhow::anyhow!("Failed to create watcher: {e}"))
+}
+
+pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&Path>) {
+    // Overflow / rescan: a backend may have missed events, so force a
+    // full rescan of the affected root instead of reacting to the
+    // (possibly incomplete) event stream.
+    if event.need_rescan() {
+        let mode = rescan_mode_for(&event.paths, image_root, users_root);
+        if let Err(e) =
+            crate::tasks::actor::album_index::index_album_with_root("/", false, Some(mode))
+        {
+            if e.kind == crate::error::ErrorKind::Conflict {
+                debug!("rescan submit skipped (index already running): {e}");
+            } else {
+                warn!("rescan submit failed: {e:#}");
+            }
+        } else {
+            info!("submitted full rescan ({mode}) after watcher overflow/rescan");
+        }
+    }
+
+    match event.kind {
+        EventKind::Create(_) => {
+            let mut path_list: HashSet<PathBuf> = HashSet::new();
+
+            for path in event.paths {
+                if path.is_file() {
+                    path_list.insert(path);
+                } else if path.is_dir() {
+                    WalkDir::new(&path)
+                        .into_iter()
+                        .filter_map(std::result::Result::ok)
+                        .filter(|dir_entry| dir_entry.file_type().is_file())
+                        .for_each(|dir_entry| {
+                            path_list.insert(dir_entry.into_path());
+                        });
+                }
+            }
+
+            for path in path_list {
+                if is_valid_media_file(&path) {
+                    submit_to_debounce_pool(path);
+                }
+            }
+        }
+
+        EventKind::Modify(_) => {
+            let mut path_list: HashSet<PathBuf> = HashSet::new();
+
+            for path in event.paths {
+                if path.is_file() {
+                    path_list.insert(path);
+                }
+            }
+
+            for path in path_list {
+                if is_valid_media_file(&path) {
+                    submit_to_debounce_pool(path);
+                }
+            }
+        }
+
+        EventKind::Remove(_) => {
+            for path in event.paths {
+                if is_valid_media_file(&path) {
+                    submit_removal_to_watcher(path);
+                }
+            }
+        }
+
+        _ => { /* ignore other kinds */ }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tasks::actor::album_index::{AlbumIndexState, album_index_status};
+    use notify::event::Flag;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn rescan_event_submits_a_scan() {
+        let _guard = crate::tests::bootstrap::lock();
+        let _client = crate::tests::bootstrap::setup_image_home();
+        let image_home = crate::tests::bootstrap::test_image_home();
+        let event = Event::new(EventKind::Other)
+            .set_flag(Flag::Rescan)
+            .add_path(image_home.join("a.jpg"));
+
+        handle_event(event, &image_home, None);
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let status = album_index_status();
+            if !matches!(status.state, AlbumIndexState::Running) {
+                assert!(
+                    matches!(status.state, AlbumIndexState::Completed),
+                    "rescan state: {:?}",
+                    status.state
+                );
+                break;
+            }
+            assert!(
+                Instant::now() <= deadline,
+                "rescan did not complete within 30s"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        crate::tests::bootstrap::reset_backend_state();
+    }
+
+    #[test]
+    fn rescan_mode_image_path_is_global() {
+        let image_root = PathBuf::from("/data/images");
+        let users_root = Some(PathBuf::from("/data/users"));
+        let event = Event::new(EventKind::Other)
+            .set_flag(Flag::Rescan)
+            .add_path(image_root.join("a.jpg"));
+        assert_eq!(
+            rescan_mode_for(&event.paths, &image_root, users_root.as_deref()),
+            "global"
+        );
+    }
+
+    #[test]
+    fn rescan_mode_users_path_is_personal() {
+        let image_root = PathBuf::from("/data/images");
+        let users_root = Some(PathBuf::from("/data/users"));
+        let event = Event::new(EventKind::Other)
+            .set_flag(Flag::Rescan)
+            .add_path(users_root.as_deref().expect("users root").join("u/a.jpg"));
+        assert_eq!(
+            rescan_mode_for(&event.paths, &image_root, users_root.as_deref()),
+            "personal"
+        );
+    }
+
+    #[test]
+    fn rescan_mode_mixed_or_unknown_is_auto() {
+        let image_root = PathBuf::from("/data/images");
+        let users_root = Some(PathBuf::from("/data/users"));
+        let event = Event::new(EventKind::Other)
+            .set_flag(Flag::Rescan)
+            .add_path(image_root.join("a.jpg"))
+            .add_path(users_root.as_deref().expect("users root").join("u/b.jpg"));
+        assert_eq!(
+            rescan_mode_for(&event.paths, &image_root, users_root.as_deref()),
+            "auto"
+        );
+
+        let event2 = Event::new(EventKind::Other)
+            .set_flag(Flag::Rescan)
+            .add_path(PathBuf::from("/tmp/other.jpg"));
+        assert_eq!(
+            rescan_mode_for(&event2.paths, &image_root, users_root.as_deref()),
+            "auto"
+        );
+    }
 }
