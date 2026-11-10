@@ -36,9 +36,9 @@ Anchors:
 
 - predicate: `eventual-consistency-goal.qnt:Converged`
 
-Holds under: QUINT-ASS-3, QUINT-ASS-6.
+Holds under: ASS-3, ASS-6.
 
-Notes: Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (QUINT-ASS-7). With the watcher off the backstop is the sole trigger.
+Notes: Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (ASS-7). With the watcher off the backstop is the sole trigger.
 
 ### G2: Bounded convergence (decision: committed)
 
@@ -48,9 +48,9 @@ Anchors:
 
 - test: `eventual-consistency.qnt:boundedConvergenceTest`
 
-Holds under: QUINT-ASS-3, QUINT-ASS-6, QUINT-ASS-7.
+Holds under: ASS-3, ASS-6, ASS-7.
 
-Notes: N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (QUINT-ASS-7); with it disabled there is no periodic bound.
+Notes: N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (ASS-7); with it disabled there is no periodic bound.
 
 ### G3: Read-after-write (decision: queued)
 
@@ -118,7 +118,7 @@ Derived from: G1, G2. Owner: watcher (tasks/batcher/start_watcher.rs).
 
 Gate: Backend test with a forced overflow or synthetic Flag::Rescan event: the affected root is rescanned.
 
-Notes: Ignored today (start_watcher.rs:273 `_` arm); notify emits EventKind::Other with Flag::Rescan on overflow. This is the fairness trigger that exists only while the watcher is enabled (QUINT-ASS-7). The model expresses recovery as ScanRoot.
+Notes: Ignored today (start_watcher.rs:273 `_` arm); notify emits EventKind::Other with Flag::Rescan on overflow. This is the fairness trigger that exists only while the watcher is enabled (ASS-7). The model expresses recovery as ScanRoot.
 
 ### REQ-6: Configurable per-root periodic backstop scan (status: open)
 
@@ -128,7 +128,7 @@ Derived from: G1, G2. Owner: scheduler and config (model/config.rs, lib.rs start
 
 Gate: Integration test: with the backstop enabled and the watcher disabled, a missed change converges within one backstop interval; config test covers interval and root scope.
 
-Notes: No periodic scan exists; the only periodic loop is the 24h query-snapshot expiry (tasks/looper/mod.rs). Implements the QUINT-ASS-7 operating condition (user enables the backstop at regular intervals). The model expresses it as ScanRoot (boundedConvergenceTest).
+Notes: No periodic scan exists; the only periodic loop is the 24h query-snapshot expiry (tasks/looper/mod.rs). Implements the ASS-7 operating condition (user enables the backstop at regular intervals). The model expresses it as ScanRoot (boundedConvergenceTest).
 
 ### REQ-7: Scans coordinate with in-flight mutating API work (status: open)
 
@@ -212,41 +212,41 @@ Notes: G2's N is counted in backstop cycles, so the count is undefined without n
 
 ## Assumptions
 
-### QUINT-ASS-1: path is identity (keyed state, identity runs) (status: held)
+### ASS-1: path is identity (keyed state, identity runs) (status: held)
 
 Owner: storage layer (path-keyed tables).
 
 Status note: Upheld by construction; no dedicated falsification test.
 
-### QUINT-ASS-2: content identified by hash (snapshot comparison) (status: held)
+### ASS-2: content identified by hash (snapshot comparison) (status: held)
 
 Owner: hash function plus skip comparison.
 
 Status note: Imposed and tested; finite model bounds allow collisions the real hash function must not produce.
 
-### QUINT-ASS-3: filesystem wins (converged direction, sweep, rescan heals) (status: partial)
+### ASS-3: filesystem wins (converged direction, sweep, rescan heals) (status: partial)
 
 Owner: sweep (per root) plus rescan reconciliation (sidecar identity in the snapshot - model prescribes, code lacks).
 
-### QUINT-ASS-4: derived store is pipeline-private (walk roots disjoint) (status: unverified)
+### ASS-4: derived store is pipeline-private (walk roots disjoint) (status: unverified)
 
 Owner: deployment layout (walk roots disjoint from derived store).
 
 Status note: Assumed true; no check that walk roots never cover the derived store.
 
-### QUINT-ASS-5: hash is the authority (snapshot comparison) (status: held)
+### ASS-5: hash is the authority (snapshot comparison) (status: held)
 
 Owner: hash stage plus snapshotMatches.
 
 Status note: Imposed and tested.
 
-### QUINT-ASS-6: quiescence (safety invariants asserted at settled state) (status: open)
+### ASS-6: quiescence (safety invariants asserted at settled state) (status: open)
 
 Owner: n/a (methodology).
 
-Status note: Safety invariants are asserted at settled states; scheduling fairness is delegated to QUINT-ASS-7.
+Status note: Safety invariants are asserted at settled states; scheduling fairness is delegated to ASS-7.
 
-### QUINT-ASS-7: user enables backstop scans at regular intervals (status: unverified)
+### ASS-7: user enables backstop scans at regular intervals (status: unverified)
 
 Owner: operator (user configuration).
 
@@ -298,7 +298,7 @@ Faults:
 - identical bytes (touch) (covered): settled state unchanged
 - decode failure (covered): event logged, prior row unchanged
 
-Notes: Watcher-debounced modify; the submit step is tracked separately as SUBMIT. See QUINT-ASS-5. Same as create: decode failure is logged with no row added; an xmp-only modify resubmits the sibling media path for augmentation (specified, same mapping as create).
+Notes: Watcher-debounced modify; the submit step is tracked separately as SUBMIT. See ASS-5. Same as create: decode failure is logged with no row added; an xmp-only modify resubmits the sibling media path for augmentation (specified, same mapping as create).
 
 ### FS_MODIFY_INFLIGHT (established, actor: watcher)
 
@@ -340,7 +340,7 @@ Faults:
 - event missed (covered): ghost row until sweep marks sweepPending
 - delete+recreate race (covered): generation order decides; stale remove superseded (modeled)
 
-Notes: Watcher-observed deletion prunes the row directly via the remove lane (record kept only if other paths remain, else the row is removed); ghosts and sweepPending cover missed events only. See QUINT-ASS-3.
+Notes: Watcher-observed deletion prunes the row directly via the remove lane (record kept only if other paths remain, else the row is removed); ghosts and sweepPending cover missed events only. See ASS-3.
 
 ### FS_RENAME_FILE (established, actor: watcher)
 
@@ -403,7 +403,7 @@ Faults:
 
 - replace surfaces as remove+create on one path (covered): delete first, then index fresh; converges
 
-Notes: Handled as modify in both cases (main file and sidecar): resubmit the media path; snapshot mismatch forces full reprocess (see QUINT-ASS-5). If the replace surfaces as rename events rather than modify events, the rename handling applies instead; same-path rename-collapse (remove then create on one path) still converges: delete first, then index fresh.
+Notes: Handled as modify in both cases (main file and sidecar): resubmit the media path; snapshot mismatch forces full reprocess (see ASS-5). If the replace surfaces as rename events rather than modify events, the rename handling applies instead; same-path rename-collapse (remove then create on one path) still converges: delete first, then index fresh.
 
 ### FS_SIDECAR_CREATE (established, actor: watcher)
 
@@ -464,7 +464,7 @@ Faults:
 
 - hash short-circuit (when enabled) cannot distinguish 'never had a sidecar' from 'sidecar deleted' (REQ-1) (open): a bare resubmit would still skip; stale tags/descriptions/trashed flags persist indefinitely
 
-Notes: Resubmit the sibling media path; reprocessing must drop the sidecar-derived state. The model carries sidecar identity in the row and the submit snapshot (ExternalSidecarDelete), which forces reprocess and converges; the current code reprocesses and drops the stale state. The deferred hash short-circuit would need sidecar identity either in the submit snapshot (no schema change) or stored on the row (schema change), so a bare resubmit does not skip (REQ-1). See QUINT-ASS-3.
+Notes: Resubmit the sibling media path; reprocessing must drop the sidecar-derived state. The model carries sidecar identity in the row and the submit snapshot (ExternalSidecarDelete), which forces reprocess and converges; the current code reprocesses and drops the stale state. The deferred hash short-circuit would need sidecar identity either in the submit snapshot (no schema change) or stored on the row (schema change), so a bare resubmit does not skip (REQ-1). See ASS-3.
 
 ### API_UPLOAD (established, actor: api)
 
@@ -524,7 +524,7 @@ Touches: files, rows.
 
 Effects (settled state assuming quiescence after the event):
 
-- Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (QUINT-ASS-1).
+- Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (ASS-1).
 
 Faults:
 
@@ -532,7 +532,7 @@ Faults:
 - sweep races the move (open): transient at most, unproven
 - orphan-sidecar cleanup overlaps a copy-sidecar-first assign in flight (open): cleanup deletes the destination sidecar copy between the copy and the media move; the media then lands without its sidecar - permanent metadata divergence. REQ-9 is log-only: orphan detection must not act concurrently with an in-flight assign; observation of the transient is safe and expected
 
-Notes: Subtree equals one ApiMove per descendant; a watcher echo is idempotent. See QUINT-ASS-1.
+Notes: Subtree equals one ApiMove per descendant; a watcher echo is idempotent. See ASS-1.
 
 ### API_READ_COMPRESSED (established, actor: api)
 
@@ -625,7 +625,7 @@ Faults:
 
 - no scan trigger enabled (open): a gap with no rescan and no backstop heals never (REQ-5, REQ-6 open)
 
-Notes: Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (QUINT-ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop.
+Notes: Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop.
 
 ### PROCESS_CRASH (established, actor: environment)
 
@@ -645,7 +645,7 @@ Faults:
 
 - crash between row write and derived write (covered): row claims an artifact that does not exist; heals on next rescan via missing-thumb forced reprocess
 - mid-write crash during sidecar/albuminfo edit (open): REQUIRED (agreed): sidecar and albuminfo writes must be atomic - implemented, gate pending (REQ-13) (temp+rename verified in sidecar_edit.rs:write_bytes_atomically, covering per-asset .xmp AND album .albuminfo.xmp; xmp_write.rs:write_sidecar_content)
-- row/DB state interrupted mid-write (covered): converges on re-scan under FS-as-truth (QUINT-ASS-3); recovery asserted, not yet proven
+- row/DB state interrupted mid-write (covered): converges on re-scan under FS-as-truth (ASS-3); recovery asserted, not yet proven
 - assign_album mid-crash separates asset from sidecar (open): ADOPTED: copy the sidecar to the destination first (atomic write), then move the asset, then delete the old sidecar; crash windows leave only orphan sidecar copies (logged per REQ-9), never separated metadata. Cleanup must not race an in-flight assign - see API_ASSIGN_ALBUM_DIR_MOVE
 
 Notes: Modeled as ProcessCrash: volatile intake is lost, durable state kept (SCOPE-6). Restart plus scan converges from every interrupted state the model represents; partial durable writes are abstracted away by SCOPE-6. Atomic sidecar/albuminfo writes are implemented (temp+rename) and tracked as REQ-13 (gate pending). Crash-survey synthesis: every mutating operator orders filesystem-first, DB-last (edit_*, delete, upload tmp+rename), so interrupted states converge under FS-as-truth; rotate_image still writes the thumbnail first (REQ-11: adopted order sidecar -> thumbnail -> DB). assign_album still renames the asset first and then the sidecar with errors ignored (REQ-12: adopted order copy the sidecar first, move the asset, delete the old sidecar). Orphan residue is logged rather than strived against. The design-doc mutation journal (docs/design.md) has no verified code counterpart - grep confirmed zero hits in backend/src.

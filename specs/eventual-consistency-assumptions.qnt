@@ -9,7 +9,7 @@
 module eventual_consistency_assumptions {
   import eventual_consistency_state.* from "./eventual-consistency-state"
 
-  // QUINT-ASS-1: The asset is its path plus its content.
+  // ASS-1: The asset is its path plus its content.
   //
   // The asset file path is the asset's unique id (assetID). Each asset
   // has actual file content (image, video), optional embedded metadata,
@@ -24,7 +24,7 @@ module eventual_consistency_assumptions {
   // identity by run copyDistinctIdsTest. No predicate here: identity IS
   // the keying.
 
-  // QUINT-ASS-2: Content has its own identifier.
+  // ASS-2: Content has its own identifier.
   //
   // The asset's original content is the file content (image, video). A
   // blake128 content hash makes a unique content identifier assetHash.
@@ -36,7 +36,7 @@ module eventual_consistency_assumptions {
   // bounds is unstatable here: the small HASHES domain admits
   // collisions, so uniqueness rests on the hash function, not the model.
 
-  // QUINT-ASS-3: The filesystem is the source of truth.
+  // ASS-3: The filesystem is the source of truth.
   //
   // The index (rows plus derived artifacts) is a rebuildable cache over
   // the watched trees. On any disagreement between the index and the
@@ -49,7 +49,7 @@ module eventual_consistency_assumptions {
   // keeps only present files; ExternalSidecarDelete zeroes the sidecar
   // (see eventual-consistency.qnt); run sidecarDeleteConvergesTest.
 
-  // QUINT-ASS-4: The derived store is pipeline-private.
+  // ASS-4: The derived store is pipeline-private.
   //
   // Derived artifacts are produced by the pipeline and read during
   // serving. A missing artifact is rebuilt by processing: the modeled
@@ -59,7 +59,7 @@ module eventual_consistency_assumptions {
   // see the intake header and WorkerApplySuccess in
   // eventual-consistency.qnt, the sole writer of derived bytes.
 
-  // QUINT-ASS-5: Content hash is the authority; mtime and size are hints.
+  // ASS-5: Content hash is the authority; mtime and size are hints.
   //
   // Equal modification time never implies equal bytes: synced and
   // copied files routinely preserve times. Identity comparisons rest on
@@ -67,13 +67,13 @@ module eventual_consistency_assumptions {
   //
   // Snapshot match: file still has the bytes+identity the intake item
   // recorded. Maps to is_stale's comparison (inverted).
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-5
   pure def snapshotMatches(f: FileState, ii: IntakeItem): bool = {
     f.mtime == ii.mtime and f.len == ii.len and
     f.sidecar == ii.sidecar and f.assetHash == ii.assetHash
   }
 
-  // QUINT-ASS-6: Correctness is quiescent-state.
+  // ASS-6: Correctness is quiescent-state.
   //
   // Invariants hold after submission plus processing converge, not in
   // between. Liveness — every change eventually submitted, every item
@@ -85,7 +85,7 @@ module eventual_consistency_assumptions {
   // queued item, already reflected in a matching row, or moot because its
   // path was fully deleted (no row left). Unprocessable paths are excluded
   // (logged, never indexed).
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   val NoLostUpload = intake.forall(ii =>
     ii.path.in(unprocessable) or (
     (ii.generation == generations.get(ii.path)) or
@@ -102,7 +102,7 @@ module eventual_consistency_assumptions {
   // No permanent staleness: a present file either matches its row, has work
   // queued; an absent file either has no row, has removal queued, or awaits
   // the root's sweep. Unprocessable paths are excluded (logged, never indexed).
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   val NoPermanentStale = PATHS.forall(p =>
     p.in(unprocessable) or
     if (files.get(p).present) {

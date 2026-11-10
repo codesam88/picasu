@@ -9,7 +9,7 @@
 //
 // Rules enforced:
 //   1. Every `action`, `val`, `pure def`, and `run` in specs/*.qnt carries
-//      at least one machine tag (`// @assumes QUINT-ASS-N`,
+//      at least one machine tag (`// @assumes ASS-N`,
 //      `// @requires REQ-N`, `// @scope SCOPE-N`) or an explicit
 //      `// @exempt <reason>` with reason in {environment, no-backing, observer}.
 //   2. Every tag references a registered ID: ASS from specs/assumptions.json,
@@ -110,7 +110,7 @@ for (const f of qntFiles) {
     const tags = []
     for (let j = i - 1; j >= 0 && /^\s*\/\//.test(lines[j]); j--) {
       const line = lines[j]
-      for (const tm of line.matchAll(/@assumes\s+(QUINT-ASS-\d+)\b/g)) tags.push({ kind: 'assumes', id: tm[1], line: j + 1 })
+      for (const tm of line.matchAll(/@assumes\s+(ASS-\d+)\b/g)) tags.push({ kind: 'assumes', id: tm[1], line: j + 1 })
       for (const tm of line.matchAll(/@requires\s+(REQ-\d+)\b/g)) tags.push({ kind: 'requires', id: tm[1], line: j + 1 })
       for (const tm of line.matchAll(/@scope\s+(SCOPE-\d+)\b/g)) tags.push({ kind: 'scope', id: tm[1], line: j + 1 })
       for (const tm of line.matchAll(/@exempt\s+([a-z-]+)/g)) tags.push({ kind: 'exempt', id: tm[1], line: j + 1 })

@@ -2,48 +2,48 @@
   "version": 1,
   "assumptions": [
     {
-      "id": "QUINT-ASS-1",
+      "id": "ASS-1",
       "title": "path is identity (keyed state, identity runs)",
       "owner": "storage layer (path-keyed tables)",
       "status": "held",
       "status_note": "Upheld by construction; no dedicated falsification test."
     },
     {
-      "id": "QUINT-ASS-2",
+      "id": "ASS-2",
       "title": "content identified by hash (snapshot comparison)",
       "owner": "hash function plus skip comparison",
       "status": "held",
       "status_note": "Imposed and tested; finite model bounds allow collisions the real hash function must not produce."
     },
     {
-      "id": "QUINT-ASS-3",
+      "id": "ASS-3",
       "title": "filesystem wins (converged direction, sweep, rescan heals)",
       "owner": "sweep (per root) plus rescan reconciliation (sidecar identity in the snapshot - model prescribes, code lacks)",
       "status": "partial"
     },
     {
-      "id": "QUINT-ASS-4",
+      "id": "ASS-4",
       "title": "derived store is pipeline-private (walk roots disjoint)",
       "owner": "deployment layout (walk roots disjoint from derived store)",
       "status": "unverified",
       "status_note": "Assumed true; no check that walk roots never cover the derived store."
     },
     {
-      "id": "QUINT-ASS-5",
+      "id": "ASS-5",
       "title": "hash is the authority (snapshot comparison)",
       "owner": "hash stage plus snapshotMatches",
       "status": "held",
       "status_note": "Imposed and tested."
     },
     {
-      "id": "QUINT-ASS-6",
+      "id": "ASS-6",
       "title": "quiescence (safety invariants asserted at settled state)",
       "owner": "n/a (methodology)",
       "status": "open",
-      "status_note": "Safety invariants are asserted at settled states; scheduling fairness is delegated to QUINT-ASS-7."
+      "status_note": "Safety invariants are asserted at settled states; scheduling fairness is delegated to ASS-7."
     },
     {
-      "id": "QUINT-ASS-7",
+      "id": "ASS-7",
       "title": "user enables backstop scans at regular intervals",
       "owner": "operator (user configuration)",
       "status": "unverified",

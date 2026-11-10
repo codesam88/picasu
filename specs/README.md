@@ -34,7 +34,7 @@ Current contents:
   types, variables, finite bounds (five paths, two roots), and the
   initial state; `eventual-consistency-assumptions.qnt` holds the snapshot matcher
   plus the `NoLostUpload` / `NoPermanentStale` safety predicates,
-  each beside its prose and QUINT-ASS tag;
+  each beside its prose and ASS tag;
   `eventual-consistency-goal.qnt` holds the `Converged` goal
   predicate — the subsystem-specific part;
   `eventual-consistency.qnt` holds the actions, the `step`
@@ -51,7 +51,7 @@ Current contents:
   test exists). `catalog-check` enforces that a requirement derives
   only from committed goals and that every committed goal derives at
   least one requirement.
-- `assumptions.json` — index of QUINT-ASS-1..n with owner and status;
+- `assumptions.json` — index of ASS-1..n with owner and status;
   the model's `@assumes` tags state which definitions each one
   grounds, and the generated traceability map carries the reverse
   refs. Validated by `just catalog-check`.

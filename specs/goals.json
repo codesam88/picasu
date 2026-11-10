@@ -34,8 +34,8 @@
           "ref": "eventual-consistency-goal.qnt:Converged"
         }
       ],
-      "assumptions": ["QUINT-ASS-3", "QUINT-ASS-6"],
-      "notes": "Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (QUINT-ASS-7). With the watcher off the backstop is the sole trigger."
+      "assumptions": ["ASS-3", "ASS-6"],
+      "notes": "Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (ASS-7). With the watcher off the backstop is the sole trigger."
     },
     {
       "id": "G2",
@@ -48,8 +48,8 @@
           "ref": "eventual-consistency.qnt:boundedConvergenceTest"
         }
       ],
-      "assumptions": ["QUINT-ASS-3", "QUINT-ASS-6", "QUINT-ASS-7"],
-      "notes": "N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (QUINT-ASS-7); with it disabled there is no periodic bound."
+      "assumptions": ["ASS-3", "ASS-6", "ASS-7"],
+      "notes": "N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (ASS-7); with it disabled there is no periodic bound."
     },
     {
       "id": "G3",

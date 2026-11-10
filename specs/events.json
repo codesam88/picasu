@@ -67,7 +67,7 @@
           "status": "covered"
         }
       ],
-      "notes": "Watcher-debounced modify; the submit step is tracked separately as SUBMIT. See QUINT-ASS-5. Same as create: decode failure is logged with no row added; an xmp-only modify resubmits the sibling media path for augmentation (specified, same mapping as create)."
+      "notes": "Watcher-debounced modify; the submit step is tracked separately as SUBMIT. See ASS-5. Same as create: decode failure is logged with no row added; an xmp-only modify resubmits the sibling media path for augmentation (specified, same mapping as create)."
     },
     {
       "name": "FS_MODIFY_INFLIGHT",
@@ -119,7 +119,7 @@
           "status": "covered"
         }
       ],
-      "notes": "Watcher-observed deletion prunes the row directly via the remove lane (record kept only if other paths remain, else the row is removed); ghosts and sweepPending cover missed events only. See QUINT-ASS-3."
+      "notes": "Watcher-observed deletion prunes the row directly via the remove lane (record kept only if other paths remain, else the row is removed); ghosts and sweepPending cover missed events only. See ASS-3."
     },
     {
       "name": "FS_RENAME_FILE",
@@ -193,7 +193,7 @@
           "status": "covered"
         }
       ],
-      "notes": "Handled as modify in both cases (main file and sidecar): resubmit the media path; snapshot mismatch forces full reprocess (see QUINT-ASS-5). If the replace surfaces as rename events rather than modify events, the rename handling applies instead; same-path rename-collapse (remove then create on one path) still converges: delete first, then index fresh."
+      "notes": "Handled as modify in both cases (main file and sidecar): resubmit the media path; snapshot mismatch forces full reprocess (see ASS-5). If the replace surfaces as rename events rather than modify events, the rename handling applies instead; same-path rename-collapse (remove then create on one path) still converges: delete first, then index fresh."
     },
     {
       "name": "FS_SIDECAR_CREATE",
@@ -261,7 +261,7 @@
           "status": "open"
         }
       ],
-      "notes": "Resubmit the sibling media path; reprocessing must drop the sidecar-derived state. The model carries sidecar identity in the row and the submit snapshot (ExternalSidecarDelete), which forces reprocess and converges; the current code reprocesses and drops the stale state. The deferred hash short-circuit would need sidecar identity either in the submit snapshot (no schema change) or stored on the row (schema change), so a bare resubmit does not skip (REQ-1). See QUINT-ASS-3."
+      "notes": "Resubmit the sibling media path; reprocessing must drop the sidecar-derived state. The model carries sidecar identity in the row and the submit snapshot (ExternalSidecarDelete), which forces reprocess and converges; the current code reprocesses and drops the stale state. The deferred hash short-circuit would need sidecar identity either in the submit snapshot (no schema change) or stored on the row (schema change), so a bare resubmit does not skip (REQ-1). See ASS-3."
     },
     {
       "name": "API_UPLOAD",
@@ -341,7 +341,7 @@
       "affected_state": ["files", "rows"],
       "code_ref": "backend/src/router/put/assign_album.rs:assign_album",
       "effects": [
-        "Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (QUINT-ASS-1)."
+        "Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (ASS-1)."
       ],
       "faults": [
         {
@@ -360,7 +360,7 @@
           "status": "open"
         }
       ],
-      "notes": "Subtree equals one ApiMove per descendant; a watcher echo is idempotent. See QUINT-ASS-1."
+      "notes": "Subtree equals one ApiMove per descendant; a watcher echo is idempotent. See ASS-1."
     },
     {
       "name": "API_READ_COMPRESSED",
@@ -470,7 +470,7 @@
           "status": "open"
         }
       ],
-      "notes": "Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (QUINT-ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop."
+      "notes": "Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop."
     },
     {
       "name": "PROCESS_CRASH",
@@ -497,7 +497,7 @@
         },
         {
           "fault": "row/DB state interrupted mid-write",
-          "consequence": "converges on re-scan under FS-as-truth (QUINT-ASS-3); recovery asserted, not yet proven",
+          "consequence": "converges on re-scan under FS-as-truth (ASS-3); recovery asserted, not yet proven",
           "status": "covered"
         },
         {

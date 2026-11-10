@@ -19,7 +19,7 @@
 // Out of scope for this model: watcher delivery, general liveness, partial
 // durable writes, and hierarchical directory paths (flat pairs only, SCOPE-7).
 // Fairness is delegated to the two scan triggers: Flag::Rescan while the
-// watcher is enabled and the user-enabled periodic backstop (QUINT-ASS-7).
+// watcher is enabled and the user-enabled periodic backstop (ASS-7).
 // The model checks bounded convergence under those triggers, not that they run.
 //
 // Every action/val/def/run carries @assumes/@scope/@exempt, or an
@@ -67,7 +67,7 @@ module eventual_consistency {
   // Prescribed handling: old-path remove plus new-path create, submitted in
   // the same watcher reaction.
   // @exempt environment
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   action ExternalRenameFile(p: str, q: str): bool = all {
       p.in(PATHS),
       q.in(PATHS),
@@ -87,7 +87,7 @@ module eventual_consistency {
       unprocessable' = unprocessable,
     }
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   // @scope SCOPE-5
   // @scope SCOPE-7
   action ExternalRenameDir: bool = all {
@@ -111,7 +111,7 @@ module eventual_consistency {
   }
 
   // @exempt environment
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   action ExternalSidecarCreate(p: str): bool = {
     nondet sc = Set(1, 2).oneOf()
     all {
@@ -128,7 +128,7 @@ module eventual_consistency {
   }
 
   // @exempt environment
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   action ExternalSidecarModify(p: str): bool = {
     nondet sc = Set(1, 2).oneOf()
     all {
@@ -145,8 +145,8 @@ module eventual_consistency {
   }
 
   // @exempt environment
-  // @assumes QUINT-ASS-3
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-3
+  // @assumes ASS-6
   action ExternalSidecarDelete(p: str): bool = all {
       p.in(PATHS),
       files.get(p).present,
@@ -184,7 +184,7 @@ module eventual_consistency {
     nextAssetId' = nextAssetId,
   }
 
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-5
   action RestoreIndexed(p: str): bool = all {
     p.in(PATHS),
     files.get(p).present,
@@ -311,7 +311,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   // @scope SCOPE-5
   action ApiMove(p: str, q: str): bool = all {
     p.in(PATHS),
@@ -329,7 +329,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   // @scope SCOPE-5
   // @scope SCOPE-7
   action ApiAssignDirMove: bool = all {
@@ -354,7 +354,7 @@ module eventual_consistency {
 
   // ---------- Intake submits ----------
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   action SubmitScan(p: str): bool = all {
     p.in(PATHS),
     files.get(p).present,
@@ -367,7 +367,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   action SubmitWatcherIndex(p: str): bool = all {
     p.in(PATHS),
     files.get(p).present,
@@ -380,7 +380,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   action SubmitWatcherRemove(p: str): bool = all {
     p.in(PATHS),
     not(files.get(p).present),
@@ -395,7 +395,7 @@ module eventual_consistency {
 
   // ---------- Worker steps ----------
 
-  // @assumes QUINT-ASS-4
+  // @assumes ASS-4
   // @scope SCOPE-4
   action WorkerApplySuccess: bool = {
     nondet it = oneOf(if (intake.size() > 0) intake else Set({ path: "p1", generation: 0, kind: "scan", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
@@ -438,7 +438,7 @@ module eventual_consistency {
     }
   }
 
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-5
   action WorkerSkipStale: bool = {
     nondet it = oneOf(if (intake.size() > 0) intake else Set({ path: "p1", generation: 0, kind: "scan", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
     all {
@@ -456,8 +456,8 @@ module eventual_consistency {
     }
   }
 
-  // @assumes QUINT-ASS-4
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-4
+  // @assumes ASS-5
   action WorkerSkipUnchanged: bool = {
     nondet it = oneOf(if (intake.size() > 0) intake else Set({ path: "p1", generation: 0, kind: "scan", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
     all {
@@ -500,7 +500,7 @@ module eventual_consistency {
     }
   }
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   action WorkerRemoveApply: bool = {
     nondet it = oneOf(if (intake.size() > 0) intake else Set({ path: "p1", generation: 0, kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
     all {
@@ -518,9 +518,9 @@ module eventual_consistency {
     }
   }
 
-  // @assumes QUINT-ASS-3
-  // @assumes QUINT-ASS-6
-  // @assumes QUINT-ASS-7
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @assumes ASS-7
   action ScanRoot(r: str): bool = all {
     r.in(ROOTS),
     generations' = PATHS.mapBy(p =>
@@ -537,7 +537,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   action SweepRoot(r: str): bool = all {
     r.in(ROOTS),
     sweepPending.get(r),
@@ -574,7 +574,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   // @scope SCOPE-3
   action step: bool = any {
     ExternalModify("p1"), ExternalModify("p2"), ExternalModify("p3"), ExternalModify("p4"), ExternalModify("p5"),
@@ -614,7 +614,7 @@ module eventual_consistency {
 
   // ---------- Foundational runs ----------
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   run scanApplyTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -628,15 +628,15 @@ module eventual_consistency {
     .then(all { assert(NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
   // Pins the FS_MODIFY_INFLIGHT gap: the in-flight item is dropped and nothing resubmits the path until the next scan, so permanent staleness is expected here.
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-5
   run skipStaleTest = init
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(WorkerSkipStale)
     .then(all { assert(NoLostUpload and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-2
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-2
+  // @assumes ASS-5
   run skipUnchangedTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -644,8 +644,8 @@ module eventual_consistency {
     .then(WorkerSkipUnchanged)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-2
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-2
+  // @assumes ASS-5
   run restoreSkipsTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -655,7 +655,7 @@ module eventual_consistency {
     .then(WorkerSkipUnchanged)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   run copyDistinctIdsTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -663,7 +663,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetHash == rows.get("p2").assetHash and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run sidecarDeleteConvergesTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -673,7 +673,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run renameFileTest = init
     .then(ExternalDelete("p2"))
     .then(SubmitWatcherRemove("p2"))
@@ -690,7 +690,7 @@ module eventual_consistency {
     .then(ApiUpload("p1"))
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run removeTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -699,7 +699,7 @@ module eventual_consistency {
     .then(WorkerRemoveApply)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   run apiMoveSkipsRescanTest = init
     .then(ExternalDelete("p2"))
     .then(SubmitWatcherRemove("p2"))
@@ -719,7 +719,7 @@ module eventual_consistency {
     .then(WorkerRemoveApply)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run scanOnlyConvergenceTest = init
     .then(ExternalDelete("p1"))
     .then(all { assert(rows.keys().contains("p1") and not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
@@ -731,7 +731,7 @@ module eventual_consistency {
     .then(WorkerSkipUnchanged)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run scanHealsMissingRowTest = init
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
@@ -748,7 +748,7 @@ module eventual_consistency {
     .then(WorkerSkipSuperseded)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run scanHealsStaleRowTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -758,7 +758,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run perRootSweepTest = init
     .then(ExternalDelete("p5"))
     .then(ScanRoot("r1"))
@@ -773,7 +773,7 @@ module eventual_consistency {
     .then(WorkerSkipUnchanged)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   run fsCreateTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -782,7 +782,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-6
+  // @assumes ASS-6
   run fsModifyTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -791,7 +791,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-5
+  // @assumes ASS-5
   run fsModifyInflightTest = init
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
@@ -804,7 +804,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run fsAtomicReplaceTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -813,7 +813,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run sidecarCreateTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -821,7 +821,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == files.get("p1").sidecar and rows.get("p1").sidecar != 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run sidecarModifyTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -829,7 +829,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   // @scope SCOPE-5
   // @scope SCOPE-7
   run subtreeMoveTest = init
@@ -842,7 +842,7 @@ module eventual_consistency {
     .then(ExternalRenameDir)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-1
+  // @assumes ASS-1
   // @scope SCOPE-5
   // @scope SCOPE-7
   run assignDirMoveTest = init
@@ -878,7 +878,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run watcherGapTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -893,8 +893,8 @@ module eventual_consistency {
   // A scan that snapshots before the change drops the stale item; the next
   // backstop scan heals it, so convergence is bounded by two scan cycles
   // (one backstop interval after the change).
-  // @assumes QUINT-ASS-3
-  // @assumes QUINT-ASS-7
+  // @assumes ASS-3
+  // @assumes ASS-7
   run boundedConvergenceTest = init
     .then(ScanRoot("r1"))
     .then(ForceModify("p1"))
@@ -923,7 +923,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-4
+  // @assumes ASS-4
   run derivedLossTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
@@ -969,7 +969,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(not(rows.keys().contains("p1")) and Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @assumes QUINT-ASS-3
+  // @assumes ASS-3
   run readMissingTest = init
     .then(ExternalDelete("p1"))
     .then(ReadMissing("p1"))
