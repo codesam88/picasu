@@ -190,7 +190,7 @@ Gate: Backend test: interrupt after the sidecar copy and before the asset move; 
 
 Notes: Current order renames the asset, then renames the sidecar with the error ignored, then updates rows (assign_album.rs:240-264). Orphan copies from an interruption are acceptable and covered by REQ-9's logging.
 
-### REQ-13: Sidecar and albuminfo writes are atomic under partial-write failure (status: open)
+### REQ-13: Sidecar and albuminfo writes are atomic under partial-write failure (status: verified)
 
 A sidecar or albuminfo write either replaces the target completely or leaves the previous bytes untouched; no partial content is ever visible.
 
@@ -198,7 +198,7 @@ Derived from: G0. Owner: sidecar edit and xmp write (process/sidecar_edit.rs, pr
 
 Gate: Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.
 
-Notes: Implemented with temp+rename (sidecar_edit.rs:73-82, xmp_write.rs:268-280). Existing scenarios cover read-only-directory failures and batch rollback, but no test injects a partial write inside the helper, and the temp name is deterministic (no fsync).
+Notes: Implemented with temp+rename (sidecar_edit.rs:73-82, xmp_write.rs:268-280). Existing scenarios cover read-only-directory failures and batch rollback; partial-write injection covered by process::atomic_write::tests::a_failed_temp_write_leaves_the_existing_target_unchanged. The temp name is deterministic (no fsync).
 
 ### REQ-14: Backstop cycles are non-overlapping and drain-complete (status: open)
 

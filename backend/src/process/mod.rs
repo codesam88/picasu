@@ -1,3 +1,4 @@
+pub mod atomic_write;
 pub mod dir_album;
 pub mod exif;
 pub mod format;
