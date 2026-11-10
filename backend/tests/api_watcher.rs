@@ -75,6 +75,23 @@ fn indexed_count(client: &Client, image_home: &Path) -> u64 {
     v["prefetch"]["dataLength"].as_u64().unwrap_or(0)
 }
 
+/// Number of indexed rows whose path contains `path` exactly enough to
+/// identify a single file (full absolute path).
+fn path_count(client: &Client, path: &Path) -> u64 {
+    let cookie = auth_cookie(client);
+    let body = serde_json::json!({ "Path": path.to_string_lossy() });
+    let r = client
+        .post("/get/prefetch")
+        .cookie(cookie)
+        .header(ContentType::JSON)
+        .body(body.to_string())
+        .dispatch();
+    assert_eq!(r.status(), Status::Ok, "prefetch");
+    let v: Value = serde_json::from_slice(&r.into_bytes().expect("prefetch body"))
+        .expect("prefetch response must be JSON");
+    v["prefetch"]["dataLength"].as_u64().unwrap_or(0)
+}
+
 /// Trigger an album index on `album_path` (relative to `IMAGE_HOME`, `/` = root)
 /// and block until the job reaches the `completed` state.
 fn run_album_index(client: &Client, album_path: &str) {
@@ -128,6 +145,7 @@ fn place_photo(image_home: &Path, relative: &str) {
 
 // ── Test ─────────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines)]
 #[test]
 fn watcher_disabled_and_album_index_targeting() {
     // ── Setup ─────────────────────────────────────────────────────────────
@@ -215,9 +233,11 @@ fn watcher_disabled_and_album_index_targeting() {
         let mut cfg = APP_CONFIG
             .get()
             .expect("APP_CONFIG installed by AppConfig::init()")
-            .write()
-            .expect("config lock not poisoned");
+            .read()
+            .expect("config lock not poisoned")
+            .clone();
         cfg.fs_notify_watcher = true;
+        AppConfig::update(cfg).expect("enable watcher");
     }
     // Give any spurious background activity a moment to settle.
     thread::sleep(Duration::from_millis(300));
@@ -227,14 +247,50 @@ fn watcher_disabled_and_album_index_targeting() {
         "enabling the watcher must not retroactively index pre-existing files"
     );
 
+    // Rename the indexed file and verify the row follows (REQ-2).
+    let old_path = image_home.join("subdir_a/photo_a.jpg");
+    let new_path = image_home.join("subdir_a/renamed_a.jpg");
+    assert_eq!(
+        path_count(&client, &old_path),
+        1,
+        "before rename: old path must be indexed"
+    );
+    assert_eq!(
+        path_count(&client, &new_path),
+        0,
+        "before rename: new path must not be indexed"
+    );
+
+    std::fs::rename(&old_path, &new_path).expect("rename photo_a");
+
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if path_count(&client, &old_path) == 0 && path_count(&client, &new_path) == 1 {
+            break;
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(
+        path_count(&client, &old_path),
+        0,
+        "after rename: old path must no longer be indexed"
+    );
+    assert_eq!(
+        path_count(&client, &new_path),
+        1,
+        "after rename: new path must be indexed"
+    );
+
     // Reset to disabled for the final scan phase.
     {
         let mut cfg = APP_CONFIG
             .get()
             .expect("APP_CONFIG installed by AppConfig::init()")
-            .write()
-            .expect("config lock not poisoned");
+            .read()
+            .expect("config lock not poisoned")
+            .clone();
         cfg.fs_notify_watcher = false;
+        AppConfig::update(cfg).expect("disable watcher");
     }
 
     // ── Phase 5: album_index on root — both photos indexed ────────────────

@@ -9,6 +9,7 @@ use crate::tasks::runtime::spawn;
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use mini_executor::BatchTask;
+use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::{HashMap, HashSet},
@@ -264,6 +265,25 @@ fn new_watcher(image_root: PathBuf, users_root: Option<PathBuf>) -> Result<Recom
     .map_err(|e| anyhow::anyhow!("Failed to create watcher: {e}"))
 }
 
+/// Pure mapping of a watcher event to (old path, new path) for renames.
+///
+/// Returns `Some` only for the rename modes that carry a known direction;
+/// other events yield `(None, None)` so callers fall back to the generic
+/// modify handling.
+pub(crate) fn rename_paths(event: &Event) -> (Option<PathBuf>, Option<PathBuf>) {
+    match event.kind {
+        EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+            let mut it = event.paths.iter();
+            (it.next().cloned(), it.next().cloned())
+        }
+        EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+            (event.paths.first().cloned(), None)
+        }
+        EventKind::Modify(ModifyKind::Name(RenameMode::To)) => (None, event.paths.first().cloned()),
+        _ => (None, None),
+    }
+}
+
 pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&Path>) {
     // Overflow / rescan: a backend may have missed events, so force a
     // full rescan of the affected root instead of reacting to the
@@ -304,6 +324,40 @@ pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&
             for path in path_list {
                 if is_valid_media_file(&path) {
                     submit_to_debounce_pool(path);
+                }
+            }
+        }
+
+        EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+            // notify delivers (from, to) in this order. Submit a removal
+            // for the old path and an index for the new path so the row
+            // follows without waiting for a sweep (REQ-2). Directory renames
+            // are intentionally not handled here (REQ-3).
+            let (old, new) = rename_paths(&event);
+            if let Some(old) = old
+                && is_valid_media_file(&old)
+            {
+                submit_removal_to_watcher(old);
+            }
+            if let Some(new) = new
+                && is_valid_media_file(&new)
+            {
+                submit_to_debounce_pool(new);
+            }
+        }
+
+        EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+            for path in &event.paths {
+                if is_valid_media_file(path) {
+                    submit_removal_to_watcher(path.clone());
+                }
+            }
+        }
+
+        EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+            for path in &event.paths {
+                if is_valid_media_file(path) {
+                    submit_to_debounce_pool(path.clone());
                 }
             }
         }
@@ -421,5 +475,37 @@ mod tests {
             rescan_mode_for(&event2.paths, &image_root, users_root.as_deref()),
             "auto"
         );
+    }
+    #[test]
+    fn rename_paths_both_returns_old_and_new() {
+        let old = PathBuf::from("/tmp/a.jpg");
+        let new = PathBuf::from("/tmp/b.jpg");
+        let event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+            .add_path(old.clone())
+            .add_path(new.clone());
+        assert_eq!(rename_paths(&event), (Some(old), Some(new)));
+    }
+
+    #[test]
+    fn rename_paths_from_returns_old_only() {
+        let old = PathBuf::from("/tmp/a.jpg");
+        let event =
+            Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From))).add_path(old.clone());
+        assert_eq!(rename_paths(&event), (Some(old), None));
+    }
+
+    #[test]
+    fn rename_paths_to_returns_new_only() {
+        let new = PathBuf::from("/tmp/b.jpg");
+        let event =
+            Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(new.clone());
+        assert_eq!(rename_paths(&event), (None, Some(new)));
+    }
+
+    #[test]
+    fn rename_paths_other_returns_none() {
+        let event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any)))
+            .add_path(PathBuf::from("/tmp/a.jpg"));
+        assert_eq!(rename_paths(&event), (None, None));
     }
 }
