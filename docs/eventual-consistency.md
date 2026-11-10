@@ -150,7 +150,7 @@ Gate: Backend test: corrupt a thumbnail's bytes; the next scan detects the misma
 
 Notes: Only thumbnail presence is checked; no checksum field exists. Closes derived-store corruption and the interrupted-rotate stale-thumbnail window (DERIVED_STORE_LOSS).
 
-### REQ-9: Orphan .xmp detection is logged only (status: open)
+### REQ-9: Orphan .xmp detection is logged only (status: verified)
 
 A restart or scan reports sidecars without a media file in the log and never deletes them; the detection must not act concurrently with an in-flight mutation.
 
@@ -158,7 +158,7 @@ Derived from: G1. Owner: startup and scan.
 
 Gate: Backend test: leave an .xmp with no media; scan/restart logs it and does not delete it.
 
-Notes: No orphan detection exists; sweep inspects media rows only (album_index.rs:485-510). Log-only by decision: a delayed sidecar is a legitimate transient, and cleanup overlapping an in-flight assign would separate metadata (API_ASSIGN_ALBUM_DIR_MOVE faults).
+Notes: Implemented in album_index.rs: orphan_sidecars pure helper plus scan-time collection of .xmp paths and media stem keys during the existing file walk; one warn! per orphan ("Orphan sidecar (no media file): {path}"). Log only, never deletes. Detection runs after intake drain and sweep, so it does not act concurrently with in-flight mutations. Tests: orphan_sidecars_returns_sidecar_without_media, orphan_sidecars_ignores_sidecar_with_sibling_media, orphan_sidecars_ignores_album_sidecar, index_album_orphan_sidecar_survives_scan.
 
 ### REQ-10: Stale upload temp files are swept (status: open)
 
