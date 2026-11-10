@@ -93,7 +93,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
 
 ### Phase 3 - scan triggers and cycle semantics
 
-- **S8 [ ] REQ-5: honor `Flag::Rescan`**.
+- **S8 [DONE] REQ-5: honor `Flag::Rescan`**.
   Scope: `tasks/batcher/start_watcher.rs`.
   RED: extract a pure event classifier/root selector; a synthetic
   `EventKind::Other` + `Flag::Rescan` resolves to the affected root and

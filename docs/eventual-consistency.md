@@ -110,7 +110,7 @@ Gate: Backend test: scan one sub-root with a ghost row outside it; the outside r
 
 Notes: Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499). The model pins it (SweepRoot, perRootSweepTest); verified by backend test index_album_sweep_is_scoped_to_scanned_root.
 
-### REQ-5: Rescan on the watcher's Flag::Rescan signal (status: open)
+### REQ-5: Rescan on the watcher's Flag::Rescan signal (status: verified)
 
 An inotify overflow or rescan flag triggers a full rescan of the affected root instead of being ignored.
 
@@ -118,7 +118,7 @@ Derived from: G1, G2. Owner: watcher (tasks/batcher/start_watcher.rs).
 
 Gate: Backend test with a forced overflow or synthetic Flag::Rescan event: the affected root is rescanned.
 
-Notes: Ignored today (start_watcher.rs:273 `_` arm); notify emits EventKind::Other with Flag::Rescan on overflow. This is the fairness trigger that exists only while the watcher is enabled (ASS-7). The model expresses recovery as ScanRoot.
+Notes: Watcher callback now checks event.need_rescan() before matching event.kind and submits a full rescan via index_album_with_root("/", false, Some(mode)) with mode from rescan_mode_for(paths, image_root, users_root): all paths under image root -> "global", all under users root -> "personal", otherwise "auto". 409 from an already-running job is logged at debug; other failures at warn. Tests: tasks::batcher::start_watcher::tests::rescan_mode_image_path_is_global, rescan_mode_users_path_is_personal, rescan_mode_mixed_or_unknown_is_auto, rescan_event_submits_a_scan (synthetic Flag::Rescan event starts a scan).
 
 ### REQ-6: Configurable per-root periodic backstop scan (status: open)
 
