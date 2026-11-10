@@ -98,8 +98,8 @@
       "derived_from": ["G1"],
       "owner": "startup and scan (router/post/post_upload.rs, init.rs)",
       "gate": "Backend test: leave a tmp file; startup/scan removes it and no row is created for it.",
-      "status": "open",
-      "notes": "Upload writes tmp then renames (post_upload.rs:432-466); no cleanup path exists. Tmp files never reach the index because the extension gate rejects them, so the residue is inert but unbounded."
+      "status": "verified",
+      "notes": "Startup sweep implemented in init::sweep_upload_tmp_files (called from initialize_folder for image_home and users_home). Pure predicate init::is_upload_tmp_name. Upload writes tmp then renames (post_upload.rs:432-466); tmp files never reach the index because the extension gate rejects them. Verified by tests: init::tests::is_upload_tmp_name_accepts_upload_tmp, init::tests::is_upload_tmp_name_rejects_notes_tmp, init::tests::is_upload_tmp_name_rejects_non_tmp_extension, init::tests::is_upload_tmp_name_rejects_malformed_uuid, init::tests::sweep_upload_tmp_files_removes_residue, tasks::actor::album_index::tests::index_album_upload_tmp_not_indexed_and_swept."
     },
     {
       "id": "REQ-11",

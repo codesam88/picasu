@@ -67,7 +67,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
   RED: pure `find_orphan_sidecars(root, known_assets)` returns a sidecar
   with no media; integration scans/restarts, logs it, never deletes it.
   Wire discovery into scan; log only.
-- **S4 [ ] REQ-10: stale upload tmp sweep**.
+- **S4 [DONE] REQ-10: stale upload tmp sweep**.
   Scope: `init.rs` or scan sweep, `router/post/post_upload.rs` naming.
   RED: a `{name}-{uuid}.tmp` under an image root survives startup/scan;
   after the change it is removed and no row is created.

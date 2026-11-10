@@ -160,7 +160,7 @@ Gate: Backend test: leave an .xmp with no media; scan/restart logs it and does n
 
 Notes: Implemented in album_index.rs: orphan_sidecars pure helper plus scan-time collection of .xmp paths and media stem keys during the existing file walk; one warn! per orphan ("Orphan sidecar (no media file): {path}"). Log only, never deletes. Detection runs after intake drain and sweep, so it does not act concurrently with in-flight mutations. Tests: orphan_sidecars_returns_sidecar_without_media, orphan_sidecars_ignores_sidecar_with_sibling_media, orphan_sidecars_ignores_album_sidecar, index_album_orphan_sidecar_survives_scan.
 
-### REQ-10: Stale upload temp files are swept (status: open)
+### REQ-10: Stale upload temp files are swept (status: verified)
 
 Upload crash residue ({filename}-{uuid}.tmp) is removed at startup or scan and is never indexed.
 
@@ -168,7 +168,7 @@ Derived from: G1. Owner: startup and scan (router/post/post_upload.rs, init.rs).
 
 Gate: Backend test: leave a tmp file; startup/scan removes it and no row is created for it.
 
-Notes: Upload writes tmp then renames (post_upload.rs:432-466); no cleanup path exists. Tmp files never reach the index because the extension gate rejects them, so the residue is inert but unbounded.
+Notes: Startup sweep implemented in init::sweep_upload_tmp_files (called from initialize_folder for image_home and users_home). Pure predicate init::is_upload_tmp_name. Upload writes tmp then renames (post_upload.rs:432-466); tmp files never reach the index because the extension gate rejects them. Verified by tests: init::tests::is_upload_tmp_name_accepts_upload_tmp, init::tests::is_upload_tmp_name_rejects_notes_tmp, init::tests::is_upload_tmp_name_rejects_non_tmp_extension, init::tests::is_upload_tmp_name_rejects_malformed_uuid, init::tests::sweep_upload_tmp_files_removes_residue, tasks::actor::album_index::tests::index_album_upload_tmp_not_indexed_and_swept.
 
 ### REQ-11: Rotate writes the sidecar before the thumbnail and DB (status: open)
 

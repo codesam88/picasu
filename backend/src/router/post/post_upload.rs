@@ -17,7 +17,6 @@ use rocket::fs::TempFile;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
-use uuid::Uuid;
 
 /// Data structure representing the multipart form for file uploads.
 #[derive(FromForm, Debug)]
@@ -429,7 +428,9 @@ async fn save_file(
 ) -> Result<Option<String>, AppError> {
     let target_dir = target_dir.to_path_buf();
 
-    let tmp_path = target_dir.join(format!("{filename}-{}.tmp", Uuid::new_v4()));
+    let tmp_path = target_dir.join(crate::process::atomic_write::temp_file_name(
+        "upload", &filename,
+    ));
 
     // Move to a temp location first to avoid blocking the async runtime with IO.
     // The watcher ignores ".tmp" (not a recognised media extension), so this
