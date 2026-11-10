@@ -50,6 +50,12 @@ mod rotation;
 mod matrix_negatives;
 
 #[cfg(test)]
+mod model_properties;
+
+#[cfg(test)]
+mod eventual_consistency_stateful;
+
+#[cfg(test)]
 mod openapi_contract;
 
 #[cfg(test)]
