@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "scopes": [
+    {
+      "id": "SCOPE-1",
+      "title": "Initial converged state",
+      "bound": "Every run starts from fully matching files and rows (initialFile, initialRow, init in specs/eventual-consistency-state.qnt).",
+      "why_safe": "Convergence is about healing divergence, so runs introduce divergence explicitly before asserting the heal.",
+      "lifting": "Start runs from arbitrary states (not yet modeled).",
+      "provisional": false
+    },
+    {
+      "id": "SCOPE-2",
+      "title": "Finite bounds",
+      "bound": "Five paths, three content hashes, three small mtime/len values (PATHS, HASHES, SMALL in specs/eventual-consistency-state.qnt).",
+      "why_safe": "The properties checked (identity match, no lost intake, no permanent staleness) are per-path and pairwise; bounds are sized to exhibit every guard outcome (match, mismatch, superseded, stale, missing) and to hold one two-asset subtree move plus a second sweep root.",
+      "lifting": "Bound-escalation runs at larger sizes (not yet modeled).",
+      "provisional": false
+    },
+    {
+      "id": "SCOPE-3",
+      "title": "Collapsed intake lanes",
+      "bound": "The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in specs/eventual-consistency.qnt).",
+      "why_safe": "No checked property depends on lane order — guards are per-item (generation, snapshot), never positional.",
+      "lifting": "Lane-aware scheduling with fairness properties (explicitly out of scope; Apalache/TLC stay out as well).",
+      "provisional": false
+    },
+    {
+      "id": "SCOPE-4",
+      "title": "Atomic worker step",
+      "bound": "Each worker action (WorkerApply*, skips, removes) applies in one step; there are no open/hash/apply micro-stages, so no modify-during-pipeline interleaving exists in the model.",
+      "why_safe": "The hash-to-skip re-stat window is the only guarded window in code; the open-to-hash window is unguarded there too — the model matches the implementation's actual guarantee, not a stronger one.",
+      "lifting": "Worker micro-stages plus FS_MODIFY_INFLIGHT (model v2).",
+      "provisional": true
+    },
+    {
+      "id": "SCOPE-5",
+      "title": "Synchronous direct writes",
+      "bound": "Actions that write the projection without the intake (ApiUpload, ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in specs/eventual-consistency.qnt).",
+      "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away.",
+      "lifting": "A writerInbox pending state mirroring the serial writer.",
+      "provisional": true
+    },
+    {
+      "id": "SCOPE-6",
+      "title": "Completed-write crash abstraction",
+      "bound": "Crash and DB-loss actions occur between completed durable writes: the model never represents a partially written row or sidecar (PROCESS_CRASH drops volatile intake; DB_LOSS clears the row map; DERIVED_STORE_LOSS clears thumbnail flags).",
+      "why_safe": "The recovery runs assert convergence from every interrupted state the model represents (queue lost, rows cleared, thumbnails lost, sidecar ahead of row), so the proof does not lean on partial-write behaviour; store transaction durability is a property of redb, outside this model.",
+      "lifting": "Model partial durable writes and store transactions explicitly.",
+      "provisional": true
+    },
+    {
+      "id": "SCOPE-7",
+      "title": "Flat directory paths",
+      "bound": "Path IDs carry no directory hierarchy. A directory rename is a fixed finite set of path pairs (SUBTREE_PAIRS in specs/eventual-consistency.qnt) moved atomically; arbitrary subtrees are not modeled.",
+      "why_safe": "The property under proof is per-descendant row/path consistency plus all-or-nothing row updates, which a fixed two-asset pair set exhibits at the model's bounds.",
+      "lifting": "Hierarchical path IDs with arbitrary subtree enumeration.",
+      "provisional": false
+    }
+  ]
+}

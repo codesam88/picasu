@@ -18,12 +18,16 @@ graph LR
   audit --> backend_audit["just backend-audit"]
   audit --> frontend_audit["just frontend-audit"]
   check --> backend_check["just backend-check"]
+  check --> catalog_check["just catalog-check"]
   check --> docs_check["just docs-check"]
   check --> env_var_check["just env-var-check"]
+  check --> events_check["just events-check"]
   check --> frontend_check["just frontend-check"]
   check --> gates_check["just gates-check"]
   check --> openapi_check["just openapi-check"]
   check --> plan_lint["just plan-lint"]
+  check --> quint_check["just quint-check"]
+  check --> spec_check["just spec-check"]
   check --> utils_check["just utils-check"]
   check --> zizmor_check["just zizmor-check"]
   frontend_test --> frontend_playwright["just frontend-playwright"]
@@ -82,7 +86,7 @@ graph LR
 
 Annotation: Run security audits (backend + frontend)
 
-- Recipe: [justfile:471-471](https://github.com/codesam88/picasu/blob/main/justfile#L471-L471) `justfile:471-471`
+- Recipe: [justfile:505-505](https://github.com/codesam88/picasu/blob/main/justfile#L505-L505) `justfile:505-505`
 - Lanes: audit
 - Invocations:
   - [.github/workflows/audit.yml:50-50](https://github.com/codesam88/picasu/blob/main/.github/workflows/audit.yml#L50-L50) `.github/workflows/audit.yml:50-50`
@@ -92,7 +96,7 @@ Annotation: Run security audits (backend + frontend)
 
 Annotation: ensure auth-matrix artifacts match generator
 
-- Recipe: [justfile:280-300](https://github.com/codesam88/picasu/blob/main/justfile#L280-L300) `justfile:280-300`
+- Recipe: [justfile:290-310](https://github.com/codesam88/picasu/blob/main/justfile#L290-L310) `justfile:290-310`
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Underlying:
@@ -118,7 +122,7 @@ Annotation: cargo fmt --check + clippy (all targets)
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:134-139](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L134-L139) `.github/workflows/ci.yml:134-139`
-  - [justfile:490-490](https://github.com/codesam88/picasu/blob/main/justfile#L490-L490) `justfile:490-490`
+  - [justfile:524-524](https://github.com/codesam88/picasu/blob/main/justfile#L524-L524) `justfile:524-524`
 - Required by: `check`
 
 ### `backend-test`
@@ -141,23 +145,32 @@ Annotation: Backend tests in release mode
   - [.github/workflows/release.yml:120-122](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L120-L122) `.github/workflows/release.yml:120-122`
 - Required by: `test-release`
 
+### `catalog-check`
+
+Annotation: Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references
+
+- Recipe: [justfile:334-335](https://github.com/codesam88/picasu/blob/main/justfile#L334-L335) `justfile:334-335`
+- Lanes: precommit
+- Invocations: (none direct; reached via aggregate)
+- Required by: `check`
+
 ### `docs-check`
 
 Annotation: check markdown (docs, .plan, utils)
 
-- Recipe: [justfile:367-368](https://github.com/codesam88/picasu/blob/main/justfile#L367-L368) `justfile:367-368`
+- Recipe: [justfile:401-402](https://github.com/codesam88/picasu/blob/main/justfile#L401-L402) `justfile:401-402`
 - Lanes: ci-frontend, docs, precommit
 - Invocations:
   - [.github/workflows/ci.yml:242-245](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L242-L245) `.github/workflows/ci.yml:242-245`
   - [.github/workflows/docs-check.yml:36-36](https://github.com/codesam88/picasu/blob/main/.github/workflows/docs-check.yml#L36-L36) `.github/workflows/docs-check.yml:36-36`
-  - [justfile:505-505](https://github.com/codesam88/picasu/blob/main/justfile#L505-L505) `justfile:505-505`
+  - [justfile:539-539](https://github.com/codesam88/picasu/blob/main/justfile#L539-L539) `justfile:539-539`
 - Required by: `check`
 
 ### `dylint-check`
 
 Annotation: run dylint auth lints (advisory)
 
-- Recipe: [justfile:156-157](https://github.com/codesam88/picasu/blob/main/justfile#L156-L157) `justfile:156-157`
+- Recipe: [justfile:160-161](https://github.com/codesam88/picasu/blob/main/justfile#L160-L161) `justfile:160-161`
 - Lanes: ci-dylint
   Note: needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
 - Invocations:
@@ -168,18 +181,27 @@ Annotation: run dylint auth lints (advisory)
 
 Annotation: check PICASU_* env vars match docs/config.md
 
-- Recipe: [justfile:274-276](https://github.com/codesam88/picasu/blob/main/justfile#L274-L276) `justfile:274-276`
+- Recipe: [justfile:284-286](https://github.com/codesam88/picasu/blob/main/justfile#L284-L286) `justfile:284-286`
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:134-139](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L134-L139) `.github/workflows/ci.yml:134-139`
-  - [justfile:511-511](https://github.com/codesam88/picasu/blob/main/justfile#L511-L511) `justfile:511-511`
+  - [justfile:545-545](https://github.com/codesam88/picasu/blob/main/justfile#L545-L545) `justfile:545-545`
+- Required by: `check`
+
+### `events-check`
+
+Annotation: Validate the eventual-consistency event catalog
+
+- Recipe: [justfile:329-330](https://github.com/codesam88/picasu/blob/main/justfile#L329-L330) `justfile:329-330`
+- Lanes: precommit
+- Invocations: (none direct; reached via aggregate)
 - Required by: `check`
 
 ### `frontend-audit`
 
 Annotation: npm audit
 
-- Recipe: [justfile:115-116](https://github.com/codesam88/picasu/blob/main/justfile#L115-L116) `justfile:115-116`
+- Recipe: [justfile:119-120](https://github.com/codesam88/picasu/blob/main/justfile#L119-L120) `justfile:119-120`
 - Lanes: audit
 - Invocations: (none direct; reached via aggregate)
 - Required by: `audit`
@@ -192,7 +214,7 @@ Annotation: prettier --check + vue-tsc + eslint
 - Lanes: ci-frontend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:242-245](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L242-L245) `.github/workflows/ci.yml:242-245`
-  - [justfile:508-508](https://github.com/codesam88/picasu/blob/main/justfile#L508-L508) `justfile:508-508`
+  - [justfile:542-542](https://github.com/codesam88/picasu/blob/main/justfile#L542-L542) `justfile:542-542`
 - Required by: `check`
 
 ### `frontend-playwright`
@@ -229,7 +251,7 @@ Annotation: vitest run
 
 Annotation: tier-1 gate: seeded sweep, baseline-compared
 
-- Recipe: [justfile:209-213](https://github.com/codesam88/picasu/blob/main/justfile#L209-L213) `justfile:209-213`
+- Recipe: [justfile:213-217](https://github.com/codesam88/picasu/blob/main/justfile#L213-L217) `justfile:213-217`
 - Lanes: ci-backend, nightly
   Note: CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)
 - Invocations:
@@ -244,7 +266,7 @@ Annotation: tier-1 gate: seeded sweep, baseline-compared
 
 Annotation: run fuzz matrix (auth checks)
 
-- Recipe: [justfile:218-219](https://github.com/codesam88/picasu/blob/main/justfile#L218-L219) `justfile:218-219`
+- Recipe: [justfile:222-223](https://github.com/codesam88/picasu/blob/main/justfile#L222-L223) `justfile:222-223`
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:158-158](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L158-L158) `.github/workflows/ci.yml:158-158`
@@ -256,7 +278,7 @@ Annotation: run fuzz matrix (auth checks)
 
 Annotation: ensure all test/check rules are called from CI and global rules
 
-- Recipe: [justfile:319-320](https://github.com/codesam88/picasu/blob/main/justfile#L319-L320) `justfile:319-320`
+- Recipe: [justfile:353-354](https://github.com/codesam88/picasu/blob/main/justfile#L353-L354) `justfile:353-354`
 - Lanes: ci-backend, docs, precommit
 - Invocations:
   - [.github/workflows/ci.yml:134-139](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L134-L139) `.github/workflows/ci.yml:134-139`
@@ -267,7 +289,7 @@ Annotation: ensure all test/check rules are called from CI and global rules
 
 Annotation: Non-blocking by design: MSRV floor check (nightly lane).
 
-- Recipe: [justfile:245-251](https://github.com/codesam88/picasu/blob/main/justfile#L245-L251) `justfile:245-251`
+- Recipe: [justfile:255-261](https://github.com/codesam88/picasu/blob/main/justfile#L255-L261) `justfile:255-261`
 - Lanes: nightly
 - Invocations:
   - [.github/workflows/msrv.yml:40-40](https://github.com/codesam88/picasu/blob/main/.github/workflows/msrv.yml#L40-L40) `.github/workflows/msrv.yml:40-40`
@@ -277,7 +299,7 @@ Annotation: Non-blocking by design: MSRV floor check (nightly lane).
 
 Annotation: Fail on breaking OpenAPI changes
 
-- Recipe: [justfile:266-270](https://github.com/codesam88/picasu/blob/main/justfile#L266-L270) `justfile:266-270`
+- Recipe: [justfile:276-280](https://github.com/codesam88/picasu/blob/main/justfile#L276-L280) `justfile:276-280`
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Underlying:
@@ -289,19 +311,19 @@ Annotation: Fail on breaking OpenAPI changes
 
 Annotation: Run all OpenAPI checks.
 
-- Recipe: [justfile:152-152](https://github.com/codesam88/picasu/blob/main/justfile#L152-L152) `justfile:152-152`
+- Recipe: [justfile:156-156](https://github.com/codesam88/picasu/blob/main/justfile#L156-L156) `justfile:156-156`
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:134-139](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L134-L139) `.github/workflows/ci.yml:134-139`
-  - [justfile:491-491](https://github.com/codesam88/picasu/blob/main/justfile#L491-L491) `justfile:491-491`
-  - [justfile:495-495](https://github.com/codesam88/picasu/blob/main/justfile#L495-L495) `justfile:495-495`
+  - [justfile:525-525](https://github.com/codesam88/picasu/blob/main/justfile#L525-L525) `justfile:525-525`
+  - [justfile:529-529](https://github.com/codesam88/picasu/blob/main/justfile#L529-L529) `justfile:529-529`
 - Required by: `check`
 
 ### `openapi-json-match`
 
 Annotation: Ensure that committed/staged json matches current --dump-openapi output
 
-- Recipe: [justfile:183-195](https://github.com/codesam88/picasu/blob/main/justfile#L183-L195) `justfile:183-195`
+- Recipe: [justfile:187-199](https://github.com/codesam88/picasu/blob/main/justfile#L187-L199) `justfile:187-199`
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Underlying:
@@ -312,7 +334,7 @@ Annotation: Ensure that committed/staged json matches current --dump-openapi out
 
 Annotation: Lint the OpenAPI document (errors fail)
 
-- Recipe: [justfile:161-162](https://github.com/codesam88/picasu/blob/main/justfile#L161-L162) `justfile:161-162`
+- Recipe: [justfile:165-166](https://github.com/codesam88/picasu/blob/main/justfile#L165-L166) `justfile:165-166`
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Required by: `openapi-check`
@@ -321,7 +343,7 @@ Annotation: Lint the OpenAPI document (errors fail)
 
 Annotation: Compare mounted Rocket routes with documented OpenAPI operations.
 
-- Recipe: [justfile:172-174](https://github.com/codesam88/picasu/blob/main/justfile#L172-L174) `justfile:172-174`
+- Recipe: [justfile:176-178](https://github.com/codesam88/picasu/blob/main/justfile#L176-L178) `justfile:176-178`
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Required by: `openapi-check`
@@ -330,7 +352,7 @@ Annotation: Compare mounted Rocket routes with documented OpenAPI operations.
 
 Annotation: Run the already-built release binary's route-set gate against the committed spec.
 
-- Recipe: [justfile:178-179](https://github.com/codesam88/picasu/blob/main/justfile#L178-L179) `justfile:178-179`
+- Recipe: [justfile:182-183](https://github.com/codesam88/picasu/blob/main/justfile#L182-L183) `justfile:182-183`
 - Lanes: release
 - Invocations:
   - [.github/workflows/release.yml:83-83](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L83-L83) `.github/workflows/release.yml:83-83`
@@ -340,7 +362,7 @@ Annotation: Run the already-built release binary's route-set gate against the co
 
 Annotation: check OpenAPI annotation conventions
 
-- Recipe: [justfile:166-167](https://github.com/codesam88/picasu/blob/main/justfile#L166-L167) `justfile:166-167`
+- Recipe: [justfile:170-171](https://github.com/codesam88/picasu/blob/main/justfile#L170-L171) `justfile:170-171`
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Required by: `openapi-check`
@@ -349,41 +371,59 @@ Annotation: check OpenAPI annotation conventions
 
 Annotation: check .plan task frontmatter correctness
 
-- Recipe: [justfile:314-315](https://github.com/codesam88/picasu/blob/main/justfile#L314-L315) `justfile:314-315`
+- Recipe: [justfile:324-325](https://github.com/codesam88/picasu/blob/main/justfile#L324-L325) `justfile:324-325`
 - Lanes: ci-frontend, docs, precommit
 - Invocations:
   - [.github/workflows/ci.yml:242-245](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L242-L245) `.github/workflows/ci.yml:242-245`
   - [.github/workflows/docs-check.yml:37-37](https://github.com/codesam88/picasu/blob/main/.github/workflows/docs-check.yml#L37-L37) `.github/workflows/docs-check.yml:37-37`
-  - [justfile:504-504](https://github.com/codesam88/picasu/blob/main/justfile#L504-L504) `justfile:504-504`
+  - [justfile:538-538](https://github.com/codesam88/picasu/blob/main/justfile#L538-L538) `justfile:538-538`
+- Required by: `check`
+
+### `quint-check`
+
+Annotation: Typecheck + test the eventual-consistency spec (Node-only, no JDK)
+
+- Recipe: [justfile:249-251](https://github.com/codesam88/picasu/blob/main/justfile#L249-L251) `justfile:249-251`
+- Lanes: precommit
+- Invocations: (none direct; reached via aggregate)
+- Required by: `check`
+
+### `spec-check`
+
+Annotation: node scripts/specs-check.mjs specs --generate
+
+- Recipe: [justfile:348-349](https://github.com/codesam88/picasu/blob/main/justfile#L348-L349) `justfile:348-349`
+- Lanes: precommit
+- Invocations: (none direct; reached via aggregate)
 - Required by: `check`
 
 ### `utils-check`
 
 Annotation: utils fmt + clippy (all targets)
 
-- Recipe: [justfile:127-129](https://github.com/codesam88/picasu/blob/main/justfile#L127-L129) `justfile:127-129`
+- Recipe: [justfile:131-133](https://github.com/codesam88/picasu/blob/main/justfile#L131-L133) `justfile:131-133`
 - Lanes: ci-backend, ci-zizmor, precommit
 - Invocations:
   - [.github/workflows/ci.yml:134-139](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L134-L139) `.github/workflows/ci.yml:134-139`
-  - [justfile:498-498](https://github.com/codesam88/picasu/blob/main/justfile#L498-L498) `justfile:498-498`
+  - [justfile:532-532](https://github.com/codesam88/picasu/blob/main/justfile#L532-L532) `justfile:532-532`
 - Required by: `check`
 
 ### `utils-test`
 
 Annotation: cargo test utils/ + Schemathesis derivations
 
-- Recipe: [justfile:133-135](https://github.com/codesam88/picasu/blob/main/justfile#L133-L135) `justfile:133-135`
+- Recipe: [justfile:137-139](https://github.com/codesam88/picasu/blob/main/justfile#L137-L139) `justfile:137-139`
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:142-144](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L142-L144) `.github/workflows/ci.yml:142-144`
-  - [justfile:501-501](https://github.com/codesam88/picasu/blob/main/justfile#L501-L501) `justfile:501-501`
+  - [justfile:535-535](https://github.com/codesam88/picasu/blob/main/justfile#L535-L535) `justfile:535-535`
 - Required by: `test`
 
 ### `zizmor-check`
 
 Annotation: audit workflows/deps offline (no GH_TOKEN)
 
-- Recipe: [justfile:237-241](https://github.com/codesam88/picasu/blob/main/justfile#L237-L241) `justfile:237-241`
+- Recipe: [justfile:241-245](https://github.com/codesam88/picasu/blob/main/justfile#L241-L245) `justfile:241-245`
 - Lanes: ci-backend, ci-zizmor, precommit
 - Invocations:
   - [.github/workflows/zizmor.yml:58-58](https://github.com/codesam88/picasu/blob/main/.github/workflows/zizmor.yml#L58-L58) `.github/workflows/zizmor.yml:58-58`

@@ -17,6 +17,8 @@
 # Testing
 
 - [Test Strategy](test-strategy.md)
+- [Quint Modeling](quint-modeling.md)
+- [Eventual Consistency](eventual-consistency.md)
 - [Playwright Generator](playwright_generator.md)
 - [Scenario DSL](scenario-dsl.md)
 

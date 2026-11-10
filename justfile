@@ -244,6 +244,12 @@ zizmor-check: (install "zizmor")
     ./scripts/deps-install.sh --tool zizmor --check
     ./scripts/zizmor-run.sh --offline --no-progress .
 
+# Typecheck + test the eventual-consistency spec (Node-only, no JDK)
+[group('utils')]
+quint-check: (install "quint")
+    quint typecheck specs/eventual-consistency.qnt
+    quint test specs/eventual-consistency.qnt
+
 # Non-blocking by design: MSRV floor check (nightly lane).
 [group('utils')]
 msrv-check:
@@ -318,6 +324,30 @@ plan-format:
 plan-lint:
     node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
+# Validate the eventual-consistency event catalog
+[group('utils')]
+events-check:
+    node {{justfile_directory()}}/scripts/events-check.mjs {{justfile_directory()}}/specs
+
+# Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references
+[group('utils')]
+catalog-check:
+    node {{justfile_directory()}}/scripts/catalog-check.mjs {{justfile_directory()}}/specs
+
+# Regenerate docs/eventual-consistency.md from the JSON catalogs
+[group('utils')]
+docs-eventual-consistency:
+    node {{justfile_directory()}}/scripts/gen-eventual-consistency-doc.mjs {{justfile_directory()}}/specs {{justfile_directory()}}
+    cd {{justfile_directory()}}/frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../docs/eventual-consistency.md'
+
+# Closed-world audit over specs/*.qnt: every definition carries a
+# resolving tag, every registry ID is cited. Regenerate the
+# traceability map (specs/traceability.json) with:
+# node scripts/specs-check.mjs specs --generate
+[group('utils')]
+spec-check:
+    node {{justfile_directory()}}/scripts/specs-check.mjs {{justfile_directory()}}/specs
+
 # ensure all test/check rules are called from CI and global rules
 [group('utils')]
 gates-check:
@@ -379,7 +409,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check gates-check
+check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check
 
 # run full test suite
 [group('global')]

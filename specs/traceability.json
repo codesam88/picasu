@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "rows": [
+    {
+      "id": "QUINT-ASS-1",
+      "kind": "ASS",
+      "title": "path is identity (keyed state, identity runs)",
+      "refs": [
+        "eventual-consistency.qnt:ApiAssignDirMove",
+        "eventual-consistency.qnt:ApiMove",
+        "eventual-consistency.qnt:ExternalRenameDir",
+        "eventual-consistency.qnt:apiMoveSkipsRescanTest",
+        "eventual-consistency.qnt:assignDirMoveTest",
+        "eventual-consistency.qnt:copyDistinctIdsTest",
+        "eventual-consistency.qnt:subtreeMoveTest"
+      ]
+    },
+    {
+      "id": "QUINT-ASS-2",
+      "kind": "ASS",
+      "title": "content identified by hash (snapshot comparison)",
+      "refs": [
+        "eventual-consistency.qnt:restoreSkipsTest",
+        "eventual-consistency.qnt:skipUnchangedTest"
+      ]
+    },
+    {
+      "id": "QUINT-ASS-3",
+      "kind": "ASS",
+      "title": "filesystem wins (converged direction, sweep, rescan heals)",
+      "refs": [
+        "eventual-consistency-goal.qnt:Converged",
+        "eventual-consistency.qnt:ExternalSidecarDelete",
+        "eventual-consistency.qnt:ScanRoot",
+        "eventual-consistency.qnt:SweepRoot",
+        "eventual-consistency.qnt:WorkerRemoveApply",
+        "eventual-consistency.qnt:boundedConvergenceTest",
+        "eventual-consistency.qnt:fsAtomicReplaceTest",
+        "eventual-consistency.qnt:perRootSweepTest",
+        "eventual-consistency.qnt:readMissingTest",
+        "eventual-consistency.qnt:removeTest",
+        "eventual-consistency.qnt:renameFileTest",
+        "eventual-consistency.qnt:scanHealsMissingRowTest",
+        "eventual-consistency.qnt:scanHealsStaleRowTest",
+        "eventual-consistency.qnt:scanOnlyConvergenceTest",
+        "eventual-consistency.qnt:sidecarCreateTest",
+        "eventual-consistency.qnt:sidecarDeleteConvergesTest",
+        "eventual-consistency.qnt:sidecarModifyTest",
+        "eventual-consistency.qnt:watcherGapTest"
+      ]
+    },
+    {
+      "id": "QUINT-ASS-4",
+      "kind": "ASS",
+      "title": "derived store is pipeline-private (walk roots disjoint)",
+      "refs": [
+        "eventual-consistency.qnt:WorkerApplySuccess",
+        "eventual-consistency.qnt:WorkerSkipUnchanged",
+        "eventual-consistency.qnt:derivedLossTest"
+      ]
+    },
+    {
+      "id": "QUINT-ASS-5",
+      "kind": "ASS",
+      "title": "hash is the authority (snapshot comparison)",
+      "refs": [
+        "eventual-consistency-assumptions.qnt:snapshotMatches",
+        "eventual-consistency.qnt:RestoreIndexed",
+        "eventual-consistency.qnt:WorkerSkipStale",
+        "eventual-consistency.qnt:WorkerSkipUnchanged",
+        "eventual-consistency.qnt:fsModifyInflightTest",
+        "eventual-consistency.qnt:restoreSkipsTest",
+        "eventual-consistency.qnt:skipStaleTest",
+        "eventual-consistency.qnt:skipUnchangedTest"
+      ]
+    },
+    {
+      "id": "QUINT-ASS-6",
+      "kind": "ASS",
+      "title": "quiescence (safety invariants asserted at settled state)",
+      "refs": [
+        "eventual-consistency-assumptions.qnt:NoLostUpload",
+        "eventual-consistency-assumptions.qnt:NoPermanentStale",
+        "eventual-consistency-goal.qnt:Converged",
+        "eventual-consistency.qnt:ExternalRenameFile",
+        "eventual-consistency.qnt:ExternalSidecarCreate",
+        "eventual-consistency.qnt:ExternalSidecarDelete",
+        "eventual-consistency.qnt:ExternalSidecarModify",
+        "eventual-consistency.qnt:ScanRoot",
+        "eventual-consistency.qnt:SubmitScan",
+        "eventual-consistency.qnt:SubmitWatcherIndex",
+        "eventual-consistency.qnt:SubmitWatcherRemove",
+        "eventual-consistency.qnt:fsCreateTest",
+        "eventual-consistency.qnt:fsModifyTest",
+        "eventual-consistency.qnt:scanApplyTest",
+        "eventual-consistency.qnt:step"
+      ]
+    },
+    {
+      "id": "QUINT-ASS-7",
+      "kind": "ASS",
+      "title": "user enables backstop scans at regular intervals",
+      "refs": [
+        "eventual-consistency.qnt:ScanRoot",
+        "eventual-consistency.qnt:boundedConvergenceTest"
+      ]
+    },
+    {
+      "id": "SCOPE-1",
+      "kind": "SCOPE",
+      "title": "Initial converged state",
+      "refs": [
+        "eventual-consistency-state.qnt:init",
+        "eventual-consistency-state.qnt:initialFile",
+        "eventual-consistency-state.qnt:initialId",
+        "eventual-consistency-state.qnt:initialRow"
+      ]
+    },
+    {
+      "id": "SCOPE-2",
+      "kind": "SCOPE",
+      "title": "Finite bounds",
+      "refs": [
+        "eventual-consistency-state.qnt:HASHES",
+        "eventual-consistency-state.qnt:PATHS",
+        "eventual-consistency-state.qnt:ROOTS",
+        "eventual-consistency-state.qnt:SMALL",
+        "eventual-consistency-state.qnt:rootOf"
+      ]
+    },
+    {
+      "id": "SCOPE-3",
+      "kind": "SCOPE",
+      "title": "Collapsed intake lanes",
+      "refs": [
+        "eventual-consistency.qnt:step"
+      ]
+    },
+    {
+      "id": "SCOPE-4",
+      "kind": "SCOPE",
+      "title": "Atomic worker step",
+      "refs": [
+        "eventual-consistency.qnt:WorkerApplySuccess"
+      ]
+    },
+    {
+      "id": "SCOPE-5",
+      "kind": "SCOPE",
+      "title": "Synchronous direct writes",
+      "refs": [
+        "eventual-consistency.qnt:ApiAssignDirMove",
+        "eventual-consistency.qnt:ApiMove",
+        "eventual-consistency.qnt:ApiRemove",
+        "eventual-consistency.qnt:ApiUpload",
+        "eventual-consistency.qnt:AppSidecarEdit",
+        "eventual-consistency.qnt:ExternalRenameDir",
+        "eventual-consistency.qnt:RotateFinish",
+        "eventual-consistency.qnt:RotateWriteSidecar",
+        "eventual-consistency.qnt:apiRemoveTest",
+        "eventual-consistency.qnt:assignDirMoveTest",
+        "eventual-consistency.qnt:rotateCrashTest",
+        "eventual-consistency.qnt:rotateTest",
+        "eventual-consistency.qnt:subtreeMoveTest",
+        "eventual-consistency.qnt:uploadTest"
+      ]
+    },
+    {
+      "id": "SCOPE-6",
+      "kind": "SCOPE",
+      "title": "Completed-write crash abstraction",
+      "refs": [
+        "eventual-consistency.qnt:DbLoss",
+        "eventual-consistency.qnt:LoseThumbs",
+        "eventual-consistency.qnt:ProcessCrash",
+        "eventual-consistency.qnt:crashTest",
+        "eventual-consistency.qnt:dbLossTest",
+        "eventual-consistency.qnt:rotateCrashTest"
+      ]
+    },
+    {
+      "id": "SCOPE-7",
+      "kind": "SCOPE",
+      "title": "Flat directory paths",
+      "refs": [
+        "eventual-consistency.qnt:ApiAssignDirMove",
+        "eventual-consistency.qnt:ExternalRenameDir",
+        "eventual-consistency.qnt:SUBTREE_PAIRS",
+        "eventual-consistency.qnt:assignDirMoveTest",
+        "eventual-consistency.qnt:subtreeMoveTest"
+      ]
+    }
+  ]
+}
