@@ -237,14 +237,26 @@ fn move_asset_into_album(
         (base_dest, AssignOutcome::Moved)
     };
 
-    // Move the file on disk.
-    fs::rename(&source_path, &final_dest).or_raise(|| (ErrorKind::IO, "Failed to move file"))?;
-
-    // Move the sidecar if it exists.
+    // Copy the destination sidecar (if any) before moving the asset, so an
+    // interruption never leaves an asset without its metadata. An orphan copy
+    // is the worst case.
     let sidecar = source_path.with_extension("xmp");
     if sidecar.exists() {
         let new_sidecar = final_dest.with_extension("xmp");
-        let _ = fs::rename(&sidecar, &new_sidecar);
+        let bytes = fs::read(&sidecar).or_raise(|| (ErrorKind::IO, "Failed to read sidecar"))?;
+        crate::process::atomic_write::write_via_temp(&new_sidecar, "sidecar", |tmp| fs::write(tmp, &bytes))
+            .or_raise(|| (ErrorKind::IO, "Failed to copy sidecar"))?;
+    }
+
+    // Move the file on disk.
+    fs::rename(&source_path, &final_dest).or_raise(|| (ErrorKind::IO, "Failed to move file"))?;
+
+    // Remove the old sidecar after the asset moved. A missing sidecar is
+    // fine; a failure is logged but does not fail the assign.
+    if sidecar.exists()
+        && let Err(e) = fs::remove_file(&sidecar)
+    {
+        log::warn!("Failed to remove old sidecar {}: {e}", sidecar.display());
     }
 
     // Update the asset record with the new path and album.

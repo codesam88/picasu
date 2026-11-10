@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use crate::tests::bootstrap::{
     build_test_rocket, cookie, lock, login, seed, setup_image_home, test_image_home,
 };
+use crate::tests::fixtures::auth_cookie;
 use crate::tests::fixtures::authz::create_album;
 use crate::tests::fixtures::test_password;
 
@@ -808,4 +809,108 @@ fn regenerate_status_raw(
         .body(body)
         .dispatch()
         .status()
+}
+
+#[cfg(unix)]
+struct RestoreModeUw<'a> {
+    path: &'a std::path::Path,
+    mode: u32,
+}
+
+#[cfg(unix)]
+impl Drop for RestoreModeUw<'_> {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(self.path, std::fs::Permissions::from_mode(self.mode));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn assign_copies_sidecar_before_asset_move() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = lock();
+    let client = setup_image_home();
+    let (source_album_id, asset_id) = create_album(&client, "/writes/photo.jpg");
+
+    // Album B as a writable subdirectory of album A.
+    let resp = client
+        .post("/post/create_dir_album")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::JSON)
+        .body(json!({ "parentAlbumId": source_album_id, "name": "dest" }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "create album B: {resp:?}");
+    let target_album_id = resp.into_string().expect("album b id").trim().to_string();
+
+    let image_home = test_image_home();
+    let source_dir = image_home.join("writes");
+    let dest_dir = image_home.join("writes/dest");
+    let source_photo = source_dir.join("photo.jpg");
+    let source_sidecar = source_dir.join("photo.xmp");
+    let dest_photo = dest_dir.join("photo.jpg");
+    let dest_sidecar = dest_dir.join("photo.xmp");
+
+    // Seed a sidecar beside the source asset.
+    std::fs::write(&source_sidecar, b"sidecar-bytes").expect("write source sidecar");
+
+    // Make the source album directory read-only: renaming the asset out of
+    // it fails (no write permission on the directory), while reading the
+    // sidecar and writing into album B still work.
+    let original_mode = std::fs::metadata(&source_dir)
+        .expect("stat source dir")
+        .permissions()
+        .mode();
+    std::fs::set_permissions(&source_dir, std::fs::Permissions::from_mode(0o555))
+        .expect("chmod source dir read-only");
+
+    let restore = RestoreModeUw {
+        path: &source_dir,
+        mode: original_mode,
+    };
+
+    let resp = client
+        .put("/put/assign_album")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "assetId": asset_id,
+                "albumId": target_album_id,
+                "onConflict": "rename"
+            })
+            .to_string(),
+        )
+        .dispatch();
+    assert_ne!(resp.status(), Status::Ok, "assign must fail: {resp:?}");
+
+    // Restore permissions before reading back.
+    drop(restore);
+
+    // Asset stays at the old path.
+    assert!(
+        source_photo.exists(),
+        "source asset must remain after failed move"
+    );
+    assert!(
+        !dest_photo.exists(),
+        "destination asset must not exist after failed move"
+    );
+
+    // DB record path unchanged.
+    let record = crate::storage::asset_store::get_asset_by_id(&asset_id)
+        .expect("read asset record")
+        .expect("asset record present");
+    assert_eq!(
+        record.path,
+        source_photo.to_string_lossy(),
+        "DB record path must be unchanged"
+    );
+
+    // Destination sidecar copy now exists (copy happened before the failed move).
+    assert!(
+        dest_sidecar.exists(),
+        "destination sidecar copy must exist after failed move"
+    );
 }
