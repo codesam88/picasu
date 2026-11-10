@@ -14,6 +14,7 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::queue::submit_interactive_album;
 use arrayvec::ArrayString;
+use log::warn;
 use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
@@ -424,13 +425,19 @@ fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Res
             let new_path_str = new_path.to_string_lossy().into_owned();
 
             // Update ASSET_BY_PATH: remove old, add new.
-            let _ = asset_store::remove_asset_by_path(&record.path);
-            let _ = asset_store::put_asset_by_path(&new_path_str, record.asset_id);
+            if let Err(e) = asset_store::remove_asset_by_path(&record.path) {
+                warn!("dir move: failed to remove old path {}: {e}", record.path);
+            }
+            if let Err(e) = asset_store::put_asset_by_path(&new_path_str, record.asset_id) {
+                warn!("dir move: failed to add new path {new_path_str}: {e}");
+            }
 
             // Update path in ASSET_BY_ID.
             let mut updated = record.clone();
             updated.path = new_path_str;
-            let _ = asset_store::put_asset_by_id(&updated);
+            if let Err(e) = asset_store::put_asset_by_id(&updated) {
+                warn!("dir move: failed to update record {}: {e}", record.asset_id);
+            }
         }
     }
 
