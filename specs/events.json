@@ -341,7 +341,7 @@
       "affected_state": ["files", "rows"],
       "code_ref": "backend/src/router/put/assign_album.rs:assign_album",
       "effects": [
-        "Files moved and rows updated in place, assetId preserved; watcher echo absorbed by skip (QUINT-ASS-1)."
+        "Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (QUINT-ASS-1)."
       ],
       "faults": [
         {
@@ -360,7 +360,7 @@
           "status": "open"
         }
       ],
-      "notes": "Subtree equals one ApiMove per descendant; watcher echo absorbed by skip. See QUINT-ASS-1."
+      "notes": "Subtree equals one ApiMove per descendant; a watcher echo is idempotent. See QUINT-ASS-1."
     },
     {
       "name": "API_READ_COMPRESSED",
@@ -506,7 +506,7 @@
           "status": "open"
         }
       ],
-      "notes": "Modeled as ProcessCrash: volatile intake is lost, durable state kept (SCOPE-6). Restart plus scan converges from every interrupted state the model represents; partial durable writes are abstracted away by SCOPE-6. Atomic sidecar/albuminfo writes are implemented (temp+rename) and tracked as REQ-13 (gate pending). Crash-survey synthesis: every mutating operator orders filesystem-first, DB-last (edit_*, delete, upload tmp+rename), so interrupted states converge under FS-as-truth; rotate_image now follows the adopted sidecar -> thumbnail -> DB order. assign_album ordering: copy the sidecar first, move the asset, delete the old sidecar; orphan residue is logged rather than strived against. The design-doc mutation journal (docs/design.md) has no verified code counterpart - grep confirmed zero hits in backend/src."
+      "notes": "Modeled as ProcessCrash: volatile intake is lost, durable state kept (SCOPE-6). Restart plus scan converges from every interrupted state the model represents; partial durable writes are abstracted away by SCOPE-6. Atomic sidecar/albuminfo writes are implemented (temp+rename) and tracked as REQ-13 (gate pending). Crash-survey synthesis: every mutating operator orders filesystem-first, DB-last (edit_*, delete, upload tmp+rename), so interrupted states converge under FS-as-truth; rotate_image still writes the thumbnail first (REQ-11: adopted order sidecar -> thumbnail -> DB). assign_album still renames the asset first and then the sidecar with errors ignored (REQ-12: adopted order copy the sidecar first, move the asset, delete the old sidecar). Orphan residue is logged rather than strived against. The design-doc mutation journal (docs/design.md) has no verified code counterpart - grep confirmed zero hits in backend/src."
     },
     {
       "name": "DERIVED_STORE_LOSS",
