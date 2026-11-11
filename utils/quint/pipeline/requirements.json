@@ -1,145 +1,259 @@
 {
   "version": 1,
+  "description": "Implementation obligations derived from committed goals: each entry carries the contract, a concise implementation summary, its gate tests, and known limits.",
   "requirements": [
     {
       "id": "REQ-1",
       "title": "Sidecar identity for the hash short-circuit",
       "statement": "If the hash short-circuit is enabled, the submit snapshot or the stored row carries sidecar identity, so deleting or changing a sidecar changes the identity and forces reprocessing rather than a skip.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "index pipeline skip predicate (when re-enabled)",
       "gate": "Backend test with the hash short-circuit enabled: index an asset whose sidecar was present, delete the sidecar, resubmit/scan; the row's sidecar identity changes and sidecar-derived state is cleared.",
       "status": "open",
-      "notes": "The hash short-circuit is not implemented in the current tree, so rescans reprocess and clear sidecar-derived state; without this identity a skip would retain it. IntakeItem carries mtime/len only (tasks/queue/intake.rs:62), and AssetRecord has no sidecar field (model/asset.rs:58). The model keeps the skip action, snapshotMatches with sidecar identity, and ExternalSidecarDelete."
+      "implementation": "Deferred with the hash short-circuit. Rescans currently reprocess and clear sidecar-derived state; the identity is required only when the skip is re-enabled.",
+      "tests": [],
+      "limits": "IntakeItem carries mtime/len only; AssetRecord has no sidecar field."
     },
     {
       "id": "REQ-2",
       "title": "File rename submits old-path remove plus new-path create",
       "statement": "A rename delivered by the watcher submits a remove for the old path and an index for the new path, so the row follows without waiting for a sweep.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "watcher submit (tasks/batcher/start_watcher.rs)",
       "gate": "Backend test: rename a watched file; the row disappears at the old path and appears at the new one without a sweep.",
-      "status": "open",
-      "notes": "The Modify arm submits the new path only; the old path ghosts until sweep (start_watcher.rs:249-263). The model prescribes ExternalRenameFile (renameFileTest)."
+      "status": "verified",
+      "implementation": "Watcher `Name(Both/From/To)` events submit old-path removal and new-path indexing before the generic modify arm; `Any/Other` keeps generic indexing.",
+      "tests": [
+        "tasks::batcher::start_watcher::tests::rename_paths_both_returns_old_and_new",
+        "tasks::batcher::start_watcher::tests::rename_paths_from_returns_old_only",
+        "tasks::batcher::start_watcher::tests::rename_paths_to_returns_new_only",
+        "tasks::batcher::start_watcher::tests::rename_paths_other_returns_none",
+        "api_watcher::watcher_disabled_and_album_index_targeting (rename phase)"
+      ],
+      "limits": "A split `From`/`To` pair without a destination is left to the sweep/backstop."
     },
     {
       "id": "REQ-3",
       "title": "Directory rename follows descendants atomically",
       "statement": "A watched directory rename updates every contained asset's row to the renamed path in one step, preserving assetId and sidecar association, with no ghosts and no re-decode.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "watcher and index (tasks/batcher/start_watcher.rs, tasks/actor/album_index.rs)",
       "gate": "Backend test: rename a watched directory; every descendant row follows to the new path with assetId preserved.",
-      "status": "open",
-      "notes": "Directory events are dropped today (the Modify arm filters is_file, start_watcher.rs:249-263), so descendants get neither remove nor index submits. The model prescribes ExternalRenameDir and ApiAssignDirMove (subtreeMoveTest, assignDirMoveTest)."
+      "status": "verified",
+      "implementation": "A directory rename is detected when the new path is a directory; watcher and API album moves lease the old and new subtrees and bump those paths while descendant rows are rewritten in place (assetId and sidecar association preserved) and the view epoch advances, without decoding. A dir-album verify re-resolves the album id to its current directory before pruning.",
+      "tests": [
+        "router::put::assign_album::tests::update_asset_tables_after_dir_move_preserves_asset_id",
+        "api_watcher::watcher_disabled_and_album_index_targeting (directory-rename phase)"
+      ],
+      "limits": "Only `RenameMode::Both` carries the old path; split From/To falls back to sweep/backstop. The filesystem move happens before the row rewrite, so a crash between them needs a rescan."
     },
     {
       "id": "REQ-4",
       "title": "Per-root sweep isolation is verified",
       "statement": "A scan of one root reaps only rows under that root; rows outside the scanned root survive even when their files are absent.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "album index sweep (tasks/actor/album_index.rs)",
       "gate": "Backend test: scan one sub-root with a ghost row outside it; the outside row survives the sweep.",
       "status": "verified",
-      "notes": "Implemented per root (sweep_stale_asset_paths filters starts_with(root), album_index.rs:485-499). The model pins it (SweepRoot, perRootSweepTest); verified by backend test index_album_sweep_is_scoped_to_scanned_root."
+      "implementation": "Sweep already filters rows by `starts_with(root)`; added the isolation gate test.",
+      "tests": [
+        "tasks::actor::album_index::tests::index_album_sweep_is_scoped_to_scanned_root"
+      ]
     },
     {
       "id": "REQ-5",
       "title": "Rescan on the watcher's Flag::Rescan signal",
       "statement": "An inotify overflow or rescan flag triggers a full rescan of the affected root instead of being ignored.",
-      "derived_from": ["G1", "G2"],
+      "derived_from": [
+        "G1",
+        "G2"
+      ],
       "owner": "watcher (tasks/batcher/start_watcher.rs)",
       "gate": "Backend test with a forced overflow or synthetic Flag::Rescan event: the affected root is rescanned.",
       "status": "verified",
-      "notes": "Watcher callback now checks event.need_rescan() before matching event.kind and submits a full rescan via index_album_with_root(\"/\", false, Some(mode)) with mode from rescan_mode_for(paths, image_root, users_root): all paths under image root -> \"global\", all under users root -> \"personal\", otherwise \"auto\". 409 from an already-running job is logged at debug; other failures at warn. Tests: tasks::batcher::start_watcher::tests::rescan_mode_image_path_is_global, rescan_mode_users_path_is_personal, rescan_mode_mixed_or_unknown_is_auto, rescan_event_submits_a_scan (synthetic Flag::Rescan event starts a scan)."
+      "implementation": "Watcher checks `Event::need_rescan()` before dispatch and submits a full scan of the image, users, or both roots based on event paths; a running job is a debug skip.",
+      "tests": [
+        "tasks::batcher::start_watcher::tests::rescan_mode_image_path_is_global",
+        "tasks::batcher::start_watcher::tests::rescan_mode_users_path_is_personal",
+        "tasks::batcher::start_watcher::tests::rescan_mode_mixed_or_unknown_is_auto",
+        "tasks::batcher::start_watcher::tests::rescan_event_submits_a_scan"
+      ]
     },
     {
       "id": "REQ-6",
       "title": "Configurable per-root periodic backstop scan",
       "statement": "The server can run a per-root full scan on a configurable interval; when enabled, a change missed by the watcher converges within one backstop cycle.",
-      "derived_from": ["G1", "G2"],
-      "owner": "scheduler and config (model/config.rs, lib.rs startup)",
+      "derived_from": [
+        "G1",
+        "G2"
+      ],
+      "owner": "scheduler, lifecycle and config (model/config.rs, lib.rs startup, tasks/lifecycle.rs)",
       "gate": "Integration test: with the backstop enabled and the watcher disabled, a missed change converges within one backstop interval; config test covers interval and root scope.",
-      "status": "open",
-      "notes": "No periodic scan exists; the only periodic loop is the 24h query-snapshot expiry (tasks/looper/mod.rs). Implements the ASS-7 operating condition (user enables the backstop at regular intervals). The model expresses it as ScanRoot (boundedConvergenceTest)."
+      "status": "verified",
+      "implementation": "New `index_backstop_interval_secs` (gallery, default 0, env override). A lifecycle-owned backstop starts a scan job and awaits that job's completion on each interval; shutdown aborts the loop, rejects intake, cancels and awaits the active scan, then drains the writer.",
+      "tests": [
+        "model::config::tests::index_backstop_interval_defaults_to_zero",
+        "model::config::tests::index_backstop_interval_env_override_wins",
+        "model::config::tests::index_backstop_interval_preserved_across_toml_round_trip",
+        "tests::backstop::backstop_loop_indexes_missed_file",
+        "tests::backstop::backstop_loop_disabled_returns_none",
+        "shutdown::sigterm_exits_while_backstop_scan_is_running"
+      ],
+      "limits": "One loop scans both roots (`auto`); separate per-root loops are out of scope. Shutdown waits up to 10s for an in-flight scan before draining the writer."
     },
     {
       "id": "REQ-7",
       "title": "Scans coordinate with in-flight mutating API work",
       "statement": "A scan or sweep running concurrently with an in-flight assign (or other multi-file mutation) neither prunes the moved row nor separates the asset from its sidecar; coordination is by exclusion or in-flight detection.",
-      "derived_from": ["G1"],
-      "owner": "album index and assign_album (tasks/actor/album_index.rs, router/put/assign_album.rs)",
+      "derived_from": [
+        "G1"
+      ],
+      "owner": "album index, queue and mutating API (tasks/actor/album_index.rs, tasks/path_epoch.rs, tasks/queue, router/put/assign_album.rs, router/delete.rs)",
       "gate": "Concurrency test: an assign overlapping a scan/sweep keeps the moved row and its sidecar intact.",
-      "status": "open",
-      "notes": "No shared exclusion exists; only two album-index jobs are serialized (album_index.rs:147-154). The model treats assign atomically (SCOPE-5), so this closes the implementation race recorded in the API_ASSIGN_ALBUM_DIR_MOVE faults."
+      "status": "verified",
+      "implementation": "Per-path generations plus short exact/subtree leases replace the process-wide gate. Assign/delete/directory moves lease the paths or subtrees they mutate; delete holds its leases across the row flush. The sweep enqueues a Verify-lane item per stale record; the worker re-checks the path generation, any active lease, and the filesystem before the serial writer prunes. Thumbnail deletion happens in the confirmed writer removal, not in the sweep. Scan and watcher indexing skip a path under a lease.",
+      "tests": [
+        "tasks::path_epoch::tests::newer_generation_supersedes_older",
+        "tasks::path_epoch::tests::lease_makes_exact_path_busy_until_dropped",
+        "tasks::path_epoch::tests::subtree_lease_covers_descendants",
+        "tasks::path_epoch::tests::overlapping_leases_release_independently",
+        "tasks::actor::album_index::tests::index_scan_respects_path_lease_before_pruning"
+      ],
+      "limits": "Leases are in-process and best-effort; no cross-process coordination. A verify that wins before a mutation acquires its lease relies on the serial writer re-resolving the record by path. A full lazy view rebuild remains a request-thread cost on very large libraries (scoped views are an open optimisation)."
     },
     {
       "id": "REQ-8",
       "title": "Per-row thumbnail checksum with scan regeneration",
       "statement": "Rows carry a thumbnail checksum; a scan regenerates the artifact when the bytes do not match, and a missing artifact still forces reprocessing.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "asset model and scan (model/asset.rs, workflow/mod.rs)",
       "gate": "Backend test: corrupt a thumbnail's bytes; the next scan detects the mismatch and regenerates it.",
       "status": "open",
-      "notes": "Only thumbnail presence is checked; no checksum field exists. Closes derived-store corruption and the interrupted-rotate stale-thumbnail window (DERIVED_STORE_LOSS)."
+      "implementation": "Deferred with the hash short-circuit. Full rescans regenerate thumbnails, but no row checksum exists and corrupt bytes are not detected.",
+      "tests": [],
+      "limits": "Needs a skip consumer; returns with REQ-1."
     },
     {
       "id": "REQ-9",
       "title": "Orphan .xmp detection is logged only",
       "statement": "A restart or scan reports sidecars without a media file in the log and never deletes them; the detection must not act concurrently with an in-flight mutation.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "startup and scan",
       "gate": "Backend test: leave an .xmp with no media; scan/restart logs it and does not delete it.",
       "status": "verified",
-      "notes": "Implemented in album_index.rs: orphan_sidecars pure helper plus scan-time collection of .xmp paths and media stem keys during the existing file walk; one warn! per orphan (\"Orphan sidecar (no media file): {path}\"). Log only, never deletes. Detection runs after intake drain and sweep, so it does not act concurrently with in-flight mutations. Tests: orphan_sidecars_returns_sidecar_without_media, orphan_sidecars_ignores_sidecar_with_sibling_media, orphan_sidecars_ignores_album_sidecar, index_album_orphan_sidecar_survives_scan."
+      "implementation": "The scan walk collects only `.xmp` paths; after drain/sweep it warns for sidecars whose directory holds no file with the same stem and a supported media extension. Sibling media is checked on demand, so the walk holds no per-media path list. Log only, never deletes.",
+      "tests": [
+        "tasks::actor::album_index::tests::orphan_sidecars_returns_sidecar_without_media",
+        "tasks::actor::album_index::tests::orphan_sidecars_ignores_sidecar_with_sibling_media",
+        "tasks::actor::album_index::tests::orphan_sidecars_ignores_album_sidecar",
+        "tasks::actor::album_index::tests::index_album_orphan_sidecar_survives_scan"
+      ],
+      "limits": "On-demand sibling checks cost one directory read per sidecar; false positives are log noise only."
     },
     {
       "id": "REQ-10",
       "title": "Stale upload temp files are swept",
-      "statement": "Upload crash residue ({filename}-{uuid}.tmp) is removed at startup or scan and is never indexed.",
-      "derived_from": ["G1"],
+      "statement": "Upload crash residue (.upload-{filename}.{pid}.{seq}.tmp) is removed at startup or scan and is never indexed.",
+      "derived_from": [
+        "G1"
+      ],
       "owner": "startup and scan (router/post/post_upload.rs, init.rs)",
       "gate": "Backend test: leave a tmp file; startup/scan removes it and no row is created for it.",
       "status": "verified",
-      "notes": "Startup sweep implemented in init::sweep_upload_tmp_files (called from initialize_folder for image_home and users_home). Pure predicate init::is_upload_tmp_name. Upload writes tmp then renames (post_upload.rs:432-466); tmp files never reach the index because the extension gate rejects them. Verified by tests: init::tests::is_upload_tmp_name_accepts_upload_tmp, init::tests::is_upload_tmp_name_rejects_notes_tmp, init::tests::is_upload_tmp_name_rejects_non_tmp_extension, init::tests::is_upload_tmp_name_rejects_malformed_uuid, init::tests::sweep_upload_tmp_files_removes_residue, tasks::actor::album_index::tests::index_album_upload_tmp_not_indexed_and_swept."
+      "implementation": "Uploads stage as `.upload-{filename}.{pid}.{seq}.tmp`; startup walks image/users roots and removes owned temp names (`.upload-*`, `.sidecar-*`) whose pid is dead or whose mtime is older than an hour. Scans reject `.tmp` by extension.",
+      "tests": [
+        "init::tests::sweep_removes_dead_pid_temp",
+        "init::tests::sweep_keeps_live_pid_fresh_temp",
+        "init::tests::sweep_removes_live_pid_old_temp",
+        "init::tests::sweep_keeps_unrelated_and_malformed",
+        "tasks::actor::album_index::tests::index_album_upload_tmp_not_indexed_and_swept"
+      ],
+      "limits": "Startup-only by design; a long-running server keeps residue until restart. A live pid with a fresh mtime is kept, so a still-running abandoned temp survives that run."
     },
     {
       "id": "REQ-11",
       "title": "Rotate writes the sidecar before the thumbnail and DB",
       "statement": "A rotate writes the sidecar rotation first, then the thumbnail, then the DB records, so any interruption leaves a present sidecar that forces reprocess.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "rotate_image (router/put/rotate_image.rs)",
       "gate": "Backend test: fail the sidecar write and assert thumbnail and DB are unchanged; crash after the sidecar write and assert a rescan restores the rotation.",
       "status": "verified",
-      "notes": "Reordered to sidecar -> thumbnail -> DB (rotate_image.rs): the image is loaded and the rotation applied read-only, then write_rotation_for, then generate_thumbnail_for_image, thumbhash/phash, and finally album stats and DB flush. Verified by backend test rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged (read-only album dir makes the sidecar write fail with Permission denied; thumbnail bytes and DB record stay unchanged) and rotate_persists_to_xmp_and_reindex_preserves_display. The sidecar is the rotation source of truth; a present sidecar forces reprocess. The model expresses it as RotateWriteSidecar and RotateFinish (rotateCrashTest)."
+      "implementation": "The route loads/applies rotation read-only, writes the sidecar rotation, then regenerates the thumbnail/metadata and flushes the DB; a sidecar failure leaves thumbnail and rows unchanged.",
+      "tests": [
+        "tests::rotation::rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged",
+        "tests::rotation::rotate_persists_to_xmp_and_reindex_preserves_display"
+      ]
     },
     {
       "id": "REQ-12",
       "title": "Assign copies the sidecar before moving the asset",
       "statement": "A multi-file assign copies the destination sidecar first, moves the asset, then removes the old sidecar; an interruption leaves at most an orphan copy, never an asset without its metadata.",
-      "derived_from": ["G1"],
+      "derived_from": [
+        "G1"
+      ],
       "owner": "assign_album (router/put/assign_album.rs)",
       "gate": "Backend test: interrupt after the sidecar copy and before the asset move; metadata is not separated.",
       "status": "verified",
-      "notes": "Reordered to copy destination sidecar -> move asset -> remove old sidecar (assign_album.rs move_asset_into_album): sidecar bytes are read and written atomically to final_dest.xmp before fs::rename; a failed copy aborts before the asset moves, and a failed move leaves only an orphan destination sidecar copy; the old sidecar is removed best-effort after the asset move (missing is fine, failure logged). DB updates stay after the asset move. Album-move behaviour unchanged. Verified by backend test assign_copies_sidecar_before_asset_move (read-only source album dir makes the asset rename fail with Permission denied; the destination sidecar copy exists and the DB record path is unchanged)."
+      "implementation": "Assign reads the source sidecar and writes it atomically beside the destination before moving the asset; the old sidecar is removed afterwards, best effort. A failed copy aborts; a failed move leaves only an orphan copy.",
+      "tests": [
+        "tests::user_writes::assign_copies_sidecar_before_asset_move"
+      ],
+      "limits": "DB updates remain after the move; they are not part of the sidecar-first guarantee."
     },
     {
       "id": "REQ-13",
       "title": "Sidecar and albuminfo writes are atomic under partial-write failure",
       "statement": "A sidecar or albuminfo write either replaces the target completely or leaves the previous bytes untouched; no partial content is ever visible.",
-      "derived_from": ["G0"],
+      "derived_from": [
+        "G0"
+      ],
       "owner": "sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs)",
       "gate": "Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.",
       "status": "verified",
-      "notes": "Implemented with temp+rename (sidecar_edit.rs:73-82, xmp_write.rs:268-280). Existing scenarios cover read-only-directory failures and batch rollback; partial-write injection covered by process::atomic_write::tests::a_failed_temp_write_leaves_the_existing_target_unchanged. The temp name is deterministic (no fsync)."
+      "implementation": "Both sidecar writers delegate to `write_via_temp`, which stages through `tempfile::NamedTempFile::persist` under `.{event}-{filename}.{pid}.{seq}.tmp`; a failed write or persist leaves the target untouched and removes the temp.",
+      "tests": [
+        "process::atomic_write::tests::temp_file_name_format",
+        "process::atomic_write::tests::a_failed_temp_write_leaves_the_existing_target_unchanged",
+        "process::atomic_write::tests::a_failed_temp_write_leaves_an_absent_target_absent",
+        "process::atomic_write::tests::a_successful_write_replaces_the_target"
+      ],
+      "limits": "No fsync policy; concurrent read-modify-write on one sidecar is still last-writer-wins."
     },
     {
       "id": "REQ-14",
       "title": "Backstop cycles are non-overlapping and drain-complete",
       "statement": "Each per-root backstop cycle runs to completion before another cycle for that root may start: the scan enqueues every difference observed at scan time and the worker queue drains. A tick that arrives while a cycle runs coalesces into at most one follow-up cycle.",
-      "derived_from": ["G2"],
-      "owner": "scheduler and album index (model/config.rs, tasks/actor/album_index.rs)",
+      "derived_from": [
+        "G2"
+      ],
+      "owner": "scheduler and lifecycle (tasks/looper/backstop.rs, tasks/lifecycle.rs)",
       "gate": "Scheduler test: a cycle slower than the interval does not overlap itself and leaves exactly one coalesced follow-up; cycle completion is defined by the queue draining.",
-      "status": "open",
-      "notes": "G2's N is counted in backstop cycles, so the count is undefined without non-overlap and a drain-complete definition. The model treats a scan cycle as one unit (ScanRoot plus worker drain); boundedConvergenceTest pins the two-cycle worst case."
+      "status": "verified",
+      "implementation": "The backstop starts a scan job and awaits the job handle; ticks during the wait set one pending follow-up. Shutdown aborts the loop, rejects new intake, cancels and awaits the active job, then drains the writer; queued intake work is discarded.",
+      "tests": [
+        "tasks::looper::backstop::tests::started_consumes_pending",
+        "tasks::looper::backstop::tests::repeated_running_ticks_coalesce",
+        "tasks::looper::backstop::tests::finish_without_pending_does_not_start_follow_up",
+        "tasks::looper::backstop::tests::tick_while_idle_is_the_start_path",
+        "tasks::queue::writer::tests::completed_watermarks_never_regress",
+        "tests::backstop::backstop_loop_indexes_missed_file",
+        "shutdown::sigterm_exits_while_backstop_scan_is_running"
+      ],
+      "limits": "No slow-cycle gate-hold test; completion is observed through the job's terminal state rather than a queue-depth probe."
     }
   ]
 }

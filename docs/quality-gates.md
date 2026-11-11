@@ -327,7 +327,7 @@ Annotation: Ensure that committed/staged json matches current --dump-openapi out
 - Lanes: ci-backend, precommit
 - Invocations: (none direct; reached via aggregate)
 - Underlying:
-  - [backend/openapi.json:1-5863](https://github.com/codesam88/picasu/blob/main/backend/openapi.json#L1-L5863) `backend/openapi.json:1-5863`
+  - [backend/openapi.json:1-5869](https://github.com/codesam88/picasu/blob/main/backend/openapi.json#L1-L5869) `backend/openapi.json:1-5869`
 - Required by: `openapi-check`
 
 ### `openapi-lint`

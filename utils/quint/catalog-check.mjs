@@ -37,6 +37,16 @@ const scopeDoc = load('scope.json')
 
 const catalogSchema = load('catalog.schema.json')
 
+for (const [name, doc] of [
+  ['goals.json', goalsDoc],
+  ['requirements.json', requirementsDoc],
+  ['assumptions.json', assumptionsDoc],
+  ['scope.json', scopeDoc],
+]) {
+  if (!nonEmptyString(doc.description)) fail(`${name}: missing/empty top-level description`)
+}
+if (!nonEmptyString(scopeDoc.modeled_scope)) fail('scope.json: missing/empty modeled_scope')
+
 const goalIds = catalogSchema.definitions.goal.properties.id.enum
 const decisions = catalogSchema.definitions.goal.properties.decision.enum
 const anchorKinds = catalogSchema.definitions.anchor.properties.kind.enum
@@ -128,7 +138,7 @@ for (let i = 0; i < requirementList.length; i++) {
   if (!requirementIdsEnum.includes(r.id)) fail(`${label}: id '${r.id}' not in schema enum`)
   if (requirementIds.has(r.id)) fail(`${label}: duplicate id`)
   requirementIds.add(r.id)
-  for (const f of ['title', 'statement', 'owner', 'gate']) {
+  for (const f of ['title', 'statement', 'owner', 'gate', 'implementation']) {
     if (!nonEmptyString(r[f])) fail(`${r.id}: missing/empty '${f}'`)
   }
   if (!Array.isArray(r.derived_from) || r.derived_from.length < 1 ||
@@ -143,6 +153,18 @@ for (let i = 0; i < requirementList.length; i++) {
   }
   if (!requirementStatuses.includes(r.status)) {
     fail(`${r.id}: status '${r.status}' not in ${requirementStatuses.join('/')}`)
+  }
+  if (!Array.isArray(r.tests) || !r.tests.every(nonEmptyString)) {
+    fail(`${r.id}: tests must be an array of non-empty test names`)
+  } else if (r.status === 'verified' && r.tests.length === 0) {
+    fail(`${r.id}: verified requirement has no gate test`)
+  }
+  if ('limits' in r && !nonEmptyString(r.limits)) {
+    fail(`${r.id}: limits must be a non-empty string when present`)
+  }
+  const allowed = new Set(['id', 'title', 'statement', 'derived_from', 'owner', 'gate', 'status', 'implementation', 'tests', 'limits'])
+  for (const key of Object.keys(r)) {
+    if (!allowed.has(key)) fail(`${r.id}: unknown field '${key}'`)
   }
 }
 for (const gid of committedGoals) {

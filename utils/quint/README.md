@@ -46,18 +46,22 @@ Current contents of `pipeline/`:
   `dropped`), anchors and assumptions; only committed goals source
   requirements. Validated by `just catalog-check`.
 - `requirements.json` — implementation obligations (REQ-1..n) derived
-  from committed goals; each carries the goals it derives from
-  (`derived_from`), owner, gate, and status (`open` until the gate
-  test exists). `catalog-check` enforces that a requirement derives
-  only from committed goals and that every committed goal derives at
-  least one requirement.
+  from committed goals. Each entry carries the contract (`statement`,
+  `derived_from`, `owner`, `gate`, `status`) plus the review text
+  (`implementation`, `tests`, optional `limits`). `catalog-check`
+  enforces that a requirement derives only from committed goals, that
+  every committed goal derives at least one requirement, and that a
+  `verified` requirement names at least one gate test. The generated
+  `docs/eventual-consistency.md` renders the contract under
+  Requirements and the review text under Implementation.
 - `assumptions.json` — index of ASS-1..n with owner and status;
   the model's `@assumes` tags state which definitions each one
   grounds, and the generated traceability map carries the reverse
   refs. Validated by `just catalog-check`.
 - `scope.json` — modeling bounds and abstractions (SCOPE-1..n), each
   with bound, why_safe, lifting step, and provisional flag where the
-  safety argument is weaker than the implementation's guarantee;
+  safety argument is weaker than the implementation's guarantee. A
+  top-level `modeled_scope` summarizes the current model boundary;
   validated by `just catalog-check`.
 - `catalog.schema.json` — required fields and enums shared by the
   catalog validators.
@@ -66,9 +70,10 @@ Current contents of `pipeline/`:
   Load-bearing references appear in `.qnt` action comments and
   `events.json` notes.
 
-Requirements derive from committed goals (never from dropped or queued
-ones), and `@requires` tags in the model resolve against
-`requirements.json`. A requirement stays `open` until its gate test
+Each catalog file carries a top-level `description`; the generated
+review doc renders it as the section introduction. Requirements derive
+from committed goals (never from dropped or queued ones), and
+`@requires` tags in the model resolve against `requirements.json`. A requirement stays `open` until its gate test
 exists, and is `imposed`/`verified` only with that gate.
 
 Conventions for new subsystems: name the file for the subsystem, keep

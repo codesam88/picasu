@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "description": "World-given premises the model relies on, with owner, status, and a status note. They are not implementation obligations.",
   "assumptions": [
     {
       "id": "ASS-1",
