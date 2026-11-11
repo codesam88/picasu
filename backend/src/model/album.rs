@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::model::abstract_data::AbstractData;
 use crate::model::object::ObjectSchema;
-use crate::storage::db::snapshot_tree;
+use crate::model::response::DatabaseTimestamp;
 
 /// Combined Album data with Object and Metadata
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
@@ -46,11 +46,7 @@ impl AlbumCombined {
         self.object.thumbhash.clone_from(&info.thumbhash);
     }
 
-    pub fn self_update(&mut self) {
-        // Runs inside a pool job (`album_task`); snapshot first so the tree
-        // guard is not held across the `par_iter` below.
-        let ref_data = snapshot_tree();
-
+    pub fn self_update_with(&mut self, ref_data: &[DatabaseTimestamp]) {
         let dir_path = Path::new(&self.metadata.dir_path).to_path_buf();
 
         // Membership is path-based: a file belongs to this album iff its
@@ -386,5 +382,69 @@ impl ResolvedShare {
             album_id,
             album_title,
         }
+    }
+}
+
+#[cfg(test)]
+mod self_update_stats_tests {
+    use super::*;
+    use crate::model::abstract_data::AbstractData;
+    use crate::model::image::{ImageCombined, ImageMetadata};
+    use crate::model::object::{ObjectSchema, ObjectType};
+    use crate::model::response::{DatabaseTimestamp, FileEntry};
+    use arrayvec::ArrayString;
+
+    fn make_album(dir: &str) -> AlbumCombined {
+        AlbumCombined {
+            object: ObjectSchema::new(
+                ArrayString::from("album-id").expect("id fits"),
+                ObjectType::Album,
+            ),
+            metadata: AlbumMetadata {
+                id: ArrayString::from("album-id").expect("id fits"),
+                dir_path: dir.to_string(),
+                ..Default::default()
+            },
+        }
+    }
+
+    fn make_image_row(path: &str, size: u64, ts: i64, asset: &str) -> DatabaseTimestamp {
+        let mut meta = ImageMetadata::new(size, 10, 10, "jpg".to_string());
+        meta.path = Some(FileEntry {
+            file: path.to_string(),
+            modified: 0,
+            scan_time: ts,
+            is_trashed: false,
+        });
+        let img = ImageCombined {
+            object: ObjectSchema::new(
+                ArrayString::from(asset).expect("id fits"),
+                ObjectType::Image,
+            ),
+            metadata: meta,
+        };
+        DatabaseTimestamp {
+            abstract_data: AbstractData::Image(img),
+            timestamp: ts,
+            asset_id: ArrayString::from(asset).expect("id fits"),
+        }
+    }
+
+    #[test]
+    fn self_update_with_computes_counts_sizes_and_cover() {
+        let mut album = make_album("/photos/vacation");
+        let rows = vec![
+            make_image_row("/photos/vacation/a.jpg", 10, 100, "img-a"),
+            make_image_row("/photos/vacation/b.jpg", 20, 200, "img-b"),
+        ];
+        album.self_update_with(&rows);
+        assert_eq!(album.metadata.item_count, 2);
+        assert_eq!(album.metadata.item_size, 30);
+        assert_eq!(
+            album.metadata.cover,
+            Some(ArrayString::from("img-b").expect("id fits"))
+        );
+        assert_eq!(album.metadata.start_time, Some(100));
+        assert_eq!(album.metadata.end_time, Some(200));
     }
 }

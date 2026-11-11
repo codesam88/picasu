@@ -193,8 +193,22 @@ superseded pointers only.
 - SHUTDOWN-03 (S3-low): watcher can start after `stop_watcher`.
 - M3 (S3): REQ-3 "in one step" is per-record `warn!`, not one txn.
 - TEST-01 (hardening): SIGTERM gate fires before backlog depth.
+- CASCADE-01/M2 (S2, open as C11): per-flush cascade rebuilds and the
+  held-write-txn in `album_task` are untouched by C9/C10; see C11.
+
+- **C11 [done] Writer cascade: rebuild outside the held write txn**.
+  `cascade_after_write` snapshots once per entry and shares it (`Arc`)
+  with pending album updates; `album_task` reads (short read txn),
+  computes (rayon, no txn), writes (short write txn: durable reads +
+  insert/member-clear + commit + epoch bump). No `snapshot_tree`/rayon
+  inside any write txn on any path; disagreeing read/write states
+  re-mark pending for the next cascade. No eager refresh added; cache
+  stays lazy. Gates: `self_update_with` stats unit,
+  `cascade_two_pending_albums_rebuilds_at_most_once` (observer
+  `TreeRefreshBuild` count).
 - Absorbed into C9/C10 RED steps (no separate action): EPOCH-01,
-  SWEEP-01, CASCADE-01, M1, M2, M4.
+  SWEEP-01, M1, M4. CASCADE-01/M2 were listed here but the C9/C10
+  implementation did not touch the cascade — see C11.
 
 ## Revised designs (2026-11-12, open)
 
