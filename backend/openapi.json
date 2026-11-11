@@ -221,6 +221,12 @@
               "null"
             ]
           },
+          "indexBackstopIntervalSecs": {
+            "description": "Periodic full-scan backstop interval in seconds. `0` (the default)\ndisables the backstop. Host-only: the loop is started at boot and\nreads this value once.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "loginIpBaseBanSecs": {
             "description": "See [`Self::login_ip_window_secs`].",
             "format": "int64",

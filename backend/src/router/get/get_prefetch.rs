@@ -13,7 +13,7 @@ use crate::router::auth::GuardPresenter;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::cache::next_snapshot_id;
-use crate::storage::db::VERSION_COUNT_TIMESTAMP;
+use crate::storage::db::INVALIDATION_VERSION;
 use crate::storage::db::snapshot_tree;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::observe::{self, Stage, Timer, claim_report, mono_ms};
@@ -250,7 +250,7 @@ fn build_cache_key(
 
     let mut hasher = DefaultHasher::new();
     expression_option.hash(&mut hasher);
-    VERSION_COUNT_TIMESTAMP
+    INVALIDATION_VERSION
         .load(Ordering::Relaxed)
         .hash(&mut hasher);
     locate_option.hash(&mut hasher);

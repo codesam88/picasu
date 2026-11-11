@@ -82,5 +82,6 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
         }
     }
     txn.commit().context("commit failed (album)")?;
+    crate::storage::tree_view::bump_tree_epoch();
     Ok(())
 }

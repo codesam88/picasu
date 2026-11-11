@@ -13,11 +13,9 @@ use walkdir::{DirEntry, WalkDir};
 use crate::error::{AppError, ErrorKind};
 use crate::model::media::{MediaOutcome, SkipReason, classify_media_file, is_valid_media_file};
 use crate::router::AppResult;
-use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
 use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
-use crate::tasks::queue::writer::submit_flush_remove;
 use crate::tasks::runtime::spawn;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -98,6 +96,7 @@ pub fn clear_asset_tables_and_caches() -> AppResult<()> {
         .write()
         .expect("TREE in_memory lock")
         .clear();
+    crate::storage::tree_view::invalidate_tree_view();
     crate::process::dir_album::reset_dir_album_cache();
     Ok(())
 }
@@ -111,8 +110,35 @@ pub fn clear_asset_tables_and_caches() -> AppResult<()> {
 /// Index all media files under `src`, optionally clearing first and/or
 /// selecting a scan root (`"global"`, `"personal"`, or `"auto"` preserving
 /// the historical image-then-users probe order).
-#[allow(clippy::too_many_lines)]
+static INDEX_NOTIFY: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Handle to a started scan job. Awaiting it resolves when the job reaches a
+/// terminal state; a cancellation request does not resolve it early.
+pub(crate) struct IndexJob {
+    job_id: u64,
+}
+
+impl IndexJob {
+    pub(crate) async fn wait(self) {
+        wait_for_job(self.job_id).await;
+    }
+}
+
+/// Start a scan and discard its completion handle. Request-path callers that
+/// only need to report acceptance use this.
 pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppResult<()> {
+    start_index_job(src, clear, root).map(|_| ())
+}
+
+#[allow(clippy::too_many_lines)]
+pub(crate) fn start_index_job(src: &str, clear: bool, root: Option<&str>) -> AppResult<IndexJob> {
+    if crate::tasks::queue::is_shutting_down() {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            "Server is shutting down",
+        ));
+    }
+
     // Validate selector up front.
     if let Some(r) = root {
         match r {
@@ -291,13 +317,21 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         }
 
         debug!("walk done, draining intake (job {job_id})");
-        crate::tasks::queue::drain_intake(job_id).await;
+        crate::tasks::queue::drain_intake(job_id, &cancel).await;
         debug!("intake drained (job {job_id})");
+
+        // Shutdown and user cancellation stop the job at the first phase
+        // boundary: the sweep would otherwise keep the writer busy after the
+        // server has stopped accepting requests.
+        if cancel.load(Ordering::SeqCst) || crate::tasks::queue::is_shutting_down() {
+            finish_job(job_id, AlbumIndexState::Canceled);
+            return;
+        }
 
         // Barrier on the serial writer so the in-memory tree reflects
         // all walk results before the sweep reads it.
         debug!("writer barrier pre-sweep (job {job_id})");
-        crate::tasks::queue::barrier_flush_tree().await;
+        crate::tasks::queue::writer::barrier().await;
         debug!("writer barrier pre-sweep done (job {job_id})");
 
         // Sweep stale asset paths: remove DB records whose asset file no
@@ -325,9 +359,9 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         // Barrier on the sweep's writer ops, then on the tree rebuild
         // for album metadata.
         debug!("writer barrier post-sweep (job {job_id})");
-        crate::tasks::queue::barrier_flush_tree().await;
+        crate::tasks::queue::writer::barrier().await;
         debug!("writer barrier update-tree (job {job_id})");
-        crate::tasks::queue::barrier_update_tree().await;
+        crate::tasks::queue::writer::barrier().await;
         debug!("writer drained (job {job_id})");
 
         let state = if cancel.load(Ordering::SeqCst) {
@@ -343,7 +377,7 @@ pub fn index_album_with_root(src: &str, clear: bool, root: Option<&str>) -> AppR
         debug!("job {job_id} finished");
     });
 
-    Ok(())
+    Ok(IndexJob { job_id })
 }
 
 pub fn cancel_album_index() -> AppResult<()> {
@@ -353,6 +387,7 @@ pub fn cancel_album_index() -> AppResult<()> {
     };
 
     active.cancel.store(true, Ordering::SeqCst);
+    crate::tasks::queue::notify_job_cancel();
     let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
     if slot.job_id == active.job_id && slot.status.state == AlbumIndexState::Running {
         slot.status.cancel_requested = true;
@@ -529,10 +564,11 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 }
 
 /// Sweep stale asset paths: for every DB record whose path is under
-/// `root`, check that file.  If it no longer exists on disk, prune the path;
-/// once the path is gone, remove the entire record (and its compressed
-/// thumbnail). Removals go through the serial writer; the post-sweep barrier
-/// covers them.
+/// `root`, check that file. A missing path is enqueued on the Verify lane
+/// with the generation observed here; the worker re-checks the generation,
+/// any active mutation lease, and the filesystem before the serial writer
+/// prunes the record. Scan and API work therefore never need a process-wide
+/// lock around the sweep.
 async fn sweep_stale_asset_paths(root: &Path) {
     use crate::model::abstract_data::AbstractData;
     use crate::process::path::normalize_asset_path;
@@ -542,7 +578,7 @@ async fn sweep_stale_asset_paths(root: &Path) {
         // Scan-side holder: only a sequential collect runs under it, and the
         // sweep waits on the writer barrier after collection. No Rayon work
         // is nested while held, so it cannot deadlock the tree-refresh write.
-        let tree = TREE.in_memory.read().expect("lock poisoned");
+        let tree = crate::storage::db::snapshot_tree();
         tree.iter()
             .filter(|dt| {
                 dt.abstract_data.path().is_some_and(|a| {
@@ -554,14 +590,15 @@ async fn sweep_stale_asset_paths(root: &Path) {
             .collect()
     };
 
-    let mut to_remove = Vec::new();
-
     for mut data in candidates {
-        let had_path = data.path().is_some();
+        let Some(path) = data.path().map(|entry| PathBuf::from(&entry.file)) else {
+            continue;
+        };
         let has_path = crate::process::path::prune_stale_asset_path(&mut data);
-
-        if !has_path && had_path {
-            to_remove.push(data);
+        if !has_path
+            && let Err(err) = crate::tasks::queue::submit_verify_file(path.clone(), data).await
+        {
+            warn!("sweep verify submit failed for {}: {err:#}", path.display());
         }
     }
 
@@ -569,7 +606,7 @@ async fn sweep_stale_asset_paths(root: &Path) {
     let album_candidates: Vec<_> = {
         // Scan-side holder: same sequential-collect shape as the asset phase;
         // no pool work runs while it is held.
-        let tree = TREE.in_memory.read().expect("lock poisoned");
+        let tree = crate::storage::db::snapshot_tree();
         tree.iter()
             .filter_map(|dt| match &dt.abstract_data {
                 AbstractData::Album(alb) if !alb.metadata.dir_path.is_empty() => {
@@ -585,22 +622,17 @@ async fn sweep_stale_asset_paths(root: &Path) {
             .collect()
     };
 
-    let stale_albums: Vec<_> = album_candidates
-        .into_iter()
-        .filter(|(dir_path, _)| !dir_path.exists())
-        .collect();
-    if !stale_albums.is_empty() {
-        use crate::tasks::queue::writer::{WriteOp, submit};
-
-        if let Err(err) = submit(WriteOp::SweepDirAlbums(stale_albums)).await {
-            warn!("sweep dir-album submit failed: {err:#}");
+    for (dir_path, album_id) in album_candidates {
+        if dir_path.exists() {
+            continue;
         }
-    }
-
-    if !to_remove.is_empty() {
-        debug!("pruning {} stale record(s)", to_remove.len());
-        if let Err(err) = submit_flush_remove(to_remove).await {
-            warn!("sweep remove submit failed: {err:#}");
+        if let Err(err) =
+            crate::tasks::queue::submit_verify_dir_album(dir_path.clone(), album_id).await
+        {
+            warn!(
+                "sweep dir-album verify submit failed for {}: {err:#}",
+                dir_path.display()
+            );
         }
     }
 }
@@ -724,6 +756,50 @@ fn finish_job(job_id: u64, state: AlbumIndexState) {
 
     if let Some(context) = report_context {
         crate::tasks::observe::drain_report(&context);
+    }
+
+    INDEX_NOTIFY.notify_waiters();
+}
+
+/// Wait until `job_id` reaches a terminal state. Waiters register before the
+/// status check, so a completion between the check and the wait is not lost.
+async fn wait_for_job(job_id: u64) {
+    loop {
+        let notified = INDEX_NOTIFY.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        let done = {
+            let slot = INDEX_STATUS.lock().expect("lock poisoned");
+            slot.job_id != job_id || slot.status.state != AlbumIndexState::Running
+        };
+        if done {
+            return;
+        }
+        notified.await;
+    }
+}
+
+/// Cancel the active job and wait for it to stop, bounded by `timeout`.
+/// Returns `true` when no job is running.
+pub(crate) async fn wait_for_active_index(timeout: std::time::Duration) -> bool {
+    let Some(active) = ACTIVE_INDEX.lock().expect("lock poisoned").clone() else {
+        return true;
+    };
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let notified = INDEX_NOTIFY.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        let done = {
+            let slot = INDEX_STATUS.lock().expect("lock poisoned");
+            slot.job_id != active.job_id || slot.status.state != AlbumIndexState::Running
+        };
+        if done {
+            return true;
+        }
+        if tokio::time::timeout_at(deadline, notified).await.is_err() {
+            return false;
+        }
     }
 }
 
@@ -855,12 +931,9 @@ mod tests {
 
         // drain the writer: the placeholder flush plus its cascade must be
         // visible before asserting.
-        crate::tasks::queue::barrier_update_tree().await;
+        crate::tasks::queue::writer::barrier().await;
 
-        let tree = crate::storage::db::TREE
-            .in_memory
-            .read()
-            .expect("in-memory tree lock");
+        let tree = crate::storage::db::snapshot_tree();
         assert!(
             tree.iter().any(|dt| dt
                 .abstract_data
@@ -914,7 +987,7 @@ mod tests {
             status.failed_paths
         );
 
-        let tree = TREE.in_memory.read().expect("in-memory tree lock");
+        let tree = crate::storage::db::snapshot_tree();
         assert!(
             tree.iter().any(|dt| {
                 dt.abstract_data
@@ -970,7 +1043,7 @@ mod tests {
         let album_id = dir_album::get_album_id_for_dir(&album_dir)
             .expect("album must be registered after reset scan");
 
-        let tree = TREE.in_memory.read().expect("TREE in_memory lock");
+        let tree = crate::storage::db::snapshot_tree();
         let rows = tree
             .iter()
             .filter(|dt| match &dt.abstract_data {
@@ -1064,10 +1137,7 @@ mod tests {
         );
 
         // asset membership per root
-        let tree = crate::storage::db::TREE
-            .in_memory
-            .read()
-            .expect("tree lock");
+        let tree = crate::storage::db::snapshot_tree();
         let has_img = tree.iter().any(|dt| {
             dt.abstract_data
                 .path()
@@ -1097,30 +1167,20 @@ mod tests {
         index_album_with_root("/", false, None).expect("index accepted");
         wait_for_index_completion();
         assert!(
-            crate::storage::db::TREE
-                .in_memory
-                .read()
-                .expect("tree")
-                .iter()
-                .any(|dt| dt
-                    .abstract_data
-                    .path()
-                    .is_some_and(|p| p.file.contains("doomed.jpg"))),
+            crate::storage::db::snapshot_tree().iter().any(|dt| dt
+                .abstract_data
+                .path()
+                .is_some_and(|p| p.file.contains("doomed.jpg"))),
             "doomed personal file should be indexed before removal"
         );
         std::fs::remove_file(&doomed).expect("remove doomed");
         index_album_with_root("/", false, None).expect("index accepted");
         wait_for_index_completion();
         assert!(
-            !crate::storage::db::TREE
-                .in_memory
-                .read()
-                .expect("tree")
-                .iter()
-                .any(|dt| dt
-                    .abstract_data
-                    .path()
-                    .is_some_and(|p| p.file.contains("doomed.jpg"))),
+            !crate::storage::db::snapshot_tree().iter().any(|dt| dt
+                .abstract_data
+                .path()
+                .is_some_and(|p| p.file.contains("doomed.jpg"))),
             "removed personal file must be pruned by sweep"
         );
 
@@ -1404,12 +1464,12 @@ mod tests {
         asset_store::insert_asset(&rec_outside).expect("insert outside ghost");
 
         // Make the on-disk rows visible to the sweep's in-memory read.
-        crate::tasks::batcher::update_tree::refresh_tree_cache();
+        crate::storage::tree_view::bump_tree_epoch();
 
         index_album_with_root("/scanned_root", false, None).expect("index accepted");
         wait_for_index_completion();
 
-        let tree = TREE.in_memory.read().expect("tree lock");
+        let tree = crate::storage::db::snapshot_tree();
         let scanned_survives = tree.iter().any(|dt| {
             dt.abstract_data
                 .path()
@@ -1433,6 +1493,90 @@ mod tests {
 
         fs::remove_dir_all(&scanned).ok();
         fs::remove_dir_all(&outside).ok();
+        reset_backend_state();
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn index_scan_respects_path_lease_before_pruning() {
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        use arrayvec::ArrayString;
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let scanned = image_home.join("scanned_root");
+        std::fs::create_dir_all(&scanned).expect("create scanned root");
+
+        let ghost = scanned.join("ghost.jpg");
+        let hash: ArrayString<64> = "ghosthash".parse().expect("hash");
+        let rec = AssetRecord::new_media(
+            AssetKind::Image,
+            ghost.to_string_lossy().into_owned(),
+            Some(hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        asset_store::insert_asset(&rec).expect("insert ghost");
+        let hash_str = hash.as_str();
+        let thumbnail = crate::storage::files::get_data_path().join(format!(
+            "object/compressed/{}/{hash_str}.jpg",
+            &hash_str[..2]
+        ));
+        std::fs::create_dir_all(thumbnail.parent().expect("thumbnail parent"))
+            .expect("create thumbnail dir");
+        std::fs::write(&thumbnail, b"thumb").expect("write thumbnail");
+        crate::storage::tree_view::bump_tree_epoch();
+
+        // A mutation holds the ghost path while the sweep runs.
+        let lease = crate::tasks::path_epoch::lease_paths([ghost.clone()]);
+
+        index_album_with_root("/scanned_root", false, None).expect("index accepted");
+        wait_for_index_completion();
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        let survives = |path: &std::path::Path| {
+            crate::storage::db::snapshot_tree().iter().any(|dt| {
+                dt.abstract_data
+                    .path()
+                    .is_some_and(|p| p.file == path.to_string_lossy())
+            })
+        };
+        assert!(
+            survives(&ghost),
+            "ghost row must survive while its path is leased"
+        );
+        assert!(
+            thumbnail.exists(),
+            "thumbnail must survive while the path is leased"
+        );
+
+        drop(lease);
+
+        index_album_with_root("/scanned_root", false, None).expect("second scan accepted");
+        wait_for_index_completion();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while survives(&ghost) {
+            assert!(
+                Instant::now() <= deadline,
+                "ghost row must be pruned after the lease is released"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            !thumbnail.exists(),
+            "thumbnail must be removed with the confirmed record"
+        );
+
+        std::fs::remove_dir_all(&scanned).ok();
         reset_backend_state();
     }
 
@@ -1508,7 +1652,7 @@ mod tests {
         index_album_with_root("/", false, None).expect("index accepted");
         wait_for_index_completion();
 
-        let tree = TREE.in_memory.read().expect("tree lock");
+        let tree = crate::storage::db::snapshot_tree();
         let indexed = tree.iter().any(|dt| {
             dt.abstract_data
                 .path()

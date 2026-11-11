@@ -4,7 +4,9 @@ use std::sync::LazyLock;
 
 pub mod actor;
 pub mod batcher;
+pub mod lifecycle;
 pub mod looper;
+pub mod path_epoch;
 // The real recorder under `task-observer` (default); a signature-compatible no-op
 // otherwise so call sites compile unchanged.
 #[cfg_attr(not(feature = "task-observer"), path = "observe_stub.rs")]

@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
+use crate::model::abstract_data::AbstractData;
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use dashmap::DashMap;
@@ -50,6 +51,23 @@ pub enum IntakeKind {
     WatcherRemove,
     /// Periodic expiry sweep (no path, no job barrier).
     ExpireCheck,
+    /// Sweep-observed missing asset path. The worker re-checks the path
+    /// generation, any active mutation lease, and the filesystem before
+    /// removing the record.
+    VerifyFile {
+        data: Box<AbstractData>,
+        /// Generation observed at enqueue. `None` means the path had no
+        /// generation record; a later submit makes it `Some` and supersedes
+        /// this item.
+        expected_generation: Option<u64>,
+    },
+    /// Sweep-observed missing album directory. Same checks as
+    /// [`IntakeKind::VerifyFile`], then the dir-album removal op.
+    VerifyDirAlbum {
+        dir_path: PathBuf,
+        album_id: ArrayString<64>,
+        expected_generation: Option<u64>,
+    },
     /// Request-path album self-update. `reply` carries the outcome back to
     /// the request; `None` means fire-and-forget (errors are logged).
     InteractiveAlbum {
@@ -111,10 +129,6 @@ static INTAKE_NOTIFY: Notify = Notify::const_new();
 static SCHED: LazyLock<Mutex<SchedulerState>> =
     LazyLock::new(|| Mutex::new(SchedulerState::default()));
 
-/// Latest submitted generation per path. A newer submit for the same path
-/// supersedes an older queued item, which is then skipped at dequeue time.
-static GENERATIONS: LazyLock<DashMap<PathBuf, u64>> = LazyLock::new(DashMap::new);
-
 /// Per-job submit/complete accounting backing [`super::worker::drain_intake`].
 pub(crate) struct JobProgress {
     submitted: AtomicU64,
@@ -163,22 +177,61 @@ pub(crate) fn note_item_complete(progress: &JobProgress) {
     progress.notify.notify_one();
 }
 
-/// Drop the generation record for `item` when no newer submit replaced it,
-/// so the map does not grow across scans.
-pub(crate) fn release_generation(item: &IntakeItem) {
-    GENERATIONS.remove_if(&item.path, |_, generation| *generation == item.generation);
+/// Set once shutdown begins. New submissions are rejected and parked workers
+/// exit instead of dequeuing the remaining queue, so the scan job's drain
+/// cannot wait on work that will never run.
+static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Predictable shutdown calls wake parked workers and draining scans.
+pub(crate) fn begin_shutdown() {
+    SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    INTAKE_NOTIFY.notify_waiters();
+    JOB_CANCEL_NOTIFY.notify_waiters();
+    SHUTDOWN_NOTIFY.notify_waiters();
 }
 
-/// Latest submitted generation for `path`, if any.
-pub(crate) fn current_generation(path: &Path) -> Option<u64> {
-    GENERATIONS.get(path).map(|entry| *entry)
+/// Wakes a submitter parked on a full lane when shutdown begins.
+static SHUTDOWN_NOTIFY: Notify = Notify::const_new();
+
+async fn wait_for_shutdown() {
+    loop {
+        if is_shutting_down() {
+            return;
+        }
+        let notified = SHUTDOWN_NOTIFY.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if is_shutting_down() {
+            return;
+        }
+        notified.await;
+    }
 }
 
-/// Next submission generation for `path`.
-fn next_generation(path: &Path) -> u64 {
-    let mut slot = GENERATIONS.entry(path.to_path_buf()).or_insert(0);
-    *slot += 1;
-    *slot
+pub(crate) fn is_shutting_down() -> bool {
+    SHUTTING_DOWN.load(Ordering::SeqCst)
+}
+
+/// Wakes `drain_intake` waiters when a job is cancelled.
+static JOB_CANCEL_NOTIFY: Notify = Notify::const_new();
+
+pub(crate) fn notify_job_cancel() {
+    JOB_CANCEL_NOTIFY.notify_waiters();
+}
+
+pub(crate) async fn wait_for_job_cancel(cancel: &std::sync::atomic::AtomicBool) {
+    loop {
+        if cancel.load(Ordering::SeqCst) || is_shutting_down() {
+            return;
+        }
+        let notified = JOB_CANCEL_NOTIFY.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if cancel.load(Ordering::SeqCst) || is_shutting_down() {
+            return;
+        }
+        notified.await;
+    }
 }
 
 static WORKERS_STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
@@ -197,12 +250,18 @@ fn ensure_workers() {
 /// Enqueue `item` on its lane, backpressuring the submitter past
 /// [`INTAKE_CAPACITY`], and wake one parked worker.
 async fn enqueue(item: IntakeItem) -> Result<()> {
+    if is_shutting_down() {
+        return Err(anyhow::anyhow!("intake is shutting down"));
+    }
     ensure_workers();
-    LANES[item.priority.lane_index()]
-        .tx
-        .send(item)
-        .await
-        .context("scan intake closed")?;
+    tokio::select! {
+        result = LANES[item.priority.lane_index()].tx.send(item) => {
+            result.context("scan intake closed")?;
+        }
+        () = wait_for_shutdown() => {
+            return Err(anyhow::anyhow!("intake is shutting down"));
+        }
+    }
     INTAKE_NOTIFY.notify_one();
     Ok(())
 }
@@ -223,7 +282,7 @@ fn observe_identity(path: &Path) -> (Option<SystemTime>, Option<u64>) {
 /// on it.
 pub async fn submit_scan(path: PathBuf, job_id: u64) -> Result<()> {
     let (mtime, len) = observe_identity(&path);
-    let generation = next_generation(&path);
+    let generation = crate::tasks::path_epoch::next_generation(&path);
     let progress = job_progress(job_id);
     progress.submitted.fetch_add(1, Ordering::SeqCst);
     let item = IntakeItem {
@@ -250,7 +309,7 @@ pub async fn submit_watcher_index(path: PathBuf) -> Result<()> {
         path: path.clone(),
         priority: Priority::Watcher,
         kind: IntakeKind::WatcherIndex,
-        generation: next_generation(&path),
+        generation: crate::tasks::path_epoch::next_generation(&path),
         mtime,
         len,
     })
@@ -261,12 +320,52 @@ pub async fn submit_watcher_index(path: PathBuf) -> Result<()> {
 /// only the generation travels; a concurrent re-create (newer generation)
 /// supersedes the removal before it can detach a live record.
 pub async fn submit_watcher_remove(path: PathBuf) -> Result<()> {
-    let generation = next_generation(&path);
+    let generation = crate::tasks::path_epoch::next_generation(&path);
     enqueue(IntakeItem {
         path,
         priority: Priority::Watcher,
         kind: IntakeKind::WatcherRemove,
         generation,
+        mtime: None,
+        len: None,
+    })
+    .await
+}
+
+/// Enqueue a sweep-observed missing asset for verification on the Verify
+/// lane. Bumping the generation here means a newer scan or watcher submit
+/// supersedes the verify, and the worker re-checks the path before pruning.
+pub async fn submit_verify_file(path: PathBuf, data: AbstractData) -> Result<()> {
+    // Do not bump: a verify only observes a path. Bumping here would cancel a
+    // queued watcher index for a file that reappeared between the sweep stat
+    // and this submit.
+    let expected = crate::tasks::path_epoch::current_generation(&path);
+    enqueue(IntakeItem {
+        path,
+        priority: Priority::Verify,
+        kind: IntakeKind::VerifyFile {
+            data: Box::new(data),
+            expected_generation: expected,
+        },
+        generation: expected.unwrap_or(0),
+        mtime: None,
+        len: None,
+    })
+    .await
+}
+
+/// Enqueue a sweep-observed missing album directory for verification.
+pub async fn submit_verify_dir_album(dir_path: PathBuf, album_id: ArrayString<64>) -> Result<()> {
+    let expected = crate::tasks::path_epoch::current_generation(&dir_path);
+    enqueue(IntakeItem {
+        path: dir_path.clone(),
+        priority: Priority::Verify,
+        kind: IntakeKind::VerifyDirAlbum {
+            dir_path,
+            album_id,
+            expected_generation: expected,
+        },
+        generation: expected.unwrap_or(0),
         mtime: None,
         len: None,
     })
@@ -327,6 +426,9 @@ pub async fn submit_interactive_album_detached(album_id: ArrayString<64>) -> Res
 /// which only happens at shutdown; workers then exit.
 pub(crate) async fn recv_item() -> Option<IntakeItem> {
     loop {
+        if is_shutting_down() {
+            return None;
+        }
         let pick = {
             let mut sched = SCHED.lock().expect("scheduler lock poisoned");
             let mut ready = [false; LANE_COUNT];

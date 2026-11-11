@@ -17,9 +17,10 @@ pub mod priority;
 pub mod worker;
 pub mod writer;
 
+pub(crate) use intake::{begin_shutdown, is_shutting_down, notify_job_cancel};
 pub use intake::{
     submit_expire_check, submit_interactive_album, submit_interactive_album_detached, submit_scan,
-    submit_watcher_index, submit_watcher_remove,
+    submit_verify_dir_album, submit_verify_file, submit_watcher_index, submit_watcher_remove,
 };
 pub use worker::drain_intake;
-pub use writer::{barrier_flush_tree, barrier_update_tree, shutdown_writer};
+pub use writer::shutdown_writer;

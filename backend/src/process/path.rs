@@ -1,6 +1,5 @@
 use crate::model::abstract_data::AbstractData;
-use crate::storage::asset_store;
-use log::{info, warn};
+use log::warn;
 use std::path::{Path, PathBuf};
 
 /// Remove the asset's file and its `.xmp` sidecar from disk.
@@ -33,9 +32,10 @@ pub fn normalize_asset_path(file: &str) -> PathBuf {
 }
 
 /// Remove the asset path `target` from `data`, deleting its file + sidecar
-/// from disk.  Returns `true` if the record still holds its path
-/// (and should be persisted), `false` once the path is gone (thumbnail + DB
-/// removal caller's responsibility). Albums (no path) return `false`.
+/// from disk. Returns `true` if the record still holds its path (and should
+/// be persisted), `false` once the path is gone. The serial writer owns the
+/// thumbnail and DB removal, so this never touches content-addressed
+/// renditions. Albums (no path) return `false`.
 pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
     remove_asset_file(target.to_string_lossy().as_ref());
 
@@ -50,17 +50,13 @@ pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
         *path_slot = None;
     }
 
-    if path_slot.is_none() {
-        remove_compressed_thumbnail(data);
-        false
-    } else {
-        true
-    }
+    path_slot.is_some()
 }
 
-/// Remove the record's path if its file no longer exists on disk.  Returns
-/// `true` if the record still holds its path, `false` once the path
-/// is gone (thumbnail already removed by this call). Albums return `false`.
+/// Remove the record's path if its file no longer exists on disk. Returns
+/// `true` if the record still holds its path, `false` once the path is gone.
+/// The serial writer owns the thumbnail and DB removal. Albums return
+/// `false`.
 pub fn prune_stale_asset_path(data: &mut AbstractData) -> bool {
     let Some(path_slot) = data.path_mut() else {
         return false;
@@ -73,35 +69,5 @@ pub fn prune_stale_asset_path(data: &mut AbstractData) -> bool {
         *path_slot = None;
     }
 
-    if path_slot.is_none() {
-        remove_compressed_thumbnail(data);
-        false
-    } else {
-        true
-    }
-}
-
-fn remove_compressed_thumbnail(data: &AbstractData) {
-    let content_hash = data.hash();
-
-    // Check if other assets still share this content hash.
-    // DUPE_INDEX still contains the current asset (removed later by
-    // FlushTreeTask), so len > 1 means another asset references the hash.
-    let other_refs = match asset_store::get_dupe_ids(&content_hash) {
-        Ok(ids) => ids.len(),
-        Err(_) => 0,
-    };
-    if other_refs > 1 {
-        info!(
-            "Preserving thumbnail for hash {content_hash}: {other_refs} assets still reference it"
-        );
-        return;
-    }
-
-    let thumb = data.compressed_path();
-    if thumb.exists()
-        && let Err(e) = std::fs::remove_file(&thumb)
-    {
-        warn!("Failed to delete thumbnail {}: {e}", thumb.display());
-    }
+    path_slot.is_some()
 }

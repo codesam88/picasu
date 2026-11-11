@@ -1,7 +1,6 @@
 use crate::error::handle_error;
 use crate::model::abstract_data::AbstractData;
 use crate::model::media::{MediaOutcome, classify_media_file, is_valid_media_file};
-use crate::storage::db::TREE;
 use crate::storage::files::get_resolved_image_home;
 use crate::storage::files::get_resolved_users_home;
 use crate::tasks::queue::{submit_watcher_index, submit_watcher_remove};
@@ -41,6 +40,13 @@ impl BatchTask for StartWatcherTask {
         }
         std::future::ready(())
     }
+}
+
+/// Stop watching. Dropping the notify watcher ends its event thread; any
+/// debounce task already in flight is rejected by the intake shutdown gate.
+pub(crate) fn stop_watcher() {
+    *WATCHER_HANDLE.lock().expect("lock poisoned") = None;
+    IS_WATCHING.store(false, Ordering::SeqCst);
 }
 
 /// Reload watcher with the new path from config
@@ -165,6 +171,8 @@ fn submit_to_debounce_pool(path: PathBuf) {
 /// record + thumbnail.
 fn submit_removal_to_watcher(path: PathBuf) {
     spawn(async move {
+        // The worker checks the path lease and generation before pruning, so
+        // an API move/delete echo cannot remove a row the request still owns.
         if let Err(e) = submit_watcher_remove(path).await {
             warn!("removal submit failed: {e:#}");
         }
@@ -192,7 +200,7 @@ pub(crate) fn handle_removed_file(removed: &Path) -> Option<RemovalAction> {
     let matching: Option<AbstractData> = {
         // Short watcher-side scan on the blocking pool; no Rayon work is
         // nested while the guard is held.
-        let tree = TREE.in_memory.read().expect("lock poisoned");
+        let tree = crate::storage::db::snapshot_tree();
         tree.iter()
             .find(|dt| {
                 dt.abstract_data
@@ -284,6 +292,7 @@ pub(crate) fn rename_paths(event: &Event) -> (Option<PathBuf>, Option<PathBuf>) 
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&Path>) {
     // Overflow / rescan: a backend may have missed events, so force a
     // full rescan of the affected root instead of reacting to the
@@ -329,24 +338,64 @@ pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&
         }
 
         EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
-            // notify delivers (from, to) in this order. Submit a removal
-            // for the old path and an index for the new path so the row
-            // follows without waiting for a sweep (REQ-2). Directory renames
-            // are intentionally not handled here (REQ-3).
+            // notify delivers (from, to) in this order.
             let (old, new) = rename_paths(&event);
-            if let Some(old) = old
-                && is_valid_media_file(&old)
+            // Directory rename (REQ-3): rewrite every descendant row to the
+            // new prefix in one step, preserving assetId and sidecar
+            // association, without decoding. Detected after the FS move via
+            // `new.is_dir()`.
+            if let (Some(old), Some(new)) = (&old, &new)
+                && new.is_dir()
             {
-                submit_removal_to_watcher(old);
-            }
-            if let Some(new) = new
-                && is_valid_media_file(&new)
-            {
-                submit_to_debounce_pool(new);
+                let old = old.clone();
+                let new = new.clone();
+                spawn(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        // A subtree lease makes every verify or watcher removal
+                        // under the old or new prefix skip while rows are
+                        // rewritten.
+                        let _lease = crate::tasks::path_epoch::lease_subtree(old.clone());
+                        let _new_lease = crate::tasks::path_epoch::lease_subtree(new.clone());
+                        crate::tasks::path_epoch::bump(&old);
+                        crate::tasks::path_epoch::bump(&new);
+                        crate::process::dir_album::rewrite_dir_album_cache_prefix(&old, &new);
+                        crate::router::put::assign_album::update_asset_tables_after_dir_move(
+                            &old, &new,
+                        )
+                        .map_err(|e| anyhow::anyhow!("{e}"))?;
+                        crate::storage::tree_view::bump_tree_epoch();
+                        Ok::<(), anyhow::Error>(())
+                    })
+                    .await;
+                    match result {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            warn!("directory rename row rewrite failed: {e:#}");
+                        }
+                        Err(e) => warn!("directory rename task panicked: {e}"),
+                    }
+                });
+            } else {
+                // File rename (REQ-2): submit a removal for the old path and
+                // an index for the new path so the row follows without
+                // waiting for a sweep.
+                if let Some(old) = old
+                    && is_valid_media_file(&old)
+                {
+                    submit_removal_to_watcher(old);
+                }
+                if let Some(new) = new
+                    && is_valid_media_file(&new)
+                {
+                    submit_to_debounce_pool(new);
+                }
             }
         }
 
         EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+            // Directory case: the old path is already gone and there is no
+            // destination here; a RenameMode::To/Both event carries the
+            // destination, so directory renames are ignored in this arm.
             for path in &event.paths {
                 if is_valid_media_file(path) {
                     submit_removal_to_watcher(path.clone());

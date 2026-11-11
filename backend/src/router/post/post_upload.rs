@@ -331,10 +331,7 @@ pub async fn upload(
             ))
             .await
             .or_raise(|| (ErrorKind::Internal, "Failed to join flush task"))?;
-        crate::tasks::BATCH_COORDINATOR
-            .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
-            .await
-            .or_raise(|| (ErrorKind::Internal, "Failed to join tree update"))?;
+        crate::storage::tree_view::tree_changed();
     }
 
     Ok(())

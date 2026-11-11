@@ -18,7 +18,6 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::queue::submit_interactive_album;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -38,7 +37,11 @@ pub struct DeleteList {
     timestamp: i64,
 }
 
-type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
+type DeleteResult = (
+    Vec<AbstractData>,
+    Vec<ArrayString<64>>,
+    crate::tasks::path_epoch::PathLease,
+);
 
 /// Delete the listed assets: files, sidecars and metadata rows are removed.
 ///
@@ -97,7 +100,7 @@ pub async fn delete_data(
         ));
     }
 
-    let (abstract_data_to_remove, all_affected_album_ids) = tokio::task::spawn_blocking({
+    let (abstract_data_to_remove, all_affected_album_ids, _lease) = tokio::task::spawn_blocking({
         let asset_ids = json_data.asset_ids.clone();
         let timestamp = json_data.timestamp;
         let caller = caller.clone();
@@ -123,10 +126,7 @@ pub async fn delete_data(
             .or_raise(|| (ErrorKind::Internal, "Failed to execute flush tree task"))?;
     }
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute update tree task"))?;
+    crate::storage::tree_view::tree_changed();
 
     try_join_all(
         all_affected_album_ids
@@ -203,6 +203,39 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
             let _ = std::fs::remove_dir_all(dir_path);
         }
     }
+}
+
+/// Bump and lease every path this delete request touches. Media records take
+/// exact path leases; album records take a subtree lease because their
+/// descendants are removed by directory.
+fn lease_deleted_paths(
+    collected: &[(
+        crate::model::abstract_data::AbstractData,
+        Vec<ArrayString<64>>,
+    )],
+) -> crate::tasks::path_epoch::PathLease {
+    let mut exact = Vec::new();
+    let mut subtrees = Vec::new();
+    for (data, _) in collected {
+        match data {
+            crate::model::abstract_data::AbstractData::Album(album)
+                if !album.metadata.dir_path.is_empty() =>
+            {
+                subtrees.push(std::path::PathBuf::from(&album.metadata.dir_path));
+            }
+            _ => {
+                if let Some(entry) = data.path() {
+                    exact.push(std::path::PathBuf::from(&entry.file));
+                }
+            }
+        }
+    }
+    let lease =
+        crate::tasks::path_epoch::lease_all(exact.iter().cloned(), subtrees.iter().cloned());
+    for path in exact.iter().chain(subtrees.iter()) {
+        crate::tasks::path_epoch::bump(path);
+    }
+    lease
 }
 
 /// Process deletions by asset ID.
@@ -296,6 +329,11 @@ fn process_deletes(
         collected.push((abstract_data, affected_albums));
     }
 
+    // Lease every resolved path across the filesystem + row transaction so a
+    // concurrent watcher removal or sweep verify skips instead of pruning or
+    // detaching a row this request owns.
+    let lease = lease_deleted_paths(&collected);
+
     // Second pass: perform deletions now that all entries validated.
     for (abstract_data, affected_albums) in collected {
         // Delete asset file + sidecar from disk.
@@ -333,7 +371,7 @@ fn process_deletes(
         abstract_data_to_remove.push(abstract_data);
     }
 
-    Ok((abstract_data_to_remove, all_affected_album_ids))
+    Ok((abstract_data_to_remove, all_affected_album_ids, lease))
 }
 
 /// Revoke an invite token.
@@ -448,10 +486,7 @@ pub async fn delete_user_handler(
     tokio::task::spawn_blocking(move || crate::auth::users::delete_user(&user_id))
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-    crate::tasks::BATCH_COORDINATOR
-        .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
     Ok(())
 }
 

@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use crate::model::response::DatabaseTimestamp;
-use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64};
+use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64, atomic::AtomicU64};
 
 pub struct Tree {
     pub in_disk: &'static redb::Database,
@@ -17,18 +17,17 @@ pub struct Tree {
 
 pub static TREE: LazyLock<Tree> = LazyLock::new(Tree::new);
 
-/// Clone the in-memory tree under a short read guard and return the owned rows.
-///
-/// Rayon callers must process the returned `Vec` instead of iterating while
-/// the guard is live. The shared pool can steal the cascade's tree-refresh
-/// job during a `par_iter`; that job's write blocks on a live read guard while
-/// the join waits for the very worker that took the write, deadlocking the
-/// pool. Cloning first keeps the guard scope to the copy.
-pub fn snapshot_tree() -> Vec<DatabaseTimestamp> {
-    TREE.in_memory.read().expect("lock poisoned").clone()
-}
+pub use crate::storage::tree_view::snapshot_tree;
 
 pub static VERSION_COUNT_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
+
+/// Strictly monotonic counter advanced once per cache invalidation.
+///
+/// Unlike `VERSION_COUNT_TIMESTAMP` (a wall-clock millisecond identity used for
+/// on-disk query-snapshot table names and expiry bookkeeping), this never
+/// resets and never collides across invalidations that land in the same
+/// millisecond. Hashed into prefetch cache keys so a bump always changes them.
+pub static INVALIDATION_VERSION: AtomicU64 = AtomicU64::new(0);
 
 static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Vec<DatabaseTimestamp>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(vec![])));
@@ -63,49 +62,49 @@ pub struct TagInfo {
     pub number: usize,
 }
 
+pub fn read_tags(caller: &str) -> Vec<TagInfo> {
+    // ... (unchanged)
+    let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
+
+    // `par_bridge` runs on the interactive pool (scoped below), never the
+    // bulk pool: tag enumeration is a request-path join and must not
+    // queue behind scan work. Snapshot first so no tree guard is held
+    // across pool work and a stale view is rebuilt once.
+    let tree = snapshot_tree();
+    crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
+        tree.iter().par_bridge().for_each(|database_timestamp| {
+            let abstract_data = &database_timestamp.abstract_data;
+
+            // Visibility: never count personal items owned by another user,
+            // nor the users root.
+            if let Some(path) = abstract_data.visibility_path()
+                && !crate::storage::files::visible_to(caller, &path)
+            {
+                return;
+            }
+
+            // Count regular tags only
+            for tag in abstract_data.tag() {
+                let counter = tag_counts
+                    .entry(tag.clone())
+                    .or_insert_with(|| AtomicUsize::new(0));
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        let tag_infos: Vec<TagInfo> = tag_counts
+            .par_iter()
+            .map(|entry| TagInfo {
+                tag: entry.key().clone(),
+                number: entry.value().load(Ordering::Relaxed),
+            })
+            .collect();
+
+        tag_infos
+    })
+}
+
 impl Tree {
-    pub fn read_tags(&'static self, caller: &str) -> Vec<TagInfo> {
-        // ... (unchanged)
-        let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
-
-        // `par_bridge` runs on the interactive pool (scoped below), never the
-        // bulk pool: tag enumeration is a request-path join and must not
-        // queue behind scan work. Clone under a short guard first so no tree
-        // guard is held across pool work.
-        let tree = self.in_memory.read().expect("lock poisoned").clone();
-        crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
-            tree.iter().par_bridge().for_each(|database_timestamp| {
-                let abstract_data = &database_timestamp.abstract_data;
-
-                // Visibility: never count personal items owned by another user,
-                // nor the users root.
-                if let Some(path) = abstract_data.visibility_path()
-                    && !crate::storage::files::visible_to(caller, &path)
-                {
-                    return;
-                }
-
-                // Count regular tags only
-                for tag in abstract_data.tag() {
-                    let counter = tag_counts
-                        .entry(tag.clone())
-                        .or_insert_with(|| AtomicUsize::new(0));
-                    counter.fetch_add(1, Ordering::Relaxed);
-                }
-            });
-
-            let tag_infos: Vec<TagInfo> = tag_counts
-                .par_iter()
-                .map(|entry| TagInfo {
-                    tag: entry.key().clone(),
-                    number: entry.value().load(Ordering::Relaxed),
-                })
-                .collect();
-
-            tag_infos
-        })
-    }
-
     /// Return all filesystem-backed (dir) albums, composed from each album's
     /// identity `AssetRecord` plus its stored metadata payload.
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {

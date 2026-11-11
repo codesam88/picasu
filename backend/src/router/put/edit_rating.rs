@@ -11,7 +11,6 @@ use crate::storage::db::open_tree_snapshot_table;
 use crate::storage::files::write_gate;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 
@@ -137,10 +136,7 @@ pub async fn edit_rating(
     let _ = BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![]))
         .await;
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
 
     Ok(Json(()))
 }
