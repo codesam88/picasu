@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "description": "Filesystem and API boundary events plus recovery cases: each carries effects (settled state) and known faults.",
   "events": [
     {
       "name": "FS_CREATE",

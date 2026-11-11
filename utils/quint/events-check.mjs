@@ -54,6 +54,9 @@ const todoRefs = []
 
 // Top-level sanity.
 if (typeof eventsDoc.version !== 'number') fail('events.json: missing/invalid version')
+if (typeof eventsDoc.description !== 'string' || eventsDoc.description.trim() === '') {
+  fail('events.json: missing/empty top-level description')
+}
 
 for (let i = 0; i < entries.length; i++) {
   const ev = entries[i]

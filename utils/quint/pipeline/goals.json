@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "description": "Goals for the index pipeline: outcome claims with a decision (committed, queued, dropped), model or code anchors, and the assumptions they rely on.",
   "goals": [
     {
       "id": "G0",

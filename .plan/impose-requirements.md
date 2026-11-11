@@ -7,7 +7,7 @@ area: backend
 
 ## Goal
 
-Implement the implementation obligations in `specs/requirements.json`
+Implement the implementation obligations in `utils/quint/pipeline/requirements.json`
 (REQ-2..7, REQ-9..14) so the index pipeline matches the proved
 eventual-consistency model. Each obligation gets a gate test first, then
 the smallest code change that makes it pass. Requirement statuses move
@@ -29,18 +29,26 @@ reprocess. They return with the implementation preserved on
   `PICASU_INDEX_BACKSTOP_INTERVAL_SECS`. Per-root scan; a global job is
   accepted because it is stronger than the required per-root non-overlap.
   A tick during a cycle coalesces into one follow-up.
-- Scan-vs-mutation coordination: one shared mutation gate. Sweep and the
-  path-mutating API (assign/delete/directory move) hold it across their
-  filesystem+row transaction; the scan walk does not. This is the
-  smallest mechanism that satisfies REQ-7 without blocking reads.
+- Scan-vs-mutation coordination: per-path epochs plus short leases. A
+  sweep enqueues per-file `Verify` work; a verify prunes only when the path
+  epoch still matches, no lease is held, and the file is still absent.
+- Scan ownership: one scan scheduler owns every trigger (API, backstop,
+  `Flag::Rescan`). It keeps the remaining work queue, deduplicates a new
+  request against entries already queued, and trickle-feeds the Rayon
+  pool. Shutdown stops the watcher, discards the queue, and lets only
+  in-flight jobs finish (see C3).
+- Writer side effects: redb writes increment an epoch. Global in-memory
+  `TREE` views are not rebuilt on every flush; a client requests a scoped
+  view when it needs one (see C4).
 - Renames: factor notify event classification into a pure function so
   rename handling is testable. File rename submits old-path removal plus
   new-path index; directory rename removes rows under the old prefix and
   indexes the new tree.
-- Atomic writes (REQ-13) are verification-only: the temp+rename helpers
-  already replace atomically; add an injected partial-write failure and
-  pin the target bytes. No production behaviour change unless the gate
-  exposes a gap.
+- Atomic writes (REQ-13) use one shared `tempfile::NamedTempFile::persist`
+  mechanism with an obvious temp name
+  (`.{event}-{filename}.{pid}.{seq}.tmp`). A startup sweep removes temp
+  files whose owning pid is dead or whose mtime is old. Concurrent
+  read-modify-write and fsync policy remain open follow-ups (C6).
 - One branch/stacked PR to `spec/quint-index-pipeline`. Commit after each
   reviewed step; push after each phase so CI verifies the chain.
 
@@ -84,12 +92,13 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
 
 ### Phase 2 - coordination before extra scan triggers
 
-- **S7 [ ] REQ-7: scans coordinate with mutating API work**.
-  Scope: new mutation gate module, `album_index.rs` sweep, `assign_album.rs`,
+- **S7 [DONE] REQ-7: scans coordinate with mutating API work**.
+  Scope: `tasks/path_epoch.rs`, `album_index.rs` sweep, `assign_album.rs`,
   `delete.rs`, directory-move path.
-  RED: a scan paused before sweep plus an overlapping assign must keep the
-  moved row and its sidecar; today the sweep can prune it. Add the gate,
-  plus a focused primitive test and the integration overlap test.
+  RED: a scan sweep plus an overlapping assign must keep the moved row and
+  its sidecar. The final mechanism is per-path generations and short
+  leases, with the sweep enqueueing Verify-lane work; the earlier global
+  gate was replaced in the course correction (C2).
 
 ### Phase 3 - scan triggers and cycle semantics
 
@@ -98,12 +107,12 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
   RED: extract a pure event classifier/root selector; a synthetic
   `EventKind::Other` + `Flag::Rescan` resolves to the affected root and
   submits a rescan. Wire the watcher loop to it.
-- **S9 [ ] REQ-6: configurable per-root backstop scan**.
+- **S9 [DONE] REQ-6: configurable per-root backstop scan**.
   Scope: `model/config.rs`, `docs/config.md`, `lib.rs`/looper.
   RED: config parses/validates/defaults the interval; with a 50 ms
   interval and the watcher disabled, a missed change converges within one
   cycle. Default `0` starts no loop.
-- **S10 [ ] REQ-14: non-overlapping, drain-complete backstop cycles**.
+- **S10 [DONE] REQ-14: non-overlapping, drain-complete backstop cycles**.
   Scope: backstop scheduler.
   RED: a scheduler state-machine test: tick during a running cycle marks
   one pending follow-up, never overlaps, and completes when the scan and
@@ -111,11 +120,11 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
 
 ### Phase 4 - watcher renames
 
-- **S11 [ ] REQ-2: file rename submits remove plus create**.
+- **S11 [DONE] REQ-2: file rename submits remove plus create**.
   Scope: `start_watcher.rs` + batching.
   RED: real-FS rename of a watched file; the row disappears at the old
   path and appears at the new one without a sweep.
-- **S12 [ ] REQ-3: directory rename follows descendants**.
+- **S12 [DONE] REQ-3: directory rename follows descendants**.
   Scope: `start_watcher.rs`, album index/asset store prefix query.
   RED: real-FS rename of a watched directory; every descendant row moves
   to the new path with assetId preserved and no ghosts.
@@ -123,9 +132,95 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
 ### Deferred
 
 - **REQ-1** sidecar identity for the hash short-circuit: returns with the
-  optimization; gate stays recorded in `specs/requirements.json`.
+  optimization; gate stays recorded in `utils/quint/pipeline/requirements.json`.
 - **REQ-8** per-row thumbnail checksum: needs a skip consumer; rescans
   already regenerate derived artifacts. Returns with REQ-1.
+
+REQ-1 and REQ-8 remain `open` in `utils/quint/pipeline/requirements.json`; every other
+obligation is `verified` by a gate test.
+
+## Course correction (review 2026-11-11)
+
+The first pass satisfied the clauses individually but introduced
+process-wide coordination and unbounded writer side effects. The branch
+must not merge until C1 is green. Easy items land first; C1..C5 are
+bounded follow-up steps.
+
+### Easy items (land first)
+
+- **C6 [done] REQ-13: shared named-temp atomic write**.
+  Problem: `write_via_temp` uses a deterministic `.{filename}.tmp`, so
+  two writers to one sidecar collide, and the name carries no owner.
+  Fix: move `tempfile` to runtime dependencies; stage through
+  `NamedTempFile::persist` using `.{event}-{filename}.{pid}.{seq}.tmp`.
+  Add a startup sweep for our temp names whose pid is dead or whose
+  mtime is old. Open follow-ups: concurrent read-modify-write on a
+  sidecar is still last-writer-wins; no fsync policy is defined.
+- **C7 [done] REQ-9: orphan sidecar detection memory**.
+  Problem: the scan collects every media stem in a second `Vec` for the
+  whole walk, O(files) memory on a millions-image library.
+  Fix: collect only `.xmp` paths; check sibling media on demand per
+  sidecar. Log-only semantics unchanged.
+- **C8 [done] REQ-10: upload temp naming and sweep**.
+  Problem: `{filename}-{uuid}.tmp` is valid-looking and invisible to a
+  simple lifecycle rule.
+  Fix: stage uploads as `.upload-{filename}.{pid}.{seq}.tmp` and detect
+  residue by owner pid/mtime. Upload semantic rewrite (type/name checks,
+  then save; schedule a scan only when no watcher is active; progress
+  notification) waits for C3 because it needs scheduler-owned intake.
+
+### Structural work
+
+- **C1 [done] Shutdown lifecycle (REQ-6/REQ-14)**.
+  Reproduced: SIGINT makes Rocket unreachable but the process stays
+  alive. With `index_backstop_interval_secs=2` and a 500-image scan,
+  exit took 70 s; 100 images exited promptly. GDB shows `shutdown_writer`
+  waiting on the cascade barrier while the cascade task runs a full
+  `refresh_tree_cache`; the backstop handle is dropped and the active
+  index job is neither cancelled nor awaited.
+  Fix: `tasks/lifecycle.rs` owns the backstop and expire handles; shutdown
+  stops the watcher, rejects new intake, cancels and awaits the scan job,
+  discards queued work, and only then drains the writer.
+  Gate: process-level SIGTERM test with a backstop and a library large
+  enough to produce several flush batches; assert exit within seconds.
+- **C2 [done] REQ-7: path-scoped coordination**.
+  Serializing unrelated albums and holding API requests behind a whole
+  sweep is over-strong. Implement path epochs/leases and a `Verify` lane;
+  directory moves lease a subtree epoch.
+- **C3 [done] Scan scheduler ownership**.
+  Move scan triggers into one scheduler that owns the queue, dedupes
+  against remaining work, and trickle-feeds Rayon. The backstop awaits
+  its cycle instead of polling global status. Shutdown discards queued
+  work and awaits in-flight jobs only.
+- **C4 [done] Writer epoch / lazy tree view**.
+  Writers advance an epoch on redb writes; `snapshot_tree` rebuilds lazily
+  when the epoch moved. A scan no longer triggers a full rebuild per
+  flush, which removes the O(batches × assets) cost and the shutdown
+  backlog. A query-scoped view remains an open optimisation.
+- **C5 [open] Watcher rename robustness**.
+  Handle split `From`/`To` directory renames and replace the
+  `new.is_dir()` TOCTOU with explicit pairing. Watcher removals use the
+  path epoch, not the gate.
+
+### Review dispositions (2026-11-11)
+
+Two independent review passes (coverage + adversarial) found:
+
+- **Fixed**: API album move now leases source/destination subtrees and
+  bumps their generations; dir-album verifies re-resolve the album id.
+- **Fixed**: writer sequence allocation and send are serialized,
+  watermarks use `fetch_max`, barriers wait for their own marker, and
+  submissions after the final barrier are rejected.
+- **Fixed**: thumbnail deletion moved into the confirmed writer removal;
+  the sweep no longer deletes renditions before the verify checks.
+- **Fixed**: a failed tree-view rebuild keeps the previous view; cache
+  invalidation advances the epoch instead of clearing the built marker.
+- **Fixed**: verify items capture the current generation instead of
+  bumping it; skipped items release their generation; scan/watcher
+  indexing skips a leased path; delete holds leases across the row
+  flush.
+- **Open optimisation**: a lazy rebuild still runs a full redb scan and
+  sort on the requesting thread; a query-scoped view is the follow-up.
 
 ## Verification per step
 
@@ -134,7 +229,7 @@ GREEN, review, commit. Test-only steps state why no RED is possible.
 - `just backend-test` for each backend step (serial, no concurrent runs).
 - `just check` package before push; `spec-check`, `catalog-check`,
   `events-check`, `plan-lint`, `gates-check`, prettier on doc changes.
-- Update `specs/requirements.json` status and regenerate
+- Update `utils/quint/pipeline/requirements.json` status and regenerate
   `docs/eventual-consistency.md` when the status changes.
 - Push after each phase; open one stacked draft PR to
   `spec/quint-index-pipeline` and read CI before starting the next phase.
