@@ -146,32 +146,81 @@ pub async fn submit_index(src: &Path, job_id: u64) -> Result<()> {
 pub async fn process_file(path: PathBuf) -> Result<()> {
     use crate::tasks::queue::writer::submit_flush_insert;
 
+    // Per-path try-and-abort (C10): capture the generation observed at entry.
+    // A concurrent mutation that bumps the path's generation or holds a lease
+    // after this point cancels the scan; the result is dropped instead of
+    // flushing stale data over the mutation.
+    let baseline_generation = crate::tasks::path_epoch::current_generation(&path);
+
+    let aborted = || {
+        crate::tasks::path_epoch::superseded(
+            baseline_generation,
+            crate::tasks::path_epoch::is_busy(&path),
+            crate::tasks::path_epoch::current_generation(&path),
+        )
+    };
+
+    if aborted() {
+        return Ok(());
+    }
+
     let album_id_opt = match path.parent().and_then(get_album_id_for_dir) {
         Some(id) => Some(id),
         None => ensure_dir_albums(&path).await,
     };
 
+    if aborted() {
+        return Ok(());
+    }
+
     let file = stage_open(&path).await?;
+
+    if aborted() {
+        return Ok(());
+    }
+
     let hash = stage_hash(file).await?;
 
-    let abstract_data_opt = stage_dedup(path, hash, album_id_opt).await?;
+    if aborted() {
+        return Ok(());
+    }
+
+    let abstract_data_opt = stage_dedup(path.clone(), hash, album_id_opt).await?;
     let Some(abstract_data) = abstract_data_opt else {
         return Ok(());
     };
 
+    if aborted() {
+        return Ok(());
+    }
+
     let outcome = stage_index(abstract_data).await?;
     let data = outcome.data;
+
+    if aborted() {
+        return Ok(());
+    }
+
     if data.is_video() && outcome.result.is_ok() {
         // Video files flush twice, as before: the pending record first, then
         // the transcoded record from the video stage.
+        if aborted() {
+            return Ok(());
+        }
         submit_flush_insert(vec![data.clone()])
             .await
             .map_err(|e| anyhow::anyhow!("writer submit failed: {e:#}"))?;
         let (video_data, video_result) = stage_video(data).await?;
+        if aborted() {
+            return Ok(());
+        }
         submit_flush_insert(vec![video_data])
             .await
             .map_err(|e| anyhow::anyhow!("writer submit failed: {e:#}"))?;
         return video_result;
+    }
+    if aborted() {
+        return Ok(());
     }
     submit_flush_insert(vec![data])
         .await

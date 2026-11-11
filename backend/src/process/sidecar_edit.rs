@@ -103,6 +103,20 @@ fn commit_with(
     store: &mut impl FnMut(&ArrayString<64>, &AbstractData) -> Result<(), AppError>,
     write: &mut impl FnMut(&AbstractData) -> io::Result<()>,
 ) -> Result<(), AppError> {
+    // Lease every edited path for the commit duration, so an in-flight scan
+    // aborts instead of flushing stale metadata over this edit and the
+    // generation is released when the commit (and its lease) ends. The paths
+    // mirror the bump loop this replaces: albums use their directory, other
+    // items use their source path.
+    let edited_paths: Vec<std::path::PathBuf> = items
+        .iter()
+        .map(|item| match &item.data {
+            AbstractData::Album(album) => std::path::PathBuf::from(&album.metadata.dir_path),
+            _ => item.data.source_path(),
+        })
+        .collect();
+    let _lease = crate::tasks::path_epoch::lease_paths(edited_paths);
+
     // Only the writes that landed. The item that failed is not among them: a
     // write that reports failure leaves its file as it was (the writer stages
     // a temp file beside the target and renames on success), and restoring a
@@ -551,5 +565,39 @@ mod tests {
             SEED,
             "the sidecar is untouched"
         );
+    }
+
+    #[test]
+    fn commit_with_releases_per_path_generation() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let items = two_items(dir.path());
+        let paths: Vec<std::path::PathBuf> = items
+            .iter()
+            .map(|item| match &item.data {
+                AbstractData::Album(album) => std::path::PathBuf::from(&album.metadata.dir_path),
+                _ => item.data.source_path(),
+            })
+            .collect();
+        for p in &paths {
+            assert_eq!(
+                crate::tasks::path_epoch::current_generation(p),
+                None,
+                "precondition: no generation before commit"
+            );
+        }
+        commit_with(
+            &items,
+            &mut |_id: &ArrayString<64>, _data: &AbstractData| Ok(()),
+            &mut |_data: &AbstractData| Ok(()),
+        )
+        .expect("commit succeeds");
+        for p in &paths {
+            assert_eq!(
+                crate::tasks::path_epoch::current_generation(p),
+                None,
+                "commit_with leaked a generation for {}",
+                p.display()
+            );
+        }
     }
 }

@@ -25,11 +25,6 @@ pub(crate) fn next_generation(path: &Path) -> u64 {
     *slot
 }
 
-/// Mark `path` as touched without enqueueing work.
-pub(crate) fn bump(path: &Path) {
-    let _ = next_generation(path);
-}
-
 /// Latest submitted generation for `path`, if any.
 pub(crate) fn current_generation(path: &Path) -> Option<u64> {
     GENERATIONS.get(path).map(|entry| *entry)
@@ -45,10 +40,14 @@ pub(crate) fn release_generation(path: &Path, generation: u64) {
 pub(crate) struct PathLease {
     exact: Vec<PathBuf>,
     subtrees: Vec<PathBuf>,
+    generations: Vec<(PathBuf, u64)>,
 }
 
 impl Drop for PathLease {
     fn drop(&mut self) {
+        for (path, generation) in &self.generations {
+            release_generation(path, *generation);
+        }
         for path in &self.exact {
             decrement(path, &EXACT_LEASES);
         }
@@ -77,18 +76,22 @@ pub(crate) fn lease_paths(paths: impl IntoIterator<Item = PathBuf>) -> PathLease
         if lease.exact.contains(&path) {
             continue;
         }
+        let generation = next_generation(&path);
         *EXACT_LEASES.entry(path.clone()).or_insert(0) += 1;
-        lease.exact.push(path);
+        lease.exact.push(path.clone());
+        lease.generations.push((path, generation));
     }
     lease
 }
 
 /// Lease a directory subtree for the duration of the returned guard.
 pub(crate) fn lease_subtree(path: PathBuf) -> PathLease {
+    let generation = next_generation(&path);
     *SUBTREE_LEASES.entry(path.clone()).or_insert(0) += 1;
     PathLease {
         exact: Vec::new(),
-        subtrees: vec![path],
+        subtrees: vec![path.clone()],
+        generations: vec![(path, generation)],
     }
 }
 
@@ -99,10 +102,23 @@ pub(crate) fn lease_all(
 ) -> PathLease {
     let mut lease = lease_paths(exact);
     for path in subtrees {
+        let generation = next_generation(&path);
         *SUBTREE_LEASES.entry(path.clone()).or_insert(0) += 1;
-        lease.subtrees.push(path);
+        lease.subtrees.push(path.clone());
+        lease.generations.push((path, generation));
     }
     lease
+}
+
+/// Pure decision rule for "is this scan superseded / should it abort".
+///
+/// `baseline` is the generation observed when the scan entered `process_file`;
+/// `busy` reports a live mutation lease on the path; `current` is the
+/// path's generation now. A scan proceeds only when the path is free and
+/// the generation is unchanged. A newly submitted path with no baseline
+/// (`None -> Some`) also aborts.
+pub(crate) fn superseded(baseline: Option<u64>, busy: bool, current: Option<u64>) -> bool {
+    busy || current != baseline
 }
 
 /// Whether `path` has a live mutation. A subtree lease on any ancestor
@@ -169,6 +185,36 @@ mod tests {
         let l = lease_paths([p.clone(), p.clone()]);
         drop(l);
         assert!(!is_busy(&p));
+    }
+
+    #[test]
+    fn superseded_truth_table() {
+        // Equal generation, free path: proceed.
+        assert!(!super::superseded(Some(5), false, Some(5)));
+        // Moved generation: abort.
+        assert!(super::superseded(Some(5), false, Some(6)));
+        // Busy aborts even with equal generation.
+        assert!(super::superseded(Some(5), true, Some(5)));
+        // None -> Some (new submit, no baseline): abort.
+        assert!(super::superseded(None, false, Some(1)));
+        // Free, no generation on either side: proceed.
+        assert!(!super::superseded(None, false, None));
+        // Generation released (Some -> None): abort.
+        assert!(super::superseded(Some(5), false, None));
+        // Busy aborts regardless of generation.
+        assert!(super::superseded(None, true, None));
+        assert!(super::superseded(Some(5), true, Some(6)));
+    }
+
+    #[test]
+    fn lease_releases_generation_on_drop() {
+        let path = PathBuf::from("/photos/lease_gen.jpg");
+        assert_eq!(current_generation(&path), None);
+        {
+            let _lease = lease_paths([path.clone()]);
+            assert!(current_generation(&path).is_some());
+        }
+        assert_eq!(current_generation(&path), None);
     }
 
     #[test]
