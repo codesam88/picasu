@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: feature
 priority: medium
 area: backend
@@ -30,14 +30,16 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
 - SCOPE-4/5/6 (atomic worker step, synchronous direct writes,
   completed-write crashes) are the lifting targets; each lifted
   micro-stage gets a scope entry with bound/why-safe/lifting.
-- 2026-11-12: operation x aspect survey delegated (worker) — pending.
+- 2026-11-12: survey complete, filed as N1–N13 with provenance +
+  status tags; N3 guarded by C5, N11 refuted against the tree,
+  N13 added from C11.
 
 ## Steps
 
-1. [in-progress] Survey: operation x aspect matrix with R/W/- markers
+1. [done] Survey: operation x aspect matrix with R/W/- markers
    plus pairwise interleaving hazards with file:line evidence.
-2. Interaction nodes: record each hazard as a modeling node (aspects
-   involved, interleaving, guard in code or missing guard).
+2. [done] Interaction nodes N1–N13 (aspects, interleaving, guard or
+   gap); `[verify]` items resolved where the tree already answers.
 3. State extension: aspect-level fields + invariants; keep bounds small.
 4. Actions: one action per mutating op at aspect granularity; lift the
    SCOPE-4/5/6 deferrals it covers.
@@ -65,7 +67,10 @@ survey claim contradicts a done item — re-check the tree first.
   C10 leases. Model the re-check + lease rule (replaces old
   Verify-lane actions).
 - N3 dir-move vs in-flight intake + crash between FS move and row
-  rewrite; split `From`/`To` dir events unhandled. [open] C5-adjacent.
+  rewrite; split `From`/`To` dir events. [guarded 2026-11-12 by C5:
+  cookie-paired prefix rewrite, DB-state fallback for unpaired halves,
+  expired entries drain to removals]. Residual for the model: crash
+  between FS move and row rewrite still heals only via sweep/backstop.
 - N4 concurrent sidecar edits: read-modify-write LWW, best-effort
   rollback leaves sidecar ahead of cache. [open].
 - N5 assign cross-table writes (`put`/`remove` path maps, per-record
@@ -75,13 +80,20 @@ survey claim contradicts a done item — re-check the tree first.
   id. [open] (returns with REQ-8).
 - N7 sidecar-only watcher events dropped (`.xmp` filtered) — delayed
   metadata until media rescan. [open].
-- N8 upload 200-before-visibility (barrier covers old coordinator,
-  not serial writer). [verify] may predate C3 upload rewrite.
+- N8 upload 200-before-visibility. [open, still current 2026-11-12:
+  `post_upload.rs` waits on `FlushTreeTask::insert([])` + `tree_changed()`.
+  Model must decide whether the empty insert actually barriers the
+  serial writer/cascade; if not, it is a real premature-ack hazard.]
 - N9 reset drops tables but leaves derived bytes orphaned. [open,
   minor].
 - N10 share/cover edits are DB-only with no lease; can race a scan
   of the same album. [open, minor].
-- N11 rotate thumbnail-before-sidecar window. [verify] contradicts
-  REQ-11 done (sidecar first) — re-check tree before modeling.
+- N11 rotate thumbnail-before-sidecar window. [refuted 2026-11-12:
+  `rotate_image.rs` persists the sidecar before generating the
+  thumbnail and flushing the DB. Do not model; survey claim was stale.]
 - N12 sweep hash-group cross-root reap. [guarded] closed by C9
   exact-path batches. Model the exact-path rule.
+- N13 cascade album stats vs concurrent member writes (from C11).
+  [guarded] stats compute from a per-entry snapshot; the write txn
+  re-checks liveness per member/row; read/write races re-mark pending
+  for the next cascade. Bounded staleness, no lost update.
