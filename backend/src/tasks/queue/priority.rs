@@ -1,14 +1,12 @@
 //! Priority lanes for background intake items, strongest first:
-//! `Interactive > Watcher > Scan > Expire > Verify`.
+//! `Interactive > Watcher > Scan > Expire`.
 //!
-//! Slice 2b wires `Interactive`, `Watcher`, `Scan`, and `Expire`; `Verify`
-//! stays reserved. Dequeue order is smooth weighted round-robin over the
-//! lanes that currently hold items, plus aging: a lane that is ready but
-//! unserved for [`MAX_SKIPS`] consecutive picks is served next regardless of
-//! deficit, which bounds starvation when a high-weight lane floods.
+//! Dequeue order is smooth weighted round-robin over the lanes that
+//! currently hold items, plus aging: a lane that is ready but unserved for
+//! [`MAX_SKIPS`] consecutive picks is served next regardless of deficit,
+//! which bounds starvation when a high-weight lane floods.
 
 /// Background-job priority lane carried on every intake item.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Priority {
     /// Interactive request-path work (fastest lane).
@@ -19,8 +17,6 @@ pub enum Priority {
     Scan,
     /// Expiry work.
     Expire,
-    /// Verify/GC work (slowest lane, reserved).
-    Verify,
 }
 
 impl Priority {
@@ -31,11 +27,11 @@ impl Priority {
 }
 
 /// Number of scheduler lanes (one per [`Priority`] variant).
-pub const LANE_COUNT: usize = 5;
+pub const LANE_COUNT: usize = 4;
 
 /// Weighted round-robin weights per lane, strongest lane first:
-/// Interactive 8, Watcher 4, Scan 2, Expire 1, Verify 1.
-pub const LANE_WEIGHTS: [i32; LANE_COUNT] = [8, 4, 2, 1, 1];
+/// Interactive 8, Watcher 4, Scan 2, Expire 1.
+pub const LANE_WEIGHTS: [i32; LANE_COUNT] = [8, 4, 2, 1];
 
 /// Consecutive ready-but-unserved picks after which a lane is served
 /// regardless of deficit (aging). Weighted round-robin alone cannot starve
@@ -131,18 +127,18 @@ mod tests {
 
     #[test]
     fn weights_hold_over_a_window() {
-        // One full smooth-WRR cycle (sum of weights = 16 picks) serves each
+        // One full smooth-WRR cycle (sum of weights = 15 picks) serves each
         // lane exactly its weight; ten cycles must match exactly.
         let mut state = SchedulerState::default();
         let mut counts = [0u32; LANE_COUNT];
-        for _ in 0..160 {
+        for _ in 0..150 {
             let winner = pick_lane([true; LANE_COUNT], &mut state).expect("a lane is ready");
             counts[winner] += 1;
         }
         assert_eq!(
             counts,
-            [80, 40, 20, 10, 10],
-            "served counts must match lane weights 8/4/2/1/1"
+            [80, 40, 20, 10],
+            "served counts must match lane weights 8/4/2/1"
         );
     }
 

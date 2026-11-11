@@ -39,17 +39,6 @@ async fn dispatch_item(item: IntakeItem) {
         IntakeKind::Scan { job_id } => process_scan_item(item, job_id).await,
         IntakeKind::WatcherIndex => process_watcher_index(item).await,
         IntakeKind::WatcherRemove => process_watcher_remove(item).await,
-        IntakeKind::VerifyFile {
-            data,
-            expected_generation,
-        } => process_verify_file(item.path, *data, expected_generation).await,
-        IntakeKind::VerifyDirAlbum {
-            dir_path,
-            album_id,
-            expected_generation,
-        } => {
-            process_verify_dir_album(item.path, dir_path, album_id, expected_generation).await;
-        }
         IntakeKind::ExpireCheck => process_expire_check().await,
         IntakeKind::InteractiveAlbum { album_id, reply } => {
             let outcome =
@@ -175,74 +164,6 @@ async fn process_watcher_remove(item: IntakeItem) {
     }
     path_epoch::release_generation(&item.path, item.generation);
     barrier().await;
-}
-
-fn release_verify(path: &std::path::Path, expected: Option<u64>) {
-    if let Some(generation) = expected {
-        path_epoch::release_generation(path, generation);
-    }
-}
-
-/// Verify a sweep-observed missing asset. Skip when the path moved on, a
-/// mutation holds its lease, or the file is back. The actual removal is a
-/// serial-writer op that resolves the asset by path again, so it cannot
-/// delete a row another mutation has already remapped.
-async fn process_verify_file(
-    path: std::path::PathBuf,
-    data: crate::model::abstract_data::AbstractData,
-    expected: Option<u64>,
-) {
-    if path_epoch::current_generation(&path) != expected {
-        return;
-    }
-    if path_epoch::is_busy(&path) {
-        release_verify(&path, expected);
-        return;
-    }
-    if std::fs::metadata(&path).is_ok() {
-        release_verify(&path, expected);
-        return;
-    }
-    if let Err(err) = crate::tasks::queue::writer::submit_flush_remove(vec![data]).await {
-        warn!(
-            "verify removal submit failed for {}: {err:#}",
-            path.display()
-        );
-    }
-    release_verify(&path, expected);
-}
-
-/// Verify a sweep-observed missing album directory under the same rules. The
-/// album id must still resolve to this directory: a move rewrites the cache
-/// mapping before the old-path verify runs.
-async fn process_verify_dir_album(
-    path: std::path::PathBuf,
-    dir_path: std::path::PathBuf,
-    album_id: arrayvec::ArrayString<64>,
-    expected: Option<u64>,
-) {
-    if path_epoch::current_generation(&path) != expected {
-        return;
-    }
-    if path_epoch::is_busy(&path) {
-        release_verify(&path, expected);
-        return;
-    }
-    if dir_path.exists()
-        || crate::process::dir_album::get_dir_path_for_album(album_id).as_deref()
-            != Some(dir_path.as_path())
-    {
-        release_verify(&path, expected);
-        return;
-    }
-    let op = crate::tasks::queue::writer::WriteOp::SweepDirAlbums(vec![(dir_path, album_id)]);
-    if let Err(err) = crate::tasks::queue::writer::submit(op).await {
-        warn!(
-            "verify dir-album submit failed for {}: {err:#}",
-            path.display()
-        );
-    }
-    release_verify(&path, expected);
 }
 
 /// Run one expiry sweep through the serial writer's ordered cascade stage

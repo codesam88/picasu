@@ -299,6 +299,24 @@ fn remove_asset_from_tables(
     path: &str,
     content_hash: ArrayString<64>,
 ) {
+    let kind = match data {
+        AbstractData::Image(_) => AssetKind::Image,
+        AbstractData::Video(_) => AssetKind::Video,
+        AbstractData::Album(_) => AssetKind::Album,
+    };
+    remove_asset_record_from_tables(asset_id, path, content_hash, kind);
+}
+
+/// Remove one asset record from all tables by its exact identity. Thumbnail
+/// deletion stays with the confirmed removal (other refs <= 1) and the
+/// metadata row is dropped in the same short transaction. Used by both the
+/// normal flush remove path and the batched sweep removal op.
+pub(crate) fn remove_asset_record_from_tables(
+    asset_id: &ArrayString<64>,
+    path: &str,
+    content_hash: ArrayString<64>,
+    kind: AssetKind,
+) {
     use crate::storage::asset_store;
 
     // Thumbnail deletion belongs to the confirmed record removal, not to the
@@ -306,7 +324,19 @@ fn remove_asset_from_tables(
     // is moving it, and the lease keeps the record alive in that window.
     let other_refs = asset_store::get_dupe_ids(&content_hash).map_or(0, |ids| ids.len());
     if other_refs <= 1 {
-        let thumbnail = data.compressed_path();
+        let thumbnail = match kind {
+            AssetKind::Image => crate::storage::files::get_data_path().join(format!(
+                "object/compressed/{}/{}.jpg",
+                &content_hash.as_str()[..2],
+                content_hash
+            )),
+            AssetKind::Video => crate::storage::files::get_data_path().join(format!(
+                "object/compressed/{}/{}.mp4",
+                &content_hash.as_str()[..2],
+                content_hash
+            )),
+            AssetKind::Album => std::path::PathBuf::new(),
+        };
         if !thumbnail.as_os_str().is_empty()
             && thumbnail.exists()
             && let Err(err) = std::fs::remove_file(&thumbnail)
@@ -330,6 +360,29 @@ fn remove_asset_from_tables(
         let _ = metadata_table.remove(&**asset_id);
     }
     let _ = write_txn.commit();
+}
+
+/// Batched sweep removal: delete each listed path's record by exact path/id
+/// only. A path that still exists on disk is skipped (the file reappeared or
+/// the candidate was stale), so a batch can never reap a live row. No
+/// hash-group reap is performed.
+pub(crate) fn sweep_remove_batch(paths: &[std::path::PathBuf]) {
+    use crate::storage::asset_store;
+
+    for path in paths {
+        if path.exists() {
+            continue;
+        }
+        let path_str = path.to_string_lossy().to_string();
+        let Ok(Some(asset_id)) = asset_store::get_asset_id_by_path(&path_str) else {
+            continue;
+        };
+        let Ok(Some(record)) = asset_store::get_asset_by_id(asset_id.as_str()) else {
+            continue;
+        };
+        let content_hash = record.content_hash.unwrap_or(record.asset_id);
+        remove_asset_record_from_tables(&asset_id, &path_str, content_hash, record.kind);
+    }
 }
 
 #[cfg(test)]
@@ -701,5 +754,69 @@ mod tests {
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).expect("remove flush test dir");
+    }
+
+    #[test]
+    fn sweep_remove_batch_existing_path_is_noop_and_missing_path_removes_row() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        let dir = test_image_home().join("sweep_remove_batch");
+        std::fs::create_dir_all(&dir).expect("create sweep test dir");
+
+        let path_keep = make_jpeg(&dir, "keep.jpg", 4);
+        let path_drop = make_jpeg(&dir, "drop.jpg", 4);
+        let hash_keep = hash_file(&path_keep);
+        let hash_drop = hash_file(&path_drop);
+
+        let data_keep = AbstractData::new(&path_keep, hash_keep).expect("build keep");
+        let data_drop = AbstractData::new(&path_drop, hash_drop).expect("build drop");
+        flush_tables(&[data_keep.clone(), data_drop.clone()], &[]);
+
+        let id_keep = asset_id_at(&path_keep);
+        let id_drop = asset_id_at(&path_drop);
+
+        // Existing path: sweep must change nothing.
+        sweep_remove_batch(std::slice::from_ref(&path_keep));
+        assert!(
+            asset_store::get_asset_by_id(id_keep.as_str())
+                .expect("read keep")
+                .is_some(),
+            "existing-path record must survive sweep_remove_batch"
+        );
+        assert!(
+            asset_store::get_asset_id_by_path(&path_keep.to_string_lossy())
+                .expect("lookup keep")
+                .is_some(),
+            "existing-path mapping must survive sweep_remove_batch"
+        );
+
+        // Missing path: only that exact row is removed.
+        std::fs::remove_file(&path_drop).expect("remove drop file");
+        sweep_remove_batch(std::slice::from_ref(&path_drop));
+        assert!(
+            asset_store::get_asset_by_id(id_drop.as_str())
+                .expect("read drop")
+                .is_none(),
+            "missing-path record must be removed"
+        );
+        assert!(
+            asset_store::get_asset_id_by_path(&path_drop.to_string_lossy())
+                .expect("lookup drop")
+                .is_none(),
+            "missing-path mapping must be removed"
+        );
+        assert!(
+            asset_store::get_asset_by_id(id_keep.as_str())
+                .expect("read keep after drop")
+                .is_some(),
+            "sibling record must survive exact-path removal"
+        );
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

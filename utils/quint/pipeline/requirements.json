@@ -119,7 +119,7 @@
       "owner": "album index, queue and mutating API (tasks/actor/album_index.rs, tasks/path_epoch.rs, tasks/queue, router/put/assign_album.rs, router/delete.rs)",
       "gate": "Concurrency test: an assign overlapping a scan/sweep keeps the moved row and its sidecar intact.",
       "status": "verified",
-      "implementation": "Per-path generations plus short exact/subtree leases replace the process-wide gate. Assign/delete/directory moves lease the paths or subtrees they mutate; delete holds its leases across the row flush. The sweep enqueues a Verify-lane item per stale record; the worker re-checks the path generation, any active lease, and the filesystem before the serial writer prunes. Thumbnail deletion happens in the confirmed writer removal, not in the sweep. Scan and watcher indexing skip a path under a lease.",
+      "implementation": "Per-path generations plus short exact/subtree leases replace the process-wide gate. Assign/delete/directory moves lease the paths or subtrees they mutate; delete holds its leases across the row flush. The sweep re-checks each candidate inline (path generation, any active lease, filesystem) before submitting exact-path batches to the serial writer; no Verify lane or per-record worker hop remains. Thumbnail deletion happens in the confirmed writer removal, not in the sweep. Scan and watcher indexing skip a path under a lease.",
       "tests": [
         "tasks::path_epoch::tests::newer_generation_supersedes_older",
         "tasks::path_epoch::tests::lease_makes_exact_path_busy_until_dropped",

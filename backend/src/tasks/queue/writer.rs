@@ -124,6 +124,8 @@ pub enum WriteOp {
     SweepDirAlbums(Vec<(PathBuf, ArrayString<64>)>),
     /// Removal of the album record on the `users_home` root itself.
     PruneUsersRoot(PathBuf),
+    /// Batched sweep removal of asset records by exact path/id only.
+    SweepRemoveBatch { paths: Vec<PathBuf> },
     /// Barrier marker; carries no work.
     Barrier,
 }
@@ -403,6 +405,11 @@ fn handle_op(op: WriteOp) -> CascadeOp {
         }
         WriteOp::PruneUsersRoot(users_root) => {
             handle_prune_users_root(&users_root);
+            bump_tree_epoch();
+            CascadeOp::Noop
+        }
+        WriteOp::SweepRemoveBatch { paths } => {
+            crate::tasks::batcher::flush_tree::sweep_remove_batch(&paths);
             bump_tree_epoch();
             CascadeOp::Noop
         }

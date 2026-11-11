@@ -393,7 +393,7 @@ Limits: One loop scans both roots (`auto`); separate per-root loops are out of s
 
 ### REQ-7: Scans coordinate with in-flight mutating API work (status: verified)
 
-Implementation: Per-path generations plus short exact/subtree leases replace the process-wide gate. Assign/delete/directory moves lease the paths or subtrees they mutate; delete holds its leases across the row flush. The sweep enqueues a Verify-lane item per stale record; the worker re-checks the path generation, any active lease, and the filesystem before the serial writer prunes. Thumbnail deletion happens in the confirmed writer removal, not in the sweep. Scan and watcher indexing skip a path under a lease.
+Implementation: Per-path generations plus short exact/subtree leases replace the process-wide gate. Assign/delete/directory moves lease the paths or subtrees they mutate; delete holds its leases across the row flush. The sweep re-checks each candidate inline (path generation, any active lease, filesystem) before submitting exact-path batches to the serial writer; no Verify lane or per-record worker hop remains. Thumbnail deletion happens in the confirmed writer removal, not in the sweep. Scan and watcher indexing skip a path under a lease.
 
 Tests:
 

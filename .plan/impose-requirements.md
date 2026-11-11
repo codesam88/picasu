@@ -201,33 +201,23 @@ superseded pointers only.
 Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
 (per-path in-flight detection, no global lock).
 
-- **C9 [open] DB sweep as a single batched job (replaces sweep Verify
-  fan-out)**. Requirements: REQ-4 (per-root isolation stays green, gate
-  must share one hash across roots), REQ-7 (no prune while the path's
-  own mutation is in flight). Disposes SWEEP-01/M1 as structure, not
-  patches. Intended solution: one crawl feeds both lanes. `walk(root)`
-  builds a transient `fs_set`; prefix-scan `ASSET_BY_PATH(root)` gives
-  `db_paths`; `sweep_set = db_paths - fs_set` is handed to a cancelable
-  sweep job and both sets are dropped; `fs_set` streams into intake with
-  backpressure. For large libraries scope by subdir:
-  walk/diff/submit/drop per child prefix (deterministic order, cancel
-  point per subdir). The sweep job re-checks each candidate inline
-  (`generation` unchanged, `!is_busy`, `!Path::exists()`) just before
-  batching; deletes go to the serial writer in small batches (e.g. 200
-  paths/txn) by exact `(path, id)`, never by hash-group reap (or reap
-  scoped to the batch root). No `snapshot_tree` clone in the sweep path;
-  no `VerifyFile` hop for sweep candidates. Steps: (1) RED: same-hash
-  ghosts under sibling roots — sweeping A must keep B;
-  rename-then-flush-empty-path must not delete the moved row. (2) Add
-  `ASSET_BY_PATH` prefix scan helper; add `SweepRemoveBatch` writer op
-  (short txn per batch, delete by path/id, thumbnail delete stays with
-  confirmed removal). (3) Rewrite `sweep_stale_asset_paths` into the
-  batched job with per-chunk cancel/shutdown checks and inline
-  re-checks; wire per-subdir scoping. (4) Remove sweep
-  `submit_verify_file` calls (keep the lane only if watcher-removal
-  needs it); delete path-prune-before-submit on the sweep path. (5) Fix
-  the REQ-4 gate to share hashes; GREEN plus `backstop`, `shutdown`,
-  rotation/assign gates.
+- **C9 [done] DB sweep as a single batched job (replaces sweep Verify fan-out)**.
+  File sweep sources candidates from `ASSET_BY_PATH` (no tree-view
+  clone), chunks ~200/root with per-chunk cancel/shutdown checks, and
+  re-checks generation/lease/filesystem inline before submitting exact
+  `(path, id)` `SweepRemoveBatch` writer ops; dir-album phase does inline
+  re-checks (incl. album-id re-resolution) into the pre-existing
+  `SweepDirAlbums` op. Verify-lane intake variants, worker handlers,
+  submit helpers and `prune_stale_asset_path` removed; requirements text
+  and generated doc describe inline re-checks. Gates:
+  `index_album_sweep_same_hash_keeps_sibling_root_ghost` (shared hash
+  across roots), `sweep_remove_batch_*`, `list_asset_paths_under_*`.
+  Residual follow-ups: per-subdir scoping (insertion point noted in
+  code), dir-album candidates still read `snapshot_tree`.
+  Original steps, all GREEN: (1) RED same-hash cross-root + op-semantics
+  gates; (2) prefix-scan helper + exact-only batch op; (3) batched job
+  with inline re-checks; (4) sweep Verify traffic and prune-before-submit
+  removed; (5) shared-hash REQ-4 gate green, full suite green.
 - **C10 [done] Per-path concurrency: interactive preempts scan (baseline model)**.
   Key on normalized path (new files have no ID until flush); existing
   assets re-resolve ID->path under the lease and abort on mismatch

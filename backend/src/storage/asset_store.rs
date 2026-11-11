@@ -28,6 +28,41 @@ pub fn get_asset_id_by_path(path: &str) -> Result<Option<ArrayString<64>>> {
     }
 }
 
+/// List `(path, asset_id)` pairs in `ASSET_BY_PATH` whose path is `root` or
+/// a descendant of it. Uses a redb range scan so only the relevant key range
+/// is read. `root` may be a directory (trailing slash optional).
+#[allow(dead_code)]
+pub fn list_asset_paths_under(root: &str) -> Result<Vec<(String, ArrayString<64>)>> {
+    let base = root.trim_end_matches('/');
+    let txn = TREE
+        .in_disk
+        .begin_read()
+        .context("Failed to begin read transaction for ASSET_BY_PATH")?;
+    let table = txn
+        .open_table(ASSET_BY_PATH)
+        .context("Failed to open ASSET_BY_PATH")?;
+
+    let mut out = Vec::new();
+    for row in table
+        .range(base..)
+        .context("Failed to range scan ASSET_BY_PATH")?
+    {
+        let (key_guard, value_guard) = row.context("Failed to read ASSET_BY_PATH row")?;
+        let key = key_guard.value();
+        let is_under = key == base || key.starts_with(&format!("{base}/"));
+        if !is_under {
+            // Either a sibling sharing the textual prefix or a key past the
+            // whole subtree: the range is ordered, so stop scanning.
+            break;
+        }
+        let id_str = value_guard.value();
+        let id = ArrayString::from(id_str)
+            .map_err(|_| anyhow::anyhow!("Asset ID exceeds 64 bytes: {id_str}"))?;
+        out.push((key.to_string(), id));
+    }
+    Ok(out)
+}
+
 /// Insert or update a `path → asset_id` mapping.
 pub fn put_asset_by_path(path: &str, asset_id: ArrayString<64>) -> Result<()> {
     let txn = TREE
@@ -619,5 +654,30 @@ mod tests {
             table.remove("/durability_test.jpg").expect("remove");
         }
         txn.commit().expect("commit cleanup");
+    }
+
+    #[test]
+    fn list_asset_paths_under_filters_by_root() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        ensure_tables();
+        clear_tables();
+
+        let id_root: ArrayString<64> = "id_root".parse().expect("id parses");
+        let id_child: ArrayString<64> = "id_child".parse().expect("id parses");
+        let id_sibling: ArrayString<64> = "id_sibling".parse().expect("id parses");
+
+        put_asset_by_path("/root", id_root).expect("put root");
+        put_asset_by_path("/root/child.jpg", id_child).expect("put child");
+        put_asset_by_path("/root_sibling/other.jpg", id_sibling).expect("put sibling");
+
+        let under = list_asset_paths_under("/root").expect("list under root");
+        let paths: Vec<String> = under.into_iter().map(|(p, _)| p).collect();
+        assert!(paths.contains(&"/root".to_string()));
+        assert!(paths.contains(&"/root/child.jpg".to_string()));
+        assert!(!paths.contains(&"/root_sibling/other.jpg".to_string()));
+
+        clear_tables();
     }
 }
