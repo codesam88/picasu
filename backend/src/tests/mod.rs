@@ -50,6 +50,9 @@ mod torn_thumbnail;
 mod lifecycle;
 
 #[cfg(test)]
+mod scan_abort;
+
+#[cfg(test)]
 mod rotation;
 
 #[cfg(test)]

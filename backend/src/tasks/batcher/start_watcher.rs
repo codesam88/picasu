@@ -356,8 +356,6 @@ pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&
                         // rewritten.
                         let _lease = crate::tasks::path_epoch::lease_subtree(old.clone());
                         let _new_lease = crate::tasks::path_epoch::lease_subtree(new.clone());
-                        crate::tasks::path_epoch::bump(&old);
-                        crate::tasks::path_epoch::bump(&new);
                         crate::process::dir_album::rewrite_dir_album_cache_prefix(&old, &new);
                         crate::router::put::assign_album::update_asset_tables_after_dir_move(
                             &old, &new,

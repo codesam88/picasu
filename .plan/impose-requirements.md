@@ -228,35 +228,24 @@ Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
   needs it); delete path-prune-before-submit on the sweep path. (5) Fix
   the REQ-4 gate to share hashes; GREEN plus `backstop`, `shutdown`,
   rotation/assign gates.
-- **C10 [open] Per-path concurrency: interactive preempts scan (baseline model)**.
-  Requirements: REQ-7 with the rule "scan never waits, interactive never
-  loses". Scan-first-then-modify is safe (modify applies on top through
-  the writer); modify-first-then-scan never runs stale (scan aborts).
-  Intended solution: key on normalized path for all producers (new files
-  have no ID until flush). Existing assets resolve `assetID ->
-ASSET_BY_ID.path -> normalize` at lock acquisition, then validate.
-  Single lock per job; directory moves and batch deletes take one subtree
-  lock for the prefix instead of N per-file locks. Scan side is
-  try-and-abort (`try_lock` fails -> drop result, count barrier complete;
-  generation bump mid-decode -> drop at next stage boundary, never flush
-  stale). Interactive side bumps the generation (cancel signal), aborts
-  the in-flight decode for that path if tracked, then locks, mutates
-  (FS + sidecar + row), unlocks; no re-queue needed since the mutation
-  already wrote the row. Sidecar-mutating ops (metadata edit, rotate)
-  are never relaxed: a concurrent scan reading torn image+sidecar state
-  would flush over the edit, so cancel-and-retry is required, not
-  best-effort overwrite. Pure read-only album stat recomputation may run
-  without the path lock once M2 moves the rebuild out of the write txn.
-  Steps: (1) RED: `lease_paths([p,p]); drop; assert!(!is_busy(p))`
-  (EPOCH-01, done C10-1); scan-decoding path + concurrent metadata edit
-  keeps the edit (scan result dropped, edit wins). (2) Fix `lease_paths`
-  dedup 1:1 (done C10-1) plus lock-map cleanup (`remove_if` on zero,
-  covering M4). (3) Add per-path abort: generation check at decode stage
-  boundaries and at flush submit; interactive paths bump-then-lock
-  (delete/assign/rotate/edit/watcher-remove). (4) Resolve ID->path inside
-  the lock section for existing assets; moves lock sorted old+new or
-  subtree. (5) GREEN: path_epoch units, scan/edit race gate, existing
-  assign/rotate/delete gates.
+- **C10 [done] Per-path concurrency: interactive preempts scan (baseline model)**.
+  Key on normalized path (new files have no ID until flush); existing
+  assets re-resolve ID->path under the lease and abort on mismatch
+  (delete, file/dir assign). Single lock per job; dir moves take subtree
+  locks. Scans try-and-abort at stage boundaries and before every flush
+  (`superseded` predicate, unit-pinned); interactive paths lease (which
+  auto-bumps) then mutate. Sidecar writes hold the lease for the commit
+  window. Leases own their generations (bump on acquire, release on
+  drop); standalone `bump()` removed. Commits: lease dedup, scan abort,
+  lease-owned generations. Gates: `lease_releases_generation_on_drop`,
+  `scan_abort`, `superseded_truth_table`, `commit_with` release test.
+  Detail below is historical; the summary above is authoritative.
+  Requirements: REQ-7 ("scan never waits, interactive never loses").
+  Steps, all GREEN: (1) RED lease-dup + scan/edit race gates; (2) dedup
+  fix + lease-owned generations (`bump()` removed); (3) stage-boundary
+  and pre-flush abort, lease-then-mutate on all mutating paths; (4)
+  ID->path re-resolve under lease, subtree locks for moves (advisory
+  refcounts: no deadlock possible); (5) full suite green.
 
 ## Verification per step
 

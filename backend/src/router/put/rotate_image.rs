@@ -129,6 +129,11 @@ pub async fn rotate_image(
             // Rotate counter-clockwise and swap the display dimensions.
             let dyn_img = apply_rotation(&mut abstract_data, dyn_img, 90);
 
+            // Lease the media path so an in-flight scan aborts instead of
+            // flushing stale metadata over this rotation. The lease itself bumps
+            // the generation and releases it on drop.
+            let _path_lease = crate::tasks::path_epoch::lease_paths([abstract_data.source_path()]);
+
             // Persist the rotation before the thumbnail and DB: the sidecar is
             // the source of truth, so an interruption after this point leaves a
             // present sidecar that a later reindex applies, while the thumbnail

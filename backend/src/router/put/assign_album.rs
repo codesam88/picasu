@@ -226,12 +226,24 @@ fn move_asset_into_album(
     };
 
     // The source and destination paths are leased for the whole filesystem +
-    // row transaction. A concurrent verify or watcher removal sees the lease
-    // and skips; a newer scan submit supersedes older queued work by
+    // row transaction. The lease itself bumps and (on drop) releases the
+    // per-path generation. A concurrent verify or watcher removal sees the
+    // lease and skips; a newer scan submit supersedes older queued work by
     // generation.
     let _lease = crate::tasks::path_epoch::lease_paths([source_path.clone(), final_dest.clone()]);
-    crate::tasks::path_epoch::bump(&source_path);
-    crate::tasks::path_epoch::bump(&final_dest);
+
+    // Resolve-then-validate: re-read the asset record under the lease and
+    // confirm its path has not moved since resolution, closing the TOCTOU
+    // window between resolving the asset id and acquiring the path lease.
+    let record = crate::storage::asset_store::get_asset_by_id(&asset_id)
+        .or_raise(|| (ErrorKind::Database, "Failed to look up asset"))?
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Asset not found"))?;
+    if record.path != source_path.to_string_lossy() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Asset moved concurrently",
+        ));
+    }
 
     // Copy the destination sidecar (if any) before moving the asset, so an
     // interruption never leaves an asset without its metadata. An orphan copy
@@ -364,11 +376,21 @@ fn move_album_into_album(
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album directory has no name"))?;
     let base_dest = target_dir.join(dir_name);
 
-    // Lease the source subtree and supersede queued verify work before the
-    // rename creates a window where the old directory is absent but the rows
-    // still point at it.
+    // Lease the source subtree before the rename creates a window where the old
+    // directory is absent but the rows still point at it. The lease itself
+    // bumps and (on drop) releases the per-path generation.
     let _source_lease = crate::tasks::path_epoch::lease_subtree(source_dir.clone());
-    crate::tasks::path_epoch::bump(&source_dir);
+
+    // Resolve-then-validate under the lease.
+    let reloaded = crate::storage::asset_store::get_asset_by_id(&album_id)
+        .or_raise(|| (ErrorKind::Database, "Failed to look up album"))?
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album not found"))?;
+    if reloaded.path != source_dir.to_string_lossy() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Album moved concurrently",
+        ));
+    }
 
     let (new_dir, outcome) = if base_dest.exists() {
         match on_conflict {
@@ -388,7 +410,6 @@ fn move_album_into_album(
 
     if let Some(new_dir) = new_dir {
         let _dest_lease = crate::tasks::path_epoch::lease_subtree(new_dir.clone());
-        crate::tasks::path_epoch::bump(&new_dir);
         rewrite_dir_album_cache_prefix(&source_dir, &new_dir);
         // Update asset tables for all moved files. Path rewrites live
         // exclusively on the AssetRecords now — the metadata payload holds

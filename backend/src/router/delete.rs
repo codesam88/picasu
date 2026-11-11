@@ -210,13 +210,14 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
 /// descendants are removed by directory.
 fn lease_deleted_paths(
     collected: &[(
+        ArrayString<64>,
         crate::model::abstract_data::AbstractData,
         Vec<ArrayString<64>>,
     )],
 ) -> crate::tasks::path_epoch::PathLease {
     let mut exact = Vec::new();
     let mut subtrees = Vec::new();
-    for (data, _) in collected {
+    for (_, data, _) in collected {
         match data {
             crate::model::abstract_data::AbstractData::Album(album)
                 if !album.metadata.dir_path.is_empty() =>
@@ -230,12 +231,42 @@ fn lease_deleted_paths(
             }
         }
     }
-    let lease =
-        crate::tasks::path_epoch::lease_all(exact.iter().cloned(), subtrees.iter().cloned());
-    for path in exact.iter().chain(subtrees.iter()) {
-        crate::tasks::path_epoch::bump(path);
+    // The lease itself bumps and (on drop) releases the per-path generation for
+    // every path it covers, so a mutation no longer leaves a GENERATIONS entry
+    // behind once it completes.
+    crate::tasks::path_epoch::lease_all(exact.iter().cloned(), subtrees.iter().cloned())
+}
+
+/// Re-read each collected asset record under the lease and confirm its path has
+/// not moved since resolution.
+fn validate_paths_unchanged(
+    collected: &[(ArrayString<64>, AbstractData, Vec<ArrayString<64>>)],
+    id_table: &redb::ReadOnlyTable<&str, &str>,
+) -> Result<(), AppError> {
+    for (asset_id, abstract_data, _) in collected {
+        let record_json = id_table
+            .get(asset_id.as_str())
+            .or_raise(|| (ErrorKind::Database, "Failed to re-read asset"))?
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
+        let record: crate::model::asset::AssetRecord = serde_json::from_str(record_json.value())
+            .or_raise(|| (ErrorKind::Database, "Failed to deserialize AssetRecord"))?;
+        let current_path = match abstract_data {
+            AbstractData::Album(a) if !a.metadata.dir_path.is_empty() => {
+                a.metadata.dir_path.clone()
+            }
+            _ => abstract_data
+                .path()
+                .map(|e| e.file.clone())
+                .unwrap_or_default(),
+        };
+        if record.path != current_path {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "Asset moved concurrently",
+            ));
+        }
     }
-    lease
+    Ok(())
 }
 
 /// Process deletions by asset ID.
@@ -270,7 +301,7 @@ fn process_deletes(
     // First pass: resolve every entry and enforce the write gate before any
     // filesystem mutation, so a forbidden entry aborts the whole request with
     // nothing deleted.
-    let mut collected: Vec<(AbstractData, Vec<ArrayString<64>>)> = Vec::new();
+    let mut collected: Vec<(ArrayString<64>, AbstractData, Vec<ArrayString<64>>)> = Vec::new();
     for asset_id_str in asset_ids {
         let asset_id: ArrayString<64> = ArrayString::from(asset_id_str.as_str()).map_err(|_| {
             AppError::new(
@@ -280,7 +311,7 @@ fn process_deletes(
         })?;
 
         let record_json = id_table
-            .get(&*asset_id)
+            .get(asset_id.as_str())
             .or_raise(|| {
                 (
                     ErrorKind::Database,
@@ -298,7 +329,7 @@ fn process_deletes(
                 )
             })?;
         let payload = metadata_table
-            .get(&*asset_id)
+            .get(asset_id.as_str())
             .or_raise(|| {
                 (
                     ErrorKind::Database,
@@ -326,7 +357,7 @@ fn process_deletes(
             }
         };
 
-        collected.push((abstract_data, affected_albums));
+        collected.push((asset_id, abstract_data, affected_albums));
     }
 
     // Lease every resolved path across the filesystem + row transaction so a
@@ -334,8 +365,13 @@ fn process_deletes(
     // detaching a row this request owns.
     let lease = lease_deleted_paths(&collected);
 
+    // Resolve-then-validate under the lease: re-read each asset record and
+    // confirm its path has not moved since resolution, closing the TOCTOU
+    // window between resolving the asset id and acquiring the path lease.
+    validate_paths_unchanged(&collected, &id_table)?;
+
     // Second pass: perform deletions now that all entries validated.
-    for (abstract_data, affected_albums) in collected {
+    for (_, abstract_data, affected_albums) in collected {
         // Delete asset file + sidecar from disk.
         if let Some(file_entry) = abstract_data.path() {
             let original = Path::new(&file_entry.file);
