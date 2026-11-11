@@ -89,6 +89,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use arrayvec::ArrayString;
+use futures::FutureExt;
 use tokio::sync::{Mutex, Notify, mpsc};
 
 use super::bridge::run_cpu;
@@ -164,6 +165,11 @@ static SUBMIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 /// Set by [`shutdown_writer`] after the final barrier. Submissions are
 /// rejected from then on, so the drain cannot be reopened by a late producer.
 static WRITER_CLOSED: AtomicBool = AtomicBool::new(false);
+
+/// Test-only hook: when set, the next cascade entry panics. Used by the
+/// regression test for panic containment in [`cascade_loop`].
+#[cfg(test)]
+static FORCE_CASCADE_PANIC: AtomicBool = AtomicBool::new(false);
 
 /// Current generation watermarks `(next, writer, cascade)`. Diagnostics only;
 /// the values are read individually and may not form one instant.
@@ -424,13 +430,32 @@ async fn cascade_loop(mut rx: mpsc::Receiver<(u64, CascadeOp)>) {
         let Some((seq, op)) = rx.recv().await else {
             return;
         };
-        handle_cascade(op).await;
+        // Contain panics per entry: a panicking cascade (e.g. an inline
+        // `.expect` in `update_expire_task`) must not kill the loop or freeze
+        // `CASCADE_COMPLETED_SEQ`, otherwise barriers stall forever. Log and
+        // skip, then advance the watermark for this entry.
+        let result = std::panic::AssertUnwindSafe(handle_cascade(op))
+            .catch_unwind()
+            .await;
+        if let Err(panic) = result {
+            let message = panic
+                .downcast_ref::<&'static str>()
+                .copied()
+                .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("unknown panic");
+            log::error!("writer cascade entry panicked: {message}");
+        }
         CASCADE_COMPLETED_SEQ.fetch_max(seq, Ordering::SeqCst);
         BARRIER_NOTIFY.notify_waiters();
     }
 }
 
 async fn handle_cascade(op: CascadeOp) {
+    #[cfg(test)]
+    assert!(
+        !FORCE_CASCADE_PANIC.swap(false, Ordering::SeqCst),
+        "injected cascade panic (test)"
+    );
     match op {
         CascadeOp::AfterWrite => cascade_after_write().await,
         CascadeOp::ExpireRound => cascade_expire_round().await,
@@ -443,8 +468,13 @@ async fn handle_cascade(op: CascadeOp) {
 /// its epoch, so this stage never rebuilds it.
 async fn cascade_after_write() {
     let pending = drain_pending_album_updates();
+    // Snapshot the tree once per cascade entry; album tasks share it through
+    // an `Arc` and never rebuild (or touch snapshot_tree) themselves.
+    let ref_data: std::sync::Arc<[crate::model::response::DatabaseTimestamp]> =
+        crate::storage::db::snapshot_tree().into();
     for album_id in pending {
-        if let Err(err) = run_cpu(move || album_task(album_id)).await {
+        let ref_data = std::sync::Arc::clone(&ref_data);
+        if let Err(err) = run_cpu(move || album_task(album_id, &ref_data)).await {
             log::warn!("cascade album self-update failed for {album_id}: {err:#}");
         }
     }
@@ -519,6 +549,26 @@ fn handle_prune_users_root(users_root: &std::path::Path) {
 mod tests {
     use super::*;
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cascade_two_pending_albums_rebuilds_at_most_once() {
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        crate::tasks::observe::reset();
+        crate::process::dir_album::mark_album_for_update(
+            arrayvec::ArrayString::from("album-a").expect("fits"),
+        );
+        crate::process::dir_album::mark_album_for_update(
+            arrayvec::ArrayString::from("album-b").expect("fits"),
+        );
+        cascade_after_write().await;
+        let recorded = crate::tasks::observe::snapshot()
+            .stage(crate::tasks::observe::Stage::TreeRefreshBuild)
+            .recorded;
+        assert!(
+            recorded <= 1,
+            "expected at most one TreeRefreshBuild, got {recorded}"
+        );
+    }
+
     #[test]
     fn completed_watermarks_never_regress() {
         complete_seq(1_000);
@@ -533,6 +583,26 @@ mod tests {
         assert!(
             CASCADE_COMPLETED_SEQ.load(Ordering::SeqCst) >= 1_000,
             "cascade watermark must not move backwards"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn panicking_cascade_entry_does_not_stall_barrier() {
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        crate::tasks::observe::reset();
+        // Drain any prior entries so the injected panic lands on our flush.
+        barrier().await;
+
+        FORCE_CASCADE_PANIC.store(true, Ordering::SeqCst);
+
+        let _ = submit_flush_insert(Vec::new()).await;
+
+        let res = tokio::time::timeout(std::time::Duration::from_secs(5), barrier()).await;
+        FORCE_CASCADE_PANIC.store(false, Ordering::SeqCst);
+
+        assert!(
+            res.is_ok(),
+            "barrier stalled after a panicking cascade entry"
         );
     }
 }

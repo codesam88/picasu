@@ -41,8 +41,11 @@ async fn dispatch_item(item: IntakeItem) {
         IntakeKind::WatcherRemove => process_watcher_remove(item).await,
         IntakeKind::ExpireCheck => process_expire_check().await,
         IntakeKind::InteractiveAlbum { album_id, reply } => {
-            let outcome =
-                run_interactive(move || crate::tasks::actor::album::album_task(album_id)).await;
+            let ref_data = crate::storage::db::snapshot_tree();
+            let outcome = run_interactive(move || {
+                crate::tasks::actor::album::album_task(album_id, &ref_data)
+            })
+            .await;
             match reply {
                 Some(tx) => {
                     let _ = tx.send(outcome);
