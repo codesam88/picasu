@@ -23,7 +23,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
-use crate::model::abstract_data::AbstractData;
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use dashmap::DashMap;
@@ -51,23 +50,6 @@ pub enum IntakeKind {
     WatcherRemove,
     /// Periodic expiry sweep (no path, no job barrier).
     ExpireCheck,
-    /// Sweep-observed missing asset path. The worker re-checks the path
-    /// generation, any active mutation lease, and the filesystem before
-    /// removing the record.
-    VerifyFile {
-        data: Box<AbstractData>,
-        /// Generation observed at enqueue. `None` means the path had no
-        /// generation record; a later submit makes it `Some` and supersedes
-        /// this item.
-        expected_generation: Option<u64>,
-    },
-    /// Sweep-observed missing album directory. Same checks as
-    /// [`IntakeKind::VerifyFile`], then the dir-album removal op.
-    VerifyDirAlbum {
-        dir_path: PathBuf,
-        album_id: ArrayString<64>,
-        expected_generation: Option<u64>,
-    },
     /// Request-path album self-update. `reply` carries the outcome back to
     /// the request; `None` means fire-and-forget (errors are logged).
     InteractiveAlbum {
@@ -112,7 +94,6 @@ impl LaneQueue {
 
 static LANES: LazyLock<[LaneQueue; LANE_COUNT]> = LazyLock::new(|| {
     [
-        LaneQueue::channel(),
         LaneQueue::channel(),
         LaneQueue::channel(),
         LaneQueue::channel(),
@@ -326,46 +307,6 @@ pub async fn submit_watcher_remove(path: PathBuf) -> Result<()> {
         priority: Priority::Watcher,
         kind: IntakeKind::WatcherRemove,
         generation,
-        mtime: None,
-        len: None,
-    })
-    .await
-}
-
-/// Enqueue a sweep-observed missing asset for verification on the Verify
-/// lane. Bumping the generation here means a newer scan or watcher submit
-/// supersedes the verify, and the worker re-checks the path before pruning.
-pub async fn submit_verify_file(path: PathBuf, data: AbstractData) -> Result<()> {
-    // Do not bump: a verify only observes a path. Bumping here would cancel a
-    // queued watcher index for a file that reappeared between the sweep stat
-    // and this submit.
-    let expected = crate::tasks::path_epoch::current_generation(&path);
-    enqueue(IntakeItem {
-        path,
-        priority: Priority::Verify,
-        kind: IntakeKind::VerifyFile {
-            data: Box::new(data),
-            expected_generation: expected,
-        },
-        generation: expected.unwrap_or(0),
-        mtime: None,
-        len: None,
-    })
-    .await
-}
-
-/// Enqueue a sweep-observed missing album directory for verification.
-pub async fn submit_verify_dir_album(dir_path: PathBuf, album_id: ArrayString<64>) -> Result<()> {
-    let expected = crate::tasks::path_epoch::current_generation(&dir_path);
-    enqueue(IntakeItem {
-        path: dir_path.clone(),
-        priority: Priority::Verify,
-        kind: IntakeKind::VerifyDirAlbum {
-            dir_path,
-            album_id,
-            expected_generation: expected,
-        },
-        generation: expected.unwrap_or(0),
         mtime: None,
         len: None,
     })

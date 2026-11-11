@@ -341,7 +341,7 @@ pub(crate) fn start_index_job(src: &str, clear: bool, root: Option<&str>) -> App
                 "sweeping stale asset paths under {} (job {job_id})",
                 scan_root.display()
             );
-            sweep_stale_asset_paths(scan_root).await;
+            sweep_stale_asset_paths(scan_root, &cancel).await;
             debug!("stale asset path sweep done (job {job_id})");
         }
 
@@ -564,45 +564,66 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 }
 
 /// Sweep stale asset paths: for every DB record whose path is under
-/// `root`, check that file. A missing path is enqueued on the Verify lane
-/// with the generation observed here; the worker re-checks the generation,
-/// any active mutation lease, and the filesystem before the serial writer
-/// prunes the record. Scan and API work therefore never need a process-wide
-/// lock around the sweep.
-async fn sweep_stale_asset_paths(root: &Path) {
+/// `root`, check that file. Missing paths are submitted to the serial
+/// writer as a batched `SweepRemoveBatch` op that resolves each record by
+/// its exact path/id. Per-chunk cancel/shutdown and inline re-checks
+/// (generation, mutation lease, filesystem) guard against races.
+async fn sweep_stale_asset_paths(root: &Path, cancel: &AtomicBool) {
+    const CHUNK: usize = 200;
     use crate::model::abstract_data::AbstractData;
-    use crate::process::path::normalize_asset_path;
+    use crate::storage::asset_store;
 
-    // File assets.
-    let candidates: Vec<_> = {
-        // Scan-side holder: only a sequential collect runs under it, and the
-        // sweep waits on the writer barrier after collection. No Rayon work
-        // is nested while held, so it cannot deadlock the tree-refresh write.
-        let tree = crate::storage::db::snapshot_tree();
-        tree.iter()
-            .filter(|dt| {
-                dt.abstract_data.path().is_some_and(|a| {
-                    let abs = normalize_asset_path(&a.file);
-                    abs.starts_with(root)
-                })
-            })
-            .map(|dt| dt.abstract_data.clone())
-            .collect()
-    };
+    // File assets: source candidates from the primary ASSET_BY_PATH table,
+    // not the in-memory tree view.
+    let root_str = root.to_string_lossy().to_string();
+    let db_rows = asset_store::list_asset_paths_under(&root_str).unwrap_or_default();
 
-    for mut data in candidates {
-        let Some(path) = data.path().map(|entry| PathBuf::from(&entry.file)) else {
+    let mut candidates: Vec<(PathBuf, Option<u64>)> = Vec::new();
+    for (path_str, _id) in db_rows {
+        let path = PathBuf::from(&path_str);
+        if path.exists() {
             continue;
-        };
-        let has_path = crate::process::path::prune_stale_asset_path(&mut data);
-        if !has_path
-            && let Err(err) = crate::tasks::queue::submit_verify_file(path.clone(), data).await
+        }
+        let generation = crate::tasks::path_epoch::current_generation(&path);
+        candidates.push((path, generation));
+    }
+
+    // Follow-up: per-subdir scoping is not implemented; chunking is
+    // global per root. Insertion point for subdir batching: group
+    // `candidates` by their parent directory before this loop.
+    for chunk in candidates.chunks(CHUNK) {
+        if cancel.load(Ordering::SeqCst) || crate::tasks::queue::is_shutting_down() {
+            break;
+        }
+        let mut survivors: Vec<PathBuf> = Vec::new();
+        for (path, generation_at_enum) in chunk {
+            if crate::tasks::path_epoch::current_generation(path) != *generation_at_enum {
+                continue;
+            }
+            if crate::tasks::path_epoch::is_busy(path) {
+                continue;
+            }
+            if path.exists() {
+                continue;
+            }
+            survivors.push(path.clone());
+        }
+        if survivors.is_empty() {
+            continue;
+        }
+        if let Err(err) = crate::tasks::queue::writer::submit(
+            crate::tasks::queue::writer::WriteOp::SweepRemoveBatch { paths: survivors },
+        )
+        .await
         {
-            warn!("sweep verify submit failed for {}: {err:#}", path.display());
+            warn!("sweep remove batch submit failed: {err:#}");
         }
     }
 
     // Dir albums under root whose directory no longer exists on disk.
+    if cancel.load(Ordering::SeqCst) || crate::tasks::queue::is_shutting_down() {
+        return;
+    }
     let album_candidates: Vec<_> = {
         // Scan-side holder: same sequential-collect shape as the asset phase;
         // no pool work runs while it is held.
@@ -612,7 +633,11 @@ async fn sweep_stale_asset_paths(root: &Path) {
                 AbstractData::Album(alb) if !alb.metadata.dir_path.is_empty() => {
                     let dir_path = std::path::PathBuf::from(&alb.metadata.dir_path);
                     if dir_path.starts_with(root) {
-                        Some((dir_path, alb.object.id))
+                        Some((
+                            dir_path.clone(),
+                            alb.object.id,
+                            crate::tasks::path_epoch::current_generation(&dir_path),
+                        ))
                     } else {
                         None
                     }
@@ -622,18 +647,34 @@ async fn sweep_stale_asset_paths(root: &Path) {
             .collect()
     };
 
-    for (dir_path, album_id) in album_candidates {
+    let mut survivors: Vec<(PathBuf, arrayvec::ArrayString<64>)> = Vec::new();
+    for (dir_path, album_id, generation_at_enum) in album_candidates {
+        if cancel.load(Ordering::SeqCst) || crate::tasks::queue::is_shutting_down() {
+            break;
+        }
         if dir_path.exists() {
             continue;
         }
-        if let Err(err) =
-            crate::tasks::queue::submit_verify_dir_album(dir_path.clone(), album_id).await
-        {
-            warn!(
-                "sweep dir-album verify submit failed for {}: {err:#}",
-                dir_path.display()
-            );
+        if crate::tasks::path_epoch::current_generation(&dir_path) != generation_at_enum {
+            continue;
         }
+        if crate::tasks::path_epoch::is_busy(&dir_path) {
+            continue;
+        }
+        if crate::process::dir_album::get_dir_path_for_album(album_id).as_deref()
+            != Some(dir_path.as_path())
+        {
+            continue;
+        }
+        survivors.push((dir_path, album_id));
+    }
+    if !survivors.is_empty()
+        && let Err(err) = crate::tasks::queue::writer::submit(
+            crate::tasks::queue::writer::WriteOp::SweepDirAlbums(survivors),
+        )
+        .await
+    {
+        warn!("sweep dir-album remove submit failed: {err:#}");
     }
 }
 
@@ -1489,6 +1530,84 @@ mod tests {
         assert!(
             outside_survives,
             "ghost row outside the scanned root must survive the sweep"
+        );
+
+        fs::remove_dir_all(&scanned).ok();
+        fs::remove_dir_all(&outside).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn index_album_sweep_same_hash_keeps_sibling_root_ghost() {
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        use arrayvec::ArrayString;
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let scanned = image_home.join("scanned_root");
+        let outside = image_home.join("outside_root");
+        fs::create_dir_all(&scanned).expect("create scanned root");
+        fs::create_dir_all(&outside).expect("create outside root");
+
+        let scanned_ghost = scanned.join("ghost.jpg");
+        let outside_ghost = outside.join("ghost.jpg");
+
+        // Same content hash under both roots: the sweep must not let the
+        // hash group reap the sibling root's ghost row.
+        let shared_hash: ArrayString<64> =
+            "sharedghosthash".parse().expect("test content hash parses");
+        let rec_scanned = AssetRecord::new_media(
+            AssetKind::Image,
+            scanned_ghost.to_string_lossy().into_owned(),
+            Some(shared_hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        let rec_outside = AssetRecord::new_media(
+            AssetKind::Image,
+            outside_ghost.to_string_lossy().into_owned(),
+            Some(shared_hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        asset_store::insert_asset(&rec_scanned).expect("insert scanned ghost");
+        asset_store::insert_asset(&rec_outside).expect("insert outside ghost");
+
+        // Make the on-disk rows visible to the sweep's in-memory read.
+        crate::storage::tree_view::bump_tree_epoch();
+
+        index_album_with_root("/scanned_root", false, None).expect("index accepted");
+        wait_for_index_completion();
+
+        let tree = crate::storage::db::snapshot_tree();
+        let scanned_survives = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == scanned_ghost.to_string_lossy())
+        });
+        let outside_survives = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == outside_ghost.to_string_lossy())
+        });
+        drop(tree);
+
+        assert!(
+            !scanned_survives,
+            "stale row under the scanned root must be pruned"
+        );
+        assert!(
+            outside_survives,
+            "ghost row outside the scanned root must survive the sweep even when hashes match"
         );
 
         fs::remove_dir_all(&scanned).ok();
