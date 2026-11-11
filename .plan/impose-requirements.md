@@ -171,8 +171,12 @@ superseded pointers only.
   done; in-flight abort + lock-map hygiene open in C10.
 - **C4 [superseded by C9/C10]** Lazy tree view as claimed. Epoch advance
   kept; per-flush rebuild removal withdrawn (see C9/C10 gates).
-- **C5 [open] Watcher rename robustness**. Split `From`/`To` dir
-  renames, `new.is_dir()` TOCTOU, epoch (not gate) for removals.
+- **C5 [done] Watcher rename robustness**. Pending-`From` table pairs
+  tracker-cookie split events for prefix rewrite; unpaired halves
+  handled independently from DB state (subtree removals for departed
+  dirs, dir walk for arrivals); expired entries drain to removals.
+  Pairing is best-effort by design. Gates: split/expired/unpaired
+  synthetic events, real-FS rename gates green.
 
 ### Earlier review notes (kept, condensed)
 

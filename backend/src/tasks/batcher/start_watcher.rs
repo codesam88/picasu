@@ -31,6 +31,19 @@ static WATCHER_HANDLE: LazyLock<Mutex<Option<RecommendedWatcher>>> =
 static DEBOUNCE_POOL: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// A pending `From` table entry: the paths carried by the `From` event plus
+/// the instant it was recorded.
+type PendingFromEntry = (Vec<PathBuf>, Instant);
+
+/// Pending `RenameMode::From` events that arrived with a notify tracker
+/// cookie, awaiting their `RenameMode::To` pair. Best-effort only: a rewrite
+/// here can race a queued removal for the same paths, and removals skip
+/// leased paths, so identity preservation across a split rename is not
+/// guaranteed under concurrent mutation. Entries older than ~2s are evicted
+/// when new events are processed; the table is discarded on shutdown.
+static PENDING_FROM: LazyLock<Mutex<HashMap<usize, PendingFromEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 pub struct StartWatcherTask;
 
 impl BatchTask for StartWatcherTask {
@@ -47,6 +60,9 @@ impl BatchTask for StartWatcherTask {
 pub(crate) fn stop_watcher() {
     *WATCHER_HANDLE.lock().expect("lock poisoned") = None;
     IS_WATCHING.store(false, Ordering::SeqCst);
+    if let Ok(mut guard) = PENDING_FROM.lock() {
+        guard.clear();
+    }
 }
 
 /// Reload watcher with the new path from config
@@ -60,6 +76,9 @@ pub fn reload_watcher() {
 
     // Reset the flag so we can start again
     IS_WATCHING.store(false, Ordering::SeqCst);
+    if let Ok(mut guard) = PENDING_FROM.lock() {
+        guard.clear();
+    }
 
     if let Err(e) = start_watcher_task_internal() {
         error!("Failed to reload watcher: {e}");
@@ -292,6 +311,99 @@ pub(crate) fn rename_paths(event: &Event) -> (Option<PathBuf>, Option<PathBuf>) 
     }
 }
 
+/// Drain pending `From` entries that are older than ~2s, returning their
+/// carried paths. Expired entries are processed here through the same
+/// unpaired-`From` removal logic so their removals are not lost.
+pub(crate) fn drain_expired_pending_from(now: Instant) -> Vec<Vec<PathBuf>> {
+    let expired = {
+        let Ok(mut guard) = PENDING_FROM.lock() else {
+            return Vec::new();
+        };
+        let mut expired: Vec<Vec<PathBuf>> = Vec::new();
+        guard.retain(|_, (paths, ts)| {
+            if now.duration_since(*ts) < Duration::from_secs(2) {
+                true
+            } else {
+                expired.push(paths.clone());
+                false
+            }
+        });
+        expired
+    };
+    // Process expired entries through the unpaired-From removal path so
+    // their dir-aware removals are submitted instead of being dropped.
+    for paths in &expired {
+        handle_unpaired_from(paths);
+    }
+    expired
+}
+
+/// Unpaired `From` handling: dir-aware removals for paths with descendant
+/// rows, plain removal for single media files.
+fn handle_unpaired_from(paths: &[PathBuf]) {
+    for path in paths {
+        let old_str = path.to_string_lossy();
+        let rows =
+            crate::storage::asset_store::list_asset_paths_under(&old_str).unwrap_or_default();
+        let has_descendants = rows.iter().any(|(p, _)| p.as_str() != old_str.as_ref());
+        if !rows.is_empty() && has_descendants {
+            let old = path.clone();
+            spawn(async move {
+                let _lease = crate::tasks::path_epoch::lease_subtree(old.clone());
+                let rows =
+                    crate::storage::asset_store::list_asset_paths_under(&old.to_string_lossy())
+                        .unwrap_or_default();
+                for (p, _) in rows {
+                    submit_removal_to_watcher(PathBuf::from(p));
+                }
+            });
+        } else if is_valid_media_file(path) {
+            submit_removal_to_watcher(path.clone());
+        }
+    }
+}
+
+/// Shared paired-rename handling: directory rewrite when the destination is a
+/// directory, otherwise old-path removal plus new-path index submission.
+pub(crate) fn handle_paired_rename(old: Option<PathBuf>, new: Option<PathBuf>) {
+    if let (Some(old), Some(new)) = (&old, &new)
+        && new.is_dir()
+    {
+        let old = old.clone();
+        let new = new.clone();
+        spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let _lease = crate::tasks::path_epoch::lease_subtree(old.clone());
+                let _new_lease = crate::tasks::path_epoch::lease_subtree(new.clone());
+                crate::process::dir_album::rewrite_dir_album_cache_prefix(&old, &new);
+                crate::router::put::assign_album::update_asset_tables_after_dir_move(&old, &new)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                crate::storage::tree_view::bump_tree_epoch();
+                Ok::<(), anyhow::Error>(())
+            })
+            .await;
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    warn!("directory rename row rewrite failed: {e:#}");
+                }
+                Err(e) => warn!("directory rename task panicked: {e}"),
+            }
+        });
+    } else {
+        if let Some(old) = old
+            && is_valid_media_file(&old)
+        {
+            submit_removal_to_watcher(old);
+        }
+        if let Some(new) = new
+            && is_valid_media_file(&new)
+        {
+            submit_to_debounce_pool(new);
+        }
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&Path>) {
     // Overflow / rescan: a backend may have missed events, so force a
@@ -311,6 +423,8 @@ pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&
             info!("submitted full rescan ({mode}) after watcher overflow/rescan");
         }
     }
+
+    drain_expired_pending_from(Instant::now());
 
     match event.kind {
         EventKind::Create(_) => {
@@ -340,71 +454,61 @@ pub(crate) fn handle_event(event: Event, image_root: &Path, users_root: Option<&
         EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
             // notify delivers (from, to) in this order.
             let (old, new) = rename_paths(&event);
-            // Directory rename (REQ-3): rewrite every descendant row to the
-            // new prefix in one step, preserving assetId and sidecar
-            // association, without decoding. Detected after the FS move via
-            // `new.is_dir()`.
-            if let (Some(old), Some(new)) = (&old, &new)
-                && new.is_dir()
-            {
-                let old = old.clone();
-                let new = new.clone();
-                spawn(async move {
-                    let result = tokio::task::spawn_blocking(move || {
-                        // A subtree lease makes every verify or watcher removal
-                        // under the old or new prefix skip while rows are
-                        // rewritten.
-                        let _lease = crate::tasks::path_epoch::lease_subtree(old.clone());
-                        let _new_lease = crate::tasks::path_epoch::lease_subtree(new.clone());
-                        crate::process::dir_album::rewrite_dir_album_cache_prefix(&old, &new);
-                        crate::router::put::assign_album::update_asset_tables_after_dir_move(
-                            &old, &new,
-                        )
-                        .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        crate::storage::tree_view::bump_tree_epoch();
-                        Ok::<(), anyhow::Error>(())
-                    })
-                    .await;
-                    match result {
-                        Ok(Ok(())) => {}
-                        Ok(Err(e)) => {
-                            warn!("directory rename row rewrite failed: {e:#}");
-                        }
-                        Err(e) => warn!("directory rename task panicked: {e}"),
-                    }
-                });
-            } else {
-                // File rename (REQ-2): submit a removal for the old path and
-                // an index for the new path so the row follows without
-                // waiting for a sweep.
-                if let Some(old) = old
-                    && is_valid_media_file(&old)
-                {
-                    submit_removal_to_watcher(old);
-                }
-                if let Some(new) = new
-                    && is_valid_media_file(&new)
-                {
-                    submit_to_debounce_pool(new);
-                }
-            }
+            handle_paired_rename(old, new);
         }
 
         EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
-            // Directory case: the old path is already gone and there is no
-            // destination here; a RenameMode::To/Both event carries the
-            // destination, so directory renames are ignored in this arm.
-            for path in &event.paths {
-                if is_valid_media_file(path) {
-                    submit_removal_to_watcher(path.clone());
-                }
+            if let Some(cookie) = event.tracker() {
+                // Paired fast path: wait for the matching `To` event.
+                let mut guard = PENDING_FROM.lock().expect("lock poisoned");
+                guard.insert(cookie, (event.paths.clone(), Instant::now()));
+            } else {
+                // Unpaired: process immediately, dir-aware via DB state.
+                handle_unpaired_from(&event.paths);
             }
         }
 
         EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
-            for path in &event.paths {
-                if is_valid_media_file(path) {
-                    submit_to_debounce_pool(path.clone());
+            // Try pairing with a pending `From`.
+            let cookie = event.tracker();
+            let mut paired = false;
+            if let Some(c) = cookie {
+                let pending = {
+                    let mut guard = PENDING_FROM.lock().expect("lock poisoned");
+                    guard.remove(&c)
+                };
+                if let Some((old_paths, ts)) = pending
+                    && ts.elapsed() < Duration::from_secs(2)
+                {
+                    paired = true;
+                    let old = old_paths.first().cloned();
+                    let new = event.paths.first().cloned();
+                    if let (Some(old), Some(new)) = (old, new) {
+                        handle_paired_rename(Some(old), Some(new));
+                    }
+                }
+            }
+
+            if !paired {
+                // Unpaired: dir-aware walk mirroring the Create arm.
+                for path in &event.paths {
+                    if path.is_dir() {
+                        let mut path_list: HashSet<PathBuf> = HashSet::new();
+                        WalkDir::new(path)
+                            .into_iter()
+                            .filter_map(std::result::Result::ok)
+                            .filter(|dir_entry| dir_entry.file_type().is_file())
+                            .for_each(|dir_entry| {
+                                path_list.insert(dir_entry.into_path());
+                            });
+                        for p in path_list {
+                            if is_valid_media_file(&p) {
+                                submit_to_debounce_pool(p);
+                            }
+                        }
+                    } else if is_valid_media_file(path) {
+                        submit_to_debounce_pool(path.clone());
+                    }
                 }
             }
         }
@@ -554,5 +658,197 @@ mod tests {
         let event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any)))
             .add_path(PathBuf::from("/tmp/a.jpg"));
         assert_eq!(rename_paths(&event), (None, None));
+    }
+
+    #[allow(clippy::items_after_statements)]
+    fn clear_asset_tables() {
+        use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH};
+        use redb::ReadableTable;
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_write()
+            .expect("begin write for clear");
+        for table_def in [ASSET_BY_PATH, ASSET_BY_ID] {
+            {
+                let t = txn.open_table(table_def).expect("open table for clear");
+                let keys: Vec<String> = t
+                    .iter()
+                    .expect("iterate")
+                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+                    .collect();
+                drop(t);
+                let mut t = txn.open_table(table_def).expect("reopen table for clear");
+                for key in &keys {
+                    t.remove(key.as_str()).expect("remove key");
+                }
+            }
+        }
+        txn.commit().expect("commit clear");
+    }
+
+    #[test]
+    #[allow(clippy::items_after_statements)]
+    fn split_dir_rename_moves_descendant_rows() {
+        let _guard = crate::tests::bootstrap::lock();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let _client = crate::tests::bootstrap::setup_image_home();
+        clear_asset_tables();
+
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        let old_dir = PathBuf::from("/split_old_dir");
+        let tmp = tempfile::tempdir().expect("tmp");
+        let new_dir = tmp.path().to_path_buf();
+
+        let record = AssetRecord::new_media(
+            AssetKind::Image,
+            old_dir.join("photo.jpg").to_string_lossy().into_owned(),
+            None,
+            10,
+            "jpg".into(),
+            0,
+        );
+        let id = record.asset_id;
+        asset_store::insert_asset(&record).expect("insert test asset");
+
+        // Paired split events with a shared tracker cookie.
+        let from_event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)))
+            .set_tracker(777)
+            .add_path(old_dir.clone());
+        handle_event(
+            from_event,
+            &crate::tests::bootstrap::test_image_home(),
+            None,
+        );
+
+        let to_event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To)))
+            .set_tracker(777)
+            .add_path(new_dir.clone());
+        handle_event(to_event, &crate::tests::bootstrap::test_image_home(), None);
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let old_rows =
+                asset_store::list_asset_paths_under(&old_dir.to_string_lossy()).unwrap_or_default();
+            let new_rows =
+                asset_store::list_asset_paths_under(&new_dir.to_string_lossy()).unwrap_or_default();
+            if old_rows.is_empty() && new_rows.iter().any(|(_, aid)| *aid == id) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "rows did not move: old={old_rows:?} new={new_rows:?}"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        clear_asset_tables();
+    }
+
+    #[test]
+    #[allow(clippy::items_after_statements)]
+    fn unpaired_to_walks_directory_and_indexes_files() {
+        let _guard = crate::tests::bootstrap::lock();
+        let _client = crate::tests::bootstrap::setup_image_home();
+        let image_home = crate::tests::bootstrap::test_image_home();
+
+        let dir = image_home.join("walkdir_to");
+        std::fs::create_dir_all(&dir).expect("create dir");
+        use snapfab::test_image::{PhotoSpec, generate_batch};
+        let photo = dir.join("pic.jpg");
+        generate_batch(&[PhotoSpec {
+            output: Some(photo.to_string_lossy().to_string()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate test photo");
+
+        let event =
+            Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(dir.clone());
+        handle_event(event, &image_home, None);
+
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            let rows = crate::storage::asset_store::list_asset_paths_under(&dir.to_string_lossy())
+                .unwrap_or_default();
+            if !rows.is_empty() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "no index row appeared under {}",
+                dir.display()
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    #[test]
+    #[allow(clippy::items_after_statements)]
+    fn expired_pending_from_drains_removals() {
+        let _guard = crate::tests::bootstrap::lock();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let _client = crate::tests::bootstrap::setup_image_home();
+        clear_asset_tables();
+
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        let old_dir = PathBuf::from("/expired_pending_dir");
+        let hash = arrayvec::ArrayString::<64>::from("testhash").expect("valid hash");
+        let record = AssetRecord::new_media(
+            AssetKind::Image,
+            old_dir.join("photo.jpg").to_string_lossy().into_owned(),
+            Some(hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        let id = record.asset_id;
+        asset_store::insert_asset(&record).expect("insert test asset");
+
+        // Pending From with a cookie; no matching To ever arrives.
+        let from_event = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)))
+            .set_tracker(999)
+            .add_path(old_dir.clone());
+        handle_event(
+            from_event,
+            &crate::tests::bootstrap::test_image_home(),
+            None,
+        );
+
+        // Drain as if ~3s later: expired entry must be returned and processed.
+        let expired = drain_expired_pending_from(Instant::now() + Duration::from_secs(3));
+        assert!(
+            expired.iter().any(|paths| paths == &vec![old_dir.clone()]),
+            "expired pending from not drained: {expired:?}"
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let old_rows =
+                asset_store::list_asset_paths_under(&old_dir.to_string_lossy()).unwrap_or_default();
+            if old_rows.is_empty() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "expired pending from did not remove rows: {old_rows:?}"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        // Row is gone entirely.
+        assert!(
+            !asset_store::list_asset_paths_under(&old_dir.to_string_lossy())
+                .unwrap_or_default()
+                .iter()
+                .any(|(_, aid)| *aid == id)
+        );
+
+        clear_asset_tables();
     }
 }
