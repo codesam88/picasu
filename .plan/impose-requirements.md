@@ -160,15 +160,16 @@ superseded pointers only.
 
 ### Structural work (authoritative: C9/C10; rest are pointers)
 
-- **C1 [done, residual drain cost see C9/C10]** Shutdown lifecycle. Owns
-  backstop/expire handles; stops watcher, rejects intake, cancels/awaits
-  scan, discards queued work, drains writer. Original 70 s hang fixed.
-  Residual: drain still covers per-flush cascade rebuilds (see C9/C10);
-  gate determinism under TEST-01.
+- **C1 [done]** Shutdown lifecycle. Owns backstop/expire handles;
+  stops watcher, rejects intake, cancels/awaits scan, discards queued
+  work, drains writer. Original 70 s hang fixed. Cascade-rebuild drain
+  tail closed by C11; gate determinism under TEST-01.
 - **C2 [superseded by C9/C10]** Path-scoped coordination via Verify-lane
   sweep. Do not patch; implement C9/C10.
-- **C3 [partial, abort/preemption moves to C10]** Scheduler ownership
-  done; in-flight abort + lock-map hygiene open in C10.
+- **C3 [done] Scheduler ownership** (abort/preemption completed
+  under C10). One scheduler owns every trigger, dedupes against
+  remaining work, trickle-feeds Rayon; shutdown discards queued work
+  and awaits in-flight jobs only.
 - **C4 [superseded by C9/C10]** Lazy tree view as claimed. Epoch advance
   kept; per-flush rebuild removal withdrawn (see C9/C10 gates).
 - **C5 [done] Watcher rename robustness**. Pending-`From` table pairs
@@ -197,8 +198,6 @@ superseded pointers only.
 - SHUTDOWN-03 (S3-low): watcher can start after `stop_watcher`.
 - M3 (S3): REQ-3 "in one step" is per-record `warn!`, not one txn.
 - TEST-01 (hardening): SIGTERM gate fires before backlog depth.
-- CASCADE-01/M2 (S2, open as C11): per-flush cascade rebuilds and the
-  held-write-txn in `album_task` are untouched by C9/C10; see C11.
 
 - **C11 [done] Writer cascade: rebuild outside the held write txn**.
   `cascade_after_write` snapshots once per entry and shares it (`Arc`)
@@ -211,8 +210,9 @@ superseded pointers only.
   `cascade_two_pending_albums_rebuilds_at_most_once` (observer
   `TreeRefreshBuild` count).
 - Absorbed into C9/C10 RED steps (no separate action): EPOCH-01,
-  SWEEP-01, M1, M4. CASCADE-01/M2 were listed here but the C9/C10
-  implementation did not touch the cascade — see C11.
+  SWEEP-01, M1, M4. CASCADE-01/M2 were first absorbed here, then found
+  untouched by C9/C10 and re-opened as C11 — now closed by C11 (history
+  kept for the record).
 
 ## Revised designs (2026-11-12, open)
 
@@ -247,13 +247,7 @@ Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
   drop); standalone `bump()` removed. Commits: lease dedup, scan abort,
   lease-owned generations. Gates: `lease_releases_generation_on_drop`,
   `scan_abort`, `superseded_truth_table`, `commit_with` release test.
-  Detail below is historical; the summary above is authoritative.
-  Requirements: REQ-7 ("scan never waits, interactive never loses").
-  Steps, all GREEN: (1) RED lease-dup + scan/edit race gates; (2) dedup
-  fix + lease-owned generations (`bump()` removed); (3) stage-boundary
-  and pre-flush abort, lease-then-mutate on all mutating paths; (4)
-  ID->path re-resolve under lease, subtree locks for moves (advisory
-  refcounts: no deadlock possible); (5) full suite green.
+  (Earlier step-by-step detail retired as done; history in git.)
 
 ## Verification per step
 
