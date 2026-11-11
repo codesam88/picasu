@@ -97,13 +97,13 @@ pub enum Stage {
     FilterParIter,
     /// `compute_locate`: the parallel position lookup for `locate`.
     ComputeLocate,
-    /// `refresh_tree_cache`: total wall time.
+    /// Tree-view rebuild: total wall time.
     TreeRefreshTotal,
-    /// `refresh_tree_cache`: rebuild from the asset tables.
+    /// Tree-view rebuild: rebuild from the asset tables.
     TreeRefreshBuild,
-    /// `refresh_tree_cache`: the parallel sort.
+    /// Tree-view rebuild: the parallel sort.
     TreeRefreshSort,
-    /// `refresh_tree_cache`: waiting for the in-memory tree write guard.
+    /// Tree-view rebuild: waiting for the in-memory tree write guard.
     TreeRefreshWriteWait,
     /// Bridge: waiting for a CPU admittance permit.
     CpuPermitWait,

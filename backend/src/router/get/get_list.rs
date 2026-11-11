@@ -50,7 +50,7 @@ pub async fn get_tags(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<TagInf
     let GuardUser { claims } = auth?;
     let (caller, _) = caller_identity(&claims);
     tokio::task::spawn_blocking(move || {
-        let vec_tags_info = TREE.read_tags(&caller);
+        let vec_tags_info = crate::storage::db::read_tags(&caller);
         Ok(Json(vec_tags_info))
     })
     .await

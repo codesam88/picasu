@@ -12,8 +12,6 @@ use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::storage::files::write_gate;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use redb::{ReadableDatabase, ReadableTable};
@@ -227,10 +225,7 @@ pub async fn set_album_cover(
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
     Ok(())
 }
 
@@ -338,10 +333,7 @@ pub async fn set_album_title(
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
 
     Ok(())
 }

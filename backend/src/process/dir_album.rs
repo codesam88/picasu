@@ -16,8 +16,6 @@ use crate::process::hash::generate_random_hash;
 use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use redb::{ReadableDatabase, ReadableTable};
 
 /// In-memory cache: dir path → album ID.
@@ -124,7 +122,7 @@ pub fn mark_album_for_update(album_id: ArrayString<64>) {
 }
 
 /// Drain and return all albums that need a self-update.
-/// Called from `UpdateTreeTask` after the in-memory tree has been refreshed.
+/// Drained by the writer cascade after a flush writes new asset rows.
 pub fn drain_pending_album_updates() -> Vec<ArrayString<64>> {
     PENDING_ALBUM_UPDATES
         .lock()
@@ -241,8 +239,8 @@ pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
 
     cache.insert(dir_path, album_id);
 
-    // Refresh the in-memory tree so the new album is visible immediately.
-    BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+    // Invalidate the view so the new album is visible to the next reader.
+    crate::storage::tree_view::tree_changed();
 
     Ok(album_id)
 }

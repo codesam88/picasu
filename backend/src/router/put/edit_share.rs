@@ -10,8 +10,6 @@ use crate::router::auth::GuardUser;
 use crate::router::put::users_password::caller_identity;
 use crate::storage::db::TREE;
 use crate::storage::files::visible_to;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::{router::AppResult, storage::db::METADATA_TABLE};
 
 use arrayvec::ArrayString;
@@ -161,10 +159,7 @@ pub async fn edit_share(
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
     Ok(())
 }
 
@@ -282,9 +277,6 @@ pub async fn delete_share(
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
     Ok(())
 }

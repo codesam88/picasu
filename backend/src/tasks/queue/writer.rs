@@ -17,29 +17,27 @@
 //! single op can head-of-line-block the writer on compute: every writer op
 //! completes in well under a second.
 //!
-//! Follow-up work — the in-memory tree rebuild, pending album self-updates,
-//! update-expire bookkeeping, and the expiry sweep — moves to ordered cascade
-//! jobs on a second bounded channel, consumed serially by the cascade task
-//! (spawned alongside the writer, on the shared runtime). Cascade handlers
-//! reuse the [`run_cpu`](super::bridge::run_cpu) bridge, so compute still
-//! holds one admittance permit per job against the N-1 pool. Each writer op
-//! maps to exactly one cascade entry carrying the same completion seq:
+//! Follow-up work — pending album self-updates, update-expire bookkeeping,
+//! and the expiry sweep — moves to ordered cascade jobs on a second bounded
+//! channel, consumed serially by the cascade task (spawned alongside the
+//! writer, on the shared runtime). Cascade handlers reuse the
+//! [`run_cpu`](super::bridge::run_cpu) bridge, so compute still holds one
+//! admittance permit per job against the N-1 pool. Each writer op maps to
+//! exactly one cascade entry carrying the same completion seq:
 //!
-//! * `Flush` → tables are written, then [`CascadeOp::UpdateTreeChain`]
-//!   (rebuild, album self-updates, second rebuild, update-expire, and the
-//!   expire sweep when one is due — the old `FlushTreeTask` →
-//!   `UpdateTreeTask` → `UpdateExpireTask` → `ExpireCheckTask` detached
-//!   chain, minus the detaching).
-//! * `UpdateTree` → no writer-side work, then `UpdateTreeChain`.
+//! * `Flush` → tables are written and the asset-view epoch advances, then
+//!   [`CascadeOp::AfterWrite`] runs pending album self-updates, update-expire
+//!   bookkeeping, and the expire sweep when one is due.
 //! * `ExpireCheck` → no writer-side work, then [`CascadeOp::ExpireRound`]
 //!   (expiry sweep on the Rayon pool, then the looper timer re-arm — the
 //!   pairing the old `ExpireCheckTask::batch_run` provided).
-//! * `SweepDirAlbums` / `PruneUsersRoot` → removes are written, then
-//!   [`CascadeOp::Noop`]; these ops never cascaded, and still do not.
+//! * `SweepDirAlbums` / `PruneUsersRoot` → removes are written and the epoch
+//!   advances, then [`CascadeOp::Noop`].
 //! * `Barrier` → marker only, then `Noop`.
 //!
-//! Empty flushes still enqueue an `UpdateTreeChain`, so barriers built on
-//! empty flushes observe a fresh tree, exactly as the old rendezvous did.
+//! The asset view is never rebuilt here. `snapshot_tree` rebuilds it on
+//! demand when the epoch moved, so a scan that writes thousands of rows costs
+//! one rebuild per reader, not one per flush.
 //!
 //! # Barrier coverage across both stages
 //!
@@ -88,7 +86,7 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use arrayvec::ArrayString;
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -96,11 +94,11 @@ use tokio::sync::{Mutex, Notify, mpsc};
 use super::bridge::run_cpu;
 use crate::model::abstract_data::AbstractData;
 use crate::process::dir_album::drain_pending_album_updates;
+use crate::storage::tree_view::bump_tree_epoch;
 use crate::tasks::actor::album::album_task;
 use crate::tasks::batcher::expire_check::expire_check_task;
 use crate::tasks::batcher::flush_tree::flush_tables;
 use crate::tasks::batcher::update_expire::update_expire_task;
-use crate::tasks::batcher::update_tree::refresh_tree_cache;
 use crate::tasks::runtime::spawn;
 
 /// Bound for the writer inbox. A full inbox parks the submitter, which is the
@@ -120,9 +118,6 @@ pub enum WriteOp {
         inserts: Vec<AbstractData>,
         removes: Vec<AbstractData>,
     },
-    /// Standalone tree rebuild (startup; barriers use [`barrier`] plus
-    /// the flush ops instead of submitting rebuilds directly).
-    UpdateTree,
     /// Expiry sweep over the snapshot caches.
     ExpireCheck,
     /// Sweep removal of dir-album records whose directories are gone.
@@ -137,8 +132,9 @@ pub enum WriteOp {
 /// Each entry carries the completion seq of the writer op it follows, so the
 /// cascade watermark advances over the same clock the writer advances.
 enum CascadeOp {
-    /// Tree rebuild plus pending album self-updates plus expiry bookkeeping.
-    UpdateTreeChain,
+    /// Pending album self-updates plus expiry bookkeeping. The asset view is
+    /// not rebuilt here: writers only advance its epoch.
+    AfterWrite,
     /// One expiry sweep plus the looper timer re-arm.
     ExpireRound,
     /// No follow-up work (sweep/prune removes, barrier markers).
@@ -157,6 +153,15 @@ static CASCADE_COMPLETED_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Woken after every watermark advance on either stage.
 static BARRIER_NOTIFY: Notify = Notify::const_new();
+
+/// Serializes sequence allocation with the channel send. The barrier proof
+/// depends on channel arrival order matching sequence order; allocating
+/// before awaiting `send` would let a later op overtake an earlier one.
+static SUBMIT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+/// Set by [`shutdown_writer`] after the final barrier. Submissions are
+/// rejected from then on, so the drain cannot be reopened by a late producer.
+static WRITER_CLOSED: AtomicBool = AtomicBool::new(false);
 
 /// Current generation watermarks `(next, writer, cascade)`. Diagnostics only;
 /// the values are read individually and may not form one instant.
@@ -201,11 +206,17 @@ async fn ensure_cascade() -> mpsc::Sender<(u64, CascadeOp)> {
 
 /// Start the writer task once; later calls reuse the running writer. The
 /// cascade task starts first so the writer never enqueues into nothing.
-async fn ensure_writer() -> mpsc::Sender<(u64, WriteOp)> {
+async fn ensure_writer() -> anyhow::Result<mpsc::Sender<(u64, WriteOp)>> {
+    if WRITER_CLOSED.load(Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("serial db writer is closed"));
+    }
     let cascade_tx = ensure_cascade().await;
     let mut slot = WRITER.lock().await;
+    if WRITER_CLOSED.load(Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("serial db writer is closed"));
+    }
     if let Some(endpoint) = slot.as_ref() {
-        return endpoint.tx.clone();
+        return Ok(endpoint.tx.clone());
     }
     let (tx, rx) = mpsc::channel(WRITER_CAPACITY);
     let handle = spawn(writer_loop(rx, cascade_tx));
@@ -214,17 +225,28 @@ async fn ensure_writer() -> mpsc::Sender<(u64, WriteOp)> {
         handle,
     };
     *slot = Some(endpoint);
-    tx
+    Ok(tx)
 }
 
-/// Submit one op, backpressuring the caller while the inbox is full.
-pub async fn submit(op: WriteOp) -> anyhow::Result<()> {
-    let tx = ensure_writer().await;
+/// Allocate a sequence and send under one lock, so arrival order matches
+/// sequence order. Returns the op's own seq, which is what a barrier waits
+/// for.
+async fn submit_tracked(op: WriteOp) -> anyhow::Result<u64> {
+    let _guard = SUBMIT_LOCK.lock().await;
+    if WRITER_CLOSED.load(Ordering::SeqCst) {
+        return Err(anyhow::anyhow!("serial db writer is closed"));
+    }
+    let tx = ensure_writer().await?;
     let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
     tx.send((seq, op))
         .await
         .map_err(|_| anyhow::anyhow!("serial db writer is gone"))?;
-    Ok(())
+    Ok(seq)
+}
+
+/// Submit one op, backpressuring the caller while the inbox is full.
+pub async fn submit(op: WriteOp) -> anyhow::Result<()> {
+    submit_tracked(op).await.map(|_| ())
 }
 
 /// Submit a flush of scanned/mutated assets.
@@ -245,33 +267,13 @@ pub async fn submit_flush_remove(removes: Vec<AbstractData>) -> anyhow::Result<(
     .await
 }
 
-/// Submit a standalone tree rebuild (startup; barriers use [`barrier`] plus
-/// the flush ops instead of submitting rebuilds directly).
-pub async fn submit_update_tree() -> anyhow::Result<()> {
-    submit(WriteOp::UpdateTree).await
-}
-
 /// Wait until every op submitted before this call — including everything
 /// those ops cascaded through the follow-up stage — has completed. No
 /// timeout: see the module docs for why a barrier must not return early.
 pub async fn barrier() {
-    if submit(WriteOp::Barrier).await.is_err() {
-        return;
+    if let Ok(seq) = submit_tracked(WriteOp::Barrier).await {
+        wait_for_seq(seq).await;
     }
-    let seq = NEXT_SEQ.load(Ordering::SeqCst) - 1;
-    wait_for_seq(seq).await;
-}
-
-/// Pre-sweep barrier: all walk-result flushes (and their cascades) are
-/// visible in the in-memory tree before the sweep reads it.
-pub async fn barrier_flush_tree() {
-    barrier().await;
-}
-
-/// Post-sweep barrier: the sweep's removes (and their cascades) are drained
-/// and album metadata is rebuilt.
-pub async fn barrier_update_tree() {
-    barrier().await;
 }
 
 /// Drain both stages at shutdown: wait until everything submitted so far —
@@ -280,7 +282,10 @@ pub async fn barrier_update_tree() {
 /// so no enqueued cascade is lost.
 pub async fn shutdown_writer() {
     barrier().await;
+    let guard = SUBMIT_LOCK.lock().await;
+    WRITER_CLOSED.store(true, Ordering::SeqCst);
     let endpoint = WRITER.lock().await.take();
+    drop(guard);
     if let Some(endpoint) = endpoint {
         drop(endpoint.tx);
         if let Err(err) = endpoint.handle.await {
@@ -355,7 +360,8 @@ async fn writer_loop(
         }
         if merged > 0 {
             flush_tables(&inserts, &removes);
-            enqueue_cascade(&cascade_tx, flush_seq, CascadeOp::UpdateTreeChain).await;
+            bump_tree_epoch();
+            enqueue_cascade(&cascade_tx, flush_seq, CascadeOp::AfterWrite).await;
             complete_seq(flush_seq);
         }
         if let Some((seq, op)) = pending.pop_front() {
@@ -367,7 +373,7 @@ async fn writer_loop(
 }
 
 fn complete_seq(seq: u64) {
-    COMPLETED_SEQ.store(seq, Ordering::SeqCst);
+    COMPLETED_SEQ.fetch_max(seq, Ordering::SeqCst);
     BARRIER_NOTIFY.notify_waiters();
 }
 
@@ -386,16 +392,18 @@ fn handle_op(op: WriteOp) -> CascadeOp {
     match op {
         WriteOp::Flush { inserts, removes } => {
             flush_tables(&inserts, &removes);
-            CascadeOp::UpdateTreeChain
+            bump_tree_epoch();
+            CascadeOp::AfterWrite
         }
-        WriteOp::UpdateTree => CascadeOp::UpdateTreeChain,
         WriteOp::ExpireCheck => CascadeOp::ExpireRound,
         WriteOp::SweepDirAlbums(entries) => {
             handle_sweep_dir_albums(entries);
+            bump_tree_epoch();
             CascadeOp::Noop
         }
         WriteOp::PruneUsersRoot(users_root) => {
             handle_prune_users_root(&users_root);
+            bump_tree_epoch();
             CascadeOp::Noop
         }
         WriteOp::Barrier => CascadeOp::Noop,
@@ -410,46 +418,27 @@ async fn cascade_loop(mut rx: mpsc::Receiver<(u64, CascadeOp)>) {
             return;
         };
         handle_cascade(op).await;
-        CASCADE_COMPLETED_SEQ.store(seq, Ordering::SeqCst);
+        CASCADE_COMPLETED_SEQ.fetch_max(seq, Ordering::SeqCst);
         BARRIER_NOTIFY.notify_waiters();
     }
 }
 
 async fn handle_cascade(op: CascadeOp) {
     match op {
-        CascadeOp::UpdateTreeChain => cascade_update_tree().await,
+        CascadeOp::AfterWrite => cascade_after_write().await,
         CascadeOp::ExpireRound => cascade_expire_round().await,
         CascadeOp::Noop => {}
     }
 }
 
-/// Rebuild the in-memory tree, run pending album self-updates serially, then
-/// cascade into expiry — the chain the old detached `UpdateTreeTask` ran,
-/// now ordered behind the writer through the cascade queue.
-async fn cascade_update_tree() {
-    if let Err(err) = run_cpu(|| {
-        refresh_tree_cache();
-        Ok::<(), anyhow::Error>(())
-    })
-    .await
-    {
-        log::warn!("cascade tree refresh failed: {err:#}");
-        return;
-    }
+/// Run pending album self-updates serially, then expiry bookkeeping.
+/// Asset rows are already durable; the in-memory view refreshes lazily from
+/// its epoch, so this stage never rebuilds it.
+async fn cascade_after_write() {
     let pending = drain_pending_album_updates();
-    if !pending.is_empty() {
-        for album_id in pending {
-            if let Err(err) = run_cpu(move || album_task(album_id)).await {
-                log::warn!("cascade album self-update failed for {album_id}: {err:#}");
-            }
-        }
-        if let Err(err) = run_cpu(|| {
-            refresh_tree_cache();
-            Ok::<(), anyhow::Error>(())
-        })
-        .await
-        {
-            log::warn!("cascade tree refresh after album updates failed: {err:#}");
+    for album_id in pending {
+        if let Err(err) = run_cpu(move || album_task(album_id)).await {
+            log::warn!("cascade album self-update failed for {album_id}: {err:#}");
         }
     }
     cascade_update_expire().await;
@@ -517,4 +506,26 @@ fn handle_prune_users_root(users_root: &std::path::Path) {
         let _ = txn.commit();
     }
     crate::process::dir_album::evict_dir_album(users_root);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completed_watermarks_never_regress() {
+        complete_seq(1_000);
+        complete_seq(999);
+        assert!(
+            COMPLETED_SEQ.load(Ordering::SeqCst) >= 1_000,
+            "writer watermark must not move backwards when an earlier seq completes late"
+        );
+
+        CASCADE_COMPLETED_SEQ.fetch_max(1_000, Ordering::SeqCst);
+        CASCADE_COMPLETED_SEQ.fetch_max(999, Ordering::SeqCst);
+        assert!(
+            CASCADE_COMPLETED_SEQ.load(Ordering::SeqCst) >= 1_000,
+            "cascade watermark must not move backwards"
+        );
+    }
 }

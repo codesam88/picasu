@@ -8,7 +8,6 @@ use crate::{
     model::asset::{AssetKind, AssetRecord},
     process::dir_album::{mark_album_for_update, mark_dir_albums_for_path},
     storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, METADATA_TABLE, TREE},
-    tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
 pub struct FlushTreeTask {
@@ -46,7 +45,7 @@ impl BatchTask for FlushTreeTask {
 
 fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     flush_tables(insert_list, remove_list);
-    BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
+    crate::storage::tree_view::tree_changed();
 }
 /// Write the insert/remove lists to the four asset tables (`ASSET_BY_ID`,
 /// `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`).
@@ -57,10 +56,10 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
 /// `METADATA_TABLE` receives only the metadata-only payload extracted from
 /// the input — never its identity fields.
 ///
-/// Does not dispatch [`UpdateTreeTask`]; `flush_tree_task` does that after
-/// the tables are written. The serial writer (`tasks::queue::writer`) calls
-/// this directly and runs its own inline cascade instead. Tests call this
-/// directly so no background tree rebuild races their assertions.
+/// Does not invalidate the tree view; `flush_tree_task` does that after the
+/// tables are written. The serial writer (`tasks::queue::writer`) calls this
+/// directly and advances its own epoch. Tests call this directly so no
+/// background rebuild races their assertions.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     use crate::model::metadata_record::to_metadata_record;
@@ -236,7 +235,7 @@ pub(crate) fn flush_tables(insert_list: &[AbstractData], remove_list: &[Abstract
                     if let Ok(Some(record)) = asset_store::get_asset_by_id(id.as_ref())
                         && !std::path::Path::new(&record.path).exists()
                     {
-                        remove_asset_from_tables(&id, &record.path, content_hash);
+                        remove_asset_from_tables(abstract_data, &id, &record.path, content_hash);
                     }
                 }
             }
@@ -244,7 +243,7 @@ pub(crate) fn flush_tables(insert_list: &[AbstractData], remove_list: &[Abstract
             // Normal case: the record holds its path — remove that
             // specific asset.
             if let Ok(Some(asset_id)) = asset_store::get_asset_id_by_path(&path) {
-                remove_asset_from_tables(&asset_id, &path, abstract_data.hash());
+                remove_asset_from_tables(abstract_data, &asset_id, &path, abstract_data.hash());
             }
         }
 
@@ -294,8 +293,27 @@ fn remove_from_old_group(
 }
 
 /// Remove an asset from all tables: `ASSET_BY_ID`, `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`.
-fn remove_asset_from_tables(asset_id: &ArrayString<64>, path: &str, content_hash: ArrayString<64>) {
+fn remove_asset_from_tables(
+    data: &AbstractData,
+    asset_id: &ArrayString<64>,
+    path: &str,
+    content_hash: ArrayString<64>,
+) {
     use crate::storage::asset_store;
+
+    // Thumbnail deletion belongs to the confirmed record removal, not to the
+    // sweep/verify pre-check: a path can transiently vanish while a mutation
+    // is moving it, and the lease keeps the record alive in that window.
+    let other_refs = asset_store::get_dupe_ids(&content_hash).map_or(0, |ids| ids.len());
+    if other_refs <= 1 {
+        let thumbnail = data.compressed_path();
+        if !thumbnail.as_os_str().is_empty()
+            && thumbnail.exists()
+            && let Err(err) = std::fs::remove_file(&thumbnail)
+        {
+            log::warn!("Failed to delete thumbnail {}: {err}", thumbnail.display());
+        }
+    }
 
     let _ = asset_store::remove_asset_by_id(asset_id);
     let _ = asset_store::remove_asset_by_path(path);

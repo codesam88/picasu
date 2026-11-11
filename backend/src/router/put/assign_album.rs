@@ -9,9 +9,6 @@ use crate::process::sanitize::find_unique_path;
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::VERSION_COUNT_TIMESTAMP;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::queue::submit_interactive_album;
 use arrayvec::ArrayString;
 use log::warn;
@@ -158,17 +155,7 @@ pub async fn assign_album(
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
-
-    // Bump the version counter so subsequent prefetch calls create a new
-    // query cache entry instead of returning stale data from the snapshot
-    // taken before the mutation.  (UpdateExpireTask, which normally
-    // advances this counter, runs asynchronously — too late for the next
-    // frontend request.)
-    VERSION_COUNT_TIMESTAMP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    crate::storage::tree_view::tree_changed();
 
     submit_interactive_album(album_id)
         .await
@@ -238,6 +225,14 @@ fn move_asset_into_album(
         (base_dest, AssignOutcome::Moved)
     };
 
+    // The source and destination paths are leased for the whole filesystem +
+    // row transaction. A concurrent verify or watcher removal sees the lease
+    // and skips; a newer scan submit supersedes older queued work by
+    // generation.
+    let _lease = crate::tasks::path_epoch::lease_paths([source_path.clone(), final_dest.clone()]);
+    crate::tasks::path_epoch::bump(&source_path);
+    crate::tasks::path_epoch::bump(&final_dest);
+
     // Copy the destination sidecar (if any) before moving the asset, so an
     // interruption never leaves an asset without its metadata. An orphan copy
     // is the worst case.
@@ -245,8 +240,10 @@ fn move_asset_into_album(
     if sidecar.exists() {
         let new_sidecar = final_dest.with_extension("xmp");
         let bytes = fs::read(&sidecar).or_raise(|| (ErrorKind::IO, "Failed to read sidecar"))?;
-        crate::process::atomic_write::write_via_temp(&new_sidecar, "sidecar", |tmp| fs::write(tmp, &bytes))
-            .or_raise(|| (ErrorKind::IO, "Failed to copy sidecar"))?;
+        crate::process::atomic_write::write_via_temp(&new_sidecar, "sidecar", |tmp| {
+            fs::write(tmp, &bytes)
+        })
+        .or_raise(|| (ErrorKind::IO, "Failed to copy sidecar"))?;
     }
 
     // Move the file on disk.
@@ -367,6 +364,12 @@ fn move_album_into_album(
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album directory has no name"))?;
     let base_dest = target_dir.join(dir_name);
 
+    // Lease the source subtree and supersede queued verify work before the
+    // rename creates a window where the old directory is absent but the rows
+    // still point at it.
+    let _source_lease = crate::tasks::path_epoch::lease_subtree(source_dir.clone());
+    crate::tasks::path_epoch::bump(&source_dir);
+
     let (new_dir, outcome) = if base_dest.exists() {
         match on_conflict {
             OnConflict::Skip => return Ok(AssignOutcome::Skipped),
@@ -384,6 +387,8 @@ fn move_album_into_album(
     };
 
     if let Some(new_dir) = new_dir {
+        let _dest_lease = crate::tasks::path_epoch::lease_subtree(new_dir.clone());
+        crate::tasks::path_epoch::bump(&new_dir);
         rewrite_dir_album_cache_prefix(&source_dir, &new_dir);
         // Update asset tables for all moved files. Path rewrites live
         // exclusively on the AssetRecords now — the metadata payload holds
@@ -412,7 +417,10 @@ fn rename_dir(source_dir: &Path, dest_dir: &Path) -> Result<(), AppError> {
 /// Update asset tables after a directory move.
 /// For each asset whose path starts with `source_dir`, update it
 /// to the corresponding path under `dest_dir`.
-fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Result<(), AppError> {
+pub(crate) fn update_asset_tables_after_dir_move(
+    source_dir: &Path,
+    dest_dir: &Path,
+) -> Result<(), AppError> {
     use crate::storage::asset_store;
 
     let records = asset_store::get_all_assets()
@@ -540,5 +548,101 @@ mod tests {
             !album_id_desc.is_empty(),
             "AssignAlbumData.albumId must be documented"
         );
+    }
+
+    #[test]
+    fn update_asset_tables_after_dir_move_preserves_asset_id() {
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH};
+        use crate::tests::bootstrap;
+        use redb::ReadableTable;
+
+        let _guard = bootstrap::lock();
+        let _ = &*bootstrap::TEST_ENV;
+
+        // Ensure tables exist.
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_write()
+            .expect("begin write txn for table creation");
+        txn.open_table(ASSET_BY_PATH).expect("create ASSET_BY_PATH");
+        txn.open_table(ASSET_BY_ID).expect("create ASSET_BY_ID");
+        txn.commit().expect("commit table creation");
+
+        // Clear both tables.
+        for table_def in [ASSET_BY_PATH, ASSET_BY_ID] {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write for clear");
+            {
+                let t = txn.open_table(table_def).expect("open table for clear");
+                let keys: Vec<String> = t
+                    .iter()
+                    .expect("iterate")
+                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+                    .collect();
+                drop(t);
+                let mut t = txn.open_table(table_def).expect("reopen table for clear");
+                for key in &keys {
+                    t.remove(key.as_str()).expect("remove key");
+                }
+            }
+            txn.commit().expect("commit clear");
+        }
+
+        let record = AssetRecord::new_media(
+            AssetKind::Image,
+            "/src/dir/photo.jpg".into(),
+            None,
+            10,
+            "jpg".into(),
+            0,
+        );
+        let id = record.asset_id;
+        asset_store::insert_asset(&record).expect("insert test asset");
+
+        super::update_asset_tables_after_dir_move(Path::new("/src/dir"), Path::new("/dst/dir"))
+            .expect("dir move rewrite");
+
+        assert!(
+            asset_store::get_asset_id_by_path("/src/dir/photo.jpg")
+                .expect("read old path")
+                .is_none(),
+            "old path mapping must be removed"
+        );
+        assert_eq!(
+            asset_store::get_asset_id_by_path("/dst/dir/photo.jpg").expect("read new path"),
+            Some(id),
+            "new path mapping must carry the same asset id"
+        );
+        let updated = asset_store::get_asset_by_id(id.as_ref())
+            .expect("read record")
+            .expect("record present");
+        assert_eq!(updated.asset_id, id, "asset id must be preserved");
+        assert_eq!(updated.path, "/dst/dir/photo.jpg", "path must be rewritten");
+
+        // Cleanup.
+        for table_def in [ASSET_BY_PATH, ASSET_BY_ID] {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write for cleanup");
+            {
+                let t = txn.open_table(table_def).expect("open table for cleanup");
+                let keys: Vec<String> = t
+                    .iter()
+                    .expect("iterate")
+                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+                    .collect();
+                drop(t);
+                let mut t = txn.open_table(table_def).expect("reopen table for cleanup");
+                for key in &keys {
+                    t.remove(key.as_str()).expect("remove key");
+                }
+            }
+            txn.commit().expect("commit cleanup");
+        }
     }
 }

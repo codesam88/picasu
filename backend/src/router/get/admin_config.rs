@@ -60,6 +60,9 @@ fn field_value(config: &crate::model::config::AppConfig, name: &str) -> serde_js
         "max_upload_size" => serde_json::to_value(&config.max_upload_size).unwrap_or_default(),
         "read_only_mode" => serde_json::to_value(config.read_only_mode).unwrap_or_default(),
         "fs_notify_watcher" => serde_json::to_value(config.fs_notify_watcher).unwrap_or_default(),
+        "index_backstop_interval_secs" => {
+            serde_json::to_value(config.index_backstop_interval_secs).unwrap_or_default()
+        }
         "normalize_upload_filenames" => {
             serde_json::to_value(config.normalize_upload_filenames).unwrap_or_default()
         }
@@ -146,7 +149,7 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
                 "file"
             }
         }
-        name if name.starts_with("login_") && name.ends_with("_secs") => {
+        name if name.ends_with("_secs") => {
             if trimmed.parse::<u64>().is_ok() {
                 "env"
             } else {

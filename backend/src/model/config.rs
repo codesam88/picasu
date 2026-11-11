@@ -129,6 +129,11 @@ pub struct AppConfig {
     pub read_only_mode: bool,
     #[serde(default = "default_true")]
     pub fs_notify_watcher: bool,
+    /// Periodic full-scan backstop interval in seconds. `0` (the default)
+    /// disables the backstop. Host-only: the loop is started at boot and
+    /// reads this value once.
+    #[serde(default)]
+    pub index_backstop_interval_secs: u64,
     /// NFC-normalize uploaded filenames so macOS NFD names collapse onto
     /// their composed form. Optional (unlike the always-on sanitization tiers).
     #[serde(default = "default_true")]
@@ -312,6 +317,11 @@ pub mod config_tier_table {
             env_var: Some("PICASU_FS_NOTIFY_WATCHER"),
         },
         ConfigField {
+            name: "index_backstop_interval_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_INDEX_BACKSTOP_INTERVAL_SECS"),
+        },
+        ConfigField {
             name: "normalize_upload_filenames",
             tier: ConfigTier::Runtime,
             env_var: None,
@@ -431,6 +441,7 @@ impl Default for AppConfig {
             max_upload_size: default_max_upload_size(),
             read_only_mode: false,
             fs_notify_watcher: true,
+            index_backstop_interval_secs: 0,
             normalize_upload_filenames: true,
             validate_upload_content: true,
             use_client_timestamp_info: false,
@@ -549,6 +560,8 @@ pub(crate) struct TomlGallery {
     pub(crate) read_only_mode: bool,
     #[serde(default = "default_true")]
     pub(crate) fs_notify_watcher: bool,
+    #[serde(default)]
+    pub(crate) index_backstop_interval_secs: u64,
     #[serde(default = "default_true")]
     pub(crate) normalize_upload_filenames: bool,
     #[serde(default = "default_true")]
@@ -574,6 +587,7 @@ impl Default for TomlGallery {
             upload_folder: default_upload_folder(),
             read_only_mode: false,
             fs_notify_watcher: true,
+            index_backstop_interval_secs: 0,
             normalize_upload_filenames: true,
             validate_upload_content: true,
             use_client_timestamp_info: false,
@@ -606,6 +620,7 @@ impl From<TomlFile> for AppConfig {
             max_upload_size: t.server.max_upload_size,
             read_only_mode: t.gallery.read_only_mode,
             fs_notify_watcher: t.gallery.fs_notify_watcher,
+            index_backstop_interval_secs: t.gallery.index_backstop_interval_secs,
             normalize_upload_filenames: t.gallery.normalize_upload_filenames,
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
@@ -661,6 +676,7 @@ impl From<AppConfig> for TomlFile {
                 upload_folder: c.upload_folder,
                 read_only_mode: c.read_only_mode,
                 fs_notify_watcher: c.fs_notify_watcher,
+                index_backstop_interval_secs: c.index_backstop_interval_secs,
                 normalize_upload_filenames: c.normalize_upload_filenames,
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
@@ -956,6 +972,7 @@ impl AppConfig {
     /// Env-override application with the variable lookup injected, so
     /// tests can drive precedence hermetically: the crate denies `unsafe`,
     /// hence no process-env mutation from tests.
+    #[allow(clippy::too_many_lines)]
     fn apply_env_overrides_with(config: &mut AppConfig, get: impl Fn(&str) -> Option<String>) {
         // Trimmed, non-empty string override into an `Option` field.
         macro_rules! set_str {
@@ -1036,6 +1053,10 @@ impl AppConfig {
                 warn!("PICASU_FS_NOTIFY_WATCHER='{val}' is not 'true' or 'false', ignoring");
             }
         }
+        set_parse!(
+            index_backstop_interval_secs,
+            "PICASU_INDEX_BACKSTOP_INTERVAL_SECS"
+        );
         if let Some(val) = get("PICASU_UPLOAD_FOLDER") {
             let trimmed = val.trim().to_string();
             if !trimmed.is_empty() {
@@ -1145,6 +1166,7 @@ mod tests {
             max_upload_size: "500MiB".to_string(),
             read_only_mode: true,
             fs_notify_watcher: false,
+            index_backstop_interval_secs: 42,
             normalize_upload_filenames: false,
             validate_upload_content: true,
             use_client_timestamp_info: false,
@@ -1693,5 +1715,42 @@ read_only_mode = true
         assert_eq!(config.upload_folder, "uploads");
         assert!(!config.allow_registration);
         assert!(!config.bootstrap_admin);
+    }
+
+    #[test]
+    fn index_backstop_interval_defaults_to_zero() {
+        assert_eq!(AppConfig::default().index_backstop_interval_secs, 0);
+    }
+
+    #[test]
+    fn index_backstop_interval_env_override_wins() {
+        let mut config = parse_app_config("");
+        AppConfig::apply_env_overrides_with(&mut config, |name| {
+            if name == "PICASU_INDEX_BACKSTOP_INTERVAL_SECS" {
+                Some("7".to_string())
+            } else {
+                None
+            }
+        });
+        assert_eq!(config.index_backstop_interval_secs, 7);
+    }
+
+    #[test]
+    fn index_backstop_interval_preserved_across_toml_round_trip() {
+        let config = AppConfig {
+            index_backstop_interval_secs: 99,
+            ..AppConfig::default()
+        };
+        let tf = TomlFile::from(config.clone());
+        let toml_str = toml::to_string_pretty(&tf).expect("serialize toml");
+        let parsed: TomlFile = toml::from_str(&toml_str).expect("deserialize toml");
+        let restored = AppConfig::from(parsed);
+        assert_eq!(restored.index_backstop_interval_secs, 99);
+    }
+
+    #[test]
+    fn index_backstop_interval_defaults_when_absent_in_toml() {
+        let config = parse_app_config("");
+        assert_eq!(config.index_backstop_interval_secs, 0);
     }
 }

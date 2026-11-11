@@ -182,6 +182,7 @@ pub fn reset_backend_state() {
     // Clear in-memory caches.
     TREE_SNAPSHOT.in_memory.clear();
     TREE.in_memory.write().expect("TREE in_memory lock").clear();
+    crate::storage::tree_view::invalidate_tree_view();
 
     // Clear on-disk query snapshot cache tables.
     {
@@ -291,6 +292,7 @@ pub fn reset_backend_state() {
     // default is closed. Individual tests opt out via `write_config`.
     config.bootstrap_admin = true;
     config.fs_notify_watcher = true;
+    config.index_backstop_interval_secs = 0;
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;
     config.use_client_timestamp_info = false;

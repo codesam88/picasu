@@ -281,6 +281,35 @@ fn watcher_disabled_and_album_index_targeting() {
         "after rename: new path must be indexed"
     );
 
+    // Directory rename follows the descendant row (REQ-3).
+    let old_dir_file = image_home.join("subdir_a/renamed_a.jpg");
+    let new_dir_file = image_home.join("subdir_c/renamed_a.jpg");
+    assert_eq!(
+        path_count(&client, &old_dir_file),
+        1,
+        "before dir rename: old file path must be indexed"
+    );
+    std::fs::rename(image_home.join("subdir_a"), image_home.join("subdir_c"))
+        .expect("rename subdir_a to subdir_c");
+
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if path_count(&client, &old_dir_file) == 0 && path_count(&client, &new_dir_file) == 1 {
+            break;
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(
+        path_count(&client, &old_dir_file),
+        0,
+        "after dir rename: old file path must not be indexed"
+    );
+    assert_eq!(
+        path_count(&client, &new_dir_file),
+        1,
+        "after dir rename: new subdir_c file path must be indexed"
+    );
+
     // Reset to disabled for the final scan phase.
     {
         let mut cfg = APP_CONFIG

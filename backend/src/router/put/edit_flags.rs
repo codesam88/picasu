@@ -10,7 +10,6 @@ use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::queue::submit_interactive_album_detached;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -159,10 +158,7 @@ pub async fn edit_flags(
     let _ = BATCH_COORDINATOR
         .execute_batch_waiting(FlushTreeTask::insert(vec![]))
         .await;
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+    crate::storage::tree_view::tree_changed();
 
     // After memory update, trigger album self-update
     if !affected_album_ids.is_empty() {

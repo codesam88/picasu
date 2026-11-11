@@ -1,3 +1,4 @@
+pub mod backstop;
 use crate::constant::SNAPSHOT_MAX_LIFETIME_MS;
 use crate::tasks::queue::submit_expire_check;
 use crate::tasks::runtime::spawn;
@@ -14,7 +15,7 @@ const RESET_CAPACITY: usize = 16;
 static RESET_SENDER: LazyLock<Arc<tokio::sync::Mutex<Option<mpsc::Sender<()>>>>> =
     LazyLock::new(|| Arc::new(tokio::sync::Mutex::new(None)));
 
-pub fn start_expire_check_loop() {
+pub fn start_expire_check_loop() -> tokio::task::JoinHandle<()> {
     spawn(async {
         let (tx, mut rx) = mpsc::channel(RESET_CAPACITY);
 
@@ -43,7 +44,7 @@ pub fn start_expire_check_loop() {
                 }
             }
         }
-    });
+    })
 }
 
 // Provide a function to reset the countdown timer
@@ -52,3 +53,4 @@ pub async fn reset_expire_check_timer() {
         let _ = sender.try_send(());
     }
 }
+pub(crate) use backstop::start_backstop_loop;

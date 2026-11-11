@@ -2,6 +2,9 @@
 pub mod bootstrap;
 
 #[cfg(test)]
+mod backstop;
+
+#[cfg(test)]
 pub(crate) mod fixtures;
 
 #[cfg(test)]
@@ -42,6 +45,9 @@ mod seeds;
 
 #[cfg(test)]
 mod torn_thumbnail;
+
+#[cfg(test)]
+mod lifecycle;
 
 #[cfg(test)]
 mod rotation;
