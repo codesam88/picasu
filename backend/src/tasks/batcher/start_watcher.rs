@@ -251,11 +251,18 @@ pub(crate) fn handle_removed_file(removed: &Path) -> Option<RemovalAction> {
     // prune_asset_path removes the file (already gone — harmless NotFound),
     // clears the record's path, and removes the thumbnail once the path is
     // gone.
+    let original_entry = abstract_data.path().cloned();
     let has_path = prune_asset_path(&mut abstract_data, removed);
 
     if has_path {
         Some(RemovalAction::Insert(abstract_data))
     } else {
+        // Restore the removed path so the serial writer resolves the row by
+        // its exact path instead of falling into the empty-path hash-group
+        // reap (which is root-blind and could prune siblings).
+        if let Some(slot) = abstract_data.path_mut() {
+            *slot = original_entry;
+        }
         Some(RemovalAction::Remove(abstract_data))
     }
 }
