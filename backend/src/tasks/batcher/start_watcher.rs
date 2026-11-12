@@ -67,6 +67,12 @@ pub(crate) fn stop_watcher() {
 
 /// Reload watcher with the new path from config
 pub fn reload_watcher() {
+    if crate::tasks::queue::is_shutting_down() {
+        // Shutdown is in progress: do not drop/recreate the watcher (it is
+        // already stopped) and never resurrect a live watcher mid-drain.
+        return;
+    }
+
     info!("Reloading watcher...");
 
     {
@@ -86,6 +92,14 @@ pub fn reload_watcher() {
 }
 
 fn start_watcher_task_internal() -> Result<()> {
+    // Refuse to start (or restart) a watcher while shutting down: a detached
+    // startup task or in-flight reload must not resurrect a live watcher
+    // mid-drain.
+    if crate::tasks::queue::is_shutting_down() {
+        IS_WATCHING.store(false, Ordering::SeqCst);
+        return Ok(());
+    }
+
     // Fast-path: already running.
     if IS_WATCHING.swap(true, Ordering::SeqCst) {
         return Ok(());
@@ -850,5 +864,32 @@ mod tests {
         );
 
         clear_asset_tables();
+    }
+
+    #[test]
+    fn start_watcher_task_internal_skips_when_shutting_down() {
+        // Process-global shutdown state: nextest runs one process per test
+        // (see AGENTS.md), so flipping it here cannot poison other tests.
+        let _guard = crate::tests::bootstrap::lock();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let _client = crate::tests::bootstrap::setup_image_home();
+
+        // Establish a clean watcher state before flipping shutdown.
+        stop_watcher();
+
+        crate::tasks::queue::begin_shutdown();
+        assert!(crate::tasks::queue::is_shutting_down());
+
+        let result = start_watcher_task_internal();
+        assert!(result.is_ok(), "start must be a no-op while shutting down");
+
+        assert!(
+            !IS_WATCHING.load(Ordering::SeqCst),
+            "IS_WATCHING must stay false while shutting down"
+        );
+        assert!(
+            WATCHER_HANDLE.lock().expect("lock poisoned").is_none(),
+            "no watcher handle must be created while shutting down"
+        );
     }
 }
