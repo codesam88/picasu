@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use redb::ReadableDatabase;
 
+use crate::model::asset::AssetKind;
 use crate::model::asset::AssetRecord;
 use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, TREE};
 
@@ -59,6 +60,45 @@ pub fn list_asset_paths_under(root: &str) -> Result<Vec<(String, ArrayString<64>
         let id = ArrayString::from(id_str)
             .map_err(|_| anyhow::anyhow!("Asset ID exceeds 64 bytes: {id_str}"))?;
         out.push((key.to_string(), id));
+    }
+    Ok(out)
+}
+
+/// List `(dir_path, asset_id)` pairs for album assets (`AssetKind::Album`)
+/// whose directory path is `root` or a descendant of it. Scans `ASSET_BY_ID`
+/// (one table scan) and filters by kind and path prefix, so the in-memory
+/// tree view is not consulted. `root` may be a directory (trailing slash
+/// optional).
+pub fn list_album_assets_under(root: &str) -> Result<Vec<(String, ArrayString<64>)>> {
+    use redb::ReadableTable;
+    let base = root.trim_end_matches('/');
+    let base_path = std::path::Path::new(base);
+    let txn = TREE
+        .in_disk
+        .begin_read()
+        .context("Failed to begin read transaction for ASSET_BY_ID")?;
+    let table = txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID")?;
+
+    let mut out = Vec::new();
+    for row in table.iter().context("Failed to iterate ASSET_BY_ID")? {
+        let (_, value) = row.context("Failed to read row from ASSET_BY_ID")?;
+        let record: AssetRecord = match serde_json::from_str(value.value()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if record.kind != AssetKind::Album {
+            continue;
+        }
+        if record.path.is_empty() {
+            continue;
+        }
+        let dir_path = std::path::Path::new(&record.path);
+        if !dir_path.starts_with(base_path) {
+            continue;
+        }
+        out.push((record.path.clone(), record.asset_id));
     }
     Ok(out)
 }
@@ -677,6 +717,38 @@ mod tests {
         assert!(paths.contains(&"/root".to_string()));
         assert!(paths.contains(&"/root/child.jpg".to_string()));
         assert!(!paths.contains(&"/root_sibling/other.jpg".to_string()));
+
+        clear_tables();
+    }
+
+    #[test]
+    fn list_album_assets_under_filters_by_root_and_kind() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        ensure_tables();
+        clear_tables();
+
+        let album_under = AssetRecord::new_album("/root/album".into());
+        let album_outside = AssetRecord::new_album("/other/album".into());
+        let media_under = AssetRecord::new_media(
+            AssetKind::Image,
+            "/root/photo.jpg".into(),
+            None,
+            10,
+            "jpg".into(),
+            0,
+        );
+
+        insert_asset(&album_under).expect("insert album under");
+        insert_asset(&album_outside).expect("insert album outside");
+        insert_asset(&media_under).expect("insert media under");
+
+        let under = list_album_assets_under("/root").expect("list album under root");
+        let paths: Vec<String> = under.into_iter().map(|(p, _)| p).collect();
+        assert!(paths.contains(&"/root/album".to_string()));
+        assert!(!paths.contains(&"/other/album".to_string()));
+        assert!(!paths.contains(&"/root/photo.jpg".to_string()));
 
         clear_tables();
     }
