@@ -1,0 +1,36 @@
+name: Three sequential single-file uploads into one album produce suffixed outputs
+given:
+  - dir_album: /e2e_up_seq/target
+    id_as: $album
+  - photo: /e2e_up_seq/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_seq/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    asset_id_as: $asset_id_1
+    discover_path: /e2e_up_seq/target/photo.jpeg
+    then:
+      - response.status: 200
+  - upload:
+      file: /e2e_up_seq/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    asset_id_as: $asset_id_2
+    discover_path: /e2e_up_seq/target/photo-001.jpeg
+    then:
+      - response.status: 200
+  - upload:
+      file: /e2e_up_seq/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    asset_id_as: $asset_id_3
+    discover_path: /e2e_up_seq/target/photo-002.jpeg
+    then:
+      - response.status: 200
+  - call: GET /get/index/status
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_seq/target/photo.jpeg
+  - file_exists: /e2e_up_seq/target/photo-001.jpeg
+  - file_exists: /e2e_up_seq/target/photo-002.jpeg

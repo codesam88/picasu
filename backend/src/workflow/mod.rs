@@ -100,6 +100,14 @@ pub fn index_media_file(
 /// If the content hash is already known, the file still gets its own
 /// path-primary record — records are never merged. Duplicate content is
 /// grouped via `DUPE_INDEX` only.
+/// Single-file index entry point: resolve identity, then run the shared
+/// scan pipeline for one path.
+///
+/// Retained as the synchronous single-file indexing primitive (currently
+/// exercised only by tests; production upload enqueues instead). The
+/// conditional allow documents that explicitly instead of keeping the
+/// function alive with a dummy reference at some call site.
+#[cfg_attr(not(test), allow(dead_code))]
 pub async fn index_image(src: &Path) -> Result<()> {
     let path = resolve_index_path(src)?;
     process_file(path).await

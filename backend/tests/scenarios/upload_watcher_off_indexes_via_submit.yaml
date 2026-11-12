@@ -1,0 +1,19 @@
+name: Upload indexes via background submit when the filesystem watcher is off
+given:
+  - dir_album: /e2e_up_wo/target
+    id_as: $album
+  - photo: /e2e_up_wo/src/photo.jpg
+  - config:
+      fs_notify_watcher: false
+when:
+  - upload:
+      file: /e2e_up_wo/src/photo.jpg
+      target_album: "${album}"
+    asset_id_as: $asset_id
+    discover_path: /e2e_up_wo/target/photo.jpeg
+    then:
+      - response.status: 200
+  - call: GET /get/index/status
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_wo/target/photo.jpeg
