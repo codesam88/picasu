@@ -409,7 +409,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check
+check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
 
 # run full test suite
 [group('global')]
@@ -479,6 +479,16 @@ clean:
 distclean: clean
     rm -rf target/docs
     rm -rf frontend/dist
+
+# Prune stale local/remote branches (report; --apply + --expire-* to delete)
+[group('global')]
+branches-prune *args:
+    node scripts/prune-branches.mjs {{args}}
+
+# Test the branch pruning helper against a fixture repository
+[group('global')]
+branches-prune-test:
+    node --test {{justfile_directory()}}/scripts/prune-branches.test.mjs
 
 # Build and run out of sandbox/{data,images}
 [group('global')]

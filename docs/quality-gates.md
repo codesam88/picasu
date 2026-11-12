@@ -18,6 +18,7 @@ graph LR
   audit --> backend_audit["just backend-audit"]
   audit --> frontend_audit["just frontend-audit"]
   check --> backend_check["just backend-check"]
+  check --> branches_prune_test["just branches-prune-test"]
   check --> catalog_check["just catalog-check"]
   check --> docs_check["just docs-check"]
   check --> env_var_check["just env-var-check"]
@@ -86,7 +87,7 @@ graph LR
 
 Annotation: Run security audits (backend + frontend)
 
-- Recipe: [justfile:505-505](https://github.com/codesam88/picasu/blob/main/justfile#L505-L505) `justfile:505-505`
+- Recipe: [justfile:515-515](https://github.com/codesam88/picasu/blob/main/justfile#L515-L515) `justfile:515-515`
 - Lanes: audit
 - Invocations:
   - [.github/workflows/audit.yml:50-50](https://github.com/codesam88/picasu/blob/main/.github/workflows/audit.yml#L50-L50) `.github/workflows/audit.yml:50-50`
@@ -122,7 +123,7 @@ Annotation: cargo fmt --check + clippy (all targets)
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:136-141](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L136-L141) `.github/workflows/ci.yml:136-141`
-  - [justfile:524-524](https://github.com/codesam88/picasu/blob/main/justfile#L524-L524) `justfile:524-524`
+  - [justfile:534-534](https://github.com/codesam88/picasu/blob/main/justfile#L534-L534) `justfile:534-534`
 - Required by: `check`
 
 ### `backend-test`
@@ -145,6 +146,15 @@ Annotation: Backend tests in release mode
   - [.github/workflows/release.yml:120-122](https://github.com/codesam88/picasu/blob/main/.github/workflows/release.yml#L120-L122) `.github/workflows/release.yml:120-122`
 - Required by: `test-release`
 
+### `branches-prune-test`
+
+Annotation: Test the branch pruning helper against a fixture repository
+
+- Recipe: [justfile:490-491](https://github.com/codesam88/picasu/blob/main/justfile#L490-L491) `justfile:490-491`
+- Lanes: precommit
+- Invocations: (none direct; reached via aggregate)
+- Required by: `check`
+
 ### `catalog-check`
 
 Annotation: Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references
@@ -163,7 +173,7 @@ Annotation: check markdown (docs, .plan, utils)
 - Invocations:
   - [.github/workflows/ci.yml:244-247](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L244-L247) `.github/workflows/ci.yml:244-247`
   - [.github/workflows/docs-check.yml:38-38](https://github.com/codesam88/picasu/blob/main/.github/workflows/docs-check.yml#L38-L38) `.github/workflows/docs-check.yml:38-38`
-  - [justfile:539-539](https://github.com/codesam88/picasu/blob/main/justfile#L539-L539) `justfile:539-539`
+  - [justfile:549-549](https://github.com/codesam88/picasu/blob/main/justfile#L549-L549) `justfile:549-549`
 - Required by: `check`
 
 ### `dylint-check`
@@ -185,7 +195,7 @@ Annotation: check PICASU_* env vars match docs/config.md
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:136-141](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L136-L141) `.github/workflows/ci.yml:136-141`
-  - [justfile:545-545](https://github.com/codesam88/picasu/blob/main/justfile#L545-L545) `justfile:545-545`
+  - [justfile:555-555](https://github.com/codesam88/picasu/blob/main/justfile#L555-L555) `justfile:555-555`
 - Required by: `check`
 
 ### `events-check`
@@ -214,7 +224,7 @@ Annotation: prettier --check + vue-tsc + eslint
 - Lanes: ci-frontend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:244-247](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L244-L247) `.github/workflows/ci.yml:244-247`
-  - [justfile:542-542](https://github.com/codesam88/picasu/blob/main/justfile#L542-L542) `justfile:542-542`
+  - [justfile:552-552](https://github.com/codesam88/picasu/blob/main/justfile#L552-L552) `justfile:552-552`
 - Required by: `check`
 
 ### `frontend-playwright`
@@ -315,8 +325,8 @@ Annotation: Run all OpenAPI checks.
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:136-141](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L136-L141) `.github/workflows/ci.yml:136-141`
-  - [justfile:525-525](https://github.com/codesam88/picasu/blob/main/justfile#L525-L525) `justfile:525-525`
-  - [justfile:529-529](https://github.com/codesam88/picasu/blob/main/justfile#L529-L529) `justfile:529-529`
+  - [justfile:535-535](https://github.com/codesam88/picasu/blob/main/justfile#L535-L535) `justfile:535-535`
+  - [justfile:539-539](https://github.com/codesam88/picasu/blob/main/justfile#L539-L539) `justfile:539-539`
 - Required by: `check`
 
 ### `openapi-json-match`
@@ -376,7 +386,7 @@ Annotation: check .plan task frontmatter correctness
 - Invocations:
   - [.github/workflows/ci.yml:244-247](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L244-L247) `.github/workflows/ci.yml:244-247`
   - [.github/workflows/docs-check.yml:39-39](https://github.com/codesam88/picasu/blob/main/.github/workflows/docs-check.yml#L39-L39) `.github/workflows/docs-check.yml:39-39`
-  - [justfile:538-538](https://github.com/codesam88/picasu/blob/main/justfile#L538-L538) `justfile:538-538`
+  - [justfile:548-548](https://github.com/codesam88/picasu/blob/main/justfile#L548-L548) `justfile:548-548`
 - Required by: `check`
 
 ### `quint-check`
@@ -405,7 +415,7 @@ Annotation: utils fmt + clippy (all targets)
 - Lanes: ci-backend, ci-zizmor, precommit
 - Invocations:
   - [.github/workflows/ci.yml:136-141](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L136-L141) `.github/workflows/ci.yml:136-141`
-  - [justfile:532-532](https://github.com/codesam88/picasu/blob/main/justfile#L532-L532) `justfile:532-532`
+  - [justfile:542-542](https://github.com/codesam88/picasu/blob/main/justfile#L542-L542) `justfile:542-542`
 - Required by: `check`
 
 ### `utils-test`
@@ -416,7 +426,7 @@ Annotation: cargo test utils/ + Schemathesis derivations
 - Lanes: ci-backend, precommit
 - Invocations:
   - [.github/workflows/ci.yml:144-146](https://github.com/codesam88/picasu/blob/main/.github/workflows/ci.yml#L144-L146) `.github/workflows/ci.yml:144-146`
-  - [justfile:535-535](https://github.com/codesam88/picasu/blob/main/justfile#L535-L535) `justfile:535-535`
+  - [justfile:545-545](https://github.com/codesam88/picasu/blob/main/justfile#L545-L545) `justfile:545-545`
 - Required by: `test`
 
 ### `zizmor-check`

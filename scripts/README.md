@@ -14,6 +14,16 @@ scripts and the managed-tool installers.
   Each accepts `ensure` (default) or `check`.
 - `deps-install.sh` — dispatcher. Runs all `deps/*.sh` (run-parts style) or a
   selected subset via `--tool <name>`; `--check` verifies only.
+- `prune-branches.mjs` — reports local merged-into-base, local/remote PR
+  merged/closed, local no-exact-PR, upstream-gone, and remote no-PR branches.
+  Deletion requires `--apply`; the `--expire-local DAYS`,
+  `--expire-closed DAYS`, `--expire-gone DAYS` and
+  `--expire-archived DAYS` options override the default cutoffs
+  (14, 14, 7 and 30 days). Output starts with a category
+  overview (keep/prune counts and the applicable option), followed by
+  per-category detail sections. Unmerged local branches are archived under
+  `refs/archive/<date>/` first (list with `git for-each-ref refs/archive/`,
+  remove with `git update-ref -d <ref>`). Run via `just branches-prune`.
 
 ## Conventions
 
