@@ -161,7 +161,7 @@ import { useSessionStore } from '@/store/sessionStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
 import { useMessageStore } from '@/store/messageStore'
-import { assignAlbum } from '@/api/assignAlbum'
+import { assignAlbum, assignAlbumBatch } from '@/api/assignAlbum'
 import { setTrashed } from '@/api/editFlags'
 import { createDirAlbum } from '@/api/createDirAlbum'
 import { getAssetIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
@@ -373,12 +373,13 @@ async function handleSubmit() {
         await setTrashed(trashedIndices, false, isolationId)
       }
 
-      // Move all selected items to target album
-      for (const idx of indices) {
+      // Move all selected items to target album with a single summary
+      // toast instead of one toast per file.
+      const batch = indices.flatMap((idx) => {
         const item = dataStore.data.get(idx)
-        if (!item) continue
-        await assignAlbum(item.assetId, selectedAlbumId.value, idx, isolationId, onConflict.value)
-      }
+        return item === undefined ? [] : [{ assetId: item.assetId, index: idx }]
+      })
+      await assignAlbumBatch(batch, selectedAlbumId.value, isolationId, onConflict.value)
       collectionStore.leaveEdit()
     } else {
       // Single item from route context
