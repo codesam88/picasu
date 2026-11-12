@@ -4050,7 +4050,7 @@
     },
     "/post/upload": {
       "post": {
-        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand indexed before the response returns.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that\npart without writing or indexing it, and any other value is a 400. Every\npart is validated before the first file is written, so a rejected name, an\nextension outside the image or video whitelist, or a\n`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves\nnothing behind. The stored extension always comes from the part's\n`Content-Type` rather than the client filename, and a file the indexing\npipeline cannot decode is removed again and reported as a 400.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, count mismatch, missing `imagePath`, or an undecodable\nfile — 401 missing or invalid session — 405 read-only\nmode — 500 storage failure.",
+        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand a 200 response means the file is stored on disk; indexing happens\nasynchronously in the background, so a row may not be visible immediately.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards the\nfile without writing or indexing it, and any other value is a 400. The\nsingle uploaded file is validated before it is written, so a rejected name,\nan extension outside the image or video whitelist, or unidentifiable bytes\nabort the request with a 400 and leave nothing behind. The stored extension\nalways comes from the part's `Content-Type` rather than the client filename.\nContent that passes the cheap pre-flight checks but is later rejected by the\nfull decode pipeline is not removed and does not fail the request: it is\nreported as a failed scan later. Each request stands alone: any file that is\nstored is a success, and a failure applies only to that request.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, missing `imagePath` — 401 missing or invalid session —\n405 read-only mode — 500 storage failure.",
         "operationId": "upload",
         "parameters": [
           {
@@ -4116,7 +4116,7 @@
             "cookie_jwt": []
           }
         ],
-        "summary": "Upload media files into an album or the upload folder and index each one.",
+        "summary": "Upload a single media file into an album or the upload folder and store it.",
         "tags": [
           "upload"
         ],

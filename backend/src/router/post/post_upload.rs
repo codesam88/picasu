@@ -7,27 +7,25 @@ use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{TREE, snapshot_tree};
 use crate::storage::files::get_resolved_image_home;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::{ReadableDatabase, ReadableTable};
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
 
-/// Data structure representing the multipart form for file uploads.
+/// Data structure representing the multipart form for a single file upload.
 #[derive(FromForm, Debug)]
 pub struct UploadForm<'r> {
-    /// Sequential list of uploaded files.
+    /// The uploaded file.
     #[field(name = "file")]
-    pub files: Vec<TempFile<'r>>,
+    pub file: TempFile<'r>,
 
-    /// Timestamps (Unix epoch in milliseconds) corresponding to each file by index.
+    /// Timestamp (Unix epoch in milliseconds) for the uploaded file.
     #[field(name = "lastModified")]
-    pub last_modified: Vec<u64>,
+    pub last_modified: u64,
 }
 
 fn get_filename(file: &TempFile<'_>) -> String {
@@ -139,29 +137,31 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     Ok(target_dir)
 }
 
-/// Upload media files into an album or the upload folder and index each one.
+/// Upload a single media file into an album or the upload folder and store it.
 ///
 /// With a target album the files land in that album's own directory; without
 /// one they land in the configured `uploadFolder` below `imagePath`, which
 /// becomes its own top-level album. Each file is written to its final location
-/// and indexed before the response returns.
+/// and a 200 response means the file is stored on disk; indexing happens
+/// asynchronously in the background, so a row may not be visible immediately.
 ///
 /// Corner cases: Credentials may be admin or share — a share is accepted when
 /// it sets `showUpload`, is unexpired, matches `x-share-password` and names
 /// the same album as `presigned_album_id_opt`. `on_conflict` defaults to
-/// `rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that
-/// part without writing or indexing it, and any other value is a 400. Every
-/// part is validated before the first file is written, so a rejected name, an
-/// extension outside the image or video whitelist, or a
-/// `file`/`lastModified` count mismatch aborts the batch with a 400 and leaves
-/// nothing behind. The stored extension always comes from the part's
-/// `Content-Type` rather than the client filename, and a file the indexing
-/// pipeline cannot decode is removed again and reported as a 400.
+/// `rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards the
+/// file without writing or indexing it, and any other value is a 400. The
+/// single uploaded file is validated before it is written, so a rejected name,
+/// an extension outside the image or video whitelist, or unidentifiable bytes
+/// abort the request with a 400 and leave nothing behind. The stored extension
+/// always comes from the part's `Content-Type` rather than the client filename.
+/// Content that passes the cheap pre-flight checks but is later rejected by the
+/// full decode pipeline is not removed and does not fail the request: it is
+/// reported as a failed scan later. Each request stands alone: any file that is
+/// stored is a success, and a failure applies only to that request.
 ///
 /// Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
-/// rejected filename, count mismatch, missing `imagePath`, or an undecodable
-/// file — 401 missing or invalid session — 405 read-only
-/// mode — 500 storage failure.
+/// rejected filename, missing `imagePath` — 401 missing or invalid session —
+/// 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "upload",
         request_body(content_type = "multipart/form-data", content = Object),
@@ -227,14 +227,6 @@ pub async fn upload(
         None => None,
     };
 
-    // Ensure strict 1:1 mapping between files and metadata
-    if inner_form.files.len() != inner_form.last_modified.len() {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            "Mismatch between file count and timestamp count.",
-        ));
-    }
-
     let target_dir = resolve_upload_target_dir(album_id)?;
 
     // Write gate: target directory must be writable by caller.
@@ -256,152 +248,102 @@ pub async fn upload(
         }
     };
 
-    // Pre-flight: validate every file before writing any. A single bad file
-    // (unsanitizable name, unknown type, content mismatch) aborts the whole
-    // batch with a 400 before anything is written, so a partial upload never
-    // leaves a subset of files behind.
-    validate_upload_batch(&inner_form.files, auto_rename.unwrap_or(true), &policy)?;
+    let auto_rename = auto_rename.unwrap_or(true);
 
-    // Write and index each validated file.
-    for (i, file) in inner_form.files.iter_mut().enumerate() {
-        let last_modified =
-            resolve_upload_timestamp(inner_form.last_modified[i], policy.use_client_timestamp);
-        let raw_filename = get_filename(file);
-        let filename = resolve_filename(
-            &raw_filename,
-            auto_rename.unwrap_or(true),
-            policy.normalize_nfc,
-        )?;
-        let extension = get_extension(file)?;
+    // Validate the single file before writing: rejected name, unsupported or
+    // mismatched type, or unidentifiable bytes abort the request with a 400
+    // before anything is written.
+    validate_upload_file(&inner_form.file, auto_rename, &policy)?;
 
-        let Some(final_path) = save_file(
-            file,
-            &target_dir,
-            filename,
-            extension,
-            last_modified,
-            on_conflict_strategy.unwrap_or(OnConflict::Rename),
-        )
-        .await?
-        else {
-            continue; // skip: dest already exists, nothing to index
-        };
-        let image_root = get_resolved_image_home();
-        let relative_src = if let Some(root) = image_root.as_ref() {
-            Path::new(&final_path)
-                .strip_prefix(root)
-                .map_or_else(|_| PathBuf::from(&final_path), Path::to_path_buf)
-        } else {
-            PathBuf::from(&final_path)
-        };
-        if let Err(index_error) = crate::workflow::index_image(Path::new(&final_path)).await {
-            // A mid-pipeline failure can occur after a partial commit: the
-            // uploaded file is only safely removable when no index record
-            // references it. Only a content-decode failure guarantees that,
-            // so check before deleting — otherwise the file would be removed
-            // while a committed index record still points at it.
-            if record_exists_for(Path::new(&final_path), &relative_src) {
-                error!("Uploaded file was indexed but the pipeline failed: {index_error}");
-                return Err(AppError::new(
-                    ErrorKind::Internal,
-                    "Upload failed during indexing",
-                ));
-            }
-            // The upload has not succeeded, and the user gets this error
-            // directly in the upload response, so the never-indexed file
-            // is removed as part of the failed upload action. Files are
-            // never deleted after a successful upload — only by an
-            // explicit user deletion action.
-            error!("Uploaded file could not be decoded as an image or video: {index_error}");
-            if let Err(remove_error) = std::fs::remove_file(&final_path) {
-                error!("Failed to remove unindexable upload {final_path}: {remove_error}");
-            }
-            return Err(AppError::new(
-                ErrorKind::InvalidInput,
-                "Uploaded file could not be decoded as an image or video",
-            ));
-        }
-        // The index path only schedules its flush and tree update, so a
-        // client prefetching immediately could read a snapshot without the
-        // new row. Wait both hops — the discipline the delete path uses —
-        // so a 200 here means the row is visible.
-        crate::tasks::BATCH_COORDINATOR
-            .execute_batch_waiting(crate::tasks::batcher::flush_tree::FlushTreeTask::insert(
-                Vec::new(),
-            ))
-            .await
-            .or_raise(|| (ErrorKind::Internal, "Failed to join flush task"))?;
-        crate::storage::tree_view::tree_changed();
-    }
+    let last_modified =
+        resolve_upload_timestamp(inner_form.last_modified, policy.use_client_timestamp);
+    let raw_filename = get_filename(&inner_form.file);
+    let filename = resolve_filename(&raw_filename, auto_rename, policy.normalize_nfc)?;
+    let extension = get_extension(&inner_form.file)?;
+
+    let Some(final_path) = save_file(
+        &mut inner_form.file,
+        &target_dir,
+        filename,
+        extension,
+        last_modified,
+        on_conflict_strategy.unwrap_or(OnConflict::Rename),
+    )
+    .await?
+    else {
+        return Ok(()); // skip: dest already exists, nothing stored/indexed
+    };
+
+    // Stored, not indexed: enqueue background indexing via the watcher
+    // intake lane. Fire-and-forget; a redundant queued item is superseded
+    // cheaply and a missed submit would leave the file unindexed.
+    submit_uploaded_path(Path::new(&final_path)).await;
 
     Ok(())
 }
 
-/// Validates every file in the batch before any file is written.
+/// Validates a single uploaded file before it is written.
 ///
 /// Rejects files whose name cannot be sanitized, whose extension is not a
 /// supported image/video type, or whose content cannot be identified at all.
 ///
 /// When the content *is* identified but contradicts the extension-derived type,
 /// that is the one case `validate_content` governs: rejecting is the default,
-/// and disabling the setting tolerates a mislabeled file. Any rejection aborts
-/// the whole request, so a partial upload never leaves a subset of files behind.
-fn validate_upload_batch(
-    files: &[TempFile<'_>],
+/// and disabling the setting tolerates a mislabeled file.
+fn validate_upload_file(
+    file: &TempFile<'_>,
     auto_rename: bool,
     policy: &UploadPolicy,
 ) -> Result<(), AppError> {
-    for file in files {
-        let raw_filename = get_filename(file);
-        resolve_filename(&raw_filename, auto_rename, policy.normalize_nfc)?;
-        let extension = get_extension(file)?;
+    let raw_filename = get_filename(file);
+    resolve_filename(&raw_filename, auto_rename, policy.normalize_nfc)?;
+    let extension = get_extension(file)?;
 
-        if kind_for_extension(&extension).is_none() {
-            error!("Rejected invalid file type: {}", extension);
-            return Err(AppError::new(
-                ErrorKind::InvalidInput,
-                format!("Invalid file type: {extension}"),
-            ));
-        }
+    if kind_for_extension(&extension).is_none() {
+        error!("Rejected invalid file type: {}", extension);
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!("Invalid file type: {extension}"),
+        ));
+    }
 
-        match detect_upload_content(file)? {
-            // Nothing could identify the bytes, so there is no way to tell
-            // whether they are what the extension claims. Always rejected.
-            None => {
-                error!("Rejected unrecognized upload content: {raw_filename:?}");
-                return Err(unrecognized_upload_content(&raw_filename, &extension));
-            }
-            // Identified as a real format that is outside our table, so it
-            // cannot match the extension-derived type. Same corner case as a
-            // plain mismatch, reported with the format that was found.
-            Some(Detection::Unsupported { detected_extension }) => {
-                if policy.validate_content {
-                    error!(
-                        "Rejected unsupported upload content {raw_filename:?}: detected {detected_extension}"
-                    );
-                    return Err(unsupported_upload_content(
-                        &raw_filename,
-                        &detected_extension,
-                    ));
-                }
-            }
-            Some(Detection::Supported(detected))
-                if !format::extension_matches(&extension, detected) =>
-            {
-                if policy.validate_content {
-                    error!(
-                        "Rejected misnamed upload {raw_filename:?}: declared {extension}, detected {}",
-                        detected.canonical_extension()
-                    );
-                    return Err(mismatched_upload_content(
-                        &raw_filename,
-                        &extension,
-                        detected.canonical_extension(),
-                    ));
-                }
-            }
-            Some(Detection::Supported(_)) => {}
+    match detect_upload_content(file)? {
+        // Nothing could identify the bytes, so there is no way to tell
+        // whether they are what the extension claims. Always rejected.
+        None => {
+            error!("Rejected unrecognized upload content: {raw_filename:?}");
+            return Err(unrecognized_upload_content(&raw_filename, &extension));
         }
+        // Identified as a real format that is outside our table, so it
+        // cannot match the extension-derived type. Same corner case as a
+        // plain mismatch, reported with the format that was found.
+        Some(Detection::Unsupported { detected_extension }) => {
+            if policy.validate_content {
+                error!(
+                    "Rejected unsupported upload content {raw_filename:?}: detected {detected_extension}"
+                );
+                return Err(unsupported_upload_content(
+                    &raw_filename,
+                    &detected_extension,
+                ));
+            }
+        }
+        Some(Detection::Supported(detected))
+            if !format::extension_matches(&extension, detected) =>
+        {
+            if policy.validate_content {
+                error!(
+                    "Rejected misnamed upload {raw_filename:?}: declared {extension}, detected {}",
+                    detected.canonical_extension()
+                );
+                return Err(mismatched_upload_content(
+                    &raw_filename,
+                    &extension,
+                    detected.canonical_extension(),
+                ));
+            }
+        }
+        Some(Detection::Supported(_)) => {}
     }
     Ok(())
 }
@@ -531,40 +473,6 @@ fn read_upload_policy() -> UploadPolicy {
     })
 }
 
-/// Whether any index record references the uploaded file as either the
-/// absolute path or an `IMAGE_HOME`-relative path.
-///
-/// Checks the on-disk `ASSET_BY_PATH` (authoritative for a committed insert that
-/// a mid-pipeline failure may leave before it reaches the in-memory tree) and
-/// the in-memory snapshot. Used by the upload error path to decide whether an
-/// uploaded file can be safely deleted: deleting is only safe when no record
-/// references it. If the database cannot be read, defaults to `true` (keep the
-/// file) so an uncertain lookup never deletes an uploaded file.
-fn record_exists_for(path: &Path, relative: &Path) -> bool {
-    let matches = |record_path: &str| {
-        let candidate = Path::new(record_path);
-        candidate == path || candidate == relative
-    };
-
-    let tree_snapshot = snapshot_tree();
-    let found = tree_snapshot
-        .iter()
-        .any(|dt| dt.abstract_data.path().iter().any(|a| matches(&a.file)));
-    if found {
-        return true;
-    }
-
-    if let Ok(txn) = TREE.in_disk.begin_read()
-        && let Ok(table) = txn.open_table(crate::storage::db::ASSET_BY_PATH)
-        && let Ok(mut iter) = table.iter()
-    {
-        return iter.any(|entry| entry.is_ok_and(|(key, _)| matches(key.value())));
-    }
-
-    warn!("Could not verify index records for upload {path:?}; keeping file");
-    true
-}
-
 /// Detect the content format of an uploaded file.
 fn detect_upload_content(file: &TempFile<'_>) -> Result<Option<Detection>, AppError> {
     let path = file
@@ -595,6 +503,18 @@ fn mismatched_upload_content(filename: &str, extension: &str, detected: &str) ->
             "Uploaded file {filename:?} contains {detected} content, but the declared type is {extension}"
         ),
     )
+}
+
+/// Enqueue a stored upload for background indexing.
+///
+/// Uses the watcher intake lane so dedup and supersession apply uniformly
+/// regardless of watcher state. Fire-and-forget: submission failures are
+/// logged, not propagated, because the file is already stored and a later
+/// scan will pick it up.
+pub(crate) async fn submit_uploaded_path(path: &Path) {
+    if let Err(err) = crate::tasks::queue::submit_watcher_index(path.to_path_buf()).await {
+        warn!("Failed to enqueue uploaded file {path:?} for indexing: {err}");
+    }
 }
 
 #[cfg(test)]
@@ -769,5 +689,31 @@ mod resolve_filename_tests {
                 .expect("homoglyph separator resolves with auto-rename"),
             "photocat"
         );
+    }
+}
+
+#[cfg(test)]
+mod upload_enqueue_seam_tests {
+    use super::submit_uploaded_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn submit_uploaded_path_bumps_path_generation() {
+        // Contract: every successfully stored upload is submitted for
+        // background indexing through the watcher intake lane, which bumps
+        // the path's generation. No timing assertions: the bump is synchronous
+        // with submission.
+        let path = PathBuf::from("/upload-seam-test/upload-seam-test.jpg");
+        let before = crate::tasks::path_epoch::current_generation(&path);
+        let runtime = &crate::tasks::runtime::RUNTIME;
+        runtime.block_on(submit_uploaded_path(&path));
+        let after = crate::tasks::path_epoch::current_generation(&path)
+            .expect("submission must record a path generation");
+        if let Some(previous) = before {
+            assert!(
+                after > previous,
+                "generation must strictly increase on submit"
+            );
+        }
     }
 }

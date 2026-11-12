@@ -10,8 +10,10 @@
 /// short guard and returns owned rows.
 #[test]
 fn tree_readers_snapshot_before_parallel_work() {
-    // (module path, source). The first two are request-path readers; the last
-    // two run inside pool jobs (`album_task`).
+    // (module path, source). The readers run on request paths or inside
+    // pool jobs (`album_task`); every listed file must avoid live guards.
+    // `post_upload` stays listed even though it no longer reads the tree at
+    // all (store-and-return upload never touches it): the entry pins that.
     const SOURCES: &[(&str, &str)] = &[
         (
             "router/get/get_prefetch.rs",
@@ -41,19 +43,21 @@ fn tree_readers_snapshot_before_parallel_work() {
         );
     }
 
-    // The designated request-path readers must actually use the helper.
-    for path in ["router/get/get_prefetch.rs", "router/post/post_upload.rs"] {
-        let source = SOURCES
-            .iter()
-            .find(|(candidate, _)| *candidate == path)
-            .map(|(_, source)| *source)
-            .expect("source registered");
-        let compact: String = source.split_whitespace().collect();
-        assert!(
-            compact.contains("snapshot_tree()"),
-            "{path} must read the in-memory tree through snapshot_tree()"
-        );
-    }
+    // The designated request-path reader must actually use the helper.
+    // `post_upload` is intentionally absent: since the store-and-return
+    // rework it never reads the tree (files are stored, indexing is
+    // enqueued), so there is no snapshot call to pin — only the no-live-
+    // guard invariant above applies to it.
+    let source = SOURCES
+        .iter()
+        .find(|(candidate, _)| *candidate == "router/get/get_prefetch.rs")
+        .map(|(_, source)| *source)
+        .expect("source registered");
+    let compact: String = source.split_whitespace().collect();
+    assert!(
+        compact.contains("snapshot_tree()"),
+        "router/get/get_prefetch.rs must read the in-memory tree through snapshot_tree()"
+    );
 }
 
 /// Request-path Rayon work runs on the dedicated interactive pool, never the
