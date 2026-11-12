@@ -1,6 +1,7 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::openapi_components::Unauthorized;
 
+use crate::model::asset::AssetRecord;
 use crate::process::dir_album::{
     get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
     rewrite_dir_album_cache_prefix,
@@ -11,7 +12,6 @@ use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::queue::submit_interactive_album;
 use arrayvec::ArrayString;
-use log::warn;
 use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
@@ -435,42 +435,141 @@ fn rename_dir(source_dir: &Path, dest_dir: &Path) -> Result<(), AppError> {
     })
 }
 
+/// Test-only seam: when set to a non-negative index `k`, `apply_dir_move_plans`
+/// returns an error at plan `k` without committing, simulating a failure mid-apply.
+#[cfg(test)]
+pub(crate) static DIR_MOVE_FAIL_AT: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(-1);
+
+/// A single planned path rewrite produced by collecting the records whose
+/// path lives under a moved directory. Built first (read-only) so the
+/// apply step can commit every rewrite in one transaction.
+#[derive(Clone, Debug)]
+pub(crate) struct DirMovePlan {
+    /// Original path key in `ASSET_BY_PATH` to remove.
+    pub old_path: String,
+    /// New path key to insert into `ASSET_BY_PATH`.
+    pub new_path: String,
+    /// Updated `AssetRecord` (path rewritten) to store under `ASSET_BY_ID`.
+    pub record: AssetRecord,
+}
+
+/// Collect the set of `DirMovePlan`s for every asset whose path is `source_dir`
+/// or a descendant of it. Uses the prefix range scan
+/// (`asset_store::list_asset_paths_under`) instead of a full-table scan.
+pub(crate) fn collect_dir_move_plans(
+    source_dir: &Path,
+    dest_dir: &Path,
+) -> Result<Vec<DirMovePlan>, AppError> {
+    use crate::storage::asset_store;
+
+    let pairs =
+        asset_store::list_asset_paths_under(&source_dir.to_string_lossy()).or_raise(|| {
+            (
+                ErrorKind::Database,
+                "Failed to list asset paths under source",
+            )
+        })?;
+
+    let mut plans = Vec::with_capacity(pairs.len());
+    for (old_path, asset_id) in pairs {
+        let old_path_buf = PathBuf::from(&old_path);
+        let rel = old_path_buf.strip_prefix(source_dir).map_err(|_| {
+            AppError::new(
+                ErrorKind::Internal,
+                format!("asset path not under source dir: {old_path}"),
+            )
+        })?;
+        let new_path = dest_dir.join(rel);
+        let new_path_str = new_path.to_string_lossy().into_owned();
+
+        let record = asset_store::get_asset_by_id(asset_id.as_ref())
+            .or_raise(|| (ErrorKind::Database, "Failed to read asset record"))?
+            .ok_or_else(|| {
+                AppError::new(
+                    ErrorKind::InvalidInput,
+                    format!("Asset not found: {asset_id}"),
+                )
+            })?;
+
+        let mut updated = record;
+        updated.path.clone_from(&new_path_str);
+
+        plans.push(DirMovePlan {
+            old_path,
+            new_path: new_path_str,
+            record: updated,
+        });
+    }
+
+    Ok(plans)
+}
+
+/// Apply every plan in `plans` in a single write transaction. A failure on any
+/// plan aborts the whole transaction (the dropped `txn` rolls back), so no
+/// partial prefix rewrite is ever committed. On success all path-map removes/
+/// inserts and record path updates land together.
+pub(crate) fn apply_dir_move_plans(plans: &[DirMovePlan]) -> Result<(), AppError> {
+    use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, TREE};
+
+    #[cfg(test)]
+    let fail_at: isize = DIR_MOVE_FAIL_AT.load(std::sync::atomic::Ordering::SeqCst);
+    #[cfg(not(test))]
+    let fail_at: isize = -1;
+    let _ = fail_at;
+
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
+    {
+        let mut path_table = txn
+            .open_table(ASSET_BY_PATH)
+            .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_PATH"))?;
+        let mut id_table = txn
+            .open_table(ASSET_BY_ID)
+            .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
+
+        for (i, plan) in plans.iter().enumerate() {
+            let _ = i;
+            #[cfg(test)]
+            if fail_at >= 0 && i.cast_signed() == fail_at {
+                return Err(AppError::new(
+                    ErrorKind::Database,
+                    format!("injected failure at plan {i}"),
+                ));
+            }
+
+            path_table
+                .remove(plan.old_path.as_str())
+                .or_raise(|| (ErrorKind::Database, "Failed to remove old path mapping"))?;
+            path_table
+                .insert(plan.new_path.as_str(), &*plan.record.asset_id)
+                .or_raise(|| (ErrorKind::Database, "Failed to add new path mapping"))?;
+
+            let json = serde_json::to_string(&plan.record)
+                .or_raise(|| (ErrorKind::Serialization, "Failed to serialize AssetRecord"))?;
+            id_table
+                .insert(&*plan.record.asset_id, json.as_str())
+                .or_raise(|| (ErrorKind::Database, "Failed to update asset record"))?;
+        }
+    }
+    txn.commit()
+        .or_raise(|| (ErrorKind::Database, "Failed to commit dir move"))?;
+
+    Ok(())
+}
+
 /// Update asset tables after a directory move.
 /// For each asset whose path starts with `source_dir`, update it
-/// to the corresponding path under `dest_dir`.
+/// to the corresponding path under `dest_dir`. Collects all planned rewrites
+/// first, then applies them in a single write transaction (atomic).
 pub(crate) fn update_asset_tables_after_dir_move(
     source_dir: &Path,
     dest_dir: &Path,
 ) -> Result<(), AppError> {
-    use crate::storage::asset_store;
-
-    let records = asset_store::get_all_assets()
-        .or_raise(|| (ErrorKind::Database, "Failed to read asset records"))?;
-
-    for record in records {
-        let old_path = PathBuf::from(&record.path);
-        if let Ok(rel) = old_path.strip_prefix(source_dir) {
-            let new_path = dest_dir.join(rel);
-            let new_path_str = new_path.to_string_lossy().into_owned();
-
-            // Update ASSET_BY_PATH: remove old, add new.
-            if let Err(e) = asset_store::remove_asset_by_path(&record.path) {
-                warn!("dir move: failed to remove old path {}: {e}", record.path);
-            }
-            if let Err(e) = asset_store::put_asset_by_path(&new_path_str, record.asset_id) {
-                warn!("dir move: failed to add new path {new_path_str}: {e}");
-            }
-
-            // Update path in ASSET_BY_ID.
-            let mut updated = record.clone();
-            updated.path = new_path_str;
-            if let Err(e) = asset_store::put_asset_by_id(&updated) {
-                warn!("dir move: failed to update record {}: {e}", record.asset_id);
-            }
-        }
-    }
-
-    Ok(())
+    let plans = collect_dir_move_plans(source_dir, dest_dir)?;
+    apply_dir_move_plans(&plans)
 }
 
 #[cfg(test)]
@@ -643,6 +742,124 @@ mod tests {
             .expect("record present");
         assert_eq!(updated.asset_id, id, "asset id must be preserved");
         assert_eq!(updated.path, "/dst/dir/photo.jpg", "path must be rewritten");
+
+        // Cleanup.
+        for table_def in [ASSET_BY_PATH, ASSET_BY_ID] {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write for cleanup");
+            {
+                let t = txn.open_table(table_def).expect("open table for cleanup");
+                let keys: Vec<String> = t
+                    .iter()
+                    .expect("iterate")
+                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+                    .collect();
+                drop(t);
+                let mut t = txn.open_table(table_def).expect("reopen table for cleanup");
+                for key in &keys {
+                    t.remove(key.as_str()).expect("remove key");
+                }
+            }
+            txn.commit().expect("commit cleanup");
+        }
+    }
+
+    #[test]
+    fn update_asset_tables_after_dir_move_is_all_or_nothing() {
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH};
+        use crate::tests::bootstrap;
+        use redb::ReadableTable;
+        use std::sync::atomic::Ordering;
+
+        let _guard = bootstrap::lock();
+        let _ = &*bootstrap::TEST_ENV;
+
+        // Ensure tables exist.
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_write()
+            .expect("begin write txn for table creation");
+        txn.open_table(ASSET_BY_PATH).expect("create ASSET_BY_PATH");
+        txn.open_table(ASSET_BY_ID).expect("create ASSET_BY_ID");
+        txn.commit().expect("commit table creation");
+
+        // Clear both tables.
+        for table_def in [ASSET_BY_PATH, ASSET_BY_ID] {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write for clear");
+            {
+                let t = txn.open_table(table_def).expect("open table for clear");
+                let keys: Vec<String> = t
+                    .iter()
+                    .expect("iterate")
+                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+                    .collect();
+                drop(t);
+                let mut t = txn.open_table(table_def).expect("reopen table for clear");
+                for key in &keys {
+                    t.remove(key.as_str()).expect("remove key");
+                }
+            }
+            txn.commit().expect("commit clear");
+        }
+
+        let (src, dst) = (Path::new("/src/dir"), Path::new("/dst/dir"));
+
+        let mut ids = Vec::new();
+        for i in 0..3 {
+            let record = AssetRecord::new_media(
+                AssetKind::Image,
+                format!("/src/dir/photo{i}.jpg"),
+                None,
+                10,
+                "jpg".into(),
+                0,
+            );
+            ids.push(record.asset_id);
+            asset_store::insert_asset(&record).expect("insert test asset");
+        }
+
+        let plans = super::collect_dir_move_plans(src, dst).expect("collect plans");
+        assert_eq!(plans.len(), 3);
+
+        // Inject a failure at plan index 1.
+        super::DIR_MOVE_FAIL_AT.store(1, Ordering::SeqCst);
+        let res = super::apply_dir_move_plans(&plans);
+        super::DIR_MOVE_FAIL_AT.store(-1, Ordering::SeqCst);
+        assert!(res.is_err(), "apply must fail when a plan fails");
+
+        // All-or-nothing: old prefix fully intact, no new-prefix rows.
+        for i in 0..3 {
+            let old = format!("/src/dir/photo{i}.jpg");
+            assert!(
+                asset_store::get_asset_id_by_path(&old)
+                    .expect("read old path")
+                    .is_some(),
+                "old path must remain: {old}"
+            );
+        }
+        let new_rows =
+            asset_store::list_asset_paths_under(&dst.to_string_lossy()).expect("list new");
+        assert!(
+            new_rows.is_empty(),
+            "no new-prefix rows must exist: {new_rows:?}"
+        );
+        for id in &ids {
+            let rec = asset_store::get_asset_by_id(id.as_ref())
+                .expect("read record")
+                .expect("record present");
+            assert!(
+                rec.path.starts_with("/src/dir/"),
+                "record path unchanged: {}",
+                rec.path
+            );
+        }
 
         // Cleanup.
         for table_def in [ASSET_BY_PATH, ASSET_BY_ID] {
