@@ -193,11 +193,12 @@ superseded pointers only.
 
 ### Remaining claims (not absorbed by C9/C10)
 
-- SHUTDOWN-02 (S3): dead cascade indistinguishable from stall.
-- CACHE-01 (S3): same-ms `fetch_max` prefetch staleness.
 - SHUTDOWN-03 (S3-low): watcher can start after `stop_watcher`.
-- M3 (S3): REQ-3 "in one step" is per-record `warn!`, not one txn.
 - TEST-01 (hardening): SIGTERM gate fires before backlog depth.
+- Done since review: SHUTDOWN-02 (per-entry panic containment,
+  watermark always advances), CACHE-01 (monotonic invalidation counter
+  split from wall-clock identity), M3 (single-txn dir-move rewrite,
+  all-or-nothing gate).
 
 - **C11 [done] Writer cascade: rebuild outside the held write txn**.
   `cascade_after_write` snapshots once per entry and shares it (`Arc`)
