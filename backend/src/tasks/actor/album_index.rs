@@ -570,7 +570,6 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 /// (generation, mutation lease, filesystem) guard against races.
 async fn sweep_stale_asset_paths(root: &Path, cancel: &AtomicBool) {
     const CHUNK: usize = 200;
-    use crate::model::abstract_data::AbstractData;
     use crate::storage::asset_store;
 
     // File assets: source candidates from the primary ASSET_BY_PATH table,
@@ -588,9 +587,10 @@ async fn sweep_stale_asset_paths(root: &Path, cancel: &AtomicBool) {
         candidates.push((path, generation));
     }
 
-    // Follow-up: per-subdir scoping is not implemented; chunking is
-    // global per root. Insertion point for subdir batching: group
-    // `candidates` by their parent directory before this loop.
+    // Retained-set strategy (deliberate): chunked global-per-root
+    // processing. If a future benchmark/optimization effort shows the
+    // retained sets are a problem, page the prefix scan by cursor and/or
+    // scope by subdir — see the sweep follow-ups in the plan.
     for chunk in candidates.chunks(CHUNK) {
         if cancel.load(Ordering::SeqCst) || crate::tasks::queue::is_shutting_down() {
             break;
@@ -625,24 +625,25 @@ async fn sweep_stale_asset_paths(root: &Path, cancel: &AtomicBool) {
         return;
     }
     let album_candidates: Vec<_> = {
-        // Scan-side holder: same sequential-collect shape as the asset phase;
-        // no pool work runs while it is held.
-        let tree = crate::storage::db::snapshot_tree();
-        tree.iter()
-            .filter_map(|dt| match &dt.abstract_data {
-                AbstractData::Album(alb) if !alb.metadata.dir_path.is_empty() => {
-                    let dir_path = std::path::PathBuf::from(&alb.metadata.dir_path);
-                    if dir_path.starts_with(root) {
-                        Some((
-                            dir_path.clone(),
-                            alb.object.id,
-                            crate::tasks::path_epoch::current_generation(&dir_path),
-                        ))
-                    } else {
-                        None
-                    }
+        // Source candidates from the primary ASSET_BY_ID table (album assets),
+        // not the in-memory tree view. Keep the same sequential-collect shape
+        // as the asset phase.
+        let rows =
+            crate::storage::asset_store::list_album_assets_under(&root_str).unwrap_or_default();
+        rows.into_iter()
+            .filter_map(|(dir_path_str, album_id)| {
+                let dir_path = std::path::PathBuf::from(&dir_path_str);
+                if dir_path.as_os_str().is_empty() {
+                    return None;
                 }
-                _ => None,
+                if !dir_path.starts_with(root) {
+                    return None;
+                }
+                Some((
+                    dir_path.clone(),
+                    album_id,
+                    crate::tasks::path_epoch::current_generation(&dir_path),
+                ))
             })
             .collect()
     };
