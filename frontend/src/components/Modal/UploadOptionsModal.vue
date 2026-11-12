@@ -89,15 +89,10 @@
 import BaseModal from './BaseModal.vue'
 import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
+import { formatBytes } from '@/script/utils/formatBytes'
 
 const uploadStore = useUploadStore('mainId')
 const modalStore = useModalStore('mainId')
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 async function confirmUpload(): Promise<void> {
   await uploadStore.confirmUpload()

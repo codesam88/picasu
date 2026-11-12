@@ -12,6 +12,7 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
+use rocket::serde::json::Json;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task::spawn_blocking;
@@ -139,11 +140,13 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 
 /// Upload a single media file into an album or the upload folder and store it.
 ///
-/// With a target album the files land in that album's own directory; without
-/// one they land in the configured `uploadFolder` below `imagePath`, which
-/// becomes its own top-level album. Each file is written to its final location
-/// and a 200 response means the file is stored on disk; indexing happens
-/// asynchronously in the background, so a row may not be visible immediately.
+/// With a target album the file lands in that album's own directory; without
+/// one it lands in the configured `uploadFolder` below `imagePath`, which
+/// becomes its own top-level album. The file is written to its final location
+/// and a 200 response returns the stored name plus the target directory
+/// (`{"files": [...], "dir": ...}`) so the client can poll for exactly what
+/// landed; indexing happens asynchronously in the background, so a row may
+/// not be visible immediately.
 ///
 /// Corner cases: Credentials may be admin or share — a share is accepted when
 /// it sets `showUpload`, is unexpired, matches `x-share-password` and names
@@ -180,7 +183,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             "invariants": ["AUTH-12"]
         }))),
         responses(
-            (status = 200, description = "Upload successful"),
+            (status = 200, description = "Upload successful", body = serde_json::Value),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Forbidden"),
@@ -201,7 +204,7 @@ pub async fn upload(
     on_conflict: Option<String>,
     auto_rename: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
-) -> AppResult<()> {
+) -> AppResult<Json<serde_json::Value>> {
     let GuardUser { claims } = auth?;
     let _ = mutation?;
     let (caller, _) = crate::router::put::users_password::caller_identity(&claims);
@@ -271,15 +274,30 @@ pub async fn upload(
     )
     .await?
     else {
-        return Ok(()); // skip: dest already exists, nothing stored/indexed
+        // skip: dest already exists, nothing stored/indexed
+        let target_dir_str = target_dir.to_string_lossy().into_owned();
+        return Ok(Json(
+            serde_json::json!({"files": [], "dir": target_dir_str}),
+        ));
     };
 
     // Stored, not indexed: enqueue background indexing via the watcher
     // intake lane. Fire-and-forget; a redundant queued item is superseded
     // cheaply and a missed submit would leave the file unindexed.
+    //
+    // The response carries the stored name (sanitize/rename may have
+    // changed it) and the target directory so the client can poll for
+    // exactly what landed instead of scanning the whole library.
+    let target_dir_str = target_dir.to_string_lossy().into_owned();
     submit_uploaded_path(Path::new(&final_path)).await;
 
-    Ok(())
+    let stored_name = Path::new(&final_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(Json(
+        serde_json::json!({"files": [stored_name], "dir": target_dir_str}),
+    ))
 }
 
 /// Validates a single uploaded file before it is written.

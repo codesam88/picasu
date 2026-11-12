@@ -3,7 +3,7 @@
     id="upload-vcard"
     class="mx-auto position-fixed"
     append-icon=""
-    :title="`${uploadStore.status}`"
+    :title="title"
     :subtitle="subtitle"
     variant="elevated"
     retain-focus
@@ -20,7 +20,7 @@
             :key="`progress-${uploadStore.status}`"
             color="primary"
             :model-value="circularValue"
-            :indeterminate="uploadStore.status === 'Processing'"
+            :indeterminate="circularIndeterminate"
             class="ma-4"
           >
             <Transition name="fade-scale" mode="out-in">
@@ -41,7 +41,7 @@
         Close
       </v-btn>
       <v-btn
-        v-else
+        v-else-if="uploadStore.status === 'Uploading'"
         variant="outlined"
         class="ma-4"
         style="width: 100px"
@@ -59,43 +59,42 @@
 import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
 import humanizeDuration from 'humanize-duration'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, watch } from 'vue'
+import { formatBytes } from '@/script/utils/formatBytes'
 const uploadStore = useUploadStore('mainId')
 const modalStore = useModalStore('mainId')
 
-// Ticking clock, refreshed only while the server-side phase runs.
-const now = ref(Date.now())
-let processingTimer: ReturnType<typeof setInterval> | undefined
-watch(
-  () => uploadStore.status,
-  (status) => {
-    if (status === 'Processing') {
-      now.value = Date.now()
-      processingTimer ??= setInterval(() => {
-        now.value = Date.now()
-      }, 1000)
-    } else if (processingTimer !== undefined) {
-      clearInterval(processingTimer)
-      processingTimer = undefined
-    }
-  },
-  { immediate: true }
-)
-onUnmounted(() => {
-  if (processingTimer !== undefined) {
-    clearInterval(processingTimer)
-    processingTimer = undefined
+const title = computed(() => {
+  switch (uploadStore.status) {
+    case 'Completed':
+      return 'Done'
+    case 'Indexing':
+      return 'Indexing'
+    case 'Canceled':
+      return 'Canceled'
+    default:
+      return 'Uploading'
   }
 })
 
-// remainingTime reads 0 through the whole Processing phase (the body is
-// already sent), so that branch shows file count + elapsed seconds instead.
 const subtitle = computed(() => {
-  if (uploadStore.status === 'Processing') {
+  if (uploadStore.status === 'Uploading') {
+    const name = uploadStore.currentFileName ?? ''
+    const index = uploadStore.currentIndex
     const count = uploadStore.fileCount
-    const start = uploadStore.processingStart
-    const elapsed = start === undefined ? 0 : Math.max(0, Math.floor((now.value - start) / 1000))
-    return `${count} ${count === 1 ? 'file' : 'files'} · processing on server… ${elapsed}s`
+    const size = uploadStore.currentFileSize
+    const sizeText = size === undefined ? '' : ` (${formatBytes(size)})`
+    const remaining = humanizeDuration(uploadStore.remainingTime * 1000, {
+      units: ['h', 'm', 's'],
+      largest: 1,
+      round: true
+    })
+    // Progress first, then the file being uploaded.
+    return `${index}/${count} · ${name}${sizeText} · ${remaining} remaining`
+  }
+  if (uploadStore.status === 'Indexing') {
+    const count = uploadStore.fileCount
+    return `${count} ${count === 1 ? 'file' : 'files'} stored · waiting for indexing…`
   }
   return `${humanizeDuration(uploadStore.remainingTime * 1000, {
     units: ['h', 'm', 's'],
@@ -108,17 +107,45 @@ const circularValue = computed(() => {
   if (uploadStore.status === 'Uploading') {
     return uploadStore.percentComplete
   } else if (uploadStore.status === 'Completed') {
-    return 0
+    return 100
   } else {
     return undefined
   }
 })
+
+const circularIndeterminate = computed(() => uploadStore.status === 'Indexing')
 
 const circularIcon = computed(() => {
   if (uploadStore.status === 'Completed') {
     return 'mdi-cloud-check-variant'
   } else {
     return 'mdi-cloud-upload'
+  }
+})
+
+// Completed is a terminal, self-dismissing state: show the done icon briefly,
+// then close the notification without a click. Any new upload reopens it.
+const COMPLETED_DISMISS_MS = 1500
+let dismissTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => uploadStore.status,
+  (status) => {
+    if (dismissTimer !== undefined) {
+      clearTimeout(dismissTimer)
+      dismissTimer = undefined
+    }
+    if (status === 'Completed') {
+      dismissTimer = setTimeout(() => {
+        modalStore.showUploadModal = false
+        dismissTimer = undefined
+      }, COMPLETED_DISMISS_MS)
+    }
+  }
+)
+onUnmounted(() => {
+  if (dismissTimer !== undefined) {
+    clearTimeout(dismissTimer)
+    dismissTimer = undefined
   }
 })
 </script>
