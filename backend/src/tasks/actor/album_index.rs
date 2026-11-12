@@ -775,6 +775,9 @@ fn did_every_matched_file_fail(job_id: u64) -> bool {
 }
 
 fn finish_job(job_id: u64, state: AlbumIndexState) {
+    // Full synchronous bump strictly before the terminal state is published, so
+    // a client polling status then reading sees the finished scan's rows.
+    crate::storage::tree_view::bump_tree_epoch();
     let report_context = {
         let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
         if slot.job_id == job_id {

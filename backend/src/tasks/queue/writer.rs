@@ -95,7 +95,7 @@ use tokio::sync::{Mutex, Notify, mpsc};
 use super::bridge::run_cpu;
 use crate::model::abstract_data::AbstractData;
 use crate::process::dir_album::drain_pending_album_updates;
-use crate::storage::tree_view::bump_tree_epoch;
+use crate::storage::tree_view::mark_tree_dirty_background;
 use crate::tasks::actor::album::album_task;
 use crate::tasks::batcher::expire_check::expire_check_task;
 use crate::tasks::batcher::flush_tree::flush_tables;
@@ -368,7 +368,7 @@ async fn writer_loop(
         }
         if merged > 0 {
             flush_tables(&inserts, &removes);
-            bump_tree_epoch();
+            mark_tree_dirty_background();
             enqueue_cascade(&cascade_tx, flush_seq, CascadeOp::AfterWrite).await;
             complete_seq(flush_seq);
         }
@@ -400,23 +400,23 @@ fn handle_op(op: WriteOp) -> CascadeOp {
     match op {
         WriteOp::Flush { inserts, removes } => {
             flush_tables(&inserts, &removes);
-            bump_tree_epoch();
+            mark_tree_dirty_background();
             CascadeOp::AfterWrite
         }
         WriteOp::ExpireCheck => CascadeOp::ExpireRound,
         WriteOp::SweepDirAlbums(entries) => {
             handle_sweep_dir_albums(entries);
-            bump_tree_epoch();
+            mark_tree_dirty_background();
             CascadeOp::Noop
         }
         WriteOp::PruneUsersRoot(users_root) => {
             handle_prune_users_root(&users_root);
-            bump_tree_epoch();
+            mark_tree_dirty_background();
             CascadeOp::Noop
         }
         WriteOp::SweepRemoveBatch { paths } => {
             crate::tasks::batcher::flush_tree::sweep_remove_batch(&paths);
-            bump_tree_epoch();
+            mark_tree_dirty_background();
             CascadeOp::Noop
         }
         WriteOp::Barrier => CascadeOp::Noop,
