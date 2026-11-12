@@ -163,7 +163,8 @@ superseded pointers only.
 - **C1 [done]** Shutdown lifecycle. Owns backstop/expire handles;
   stops watcher, rejects intake, cancels/awaits scan, discards queued
   work, drains writer. Original 70 s hang fixed. Cascade-rebuild drain
-  tail closed by C11; gate determinism under TEST-01.
+  tail closed by C11; deterministic in-process shutdown composition
+  test (no wall-clock bounds).
 - **C2 [superseded by C9/C10]** Path-scoped coordination via Verify-lane
   sweep. Do not patch; implement C9/C10.
 - **C3 [done] Scheduler ownership** (abort/preemption completed
@@ -191,14 +192,15 @@ superseded pointers only.
 - Open optimisation: full redb scan+sort on requesting thread;
   query-scoped view follow-up.
 
-### Remaining claims (not absorbed by C9/C10)
+### Remaining claims (all closed)
 
-- SHUTDOWN-03 (S3-low): watcher can start after `stop_watcher`.
-- TEST-01 (hardening): SIGTERM gate fires before backlog depth.
-- Done since review: SHUTDOWN-02 (per-entry panic containment,
-  watermark always advances), CACHE-01 (monotonic invalidation counter
-  split from wall-clock identity), M3 (single-txn dir-move rewrite,
-  all-or-nothing gate).
+- Done: SHUTDOWN-02 (per-entry panic containment, watermark always
+  advances), CACHE-01 (monotonic invalidation counter split from
+  wall-clock identity), M3 (single-txn dir-move rewrite, all-or-nothing
+  gate), SHUTDOWN-03 (start/reload refuse while shutting down),
+  TEST-01 superseded (SIGTERM timing test deleted; in-process
+  `shutdown_returns_and_closes_intake` pins ordering, rejection,
+  no-active-scan and barrier passage deterministically).
 
 - **C11 [done] Writer cascade: rebuild outside the held write txn**.
   `cascade_after_write` snapshots once per entry and shares it (`Arc`)
@@ -215,7 +217,14 @@ superseded pointers only.
   untouched by C9/C10 and re-opened as C11 — now closed by C11 (history
   kept for the record).
 
-## Revised designs (2026-11-12, open)
+### Merge (open — the only remaining item)
+
+- Rebase onto `origin/main` if diverged, force-push, retarget PR 185 to
+  `main`, read CI, merge. All implementation and gate work above is
+  GREEN locally (full backend suite + spec/catalog/event/quint gates per
+  step); CI is the last unverified gate.
+
+## Revised designs (2026-11-12; all implemented)
 
 Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
 (per-path in-flight detection, no global lock).
@@ -231,8 +240,13 @@ Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
   and generated doc describe inline re-checks. Gates:
   `index_album_sweep_same_hash_keeps_sibling_root_ghost` (shared hash
   across roots), `sweep_remove_batch_*`, `list_asset_paths_under_*`.
-  Residual follow-ups: per-subdir scoping (insertion point noted in
-  code), dir-album candidates still read `snapshot_tree`.
+  Residual follow-ups: large-set handling deferred to a future
+  benchmark effort (generic instrumentation via the observer
+  framework, not point warnings); dir-album candidates now sourced
+  from primary tables (3b); empty-path hash branch audited (3c) —
+  sole remaining producer was watcher removal, fixed to resolve by
+  exact path, branch retained only for the inherent album case
+  (unique hash, single-member reap).
   Original steps, all GREEN: (1) RED same-hash cross-root + op-semantics
   gates; (2) prefix-scan helper + exact-only batch op; (3) batched job
   with inline re-checks; (4) sweep Verify traffic and prune-before-submit
