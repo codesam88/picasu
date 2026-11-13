@@ -155,6 +155,14 @@ test("family tables share the full-width style and four-column header", () => {
   assert.equal(headers.length, families.length, "every family has the header");
 });
 
+test("orphans section is present and empty for the current tree", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.match(
+    md,
+    /## Orphans \(Called Manually\)\n\nRules with no associated CI lane, no justfile parent caller, and not in the `global` group:\n\nNone\./,
+  );
+});
+
 test("doc contains no #L anchors and no file:line references", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.doesNotMatch(md, /#L/);
@@ -185,6 +193,7 @@ test("synthetic foo-check generates Other family and missing-family warning", (t
   const md = readFileSync(join(dir, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /### Other/);
   assert.match(md, /`foo-check`/);
+  assert.match(md, /## Orphans \(Called Manually\)[\s\S]*?- `foo-check`/);
   const r = run(dir);
   assert.match(r.out, /foo-check/);
   assert.match(r.out, /has no check family/);

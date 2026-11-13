@@ -45,6 +45,12 @@ graph LR
 
 Rules outside `check` and `test`: `audit`, `backend-audit`, `backend-test-release`, `dylint-check`, `frontend-audit`, `fuzz-check`, `msrv-check`, `openapi-routes-release`.
 
+## Orphans (Called Manually)
+
+Rules with no associated CI lane, no justfile parent caller, and not in the `global` group:
+
+None.
+
 ## Check families
 
 `Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there.

@@ -732,6 +732,23 @@ function tree(root) {
 const checkTree = tree("check");
 const testTree = tree("test");
 
+// A potential orphan has no CI lane, no justfile recipe calling it, and is
+// not a global aggregate.
+const workflowLanes = new Set(
+  directInvocations.filter((inv) => inv.file !== "justfile").map((inv) => inv.lane),
+);
+const potentialOrphans = displayedGateNames
+  .filter((name) => {
+    const r = recipeByName.get(name);
+    if (!r || r.group === "global") return false;
+    const inCi = [...(recipeLanes.get(name) || new Set())].some((lane) =>
+      workflowLanes.has(lane),
+    );
+    const called = recipes.some((q) => q.name !== name && q.deps.includes(name));
+    return !inCi && !called;
+  })
+  .sort();
+
 // build doc
 const docLines = [];
 docLines.push("# Quality gates");
@@ -766,6 +783,19 @@ if (outsideTrees.length) {
   );
   docLines.push("");
 }
+
+docLines.push("## Orphans (Called Manually)");
+docLines.push("");
+docLines.push(
+  "Rules with no associated CI lane, no justfile parent caller, and not in the `global` group:",
+);
+docLines.push("");
+if (potentialOrphans.length) {
+  for (const name of potentialOrphans) docLines.push("- `" + name + "`");
+} else {
+  docLines.push("None.");
+}
+docLines.push("");
 
 docLines.push("## Check families");
 docLines.push("");
