@@ -185,7 +185,15 @@ check` or the individual recipes.
    incomplete upload; a file deleted before first indexing cannot
    resurrect an asset; a stale row on an overwritten path converges
    after intake applies.
-10. [open] Refine sweep to the code's granularity (SCOPE-4 lifting):
+10. [done] Refine sweep to the code's granularity (SCOPE-4 lifting):
+    outcomes: SweepEnumerate + SweepRemoveBatchApply replace SweepRootLeased;
+    ApiMoveFsOnly now bumps generation and holds leasedPaths; MoveRowRewrite
+    added to close the window; RotateWriteSidecar/Finish track leasedPaths;
+    SidecarEditPartial now bumps generation; Phase-1 corrections: OP-9 writer
+    resolve-then-validate is per-path (row existence + path.exists, no
+    generation/lease re-check at writer) — model's lease+generation guards
+    live at the sweep side, matching code; generation bumps are carried by
+    leases (lease_paths next_generation) across ApiMove/rotate/sidecar-edit.
     enumerate → per-candidate re-check (generation unchanged, mutation
     lease not busy, FS) → exact-path batch → writer resolve-then-validate;
     model the superseded-batch case. Makes N2's move-vs-sweep window
@@ -226,8 +234,12 @@ survey claim contradicts a done item — re-check the tree first.
   rows mid-move pruned by another op. [guarded, re-verified 2026-11-13:
   sweep_stale_asset_paths inline generation/lease/fs re-checks plus
   exact-path SweepRemoveBatch in the serial writer; handle_removed_file
-  restores the exact path for resolution.] Model the re-check + lease
-  rule (replaces old Verify-lane actions).
+  restores the exact path for resolution.] Modeled in step 10: SweepEnumerate
+  (generation snapshot) + SweepRemoveBatchApply (per-candidate re-check:
+  row exists, generation unchanged, not leased, file still absent) +
+  ApiMoveFsOnly lease (leasedPaths) + MoveRowRewrite release. Guard
+  resolution named: lease (is_busy) for the in-flight window, generation
+  bump for the enumerate-before-move case, FS re-check for reappeared files.
 - N3 dir-move vs in-flight intake + crash between FS move and row
   rewrite; split `From`/`To` dir events. [guarded, re-verified
   2026-11-13: paired rename via notify tracker cookie
