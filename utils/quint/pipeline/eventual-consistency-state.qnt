@@ -49,6 +49,8 @@ module eventual_consistency_state {
   var intake: Set[IntakeItem]
   var rows: str -> AssetRecord
   var sweepPending: str -> bool
+  var sweepBatch: str -> int
+  var leasedPaths: Set[str]
   var nextAssetId: int
   var unprocessable: Set[str]
 
@@ -83,6 +85,8 @@ module eventual_consistency_state {
     intake' = Set(),
     rows' = PATHS.mapBy(p => initialRow(p)),
     sweepPending' = ROOTS.mapBy(_ => false),
+    sweepBatch' = Map(),
+    leasedPaths' = Set(),
     nextAssetId' = 6,
     unprocessable' = Set(),
   }
