@@ -69,6 +69,17 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
   barrier bug. Read-model freshness bounded by mark_tree_dirty_background
   (~1 s leading-edge throttle). Freshness gate:
   docs-eventual-consistency-check added to check aggregate.
+- 2026-11-13: modeling roadmap adopted (steps 8–13). Two findings drive
+  it: (a) the 2026-11-12 survey predates the merged pipeline — node
+  guard claims must be re-verified against this tree before new
+  modeling (the leases/exact-path/dir-move guards survive via impose's
+  independent implementations, but shapes and evidence need re-checks);
+  (b) `SweepRootLeased` is more atomic than
+  `sweep_stale_asset_paths`: the code enumerates, then re-checks
+  generation + mutation-lease busy + FS per candidate, then submits an
+  exact-path batch the serial writer resolves-then-validates — the
+  windows those guards close are invisible in the model as written.
+  Intake supersession is already modeled (WorkerSkipSuperseded).
 
 ## Steps
 
@@ -158,6 +169,41 @@ check` or the individual recipes.
   "eventual-consistency spec" while the recipe checks two specs, and
   `docs/quint-modeling.md` does not mention the operations/annotation
   layer (tracked in `quint-annotation-crate`).
+
+## Next phase (roadmap 2026-11-13)
+
+8. [open] Re-verify the interaction survey (N1–N13) and the OP guard
+   strings in `operations.json` against the merged tree; refresh node
+   statuses, guard strings and evidence. Blocks all modeling below.
+9. [open] Model the unindexed upload window (N8) in the four-aspect
+   slice: `UploadStoredOnly` (file present, row/thumb/sidecar absent —
+   unaligned by design), upload-vs-sweep on a reused path (stale prior
+   row → prune → re-index vs prune-after-upload keeps a stale row until
+   intake applies), watcher-remove before `WorkerApply` (no resurrect),
+   upload-vs-sidecar/rotate on a not-yet-indexed file, tmp residue
+   (REQ-10). Safety targets: no partial-aspect row persists from an
+   incomplete upload; a file deleted before first indexing cannot
+   resurrect an asset; a stale row on an overwritten path converges
+   after intake applies.
+10. [open] Refine sweep to the code's granularity (SCOPE-4 lifting):
+    enumerate → per-candidate re-check (generation unchanged, mutation
+    lease not busy, FS) → exact-path batch → writer resolve-then-validate;
+    model the superseded-batch case. Makes N2's move-vs-sweep window
+    visible; each lifted micro-stage gets a scope entry
+    (bound/why-safe/lifting).
+11. [open] Widen the aspect boundary from 4 to 8 aspects (media bytes,
+    sidecar bytes, rendition, identity, metadata payload, dupe
+    membership, album stats, tree epoch). Rewrites the predicates the
+    slice sits on; prerequisite for N13 (stats vs member writes),
+    dupe/hash-group delete semantics and metadata torn writes.
+12. [open] Guard linkage + reverse coverage: `@operation` tags on the
+    `eventual-consistency` actions, guard strings linked to REQ/C ids,
+    then annotation rung 1 (registry + static coverage gate) for
+    bidirectional OP↔action↔event coverage; rung 2 (runtime trace
+    reconciliation) as the accuracy validator against observed behavior.
+13. [open] Decide the read-model freshness lane: model bounded staleness
+    for `mark_tree_dirty_background` (~1 s leading-edge throttle) or
+    document it as a standing assumption; closes G3.
 
 ## Interaction nodes (survey 2026-11-12, claims need tree-verification)
 
