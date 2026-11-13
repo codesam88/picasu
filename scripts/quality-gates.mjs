@@ -655,32 +655,6 @@ function displayedChildren(name) {
   return (r.deps || []).filter((d) => displaySet.has(d)).sort();
 }
 
-// displayed recipes with no displayed parent
-const childSet = new Set();
-for (const name of displaySet) {
-  for (const c of displayedChildren(name)) childSet.add(c);
-}
-// Displayed recipes that no other recipe calls and that call nothing.
-const noCaller = [...displaySet].filter(
-  (n) => !childSet.has(n) && displayedChildren(n).length === 0,
-).sort();
-
-// Render the rule graph as a mermaid flowchart: recipe edges only, no lanes.
-const graphSources = [...displaySet].filter(
-  (n) => displayedChildren(n).length > 0,
-);
-const priority = ["precommit", "check", "test", "audit"];
-const orderedSources = [
-  ...priority.filter((s) => graphSources.includes(s)),
-  ...graphSources.filter((s) => !priority.includes(s)).sort(),
-];
-const graphLines = ["graph LR", ...noCaller.map((n) => `  ${n}`)];
-for (const src of orderedSources) {
-  for (const child of displayedChildren(src)) {
-    graphLines.push(`  ${src} --> ${child}`);
-  }
-}
-
 // table helper (prettier-canonical)
 function renderTable(headers, rows) {
   const widths = headers.map((h, i) =>
@@ -740,6 +714,77 @@ if (otherRecipes.length) orderedFamilies.push("Other");
 for (const name of otherRecipes.sort()) {
   warnings.push(`recipe '${name}' has no check family (add it to the family map in scripts/quality-gates.mjs)`);
 }
+
+// Render the rule graph as mermaid subgraphs. An edge whose endpoints sit in
+// different families is kept inside the caller's family by copying the target
+// node there, so no edge crosses a family boundary.
+const familyIds = new Map([
+  ["Backend (Rust)", "backend"],
+  ["Frontend", "frontend"],
+  ["API contract", "api"],
+  ["Security & supply chain", "security"],
+  ["Fuzzing", "fuzzing"],
+  ["Specs & catalogs", "specs"],
+  ["Repo & docs hygiene", "repo"],
+  ["Other", "other"],
+]);
+function familyId(fam) {
+  return (
+    familyIds.get(fam) ??
+    fam.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+  );
+}
+const familyOf = new Map();
+const membersByFamily = new Map();
+for (const fam of orderedFamilies) {
+  const members =
+    fam === "Other"
+      ? [...otherRecipes].sort()
+      : (familySections.find((s) => s.name === fam)?.recipes ?? []);
+  membersByFamily.set(fam, members);
+  for (const name of members) familyOf.set(name, fam);
+}
+const copyId = (name, fam) => `${name}-in-${familyId(fam)}`;
+const familyCopies = new Map(); // family -> Set<name>
+const graphEdges = [];
+const graphSources = [...displaySet].filter(
+  (n) => displayedChildren(n).length > 0,
+);
+const graphPriority = ["precommit", "check", "test", "audit"];
+const orderedSources = [
+  ...graphPriority.filter((s) => graphSources.includes(s)),
+  ...graphSources.filter((s) => !graphPriority.includes(s)).sort(),
+];
+for (const src of orderedSources) {
+  for (const child of displayedChildren(src)) {
+    const srcFamily = familyOf.get(src);
+    const childFamily = familyOf.get(child);
+    if (srcFamily && childFamily && srcFamily !== childFamily) {
+      if (!familyCopies.has(srcFamily)) familyCopies.set(srcFamily, new Set());
+      familyCopies.get(srcFamily).add(child);
+      graphEdges.push(`  ${src} --> ${copyId(child, srcFamily)}`);
+    } else {
+      graphEdges.push(`  ${src} --> ${child}`);
+    }
+  }
+}
+const graphLines = [
+  "graph LR",
+  '  subgraph entry["Entry points"]',
+  "    precommit",
+  "    check",
+  "    test",
+  "  end",
+];
+for (const fam of orderedFamilies) {
+  graphLines.push(`  subgraph ${familyId(fam)}["${fam}"]`);
+  for (const name of membersByFamily.get(fam)) graphLines.push(`    ${name}`);
+  for (const name of familyCopies.get(fam) ?? []) {
+    graphLines.push(`    ${copyId(name, fam)}["${name}"]`);
+  }
+  graphLines.push("  end");
+}
+graphLines.push(...graphEdges);
 
 // build doc
 const docLines = [];

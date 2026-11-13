@@ -110,13 +110,17 @@ test("rule graph edges", () => {
   assert.ok(m, "mermaid block present");
   const block = m[1];
   assert.match(block, /^graph LR$/m);
+  assert.match(block, /subgraph backend\["Backend \(Rust\)"\]/);
   assert.match(block, /^  precommit --> check$/m);
   assert.match(block, /^  precommit --> test$/m);
   assert.match(block, /^  check --> zizmor-check$/m);
-  assert.match(block, /^  utils-check --> zizmor-check$/m);
   assert.match(block, /^  openapi-check --> openapi-sanity$/m);
   assert.match(block, /^  frontend-test --> frontend-vitest$/m);
   assert.match(block, /^  frontend-test --> frontend-playwright$/m);
+  // A cross-family edge is replaced by a copy in the caller's family.
+  assert.match(block, /zizmor-check-in-backend\["zizmor-check"\]/);
+  assert.match(block, /^  utils-check --> zizmor-check-in-backend$/m);
+  assert.doesNotMatch(block, /^  utils-check --> zizmor-check$/m);
   for (const name of [
     "backend-test-release",
     "dylint-check",
@@ -124,7 +128,7 @@ test("rule graph edges", () => {
     "msrv-check",
     "openapi-routes-release",
   ]) {
-    assert.match(block, new RegExp(`^  ${name}$`, "m"));
+    assert.match(block, new RegExp(`^    ${name}$`, "m"));
   }
 });
 
