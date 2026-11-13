@@ -69,10 +69,10 @@
     },
     {
       "id": "SCOPE-9",
-      "title": "Sweep batch apply micro-stage",
-      "bound": "SweepRemoveBatchApply drains one enumerated batch, pruning a candidate only when row still exists, snapshot generation == current generation, path not leased, and file still absent; otherwise the candidate is skipped.",
-      "why_safe": "Matches sweep_remove_batch exact-path resolution plus the inline re-checks; prune-only (no row creation or file writes).",
-      "lifting": "Per-path writer resolve-then-validate and exact-path existence re-check in sweep_remove_batch.",
+      "title": "Sweep re-check micro-stage",
+      "bound": "SweepRecheck drains one enumerated batch, dropping candidates whose generation moved, whose path is now leased, or whose file reappeared; survivors stay in sweepBatch.",
+      "why_safe": "Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; the writer does not re-check these.",
+      "lifting": "Per-chunk cancel/shutdown and interleaving between re-check and writer-apply (absorbed window).",
       "provisional": true
     },
     {
@@ -81,6 +81,14 @@
       "bound": "ApiMoveFsOnly acquires a path lease (bumping generation) and holds it until MoveRowRewrite rewrites the row and releases it; the FS-moved/row-stale window is now visible.",
       "why_safe": "Matches lease_paths/release_generation across the FS rename to DB rewrite; generation bumps guard concurrent scans/sweeps.",
       "lifting": "Crash between FS move and row rewrite heals via sweep/backstop (SCOPE-6).",
+      "provisional": true
+    },
+    {
+      "id": "SCOPE-11",
+      "title": "Sweep writer-apply micro-stage",
+      "bound": "SweepWriterApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.",
+      "why_safe": "Matches sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.",
+      "lifting": "Per-path writer resolve-then-validate in sweep_remove_batch.",
       "provisional": true
     }
   ]

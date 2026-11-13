@@ -32,9 +32,9 @@
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
         "asset-aspects.qnt:IntakePickupFileGone",
-        "asset-aspects.qnt:SweepNeverPrunesChangedGeneration",
-        "asset-aspects.qnt:SweepNeverPrunesLeased",
-        "asset-aspects.qnt:SweepNeverPrunesPresentFile",
+        "asset-aspects.qnt:SweepRecheckBatchClean",
+        "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",
+        "asset-aspects.qnt:aspectsAbsorbedSweepTest",
         "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsMoveVsSweepTest",
@@ -104,15 +104,15 @@
         "asset-aspects.qnt:Corrupt",
         "asset-aspects.qnt:DroppedSidecarModify",
         "asset-aspects.qnt:IntakePickupFileGone",
-        "asset-aspects.qnt:SweepBatchPruneOnly",
-        "asset-aspects.qnt:SweepNeverPrunesChangedGeneration",
-        "asset-aspects.qnt:SweepNeverPrunesLeased",
-        "asset-aspects.qnt:SweepNeverPrunesPresentFile",
+        "asset-aspects.qnt:SweepRecheckBatchClean",
+        "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",
+        "asset-aspects.qnt:SweepWriterPruneOnly",
         "asset-aspects.qnt:UploadDoesNotMintRow",
         "asset-aspects.qnt:UploadStoredOnly",
         "asset-aspects.qnt:UploadingIsNotCorrupt",
         "asset-aspects.qnt:UploadingWindow",
         "asset-aspects.qnt:WitnessUploadStoredOnly",
+        "asset-aspects.qnt:aspectsAbsorbedSweepTest",
         "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDroppedSidecarTest",
@@ -276,13 +276,11 @@
     {
       "id": "SCOPE-9",
       "kind": "SCOPE",
-      "title": "Sweep batch apply micro-stage",
+      "title": "Sweep re-check micro-stage",
       "refs": [
-        "asset-aspects.qnt:SweepBatchPruneOnly",
-        "asset-aspects.qnt:SweepNeverPrunesChangedGeneration",
-        "asset-aspects.qnt:SweepNeverPrunesLeased",
-        "asset-aspects.qnt:SweepNeverPrunesPresentFile",
-        "asset-aspects.qnt:SweepRemoveBatchApply",
+        "asset-aspects.qnt:SweepRecheck",
+        "asset-aspects.qnt:SweepRecheckBatchClean",
+        "asset-aspects.qnt:aspectsAbsorbedSweepTest",
         "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsSupersededSweepTest"
       ]
@@ -293,8 +291,21 @@
       "title": "Move lease window micro-stage",
       "refs": [
         "asset-aspects.qnt:ApiMoveFsOnly",
+        "asset-aspects.qnt:MoveLeaseAcquire",
         "asset-aspects.qnt:MoveRowRewrite",
+        "asset-aspects.qnt:aspectsAbsorbedSweepTest",
         "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest"
+      ]
+    },
+    {
+      "id": "SCOPE-11",
+      "kind": "SCOPE",
+      "title": "Sweep writer-apply micro-stage",
+      "refs": [
+        "asset-aspects.qnt:SweepWriterApply",
+        "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",
+        "asset-aspects.qnt:SweepWriterPruneOnly",
+        "asset-aspects.qnt:aspectsAbsorbedSweepTest"
       ]
     }
   ]
