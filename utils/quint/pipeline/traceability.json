@@ -103,8 +103,6 @@
         "asset-aspects.qnt:UploadStoredOnly",
         "asset-aspects.qnt:UploadingIsNotCorrupt",
         "asset-aspects.qnt:UploadingWindow",
-        "asset-aspects.qnt:WitnessIntakePickupFileGone",
-        "asset-aspects.qnt:WitnessUploadIndexed",
         "asset-aspects.qnt:WitnessUploadStoredOnly",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDroppedSidecarTest",

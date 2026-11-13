@@ -254,15 +254,13 @@ module asset_aspects {
 
   // @assumes ASS-6
   // @exempt observer
-  val WitnessUploadStoredOnly = PATHS.exists(p => not(files.get(p).present))
-
-  // @assumes ASS-6
-  // @exempt observer
-  val WitnessUploadIndexed = PATHS.exists(p => files.get(p).present and intake.exists(i => i.path == p))
-
-  // @assumes ASS-6
-  // @exempt observer
-  val WitnessIntakePickupFileGone = PATHS.exists(p => not(files.get(p).present) and intake.exists(i => i.path == p))
+  // UploadingWindow is init-false and only UploadStoredOnly can create
+  // that state in this module, so the witness is action-specific. The
+  // apply/gone cases have no isolating state predicate (scan apply and
+  // watcher submits reach the same states); their deterministic runs
+  // (aspectsUploadWatcherRemoveBeforeIndexTest et al.) carry the
+  // fired-action evidence instead.
+  val WitnessUploadStoredOnly = PATHS.exists(p => UploadingWindow(p))
 
   // @operation OP-2
   // @scope SCOPE-5
