@@ -127,7 +127,9 @@ test("trigger column reflects the CI workflow files and callers", () => {
     md,
     /`dylint-check`[^\n]*\| ci\s*\| PR, main/,
   );
-  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
+  assert.match(md, /^\| `check`\s+\|[^\n]*\| local\s+\|/m);
+  assert.match(md, /^\| `test`\s+\|[^\n]*\| -\s+\|/m);
+  assert.match(md, /^\| `precommit`\s+\|[^\n]*\| local\s+\|/m);
   assert.match(md, /`check-tools`[^\n]*\| ❌️\s*\| -\s*\|/);
   assert.match(
     md,
@@ -251,7 +253,7 @@ test("CI-only recipe note is rendered", () => {
   assert.match(md, /dylint-check/);
   assert.match(
     md,
-    /Note: `dylint-check` - needs nightly-2026-08-01 toolchain\+rDylint; CI-only by decision 2026-11-05/,
+    /Note: `dylint-check` - needs nightly-2026-08-01 toolchain\+rDylint;\nCI-only by decision 2026-11-05 Note: `fuzz-check` - CI-only tier-1 fuzz\ncheck not promoted into local `test` aggregate \(step 3 pending\)/,
   );
   const r = run(repoRoot);
   assert.equal(r.code, 0, r.out);

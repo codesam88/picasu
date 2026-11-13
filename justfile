@@ -60,7 +60,11 @@ frontend-format:
 # prettier --check + vue-tsc + eslint
 [group('frontend')]
 frontend-check:
-    cd frontend && npx --no-install prettier --check . && (npx --no-install vue-tsc --noEmit & p1=$!; npx --no-install vue-tsc --noEmit --project tsconfig.node.json & p2=$!; wait $p1 && wait $p2) && npx --no-install eslint .
+    cd frontend && npx --no-install prettier --check . && \
+        (npx --no-install vue-tsc --noEmit & p1=$!; \
+         npx --no-install vue-tsc --noEmit --project tsconfig.node.json & p2=$!; \
+         wait $p1 && wait $p2) && \
+         npx --no-install eslint .
 
 # vitest run
 [group('frontend')]
@@ -372,6 +376,7 @@ docs-openapi: openapi-gen
 [group('docs')]
 gates-docs:
     node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}} --generate docs/quality-gates.md
+    plan format docs/quality-gates.md
 
 # Build mdBook site at target/docs/
 [group('docs')]
@@ -415,11 +420,11 @@ format: backend-format utils-format frontend-format docs-format plan-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-check events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
+check: docs-check plan-check backend-check frontend-check utils-check events-check catalog-check spec-check openapi-check env-var-check gates-check
 
 # run full test suite
 [group('global')]
-test: backend-test utils-test frontend-test fuzz-matrix
+test: backend-test utils-test frontend-test fuzz-matrix quint-check
 
 # verify installed tool versions
 [group('deps')]
@@ -522,41 +527,4 @@ audit: backend-audit frontend-audit
 
 # Run format, linter, static checks and tests
 [group('global')]
-precommit:
-    #!/usr/bin/env sh
-    set -e
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    changed=$(git diff --cached --name-only)
-
-    if [ "$branch" = "main" ]; then
-        echo "[ precommit ] On main — full test suite is required to pass."
-        just check
-        just test
-        exit 0
-    fi
-
-    echo "[ precommit ] On '$branch' — format/lint enforced; targeted checks/tests run for changed areas."
-    if echo "$changed" | grep -q '^backend/'; then
-        just backend-check
-        just openapi-check
-    fi
-    if echo "$changed" | grep -qE '^\.(spectral\.yaml|oasdiff-ignore\.txt)$'; then
-        # Root files that configure the openapi gate run the gate they configure.
-        just openapi-check
-    fi
-    if echo "$changed" | grep -q '^utils/'; then
-        just utils-check
-    fi
-    if echo "$changed" | grep -qE '^(backend|utils)/'; then
-        just utils-test
-    fi
-    if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
-        just plan-check
-        just docs-check
-    fi
-    if echo "$changed" | grep -q '^frontend/'; then
-        just frontend-check
-    fi
-    if echo "$changed" | grep -qE '^(backend/|docs/config\.md$|README\.md$)'; then
-        just env-var-check
-    fi
+precommit: check
