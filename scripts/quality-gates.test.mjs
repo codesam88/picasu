@@ -117,6 +117,15 @@ test("rule graph edges", () => {
   assert.match(block, /^  openapi-check --> openapi-sanity$/m);
   assert.match(block, /^  frontend-test --> frontend-vitest$/m);
   assert.match(block, /^  frontend-test --> frontend-playwright$/m);
+  for (const name of [
+    "backend-test-release",
+    "dylint-check",
+    "fuzz-check",
+    "msrv-check",
+    "openapi-routes-release",
+  ]) {
+    assert.match(block, new RegExp(`^  ${name}$`, "m"));
+  }
 });
 
 test("trigger column reflects the lanes a rule runs in", () => {

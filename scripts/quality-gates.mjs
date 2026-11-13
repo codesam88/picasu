@@ -674,7 +674,7 @@ const orderedSources = [
   ...priority.filter((s) => graphSources.includes(s)),
   ...graphSources.filter((s) => !priority.includes(s)).sort(),
 ];
-const graphLines = ["graph LR"];
+const graphLines = ["graph LR", ...noCaller.map((n) => `  ${n}`)];
 for (const src of orderedSources) {
   for (const child of displayedChildren(src)) {
     graphLines.push(`  ${src} --> ${child}`);
@@ -759,12 +759,6 @@ docLines.push(
   "`precommit` runs `check` and `test` on `main`; on other branches it runs a path-targeted subset of their members.",
 );
 docLines.push("");
-if (noCaller.length) {
-  docLines.push(
-    "Checks no other recipe calls: " + noCaller.map((n) => "`" + n + "`").join(", ") + ".",
-  );
-  docLines.push("");
-}
 
 docLines.push("## Check families");
 docLines.push("");
