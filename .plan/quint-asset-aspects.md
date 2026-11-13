@@ -218,43 +218,63 @@ orders it, [open] needs modeling + maybe a requirement, [verify]
 survey claim contradicts a done item — re-check the tree first.
 
 - N1 scan-vs-sidecar-mutating edit/rotate (b,f): torn composition
-  flushed over the edit. [guarded] C10 abort. Model the abort rule.
+  flushed over the edit. [guarded, re-verified 2026-11-13: process_file
+  try-and-abort (path_epoch::superseded over baseline/current generation
+  - is_busy) plus sidecar_edit path leases; guard survives on merged
+    tree.] Model the abort rule.
 - N2 move rename→rewrite window vs sweep/remove (d,e): missing-path
-  rows mid-move pruned by another op. [guarded] C9 inline re-check +
-  C10 leases. Model the re-check + lease rule (replaces old
-  Verify-lane actions).
+  rows mid-move pruned by another op. [guarded, re-verified 2026-11-13:
+  sweep_stale_asset_paths inline generation/lease/fs re-checks plus
+  exact-path SweepRemoveBatch in the serial writer; handle_removed_file
+  restores the exact path for resolution.] Model the re-check + lease
+  rule (replaces old Verify-lane actions).
 - N3 dir-move vs in-flight intake + crash between FS move and row
-  rewrite; split `From`/`To` dir events. [guarded 2026-11-12 by C5:
-  cookie-paired prefix rewrite, DB-state fallback for unpaired halves,
-  expired entries drain to removals]. Residual for the model: crash
-  between FS move and row rewrite still heals only via sweep/backstop.
+  rewrite; split `From`/`To` dir events. [guarded, re-verified
+  2026-11-13: paired rename via notify tracker cookie
+  (handle_paired_rename), DB-state fallback (handle_unpaired_from),
+  expired drain (drain_expired_pending_from), apply_dir_move_plans single
+  write txn.] Residual for the model: crash between FS move and row
+  rewrite still heals only via sweep/backstop.
 - N4 concurrent sidecar edits: read-modify-write LWW, best-effort
-  rollback leaves sidecar ahead of cache. [open].
+  rollback leaves sidecar ahead of cache. [open, re-verified
+  2026-11-13: commit_metadata_edits still leases edited paths and
+  best-effort rolls back; no new guard; LWW remains.]
 - N5 assign cross-table writes (`put`/`remove` path maps, per-record
-  dir-move loop) are separate txns; crash splits them. [open]
-  (touches M3 wording).
+  dir-move loop) are separate txns; crash splits them. [open,
+  re-verified 2026-11-13: move_asset_into_album writes ASSET_BY_ID and
+  ASSET_BY_PATH in separate txns; apply_dir_move_plans is a single txn
+  (dir-move only).] (touches M3 wording).
 - N6 derived corruption undetected; regen frame can orphan on unknown
-  id. [open] (returns with REQ-8).
+  id. [open, re-verified 2026-11-13: generate_thumbnail_for_image uses
+  atomic temp-file rename only; no content validation; regen frame can
+  orphan.] (returns with REQ-8).
 - N7 sidecar-only watcher events dropped (`.xmp` filtered) — delayed
-  metadata until media rescan. [open].
-- N8 upload 200-before-visibility. [open, reframed 2026-11-13: with
-  store-and-return + background intake the 200-before-visibility window
-  is by-design eventual, not a barrier bug. The stale note about
-  `FlushTreeTask::insert([])` + `tree_changed()` described the dropped
-  pipeline and no longer applies. Model the unindexed window instead:
-  file stored but not yet picked up by intake, watcher supersession
-  semantics, and whether scan-vs-upload can resurrect or drop an
-  uploaded file before first indexing.]
+  metadata until media rescan. [open, re-verified 2026-11-13: watcher
+  media gate still filters `.xmp`; scan/backfill remains the repair
+  path.]
+- N8 upload 200-before-visibility. [open, reframed 2026-11-13 and
+  re-verified 2026-11-13: store-and-return + fire-and-forget intake
+  enqueue unchanged; 200-before-visibility window is by-design eventual.
+  The stale note about `FlushTreeTask::insert([])` + `tree_changed()`
+  described the dropped pipeline and no longer applies. Model the
+  unindexed window instead: file stored but not yet picked up by intake,
+  watcher supersession semantics, and whether scan-vs-upload can
+  resurrect or drop an uploaded file before first indexing.]
 - N9 reset drops tables but leaves derived bytes orphaned. [open,
-  minor].
+  re-verified 2026-11-13: clear_asset_tables_and_caches drops tables and
+  caches; derived bytes orphaned.] [minor].
 - N10 share/cover edits are DB-only with no lease; can race a scan
-  of the same album. [open, minor].
-- N11 rotate thumbnail-before-sidecar window. [refuted 2026-11-12:
-  `rotate_image.rs` persists the sidecar before generating the
-  thumbnail and flushing the DB. Do not model; survey claim was stale.]
-- N12 sweep hash-group cross-root reap. [guarded] closed by C9
-  exact-path batches. Model the exact-path rule.
+  of the same album. [open, re-verified 2026-11-13: no lease added;
+  still DB-only.] [minor].
+- N11 rotate thumbnail-before-sidecar window. [refuted 2026-11-12 and
+  re-verified 2026-11-13: rotate_image persists the sidecar before
+  generating the thumbnail and flushing the DB; lease_paths present. Do
+  not model; survey claim was stale.]
+- N12 sweep hash-group cross-root reap. [guarded, re-verified
+  2026-11-13: sweep_remove_batch is exact-path only with a path.exists
+  skip; no hash-group reap.] Model the exact-path rule.
 - N13 cascade album stats vs concurrent member writes (from C11).
-  [guarded] stats compute from a per-entry snapshot; the write txn
-  re-checks liveness per member/row; read/write races re-mark pending
-  for the next cascade. Bounded staleness, no lost update.
+  [guarded, re-verified 2026-11-13: album_task computes from a ref_data
+  per-entry snapshot outside the txn; the write txn re-checks album
+  liveness and re-marks pending on a race.] Bounded staleness, no lost
+  update.
