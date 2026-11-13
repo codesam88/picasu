@@ -129,6 +129,13 @@ jobs:
           just install uv
           uv --version
 
+      - name: Install plan
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install plan
+          plan --version
+
       - name: Build the frontend assets
         run: just frontend-build
 
@@ -238,13 +245,19 @@ jobs:
           just install exiftool
           exiftool -ver
 
-      # The docs gates ride along with the frontend job: they need the same
-      # node_modules (prettier) and take seconds.
+      - name: Install plan
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install plan
+          plan --version
+
+      # The docs gates ride along with the frontend job.
       - name: Check (frontend, docs)
         run: |
           just frontend-check
           just docs-check
-          just plan-lint
+          just plan-check
 
       - name: Test (frontend)
         run: |

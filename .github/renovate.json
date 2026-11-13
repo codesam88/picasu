@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "description": "Custom-regex rules bump the TOOL_VERSION lines in scripts/deps/versions.env. ffmpeg (johnvansickle tarballs) and exiftool (SourceForge) have no Renovate datasource and stay manual. Only the version line is bumped; refresh the sha256 sidecars by hand on each bump PR.",
+  "description": "Custom-regex rules bump the TOOL_VERSION lines in scripts/deps/versions.env. exiftool (SourceForge) has no Renovate datasource and stays manual. Only the version line is bumped; refresh the sha256 sidecars by hand on each bump PR.",
   "customManagers": [
     {
       "customType": "regex",
@@ -43,9 +43,25 @@
     {
       "customType": "regex",
       "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["FFMPEG_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "codesam88/FFmpeg-Builds",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^n(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
       "matchStrings": ["DYLINT_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "cargo-dylint",
       "datasourceTemplate": "crate"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["PLAN_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "codesam88/tablethat",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     },
     {
       "customType": "regex",

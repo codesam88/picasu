@@ -60,7 +60,11 @@ frontend-format:
 # prettier --check + vue-tsc + eslint
 [group('frontend')]
 frontend-check:
-    cd frontend && npx --no-install prettier --check . && (npx --no-install vue-tsc --noEmit & p1=$!; npx --no-install vue-tsc --noEmit --project tsconfig.node.json & p2=$!; wait $p1 && wait $p2) && npx --no-install eslint .
+    cd frontend && npx --no-install prettier --check . && \
+        (npx --no-install vue-tsc --noEmit & p1=$!; \
+         npx --no-install vue-tsc --noEmit --project tsconfig.node.json & p2=$!; \
+         wait $p1 && wait $p2) && \
+         npx --no-install eslint .
 
 # vitest run
 [group('frontend')]
@@ -112,7 +116,7 @@ frontend-build: frontend-ci-maybe
 
 [private]
 frontend-build-maybe:
-	test -d frontend/dist/assets || just frontend-build
+    test -d frontend/dist/assets || just frontend-build
 
 # npm audit
 [group('frontend')]
@@ -309,20 +313,21 @@ auth-matrix-check:
     fi
     echo "auth-matrix artifacts match the generated output"
 
-# Install 'plan' and 'gloss' tools (pinned)
+# Install 'plan' tool (pinned)
 [group('deps')]
 install-plan:
-    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
+    ./scripts/deps-install.sh --tool plan
 
 # Auto-format .plan task frontmatter and body
 [group('utils')]
 plan-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
+    plan format
 
 # check .plan task frontmatter correctness
 [group('utils')]
-plan-lint:
-    node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
+plan-check:
+    plan lint
+    plan format --check
 
 # Validate the eventual-consistency event catalog
 [group('utils')]
@@ -365,12 +370,13 @@ plan *args:
 [group('docs')]
 docs-openapi: openapi-gen
     npx --yes widdershins@4.0.1 --summary backend/openapi.json -o docs/openapi-reference.md
-    npx prettier --write docs/openapi-reference.md
+    plan format docs/openapi-reference.md
 
 # Regenerate the gates doc (checked by gates-check)
 [group('docs')]
 gates-docs:
     node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}} --generate docs/quality-gates.md
+    plan format docs/quality-gates.md
 
 # Build mdBook site at target/docs/
 [group('docs')]
@@ -395,26 +401,30 @@ docs-serve:
 # format markdown (README, docs, .plan, utils)
 [group('docs')]
 docs-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
+    plan format docs
+    find . -maxdepth 1 -name \*.md |xargs plan format
+    find utils scripts -name \*.md |xargs plan format
 
 # check markdown (docs, .plan, utils)
 [group('docs')]
 docs-check:
-    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
+    plan format --check docs
+    find . -maxdepth 1 -name \*.md |xargs plan format --check
+    find utils scripts -name \*.md |xargs plan format --check
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
 # Format everything
 [group('global')]
-format: backend-format utils-format frontend-format docs-format
+format: backend-format utils-format frontend-format docs-format plan-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
+check: docs-check plan-check backend-check frontend-check utils-check events-check catalog-check spec-check openapi-check env-var-check gates-check
 
 # run full test suite
 [group('global')]
-test: backend-test utils-test frontend-test fuzz-matrix
+test: backend-test utils-test frontend-test fuzz-matrix quint-check
 
 # verify installed tool versions
 [group('deps')]
@@ -517,41 +527,4 @@ audit: backend-audit frontend-audit
 
 # Run format, linter, static checks and tests
 [group('global')]
-precommit:
-    #!/usr/bin/env sh
-    set -e
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    changed=$(git diff --cached --name-only)
-
-    if [ "$branch" = "main" ]; then
-        echo "[ precommit ] On main — full test suite is required to pass."
-        just check
-        just test
-        exit 0
-    fi
-
-    echo "[ precommit ] On '$branch' — format/lint enforced; targeted checks/tests run for changed areas."
-    if echo "$changed" | grep -q '^backend/'; then
-        just backend-check
-        just openapi-check
-    fi
-    if echo "$changed" | grep -qE '^\.(spectral\.yaml|oasdiff-ignore\.txt)$'; then
-        # Root files that configure the openapi gate run the gate they configure.
-        just openapi-check
-    fi
-    if echo "$changed" | grep -q '^utils/'; then
-        just utils-check
-    fi
-    if echo "$changed" | grep -qE '^(backend|utils)/'; then
-        just utils-test
-    fi
-    if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
-        just plan-lint
-        just docs-check
-    fi
-    if echo "$changed" | grep -q '^frontend/'; then
-        just frontend-check
-    fi
-    if echo "$changed" | grep -qE '^(backend/|docs/config\.md$|README\.md$)'; then
-        just env-var-check
-    fi
+precommit: check

@@ -5,9 +5,8 @@
 //
 // Both are fully derived; do not hand-edit. Run: node scripts/auth-matrix.mjs [repo-root]
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const root = process.argv[2] ?? ".";
 const openapiPath = join(root, "backend", "openapi.json");
@@ -220,25 +219,9 @@ lines.push("");
 mkdirSync(join(root, "docs"), { recursive: true });
 writeFileSync(mdPath, lines.join("\n"));
 
-// Format markdown with prettier if available (keeps docs-check green).
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const prettierBin = join(
-  scriptDir,
-  "..",
-  "frontend",
-  "node_modules",
-  ".bin",
-  "prettier",
-);
+// Format markdown with plan if available (keeps docs-check green).
 try {
-  if (existsSync(prettierBin)) {
-    execFileSync(prettierBin, ["--write", mdPath], { stdio: "ignore" });
-  } else {
-    execFileSync("npx", ["--no-install", "prettier", "--write", mdPath], {
-      cwd: join(root, "frontend"),
-      stdio: "ignore",
-    });
-  }
+  execFileSync("plan", ["format", mdPath], { stdio: "ignore" });
 } catch {
   // Formatting is best-effort; diff gate still compares generated output.
 }
