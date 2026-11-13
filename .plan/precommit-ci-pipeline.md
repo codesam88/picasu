@@ -235,7 +235,9 @@ heuristics, curated family map, reverse lane propagation, and the
 gate-based orphan/not-run-in-CI warnings are gone. Orphans (rendered as a
 two-column table) covers every
 non-private recipe with no workflow and no caller, excluding the four
-global entry points. The script header states that the doc is both a
+global entry points. Each workflow invocation carries its workflow file
+and trigger tokens directly; the lane mapping layer was removed, with
+no change to the generated doc. The script header states that the doc is both a
 documentation overview and a manual review aid, so generated content
 should stay data-driven and manual maps/filters should stay minimal.
 Out: lane/trigger parsing, drift check, CLI.

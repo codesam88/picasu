@@ -61,7 +61,7 @@ test("check mode writes nothing", (t) => {
   );
 });
 
-test("widened gate rule: unwired foo-lint is tracked, wired default-param recipe passes", (t) => {
+test("unwired foo-lint is tracked; wired default-param recipe passes", (t) => {
   const dir1 = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir1, { recursive: true, force: true }));
   writeFileSync(join(dir1, "justfile"), "# foo\nfoo-lint:\n    echo foo\n");
@@ -69,7 +69,7 @@ test("widened gate rule: unwired foo-lint is tracked, wired default-param recipe
   mkdirSync(join(dir1, "docs"), { recursive: true });
   const g1 = run(dir1, ["--generate", join(dir1, "docs", "quality-gates.md")]);
   assert.equal(g1.code, 0, g1.out);
-  // foo-lint appears in Orphans (no CI lane, no parent).
+  // foo-lint appears in Orphans (no CI workflow, no parent).
   const md1 = readFileSync(join(dir1, "docs", "quality-gates.md"), "utf8");
   assert.match(md1, /`foo-lint`/);
 

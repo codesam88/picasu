@@ -14,7 +14,7 @@
 //
 // Usage: quality-gates.mjs [repo-root] [--generate <path>] [--check <path>] [--check-only]
 //
-// Check-only by default: verifies lane scheduling and doc freshness
+// Check-only by default: verifies doc freshness
 // without writing anything. --generate <path> (relative to the repo
 // root, or absolute) explicitly writes the regenerated document,
 // formatted with prettier on a best-effort basis. --check <path>
@@ -87,14 +87,12 @@ function loadRecipes() {
       if (!group && module) group = topLevelModule;
       recipes.push({
         name,
-        shortName: r.name,
         module,
         deps: [],
         rawDeps: r.dependencies || [],
         annotation: r.doc ?? "",
         group,
         private: !!r.private,
-        params: r.parameters || [],
         body: r.body || [],
       });
     }
@@ -198,23 +196,6 @@ function jobTriggerTokens(fileTriggers, jobIf) {
 }
 
 // ---------- workflow parsing ----------
-function laneForWorkflow(file, job) {
-  const base = basename(file);
-  if (base === "ci.yml") {
-    return job ? `ci-${String(job).toLowerCase()}` : null;
-  }
-  if (base === "docs-check.yml") return "docs";
-  if (base === "audit.yml") return "audit";
-  if (base === "fuzz-advisory.yml") return "nightly";
-  if (base === "msrv.yml") return "nightly";
-  if (base === "release.yml") return "release";
-  if (base === "zizmor.yml") {
-    return job ? `ci-${String(job).toLowerCase()}` : null;
-  }
-  const m = base.match(/^(.+?)\.ya?ml$/);
-  return m ? m[1] : null;
-}
-
 const suspiciousPatterns = [
   /clippy/i,
   /prettier/i,
@@ -253,9 +234,8 @@ function isBootstrap(line) {
   return false;
 }
 
+// { recipe, file, triggers } entries from workflow steps and the precommit body.
 const directInvocations = [];
-const laneTriggers = new Map();
-const prTriggeredFiles = new Set();
 const workflowFiles = readdirSync(workflowsDir)
   .filter((n) => n.endsWith(".yml") || n.endsWith(".yaml"))
   .sort();
@@ -266,9 +246,7 @@ for (const wf of workflowFiles) {
   const content = readFileSync(fullPath, "utf8");
   const lines = content.split("\n");
   const fileTriggers = triggerTokens(content);
-  if (fileTriggers.includes("PR")) prTriggeredFiles.add(file);
   let inJobs = false;
-  let currentJob = null;
   let currentJobIf = null;
   let i = 0;
   while (i < lines.length) {
@@ -284,7 +262,6 @@ for (const wf of workflowFiles) {
     if (inJobs) {
       const jm = line.match(/^  ([A-Za-z_][\w-]*):\s*$/);
       if (jm) {
-        currentJob = jm[1];
         currentJobIf = null;
         i += 1;
         continue;
@@ -297,8 +274,6 @@ for (const wf of workflowFiles) {
       const indent = runMatch[1].length;
       const rest = runMatch[2].trim();
       let collected = [];
-      let startLine = i + 1;
-      let endLine = i + 1;
       let j = i;
       if (
         rest === "" ||
@@ -323,13 +298,9 @@ for (const wf of workflowFiles) {
         }
         while (tmp.length && tmp[tmp.length - 1].text.trim() === "") tmp.pop();
         collected = tmp;
-        endLine = collected.length
-          ? collected[collected.length - 1].lineno
-          : startLine;
         i = j;
       } else {
         collected = [{ text: rest, lineno: i + 1 }];
-        endLine = i + 1;
         i += 1;
       }
       for (const cl of collected) {
@@ -342,25 +313,13 @@ for (const wf of workflowFiles) {
           );
         }
       }
+      const triggers = jobTriggerTokens(fileTriggers, currentJobIf);
       for (const cl of collected) {
         const txt = cl.text;
         const re = /\bjust\s+([A-Za-z_][\w:-]*)/g;
         let m;
         while ((m = re.exec(txt)) !== null) {
-          const recipe = m[1];
-          const lane = laneForWorkflow(file, currentJob);
-          if (!lane) continue;
-          if (!laneTriggers.has(lane)) laneTriggers.set(lane, new Set());
-          for (const t of jobTriggerTokens(fileTriggers, currentJobIf)) {
-            laneTriggers.get(lane).add(t);
-          }
-          directInvocations.push({
-            recipe,
-            lane,
-            file,
-            startLine,
-            endLine,
-          });
+          directInvocations.push({ recipe: m[1], file, triggers });
         }
       }
       continue;
@@ -378,59 +337,56 @@ if (precommitRecipe) {
     while ((m = re.exec(text)) !== null) {
       directInvocations.push({
         recipe: m[1],
-        lane: "precommit",
         file: "justfile",
-        startLine: 0,
-        endLine: 0,
+        triggers: ["local"],
       });
     }
   }
 }
 
-// ---------- lane propagation ----------
-const recipeLanes = new Map();
+// ---------- invocation propagation ----------
 const recipeFiles = new Map();
-function addLane(recipe, lane) {
-  if (!recipeLanes.has(recipe)) recipeLanes.set(recipe, new Set());
-  recipeLanes.get(recipe).add(lane);
-}
+const recipeTriggers = new Map();
 function addFile(recipe, file) {
   if (file === "justfile") return;
   if (!recipeFiles.has(recipe)) recipeFiles.set(recipe, new Set());
   recipeFiles.get(recipe).add(file);
 }
+function addTriggers(recipe, triggers) {
+  if (!triggers || triggers.length === 0) return;
+  if (!recipeTriggers.has(recipe)) recipeTriggers.set(recipe, new Set());
+  for (const trigger of triggers) recipeTriggers.get(recipe).add(trigger);
+}
 for (const inv of directInvocations) {
-  addLane(inv.recipe, inv.lane);
   addFile(inv.recipe, inv.file);
+  addTriggers(inv.recipe, inv.triggers);
 }
 let changed = true;
 while (changed) {
   changed = false;
   for (const r of recipes) {
-    if (!recipeLanes.has(r.name)) continue;
-    const lanes = recipeLanes.get(r.name);
     const files = recipeFiles.get(r.name);
+    const triggers = recipeTriggers.get(r.name);
+    if (!files && !triggers) continue;
     for (const dep of r.deps) {
       if (!recipeByName.has(dep)) continue;
-      if (!recipeLanes.has(dep)) {
-        recipeLanes.set(dep, new Set(lanes));
-        changed = true;
-      } else {
-        const before = recipeLanes.get(dep).size;
-        for (const l of lanes) recipeLanes.get(dep).add(l);
-        if (recipeLanes.get(dep).size !== before) changed = true;
-      }
       if (files && files.size) {
         if (!recipeFiles.has(dep)) recipeFiles.set(dep, new Set());
         const before = recipeFiles.get(dep).size;
         for (const f of files) recipeFiles.get(dep).add(f);
         if (recipeFiles.get(dep).size !== before) changed = true;
       }
+      if (triggers && triggers.size) {
+        if (!recipeTriggers.has(dep)) recipeTriggers.set(dep, new Set());
+        const before = recipeTriggers.get(dep).size;
+        for (const t of triggers) recipeTriggers.get(dep).add(t);
+        if (recipeTriggers.get(dep).size !== before) changed = true;
+      }
     }
   }
 }
-// Lane propagation: a recipe inherits the lanes of the recipes it calls.
-// There is no reverse propagation; an aggregate's lane is what actually
+// A recipe inherits the files and trigger tokens of the recipes that call it.
+// There is no reverse propagation; an aggregate's trigger is what actually
 // invokes it (for `check`/`test`, the precommit hook).
 
 const locallyUnexercised = [
@@ -450,27 +406,6 @@ const allowlistByName = new Map(locallyUnexercised.map((e) => [e.name, e.reason]
 // ---------- display set ----------
 const displayRecipes = recipes.filter((r) => !r.private);
 const displaySet = new Set(displayRecipes.map((r) => r.name));
-
-// ---------- preferred lanes ----------
-const preferredLaneOrder = [
-  "ci-backend",
-  "ci-frontend",
-  "ci-dylint",
-  "ci-zizmor",
-  "docs",
-  "audit",
-  "nightly",
-  "release",
-];
-const allLanes = new Set(directInvocations.map((inv) => inv.lane));
-if (precommitRecipe) allLanes.add("precommit");
-const laneOrder = [
-  "precommit",
-  ...preferredLaneOrder,
-  ...[...allLanes].sort().filter(
-    (l) => l !== "precommit" && !preferredLaneOrder.includes(l),
-  ),
-].filter((l) => allLanes.has(l));
 
 // ---------- displayed children ----------
 function displayedChildren(name) {
@@ -500,15 +435,10 @@ const checkTree = tree("check");
 const testTree = tree("test");
 
 // ---------- orphans ----------
-const workflowLanes = new Set(
-  directInvocations.filter((inv) => inv.file !== "justfile").map((inv) => inv.lane),
-);
 const potentialOrphans = displayRecipes
   .filter((r) => !["check", "test", "precommit", "audit"].includes(r.name))
   .filter((r) => {
-    const inCi = [...(recipeLanes.get(r.name) || new Set())].some((lane) =>
-      workflowLanes.has(lane),
-    );
+    const inCi = recipeFiles.has(r.name);
     const called = recipes.some(
       (q) => q.name !== r.name && (q.deps || []).includes(r.name),
     );
@@ -552,24 +482,10 @@ function renderTable(headers, rows) {
 
 const CROSS = "\u274C\uFE0F";
 
-function laneCompare(a, b) {
-  const ia = laneOrder.indexOf(a);
-  const ib = laneOrder.indexOf(b);
-  if (ia !== -1 || ib !== -1) {
-    if (ia === -1) return 1;
-    if (ib === -1) return -1;
-    return ia - ib;
-  }
-  return a < b ? -1 : 1;
-}
-
 const triggerOrder = ["local", "PR", "main", "tags", "scheduled"];
-function checkTriggers(lanes) {
-  const tokens = new Set();
-  for (const lane of lanes) {
-    if (lane === "precommit") tokens.add("local");
-    for (const t of laneTriggers.get(lane) || []) tokens.add(t);
-  }
+function checkTriggers(name) {
+  const tokens = new Set(recipeTriggers.get(name) || []);
+  if (name === "precommit") tokens.add("local");
   return [...tokens].sort(
     (a, b) => triggerOrder.indexOf(a) - triggerOrder.indexOf(b),
   );
@@ -731,7 +647,6 @@ for (const g of orderedGroups) {
   docLines.push("");
   const rows = members.map((name) => {
     const r = recipeByName.get(name);
-    const lanes = [...(recipeLanes.get(name) || new Set())].sort(laneCompare);
     const direct = [...(directFiles.get(name) || [])]
       .map(workflowLabel)
       .sort();
@@ -749,8 +664,7 @@ for (const g of orderedGroups) {
       ...direct,
       ...callers.map((caller) => `(${caller})`),
     ];
-    const triggers =
-      name === "precommit" ? ["local"] : checkTriggers(lanes);
+    const triggers = checkTriggers(name);
     return [
       "`" + name + "`",
       r && r.annotation ? r.annotation : "\u2014",
