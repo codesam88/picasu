@@ -61,6 +61,32 @@ interaction); the Python stack (`run-cell.py` + `workload.py`) replaced
 5. Retire `harness-a.sh` (done — removed once the workload wrapper
    proved metric-compatible).
 
+## Known drift (2026-11-13)
+
+- typical reported medium/worst-case numbers are quite volatile, need to
+  standardize about x10 rounds to get strong baseline + detect drift
+- `extract-bench.py` probe regex expects the retired harness-A log
+  wording (`hyperfine: compressed-get mean=...`); the workload now logs
+  `prefetch single=... | edit-rating single=...`, so extractor probe
+  columns print n/a. Raw per-round values remain in `harness-a.log`;
+  `probe round=` / storm TSVs parse fine. Fix the regex when the
+  extractor is next touched.
+- The storm write-probe verification silently depends on hyperfine: in
+  the no-hyperfine fallback the post-scan edit-rating PUT is skipped,
+  so verification fails with `rating=<unset>` on every storm cell.
+  Either issue the PUT in the fallback path or state the hyperfine
+  requirement in the README. Add to scripts/deps/
+- `_wall_clock` expects a nested `summary.time_wall_clock` key in the
+  hyperfine export JSON; hyperfine 1.19 exports flat `mean`/`median`
+  per result, so installed-hyperfine probe summaries log `mean=None`.
+  Raw per-round JSONs are intact — read `results[].mean` directly, and
+  fix `_wall_clock` (or pin the schema) when next touched.
+- Storm-diff's `STORM_MARGIN_S=5` default presumes worker-pool-era
+  ~10 s rescan rounds; with the restructured pipeline the second scan
+  round completes in ~1.2–1.6 s, leaving no room for the margin
+  (storm wall 0.6 s). Pass `STORM_MARGIN_S=0.5` until the default is
+  adaptive.
+
 ## Acceptance
 
 - `python3 -m unittest discover -s utils/bench/tests` green, incl.

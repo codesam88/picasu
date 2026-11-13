@@ -30,18 +30,20 @@ reprocess. They return with the implementation preserved on
   `PICASU_INDEX_BACKSTOP_INTERVAL_SECS`. Per-root scan; a global job is
   accepted because it is stronger than the required per-root
   non-overlap. A tick during a cycle coalesces into one follow-up.
-- Scan-vs-mutation coordination (superseded by C9/C10): per-path epochs
-  plus short leases replaced the global gate, but the sweep Verify
-  fan-out (C2) and per-flush cascade rebuilds (C4) are replaced in turn
-  — see C9 (single batched DB sweep) and C10 (per-path try-and-abort
-  baseline).
+- Scan-vs-mutation coordination: superseded by C9/C10 — one batched DB
+  sweep; per-path leases own generations and abort superseded scans.
 - Scan ownership: one scan scheduler owns every trigger (API, backstop,
   `Flag::Rescan`), dedupes against remaining work, trickle-feeds Rayon.
   Shutdown discards queued work, awaits in-flight jobs only. Abort and
   preemption semantics live in C10.
-- Writer side effects (revised by C9/C10): redb writes advance an epoch;
-  request-driven views replace per-flush rebuilds. Per-flush cascade
-  rebuild claims are withdrawn — see C9/C10.
+- Writer side effects: background flushes dirty the tree and advance the
+  request-visible invalidation counter only on the leading edge of the
+  ~1 s throttle window; request paths and the scan terminal bump fully
+  (`mark_tree_dirty_background`). Per-flush cascade rebuilds are gone.
+- Upload is async store-and-return: the 200 response is the completion
+  signal, no wait-for-indexed polling. Background status reporting
+  (scans, moves, indexing) routed to the status-log/activity-log
+  tickets.
 - Renames: factor notify event classification into a pure function so
   rename handling is testable. File rename submits old-path removal plus
   new-path index; directory rename removes rows under the old prefix and
@@ -151,7 +153,7 @@ superseded pointers only.
 - **C6 [done] REQ-13: shared named-temp atomic write**. Staged through
   `NamedTempFile::persist` as `.{event}-{filename}.{pid}.{seq}.tmp`;
   startup sweep by owner pid/mtime. Follow-ups: read-modify-write
-  last-writer-wins; no fsync policy.
+  last-writer-wins; no fsync policy (perf-investigation item 7).
 - **C7 [done] REQ-9: orphan sidecar memory**. Collect only `.xmp` paths;
   sibling check on demand. Log-only unchanged.
 - **C8 [done] REQ-10: upload temp naming**.
@@ -190,7 +192,7 @@ superseded pointers only.
   capture/release + leased-path skip — survives only as C9 inline
   re-check / C10 rule.
 - Open optimisation: full redb scan+sort on requesting thread;
-  query-scoped view follow-up.
+  query-scoped view follow-up (perf-investigation item 4).
 
 ### Remaining claims (all closed)
 
@@ -213,16 +215,18 @@ superseded pointers only.
   `cascade_two_pending_albums_rebuilds_at_most_once` (observer
   `TreeRefreshBuild` count).
 - Absorbed into C9/C10 RED steps (no separate action): EPOCH-01,
-  SWEEP-01, M1, M4. CASCADE-01/M2 were first absorbed here, then found
-  untouched by C9/C10 and re-opened as C11 — now closed by C11 (history
-  kept for the record).
+  SWEEP-01, M1, M4. CASCADE-01/M2 closed by C11.
 
 ### Merge (open — the only remaining item)
 
-- Rebase onto `origin/main` if diverged, force-push, retarget PR 185 to
-  `main`, read CI, merge. All implementation and gate work above is
-  GREEN locally (full backend suite + spec/catalog/event/quint gates per
-  step); CI is the last unverified gate.
+- Branch history was squash-reviewed and rewritten (40 → 34 commits,
+  final tree identical to the pre-rewrite tip). 0 commits behind
+  `origin/main`, so no rebase onto `main` is needed; push requires
+  `--force-with-lease` (remote still holds the pre-rewrite chain).
+  Then retarget PR 185 to `main`, read CI, merge. All implementation
+  and gate work above is GREEN locally (full backend suite +
+  spec/catalog/event/quint gates per step); CI is the last unverified
+  gate.
 
 ## Revised designs (2026-11-12; all implemented)
 
@@ -240,17 +244,13 @@ Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
   and generated doc describe inline re-checks. Gates:
   `index_album_sweep_same_hash_keeps_sibling_root_ghost` (shared hash
   across roots), `sweep_remove_batch_*`, `list_asset_paths_under_*`.
-  Residual follow-ups: large-set handling deferred to a future
-  benchmark effort (generic instrumentation via the observer
-  framework, not point warnings); dir-album candidates now sourced
-  from primary tables (3b); empty-path hash branch audited (3c) —
-  sole remaining producer was watcher removal, fixed to resolve by
-  exact path, branch retained only for the inherent album case
-  (unique hash, single-member reap).
-  Original steps, all GREEN: (1) RED same-hash cross-root + op-semantics
-  gates; (2) prefix-scan helper + exact-only batch op; (3) batched job
-  with inline re-checks; (4) sweep Verify traffic and prune-before-submit
-  removed; (5) shared-hash REQ-4 gate green, full suite green.
+  Residual follow-ups: large-set handling deferred to the benchmark
+  effort tracked in `.plan/perf-investigation.md` (item 5; generic
+  instrumentation via the observer framework, not point warnings);
+  dir-album candidates now sourced from primary tables (3b); empty-path
+  hash branch audited (3c) — sole remaining producer was watcher
+  removal, fixed to resolve by exact path, branch retained only for the
+  inherent album case (unique hash, single-member reap).
 - **C10 [done] Per-path concurrency: interactive preempts scan (baseline model)**.
   Key on normalized path (new files have no ID until flush); existing
   assets re-resolve ID->path under the lease and abort on mismatch
@@ -262,7 +262,56 @@ Supersede the C2 sweep fan-out while keeping its REQ-7 safety rule
   drop); standalone `bump()` removed. Commits: lease dedup, scan abort,
   lease-owned generations. Gates: `lease_releases_generation_on_drop`,
   `scan_abort`, `superseded_truth_table`, `commit_with` release test.
-  (Earlier step-by-step detail retired as done; history in git.)
+
+## Benchmark comparison vs worker-pool-rework baseline (2026-11-13)
+
+Canonical set-100 battery on this branch, release, `SCAN_REPEATS=2`,
+hyperfine-driven probes — mirroring the worker-pool-rework
+post-isolation battery cell for cell (its table is the reference
+column; raw impose cells under `/tmp/opencode/impose-bench/*`).
+Purpose: confirm the impose restructuring did not regress the
+request path at the scale the earlier baseline covered. Scale- and
+large-set topics stay in `.plan/perf-investigation.md`.
+
+| workload (N=8)                  | worker-pool post-fix med / p95 / max ms | impose med (pass 1 / pass 2), worst max ms | fails            |
+| ------------------------------- | --------------------------------------- | ------------------------------------------ | ---------------- |
+| control prefetch probe          | 7.7 / — / 8.9 (worst round)             | 12.2 / 8.8, worst 18.6                     | 0 both           |
+| control edit probe              | 11.3 / — / 12.1 (worst round)           | 11.9 / 8.3, worst 14.9                     | 0 both           |
+| storm-read 8x100 (1600 ops)     | 3.5 / 17 / 49                           | 3.8 / 4.0, worst 44.8                      | 0 both           |
+| storm-thumb 8x100 (1600 ops)    | 7.0 / 26 / 54                           | 8.7 / 7.5, worst 104.0                     | 0 both           |
+| storm-diff 8x100 (1600 ops)     | 6.5 / 14 / 26, 535 early 500s           | 5.0 / 4.2, worst 39.0, 685 early 500s      | run 1 only, both |
+| storm-idle-diff 8x100 (at rest) | 8 / 15 / 21                             | 3.9 / 3.8, worst 21.2                      | 0 both           |
+| N=4 control scan                | 21 s                                    | 23.2 / 27.7 and 21.5 / 20.7                | —                |
+| N=4 storm-read                  | 4 / 7 / 11                              | 4.0 / 4.0, worst 17.4                      | 0 both           |
+| N=8 populate scan               | ~10 s                                   | 9.3–10.5 s across runs                     | —                |
+
+Verdict: medians within ~±20% of the reference on every storm workload
+(read and idle better, thumb/diff comparable); no multi-hundred-ms op
+anywhere (max 104 ms); scans match at both core budgets. A second full
+battery pass (same cells, ~20 min later) reproduced every median within
+run variance and moved the control probes to 8.8/8.3 ms, so the probe
+column's spread is per-round noise plus the curl-spawn constant. The
+restructuring (sweep batching, leases, cascade outside write txns,
+decoupled invalidation) did not regress the request path at set-100
+scale.
+
+Caveats recorded with the numbers:
+
+- Control probes are hyperfine-driven on both sides (curl subprocess
+  per run, ~7–10 ms spawn overhead included); medians of round means.
+  An in-process-client measurement in the same session (hyperfine-less
+  fallback battery) put request-only cost at 2.8 ms prefetch / 1.8 ms
+  edit — the curl-spawn constant, not the server, dominates those
+  probe numbers.
+- `storm-diff` needed `STORM_MARGIN_S=0.5`: the second scan round
+  completes in ~1.2–1.6 s (incremental — 7 of 109 rows processed), so
+  the workload-era 5 s margin is unsatisfiable. Early-scan 500s (685
+  run 1, 0 run 2) match the reference's known error shape and move
+  with race timing, not tree version.
+- Thumb p95/max are ~1.5–2x the reference on one cell
+  (38/104 vs 26/54 ms); medians equal. Suspected leading-edge view
+  rebuild + scheduling variance at cell granularity; re-measure under
+  the perf-investigation rig before drawing conclusions.
 
 ## Verification per step
 
