@@ -127,7 +127,8 @@ test("trigger column reflects the CI workflow files and callers", () => {
     md,
     /`dylint-check`[^\n]*\| ci\s*\| PR, main/,
   );
-  assert.match(md, /`quint-check`[^\n]*\| —\s*\| local/);
+  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
+  assert.match(md, /`check-tools`[^\n]*\| ❌️\s*\| -\s*\|/);
   assert.match(
     md,
     /`msrv-check`[^\n]*\| msrv\s*\| scheduled/,
@@ -148,7 +149,7 @@ test("family tables share the full-width style and five-column header", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /h3 \+ \.table-wrapper > table \{\n\s+width: 100%;\n\s+table-layout: fixed;/);
   const headers = md.match(
-    /^\| Rule \(justfile\)\s+\| Description\s+\| Params\s+\| CI Workflow\s+\| Trigger\s+\|$/gm,
+    /^\| Rule \(justfile\)\s+\| Description\s+\| CI Workflow\s+\| Trigger\s+\|$/gm,
   );
   const families = md.slice(md.indexOf("## Rules by group")).match(/^### /gm);
   assert.ok(families.length > 0, "group sections present");
@@ -248,13 +249,6 @@ test("--check <path> diffs against the named file", (t) => {
   const r2 = run(dir, ["--check", custom]);
   assert.match(r2.out, /differs from regenerated output/);
   assert.match(r2.out, /custom\.md/);
-});
-
-test("params appear for parameterized recipes", () => {
-  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /`branches-prune`[^\n]*\| \*args/);
-  assert.match(md, /`frontend-playwright`[^\n]*\| filter=""/);
-  assert.match(md, /`install`[^\n]*\| tool\b/);
 });
 
 test("module recipe appears and private module recipe is absent", () => {

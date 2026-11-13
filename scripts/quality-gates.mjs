@@ -144,20 +144,6 @@ function flattenBody(r) {
   return out;
 }
 
-function formatParams(r) {
-  const params = r.params || [];
-  if (!params.length) return "\u2014";
-  const labels = params.map((p) => {
-    if (p.kind === "star") return `*${p.name}`;
-    if (p.kind === "plus") return `+${p.name}`;
-    if (p.default == null) return p.name;
-    const value =
-      typeof p.default === "string" ? JSON.stringify(p.default) : String(p.default);
-    return `${p.name}=${value}`;
-  });
-  return labels.join(", ");
-}
-
 // ---------- trigger parsing ----------
 function onRegionLines(lines) {
   const out = [];
@@ -628,7 +614,7 @@ docLines.push("");
 docLines.push("## Rules by group");
 docLines.push("");
 docLines.push(
-  "`Rule` names the justfile recipe, `Params` lists its parameters, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A dash marks a recipe with no workflow, no CI caller, or no trigger. Recipes are grouped by their justfile group.",
+  "`Rule` names the justfile recipe, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a recipe with no workflow or CI caller; a dash marks no trigger. Recipes are grouped by their justfile group.",
 );
 docLines.push("");
 docLines.push("<style>");
@@ -641,7 +627,7 @@ docLines.push("  h3 + .table-wrapper > table th {");
 docLines.push("    padding-left: 6px;");
 docLines.push("    padding-right: 6px;");
 docLines.push("  }");
-for (const [index, width] of [18, 36, 10, 18, 18].entries()) {
+for (const [index, width] of [20, 44, 18, 18].entries()) {
   docLines.push(
     `  h3 + .table-wrapper > table th:nth-child(${index + 1}) {`,
   );
@@ -662,7 +648,7 @@ function workflowLabel(file) {
   return basename(file).replace(/\.ya?ml$/, "");
 }
 
-const familyHeaders = ["Rule (justfile)", "Description", "Params", "CI Workflow", "Trigger"];
+const familyHeaders = ["Rule (justfile)", "Description", "CI Workflow", "Trigger"];
 
 function mermaidId(name) {
   return name.replace(/::/g, "__").replace(/[^A-Za-z0-9_-]/g, "_");
@@ -762,9 +748,8 @@ for (const g of orderedGroups) {
     return [
       "`" + name + "`",
       r && r.annotation ? r.annotation : "\u2014",
-      r ? formatParams(r) : "\u2014",
-      workflowParts.length ? workflowParts.join(", ") : "\u2014",
-      triggers.length ? triggers.join(", ") : CROSS,
+      workflowParts.length ? workflowParts.join(", ") : CROSS,
+      triggers.length ? triggers.join(", ") : "-",
     ];
   });
   docLines.push(...renderTable(familyHeaders, rows));

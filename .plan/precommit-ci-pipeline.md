@@ -225,11 +225,12 @@ Scope: `scripts/quality-gates.mjs` (+ test), regenerated
 Done: recipes come from `just --json`, including module recipes
 (`bench::*`) and parameterized recipes; private recipes stay out of the
 tables but remain for dependency resolution. Tables are grouped by the
-justfile `group` attribute (module name for module recipes) and add a
-`Params` column. Each group has a local mermaid diagram; disconnected
+justfile `group` attribute (module name for module recipes). Each
+group has a local mermaid diagram; disconnected
 nodes are ranked below the connected component. The CI Workflow column
 lists workflow files that invoke a recipe directly, plus any caller
-that itself runs in CI (in parentheses), without links or crosses. The name-based gate
+that itself runs in CI (in parentheses), without links; a cross marks
+no workflow/caller, and the Trigger column uses a dash for no trigger. The name-based gate
 heuristics, curated family map, reverse lane propagation, and the
 gate-based orphan/not-run-in-CI warnings are gone. Orphans covers every
 non-private recipe with no workflow and no caller, excluding the four

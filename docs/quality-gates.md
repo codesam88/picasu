@@ -76,7 +76,7 @@ Recipes with no associated CI workflow, no justfile parent caller, and not a glo
 
 ## Rules by group
 
-`Rule` names the justfile recipe, `Params` lists its parameters, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A dash marks a recipe with no workflow, no CI caller, or no trigger. Recipes are grouped by their justfile group.
+`Rule` names the justfile recipe, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a recipe with no workflow or CI caller; a dash marks no trigger. Recipes are grouped by their justfile group.
 
 <style>
   h3 + .table-wrapper > table {
@@ -89,18 +89,15 @@ Recipes with no associated CI workflow, no justfile parent caller, and not a glo
     padding-right: 6px;
   }
   h3 + .table-wrapper > table th:nth-child(1) {
-    width: 18%;
+    width: 20%;
   }
   h3 + .table-wrapper > table th:nth-child(2) {
-    width: 36%;
+    width: 44%;
   }
   h3 + .table-wrapper > table th:nth-child(3) {
-    width: 10%;
-  }
-  h3 + .table-wrapper > table th:nth-child(4) {
     width: 18%;
   }
-  h3 + .table-wrapper > table th:nth-child(5) {
+  h3 + .table-wrapper > table th:nth-child(4) {
     width: 18%;
   }
 </style>
@@ -118,15 +115,15 @@ graph TD
   backend-test-release
 ```
 
-| Rule (justfile)         | Description                              | Params | CI Workflow | Trigger             |
-| ----------------------- | ---------------------------------------- | ------ | ----------- | ------------------- |
-| `backend-audit`         | cargo deny                               | —      | (audit)     | PR, main, scheduled |
-| `backend-build`         | cargo build (dev build)                  | —      | —           | ❌️                  |
-| `backend-build-release` | cargo build (release build)              | —      | —           | ❌️                  |
-| `backend-check`         | cargo fmt --check + clippy (all targets) | —      | ci          | local, PR, main     |
-| `backend-format`        | cargo fmt                                | —      | —           | ❌️                  |
-| `backend-test`          | Backend tests (cargo-nextest)            | —      | ci          | local, PR, main     |
-| `backend-test-release`  | Backend tests in release mode            | —      | release     | tags                |
+| Rule (justfile)         | Description                              | CI Workflow | Trigger             |
+| ----------------------- | ---------------------------------------- | ----------- | ------------------- |
+| `backend-audit`         | cargo deny                               | (audit)     | PR, main, scheduled |
+| `backend-build`         | cargo build (dev build)                  | ❌️          | -                   |
+| `backend-build-release` | cargo build (release build)              | ❌️          | -                   |
+| `backend-check`         | cargo fmt --check + clippy (all targets) | ci          | local, PR, main     |
+| `backend-format`        | cargo fmt                                | ❌️          | -                   |
+| `backend-test`          | Backend tests (cargo-nextest)            | ci          | local, PR, main     |
+| `backend-test-release`  | Backend tests in release mode            | release     | tags                |
 
 ### Frontend
 
@@ -144,15 +141,15 @@ graph TD
   frontend-playwright ~~~ frontend-audit & frontend-build & frontend-check & frontend-format
 ```
 
-| Rule (justfile)       | Description                                                              | Params    | CI Workflow       | Trigger               |
-| --------------------- | ------------------------------------------------------------------------ | --------- | ----------------- | --------------------- |
-| `frontend-audit`      | npm audit                                                                | —         | (audit)           | PR, main, scheduled   |
-| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | —         | ci, fuzz-advisory | PR, main, scheduled   |
-| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | —         | ci                | local, PR, main       |
-| `frontend-format`     | prettier --write                                                         | —         | —                 | ❌️                    |
-| `frontend-playwright` | run playwright tests (optional filter)                                   | filter="" | ci, release       | local, PR, main, tags |
-| `frontend-test`       | all frontend tests                                                       | —         | —                 | local                 |
-| `frontend-vitest`     | vitest run                                                               | —         | ci                | local, PR, main       |
+| Rule (justfile)       | Description                                                              | CI Workflow       | Trigger               |
+| --------------------- | ------------------------------------------------------------------------ | ----------------- | --------------------- |
+| `frontend-audit`      | npm audit                                                                | (audit)           | PR, main, scheduled   |
+| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | ci, fuzz-advisory | PR, main, scheduled   |
+| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | ci                | local, PR, main       |
+| `frontend-format`     | prettier --write                                                         | ❌️                | -                     |
+| `frontend-playwright` | run playwright tests (optional filter)                                   | ci, release       | local, PR, main, tags |
+| `frontend-test`       | all frontend tests                                                       | ❌️                | local                 |
+| `frontend-vitest`     | vitest run                                                               | ci                | local, PR, main       |
 
 ### Utils
 
@@ -194,36 +191,36 @@ graph TD
   auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & plan & plan-format & plan-lint & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
 ```
 
-| Rule (justfile)             | Description                                                                                 | Params | CI Workflow           | Trigger             |
-| --------------------------- | ------------------------------------------------------------------------------------------- | ------ | --------------------- | ------------------- |
-| `auth-matrix-check`         | ensure auth-matrix artifacts match generator                                                | —      | (openapi-check)       | local, PR, main     |
-| `catalog-check`             | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | —      | —                     | local               |
-| `docs-eventual-consistency` | Regenerate docs/eventual-consistency.md from the JSON catalogs                              | —      | —                     | ❌️                  |
-| `dylint-check`              | run dylint auth lints (advisory)                                                            | —      | ci                    | PR, main            |
-| `env-var-check`             | check PICASU_* env vars match docs/config.md                                                | —      | ci                    | local, PR, main     |
-| `events-check`              | Validate the eventual-consistency event catalog                                             | —      | —                     | local               |
-| `fuzz-check`                | tier-1 gate: seeded sweep, baseline-compared                                                | —      | ci, fuzz-advisory     | PR, main, scheduled |
-| `fuzz-matrix`               | run fuzz matrix (auth checks)                                                               | —      | ci                    | local, PR, main     |
-| `fuzz-run`                  | run fuzz campaign (budget via FUZZ_MIN)                                                     | *args  | —                     | ❌️                  |
-| `fuzz-serve`                | —                                                                                           | *args  | —                     | ❌️                  |
-| `gates-check`               | ensure all test/check rules are called from CI and global rules                             | —      | ci, docs-check        | local, PR, main     |
-| `msrv-check`                | Non-blocking by design: MSRV floor check (nightly lane).                                    | —      | msrv                  | scheduled           |
-| `openapi-breakcheck`        | Fail on breaking OpenAPI changes                                                            | —      | (openapi-check)       | local, PR, main     |
-| `openapi-check`             | Run all OpenAPI checks.                                                                     | —      | ci                    | local, PR, main     |
-| `openapi-gen`               | Regenerate the checked-in OpenAPI artifact                                                  | —      | —                     | ❌️                  |
-| `openapi-lint`              | Lint the OpenAPI document (errors fail)                                                     | —      | (openapi-check)       | local, PR, main     |
-| `openapi-routes-release`    | Run the already-built release binary's route-set gate against the committed spec.           | —      | release               | tags                |
-| `openapi-sanity`            | check OpenAPI annotation conventions                                                        | —      | (openapi-check)       | local, PR, main     |
-| `plan`                      | run plan <args> (needs install-plan)                                                        | *args  | —                     | ❌️                  |
-| `plan-format`               | Auto-format .plan task frontmatter and body                                                 | —      | —                     | ❌️                  |
-| `plan-lint`                 | check .plan task frontmatter correctness                                                    | —      | ci, docs-check        | local, PR, main     |
-| `quint-check`               | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | —      | —                     | local               |
-| `spec-check`                | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | —      | —                     | local               |
-| `utils-check`               | utils fmt + clippy (all targets)                                                            | —      | ci                    | local, PR, main     |
-| `utils-format`              | cargo fmt on utils/ crates                                                                  | —      | —                     | ❌️                  |
-| `utils-test`                | cargo test utils/ + Schemathesis derivations                                                | —      | ci                    | local, PR, main     |
-| `zizmor-check`              | audit workflows/deps offline (no GH_TOKEN)                                                  | —      | zizmor, (utils-check) | local, PR, main     |
-| `zizmor-check-online`       | e.g. --format=sarif                                                                         | *args  | —                     | ❌️                  |
+| Rule (justfile)             | Description                                                                                 | CI Workflow           | Trigger             |
+| --------------------------- | ------------------------------------------------------------------------------------------- | --------------------- | ------------------- |
+| `auth-matrix-check`         | ensure auth-matrix artifacts match generator                                                | (openapi-check)       | local, PR, main     |
+| `catalog-check`             | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️                    | local               |
+| `docs-eventual-consistency` | Regenerate docs/eventual-consistency.md from the JSON catalogs                              | ❌️                    | -                   |
+| `dylint-check`              | run dylint auth lints (advisory)                                                            | ci                    | PR, main            |
+| `env-var-check`             | check PICASU_* env vars match docs/config.md                                                | ci                    | local, PR, main     |
+| `events-check`              | Validate the eventual-consistency event catalog                                             | ❌️                    | local               |
+| `fuzz-check`                | tier-1 gate: seeded sweep, baseline-compared                                                | ci, fuzz-advisory     | PR, main, scheduled |
+| `fuzz-matrix`               | run fuzz matrix (auth checks)                                                               | ci                    | local, PR, main     |
+| `fuzz-run`                  | run fuzz campaign (budget via FUZZ_MIN)                                                     | ❌️                    | -                   |
+| `fuzz-serve`                | —                                                                                           | ❌️                    | -                   |
+| `gates-check`               | ensure all test/check rules are called from CI and global rules                             | ci, docs-check        | local, PR, main     |
+| `msrv-check`                | Non-blocking by design: MSRV floor check (nightly lane).                                    | msrv                  | scheduled           |
+| `openapi-breakcheck`        | Fail on breaking OpenAPI changes                                                            | (openapi-check)       | local, PR, main     |
+| `openapi-check`             | Run all OpenAPI checks.                                                                     | ci                    | local, PR, main     |
+| `openapi-gen`               | Regenerate the checked-in OpenAPI artifact                                                  | ❌️                    | -                   |
+| `openapi-lint`              | Lint the OpenAPI document (errors fail)                                                     | (openapi-check)       | local, PR, main     |
+| `openapi-routes-release`    | Run the already-built release binary's route-set gate against the committed spec.           | release               | tags                |
+| `openapi-sanity`            | check OpenAPI annotation conventions                                                        | (openapi-check)       | local, PR, main     |
+| `plan`                      | run plan <args> (needs install-plan)                                                        | ❌️                    | -                   |
+| `plan-format`               | Auto-format .plan task frontmatter and body                                                 | ❌️                    | -                   |
+| `plan-lint`                 | check .plan task frontmatter correctness                                                    | ci, docs-check        | local, PR, main     |
+| `quint-check`               | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️                    | local               |
+| `spec-check`                | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️                    | local               |
+| `utils-check`               | utils fmt + clippy (all targets)                                                            | ci                    | local, PR, main     |
+| `utils-format`              | cargo fmt on utils/ crates                                                                  | ❌️                    | -                   |
+| `utils-test`                | cargo test utils/ + Schemathesis derivations                                                | ci                    | local, PR, main     |
+| `zizmor-check`              | audit workflows/deps offline (no GH_TOKEN)                                                  | zizmor, (utils-check) | local, PR, main     |
+| `zizmor-check-online`       | e.g. --format=sarif                                                                         | ❌️                    | -                   |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
 Note: `fuzz-check` - CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)
@@ -242,14 +239,14 @@ graph TD
   docs-openapi ~~~ docs-check & docs-format & docs-serve & gates-docs
 ```
 
-| Rule (justfile) | Description                                       | Params | CI Workflow    | Trigger         |
-| --------------- | ------------------------------------------------- | ------ | -------------- | --------------- |
-| `docs-build`    | Build mdBook site at target/docs/                 | —      | —              | ❌️              |
-| `docs-check`    | check markdown (docs, .plan, utils)               | —      | ci, docs-check | local, PR, main |
-| `docs-format`   | format markdown (README, docs, .plan, utils)      | —      | —              | ❌️              |
-| `docs-openapi`  | Generate OpenAPI spec and reference doc           | —      | —              | ❌️              |
-| `docs-serve`    | Serve mdbook documentation                        | —      | —              | ❌️              |
-| `gates-docs`    | Regenerate the gates doc (checked by gates-check) | —      | —              | ❌️              |
+| Rule (justfile) | Description                                       | CI Workflow    | Trigger         |
+| --------------- | ------------------------------------------------- | -------------- | --------------- |
+| `docs-build`    | Build mdBook site at target/docs/                 | ❌️             | -               |
+| `docs-check`    | check markdown (docs, .plan, utils)               | ci, docs-check | local, PR, main |
+| `docs-format`   | format markdown (README, docs, .plan, utils)      | ❌️             | -               |
+| `docs-openapi`  | Generate OpenAPI spec and reference doc           | ❌️             | -               |
+| `docs-serve`    | Serve mdbook documentation                        | ❌️             | -               |
+| `gates-docs`    | Regenerate the gates doc (checked by gates-check) | ❌️             | -               |
 
 ### Deps
 
@@ -266,14 +263,14 @@ graph TD
   install-dev ~~~ check-tools & install & install-plan
 ```
 
-| Rule (justfile) | Description                                                       | Params | CI Workflow                                                                                   | Trigger                          |
-| --------------- | ----------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- | -------------------------------- |
-| `check-tools`   | verify installed tool versions                                    | —      | —                                                                                             | ❌️                               |
-| `install`       | dispatcher loops scripts/deps/*.sh                                | tool   | audit, ci, fuzz-advisory, release, zizmor, (fuzz-check), (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
-| `install-dev`   | install managed dev tools                                         | —      | —                                                                                             | ❌️                               |
-| `install-plan`  | Install 'plan' and 'gloss' tools (pinned)                         | —      | —                                                                                             | ❌️                               |
-| `setup-dev`     | install dev tools + precommit hook                                | —      | —                                                                                             | ❌️                               |
-| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | —      | —                                                                                             | ❌️                               |
+| Rule (justfile) | Description                                                       | CI Workflow                                                                                   | Trigger                          |
+| --------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
+| `check-tools`   | verify installed tool versions                                    | ❌️                                                                                            | -                                |
+| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, fuzz-advisory, release, zizmor, (fuzz-check), (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
+| `install-dev`   | install managed dev tools                                         | ❌️                                                                                            | -                                |
+| `install-plan`  | Install 'plan' and 'gloss' tools (pinned)                         | ❌️                                                                                            | -                                |
+| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                                            | -                                |
+| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                                            | -                                |
 
 ### Global
 
@@ -299,21 +296,21 @@ graph TD
   branches-prune-test ~~~ audit & branches-prune & format & precommit & test
 ```
 
-| Rule (justfile)       | Description                                                                | Params | CI Workflow | Trigger             |
-| --------------------- | -------------------------------------------------------------------------- | ------ | ----------- | ------------------- |
-| `audit`               | Run security audits (backend + frontend)                                   | —      | audit       | PR, main, scheduled |
-| `branches-prune`      | Prune stale local/remote branches (report; --apply + --expire-* to delete) | *args  | —           | ❌️                  |
-| `branches-prune-test` | Test the branch pruning helper against a fixture repository                | —      | —           | local               |
-| `build`               | Build frontend then backend (dev build)                                    | —      | —           | ❌️                  |
-| `build-release`       | Release build with embedded assets                                         | —      | —           | ❌️                  |
-| `check`               | Run all linters and static checks                                          | —      | —           | local               |
-| `clean`               | Remove transient generated state                                           | —      | —           | ❌️                  |
-| `distclean`           | Clean all generated files                                                  | —      | —           | ❌️                  |
-| `format`              | Format everything                                                          | —      | —           | ❌️                  |
-| `precommit`           | Run format, linter, static checks and tests                                | —      | —           | local               |
-| `run`                 | Build and run out of sandbox/{data,images}                                 | —      | —           | ❌️                  |
-| `test`                | run full test suite                                                        | —      | —           | local               |
-| `test-release`        | build + test release (webroot embedded)                                    | —      | —           | ❌️                  |
+| Rule (justfile)       | Description                                                                | CI Workflow | Trigger             |
+| --------------------- | -------------------------------------------------------------------------- | ----------- | ------------------- |
+| `audit`               | Run security audits (backend + frontend)                                   | audit       | PR, main, scheduled |
+| `branches-prune`      | Prune stale local/remote branches (report; --apply + --expire-* to delete) | ❌️          | -                   |
+| `branches-prune-test` | Test the branch pruning helper against a fixture repository                | ❌️          | local               |
+| `build`               | Build frontend then backend (dev build)                                    | ❌️          | -                   |
+| `build-release`       | Release build with embedded assets                                         | ❌️          | -                   |
+| `check`               | Run all linters and static checks                                          | ❌️          | local               |
+| `clean`               | Remove transient generated state                                           | ❌️          | -                   |
+| `distclean`           | Clean all generated files                                                  | ❌️          | -                   |
+| `format`              | Format everything                                                          | ❌️          | -                   |
+| `precommit`           | Run format, linter, static checks and tests                                | ❌️          | local               |
+| `run`                 | Build and run out of sandbox/{data,images}                                 | ❌️          | -                   |
+| `test`                | run full test suite                                                        | ❌️          | local               |
+| `test-release`        | build + test release (webroot embedded)                                    | ❌️          | -                   |
 
 ### Bench
 
@@ -329,13 +326,13 @@ graph TD
   bench__workload["bench::workload"]
 ```
 
-| Rule (justfile)      | Description                | Params                                                                | CI Workflow | Trigger |
-| -------------------- | -------------------------- | --------------------------------------------------------------------- | ----------- | ------- |
-| `bench::clean`       | Remove the on-demand venv. | —                                                                     | —           | ❌️      |
-| `bench::extract`     | Extract cell metrics.      | *args                                                                 | —           | ❌️      |
-| `bench::format`      | Apply formatting.          | —                                                                     | —           | ❌️      |
-| `bench::lint`        | Lint + format check.       | —                                                                     | —           | ❌️      |
-| `bench::seed-images` | Seed an image repo.        | image_repo, images="100", template="", jobs="4"                       | —           | ❌️      |
-| `bench::server`      | Serve a backend cell.      | —                                                                     | —           | ❌️      |
-| `bench::test`        | Run the bench unit tests.  | —                                                                     | —           | ❌️      |
-| `bench::workload`    | Run a benchmark cell.      | out, image_repo, images="100", ncpu="8", build="release", port="5795" | —           | ❌️      |
+| Rule (justfile)      | Description                | CI Workflow | Trigger |
+| -------------------- | -------------------------- | ----------- | ------- |
+| `bench::clean`       | Remove the on-demand venv. | ❌️          | -       |
+| `bench::extract`     | Extract cell metrics.      | ❌️          | -       |
+| `bench::format`      | Apply formatting.          | ❌️          | -       |
+| `bench::lint`        | Lint + format check.       | ❌️          | -       |
+| `bench::seed-images` | Seed an image repo.        | ❌️          | -       |
+| `bench::server`      | Serve a backend cell.      | ❌️          | -       |
+| `bench::test`        | Run the bench unit tests.  | ❌️          | -       |
+| `bench::workload`    | Run a benchmark cell.      | ❌️          | -       |
