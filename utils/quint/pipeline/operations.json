@@ -17,7 +17,7 @@
       ],
       "reads": ["asset_file", "sidecar"],
       "writes": ["db_row", "thumbnail"],
-      "guards": ["C10 generation abort", "per-path lease"],
+      "guards": ["process_file try-and-abort (path_epoch::superseded over baseline/current generation and is_busy)", "path_epoch per-path lease"],
       "status": "guarded",
       "nodes": ["N1"],
       "notes": "process_file: Open -> Hash -> Dedup -> Index -> Video; per-path try-and-abort cancels stale scans. Watcher sidecar-only events are dropped by the media gate (N7); scan/backfill is the current repair path."
@@ -39,9 +39,9 @@
       "reads": ["asset_file", "db_row"],
       "writes": ["asset_file", "sidecar", "thumbnail", "db_row"],
       "guards": [
-        "C9 inline re-check",
-        "C10 leases",
-        "validate_paths_unchanged"
+        "delete::process_deletes path lease (lease_deleted_paths)",
+        "validate_paths_unchanged",
+        "dupe-group thumbnail reap (get_dupe_ids)"
       ],
       "status": "guarded",
       "nodes": ["N2", "N12"],
@@ -53,10 +53,10 @@
       "events": ["API_ASSIGN_ALBUM_DIR_MOVE"],
       "reads": ["asset_file", "sidecar", "db_row"],
       "writes": ["asset_file", "sidecar", "db_row"],
-      "guards": ["C9 inline re-check", "C10 leases"],
+      "guards": ["move_asset_into_album path lease (lease_paths source/dest)", "resolve-then-validate (record.path re-read under lease)"],
       "status": "open",
       "nodes": ["N2", "N5"],
-      "notes": "move_asset_into_album: N2 guarded by C9/C10; N5 cross-table split remains open, so the operation status is open."
+      "notes": "move_asset_into_album: N2 guarded by path lease + resolve-then-validate; N5 cross-table split remains open (ASSET_BY_ID and ASSET_BY_PATH written in separate txns), so the operation status is open."
     },
     {
       "id": "OP-5",
@@ -64,10 +64,10 @@
       "events": ["API_ASSIGN_ALBUM_DIR_MOVE", "FS_RENAME_DIR"],
       "reads": ["asset_file", "sidecar", "db_row"],
       "writes": ["asset_file", "sidecar", "db_row"],
-      "guards": ["C5 cookie-paired prefix rewrite", "DB-state fallback"],
+      "guards": ["paired rename via notify tracker cookie (handle_paired_rename)", "DB-state fallback for unpaired halves (handle_unpaired_from)", "expired-pending drain (drain_expired_pending_from)", "apply_dir_move_plans single write txn"],
       "status": "open",
       "nodes": ["N3", "N5"],
-      "notes": "move_album_into_album plus apply_dir_move_plans: N3 guarded by C5; N5 cross-table split remains open, so the operation status is open."
+      "notes": "move_album_into_album plus apply_dir_move_plans: N3 guarded by paired rename + fallback + single-txn rewrite; N5 cross-table split remains open for the per-asset move path, so the operation status is open."
     },
     {
       "id": "OP-6",
@@ -75,7 +75,7 @@
       "events": ["API_ROTATE_IMAGE"],
       "reads": ["sidecar", "thumbnail", "db_row"],
       "writes": ["sidecar", "thumbnail", "db_row"],
-      "guards": ["sidecar persisted before thumbnail/DB", "C10 path lease"],
+      "guards": ["rotate persists sidecar before thumbnail/DB", "path_epoch::lease_paths"],
       "status": "guarded",
       "nodes": ["N1"],
       "notes": "rotate_image: N11 is refuted (the pre-fix thumbnail-before-sidecar order no longer exists); aspectsRotateTest pins the sidecar-first order. Lease coverage is modeled by aspectsRotateVsScanTest."
@@ -87,9 +87,9 @@
       "reads": ["asset_file", "sidecar", "db_row"],
       "writes": ["sidecar", "db_row"],
       "guards": [
-        "sidecar write-before-store",
-        "rollback on store failure",
-        "C10 path lease"
+        "commit_metadata_edits leases edited paths",
+        "write sidecar then store",
+        "best-effort rollback on failure"
       ],
       "status": "open",
       "nodes": ["N4"],
@@ -101,7 +101,7 @@
       "events": [],
       "reads": ["db_row"],
       "writes": ["db_row"],
-      "guards": ["per-entry snapshot", "write-txn liveness re-check"],
+      "guards": ["album_task computes stats outside the txn from a ref_data per-entry snapshot", "write-txn album liveness re-check with re-mark pending on race"],
       "status": "deferred",
       "nodes": ["N13"],
       "notes": "album_task: album stats cascade; bounded staleness, no lost update."
@@ -112,7 +112,7 @@
       "events": ["FS_DELETE", "WATCHER_GAP"],
       "reads": ["db_row", "asset_file"],
       "writes": ["db_row", "thumbnail"],
-      "guards": ["exact-path batches", "inline generation/lease/fs re-checks"],
+      "guards": ["sweep_stale_asset_paths inline generation/lease/fs re-checks", "sweep_remove_batch exact-path resolution with path.exists skip", "path_epoch::is_busy"],
       "status": "guarded",
       "nodes": ["N2", "N12"],
       "notes": "sweep_stale_asset_paths plus sweep_remove_batch; missing paths only."
@@ -123,7 +123,7 @@
       "events": [],
       "reads": ["asset_file"],
       "writes": ["thumbnail"],
-      "guards": ["atomic temp-file rename"],
+      "guards": ["generate_thumbnail_for_image writes via temp sibling and atomic rename"],
       "status": "open",
       "nodes": ["N6"],
       "notes": "generate_thumbnail_for_image: derived corruption undetected; regen frame can orphan."
@@ -145,7 +145,7 @@
       "events": ["FS_DELETE"],
       "reads": ["db_row", "asset_file"],
       "writes": ["db_row", "thumbnail", "asset_file", "sidecar"],
-      "guards": ["path lease + generation re-check in submit path"],
+      "guards": ["submit_watcher_remove bumps the path generation", "process_watcher_remove checks is_superseded and path_epoch::is_busy", "handle_removed_file restores the exact path for writer resolution"],
       "status": "open",
       "nodes": ["N2"],
       "notes": "handle_removed_file plus prune_asset_path: clear path, remove record/thumbnail if last path. prune_asset_path removes the media file and sidecar; handle_removed_file is the FS_DELETE lane, distinct from sweep OP-9."
