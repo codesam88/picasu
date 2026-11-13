@@ -111,9 +111,10 @@ test("rule graph edges", () => {
   const block = m[1];
   assert.match(block, /^graph LR$/m);
   assert.match(block, /subgraph backend\["Backend \(Rust\)"\]/);
-  assert.match(block, /^  precommit --> check$/m);
-  assert.match(block, /^  precommit --> test$/m);
-  assert.match(block, /^  check --> zizmor-check$/m);
+  // Entry-point aggregates are not part of the graph.
+  assert.doesNotMatch(block, /^\s*(precommit|check|test)$/m);
+  // Intra-family edges only.
+  assert.match(block, /^  audit --> backend-audit$/m);
   assert.match(block, /^  openapi-check --> openapi-sanity$/m);
   assert.match(block, /^  frontend-test --> frontend-vitest$/m);
   assert.match(block, /^  frontend-test --> frontend-playwright$/m);

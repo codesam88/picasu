@@ -649,9 +649,6 @@ const laneOrder = [
 function displayedChildren(name) {
   const r = recipeByName.get(name);
   if (!r) return [];
-  if (name === "precommit") {
-    return ["check", "test"].filter((n) => recipeByName.has(n) && displaySet.has(n)).sort();
-  }
   return (r.deps || []).filter((d) => displaySet.has(d)).sort();
 }
 
@@ -747,19 +744,15 @@ for (const fam of orderedFamilies) {
 const copyId = (name, fam) => `${name}-in-${familyId(fam)}`;
 const familyCopies = new Map(); // family -> Set<name>
 const graphEdges = [];
-const graphSources = [...displaySet].filter(
-  (n) => displayedChildren(n).length > 0,
-);
-const graphPriority = ["precommit", "check", "test", "audit"];
-const orderedSources = [
-  ...graphPriority.filter((s) => graphSources.includes(s)),
-  ...graphSources.filter((s) => !graphPriority.includes(s)).sort(),
-];
+const orderedSources = [...familyOf.keys()]
+  .filter((name) => displayedChildren(name).length > 0)
+  .sort();
 for (const src of orderedSources) {
   for (const child of displayedChildren(src)) {
     const srcFamily = familyOf.get(src);
     const childFamily = familyOf.get(child);
-    if (srcFamily && childFamily && srcFamily !== childFamily) {
+    if (!childFamily) continue;
+    if (srcFamily !== childFamily) {
       if (!familyCopies.has(srcFamily)) familyCopies.set(srcFamily, new Set());
       familyCopies.get(srcFamily).add(child);
       graphEdges.push(`  ${src} --> ${copyId(child, srcFamily)}`);
@@ -768,14 +761,7 @@ for (const src of orderedSources) {
     }
   }
 }
-const graphLines = [
-  "graph LR",
-  '  subgraph entry["Entry points"]',
-  "    precommit",
-  "    check",
-  "    test",
-  "  end",
-];
+const graphLines = ["graph LR"];
 for (const fam of orderedFamilies) {
   graphLines.push(`  subgraph ${familyId(fam)}["${fam}"]`);
   for (const name of membersByFamily.get(fam)) graphLines.push(`    ${name}`);
@@ -799,10 +785,6 @@ docLines.push("");
 docLines.push("```mermaid");
 docLines.push(...graphLines);
 docLines.push("```");
-docLines.push("");
-docLines.push(
-  "`precommit` runs `check` and `test` on `main`; on other branches it runs a path-targeted subset of their members.",
-);
 docLines.push("");
 
 docLines.push("## Check families");
