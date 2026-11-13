@@ -213,10 +213,10 @@ test("orphan candidates use reachability, not just parent callers", (t) => {
   assert.equal(g.code, 0, g.out);
   const r = run(dir);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /orphan candidates \(advisory\)/);
-  assert.match(r.out, /gates-check:   detached\b/);
-  assert.match(r.out, /gates-check:   detached-child\b/);
-  assert.doesNotMatch(r.out, /gates-check:   covered\b/);
+  assert.match(r.out, /Orphan candidates \(advisory\)/);
+  assert.match(r.out, /^  detached$/m);
+  assert.match(r.out, /^  detached-child$/m);
+  assert.doesNotMatch(r.out, /^  covered$/m);
 
   writeFileSync(
     join(dir, ".github", "workflows", "ci.yml"),
@@ -226,8 +226,8 @@ test("orphan candidates use reachability, not just parent callers", (t) => {
   assert.equal(g2.code, 0, g2.out);
   const r2 = run(dir);
   assert.equal(r2.code, 0, r2.out);
-  assert.doesNotMatch(r2.out, /gates-check:   detached\b/);
-  assert.doesNotMatch(r2.out, /gates-check:   detached-child\b/);
+  assert.doesNotMatch(r2.out, /^  detached$/m);
+  assert.doesNotMatch(r2.out, /^  detached-child$/m);
 });
 
 test("inline check tooling without a just recipe is flagged", (t) => {

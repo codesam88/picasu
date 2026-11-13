@@ -749,10 +749,10 @@ function formatFile(p) {
 
 for (const w of warnings) console.error(`gates-check: WARN: ${w}`);
 if (orphanCandidates.length) {
-  console.log("gates-check: orphan candidates (advisory):");
-  for (const name of orphanCandidates) console.log(`gates-check:   ${name}`);
+  console.log("Orphan candidates (advisory):");
+  for (const name of orphanCandidates) console.log(`  ${name}`);
 } else {
-  console.log("gates-check: orphan candidates: none");
+  console.log("Orphan candidates: none");
 }
 if (failures.length) {
   for (const f of failures) console.error(`gates-check: FAIL: ${f}`);
