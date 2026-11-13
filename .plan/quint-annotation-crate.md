@@ -30,8 +30,18 @@ renamed OP id fails `cargo check -p picasu` instead of surfacing only in
   `build.rs` sets `rerun-if-changed` on the catalog JSONs so catalog
   edits re-expand backend markers. Registry mechanisms
   (`inventory`/`linkme`/build-script registry) stay rung-1 material.
-- `operations-check.mjs` remains the catalog-side backstop (unknown OP
-  in JSON, model `@operation` tags) until rung 1 decides its fate.
+- 2026-11-13 (rung 1): rung 1 chose smarter attribute-aware text parsing
+  in `operations-check.mjs` over a macro-emitted registry. A marker is
+  counted only on a real attribute line (`^\s*#\[[...]`), so comment,
+  doc-comment, string and `#[cfg(test)]`-gated mentions no longer
+  satisfy the scan; the comment hole closes structurally enough for the
+  gate without new dependencies. No `inventory`/`linkme` added; the
+  workspace carries neither. Registry remains available for rung 2+ if
+  needed but is not used now.
+- `operations-check.mjs` remains the catalog-side backstop and is now the
+  rung 1 gate (marker coverage + event ownership + report-only model
+  coverage). Aspect read/write set and order drift stay rung 2+ because
+  markers carry only ids.
 
 ## Current state
 
@@ -67,19 +77,26 @@ utils-check`, so the crate is never fmt/lint/tested.
    Exit: a typo'd OP id in a backend marker fails `cargo check`;
    `just check` green; `utils/quint-annotations` gone.
 
-1. **[ ] Static coverage gate** — compare the (now validated) marker
-   set, catalog, event catalog and model tags: every OP has a marker on
-   a real item and vice versa; every operation's event set and aspect
-   read/write set matches the catalog; every event has an owning
-   operation or an explicit reason not to. The comment-satisfies-scan
-   hole is closed either by AST/token parsing in the checker or by a
-   registry the compiler built.
-   Explore first: validation cost, event-to-operation many-to-many
-   ownership, model `@operation` coverage, generated report format,
-   whether this belongs in precommit, CI, or both.
-   Exit: missing/extra OP, event or aspect declarations fail the gate;
-   a marker deleted with the production code fails even when a doc
-   comment mentions it.
+1. **[partial] Static coverage gate** — rung 1 subset landed in
+   `operations-check.mjs`: marker-on-real-item via attribute-aware
+   parsing (comment/doc-comment/string/`#[cfg(test)]` mentions do not
+   count); reverse coverage (every cataloged OP needs a marker, unknown
+   marker id fails); event-to-operation ownership (every event owned by
+
+   > =1 operation or explicitly exempt read/recovery event, with reasons
+   > recorded in the gate); report-only (non-failing) guarded OPs without
+   > a model `@operation` tag. Deferred to rung 2+: aspect read/write set
+   > matching between catalog and implementation (markers carry only ids,
+   > so this needs runtime trace or a richer annotation), wrong-but-valid
+   > id correctness against the function, and order drift. CI placement:
+   > stays in the `just check` aggregate (no separate CI job) per user
+   > sign-off; recorded here. Event ownership rule: an event is owned iff
+   > it appears in at least one operation's `events` array; events with no
+   > owner must be read-only boundary events (`API_READ_*`) or recovery
+   > events (`PROCESS_CRASH`, `DERIVED_STORE_LOSS`, `DB_LOSS`), enumerated
+   > in `EVENT_OWNER_EXEMPT` in `operations-check.mjs`.
+   > Exit met for: missing/extra OP, event ownership, comment-satisfies-scan
+   > hole. Not met for: aspect read/write set matching (deferred).
 
 2. **[ ] Runtime trace reconciliation** — feature-gate operation
    entry/exit and aspect access traces; drive each boundary event
@@ -121,10 +138,11 @@ utils-check`, so the crate is never fmt/lint/tested.
 - Whether the docs layer (`docs/quint-modeling.md`, justfile
   `quint-check` comment) is updated as part of rung 0 or the separate
   spec-alignment pass in `quint-asset-aspects`.
-- Registry mechanism for rung 1, if the validated-marker set proves
-  insufficient for bidirectional coverage.
+- Registry mechanism for rung 1: decided — not needed; smarter
+  attribute-aware text parsing in `operations-check.mjs` suffices. Macro-
+  emitted registry remains available for rung 2+ if needed.
 - Whether trace instrumentation (rung 2) is test-only or a dedicated
   harness.
 - Dylint budget and which local rules justify it.
-- CI placement: full `just check`, individual recipes, or a separate
-  drift job.
+- CI placement: decided (rung 1) — stays in the `just check` aggregate;
+  no separate CI job without user sign-off. Recorded in step 1.
