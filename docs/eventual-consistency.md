@@ -20,12 +20,12 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 33 convergence runs + 11 asset-aspect runs (44 executed including imported runs; `just quint-check`); simulator traces are advisory.
+- Proof: 33 convergence runs + 20 asset-aspect runs (53 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 3 committed, 1 queued, 1 dropped.
 - Requirements: 12 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 3 held, 1 partial, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
-- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths.
+- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
 
 ## Goals
 
@@ -173,7 +173,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-5: Synchronous direct writes
 
-Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in the worker.
+Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.
 
 Why safe: The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.
 
@@ -198,6 +198,46 @@ Bound: Path IDs carry no directory hierarchy. A directory rename is a fixed fini
 Why safe: The property under proof is per-descendant row/path consistency plus all-or-nothing row updates, which a fixed two-asset pair set exhibits at the model's bounds.
 
 Lifting: Hierarchical path IDs with arbitrary subtree enumeration.
+
+### SCOPE-8: Sweep enumeration micro-stage
+
+Bound: SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; chunking/cancel are abstracted.
+
+Why safe: Enumeration only reads; the per-candidate re-check happens in SweepRemoveBatchApply, so an interleaving between enumerate and apply is modeled rather than hidden.
+
+Lifting: Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).
+
+Provisional: the safety argument is weaker than the implementation guarantee.
+
+### SCOPE-9: Sweep re-check micro-stage
+
+Bound: SweepRecheck drains one enumerated batch, dropping candidates whose generation moved, whose path is now leased, or whose file reappeared; survivors stay in sweepBatch.
+
+Why safe: Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; sweep_remove_batch checks only path.exists skip + asset-id/record resolution (no generation/lease re-check).
+
+Lifting: Per-chunk cancel/shutdown and interleaving between re-check and writer-apply (absorbed window).
+
+Provisional: the safety argument is weaker than the implementation guarantee.
+
+### SCOPE-10: Move lease window micro-stage
+
+Bound: ApiMoveFsOnly acquires a path lease (bumping generation) and holds it until MoveRowRewrite rewrites the row and releases it; the FS-moved/row-stale window is now visible.
+
+Why safe: Matches lease_paths/release_generation across the FS rename to DB rewrite; generation bumps guard concurrent scans/sweeps.
+
+Lifting: Crash between FS move and row rewrite heals via sweep/backstop (SCOPE-6).
+
+Provisional: the safety argument is weaker than the implementation guarantee.
+
+### SCOPE-11: sweep_remove_batch micro-stage
+
+Bound: SweepWriterApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
+
+Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
+
+Lifting: Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).
+
+Provisional: the safety argument is weaker than the implementation guarantee.
 
 ## Requirements
 

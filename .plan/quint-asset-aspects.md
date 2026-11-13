@@ -62,6 +62,11 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
   `handle_sweep_dir_albums`) stay unanchored by design; record the
   exemption explicitly in `operations.json`/README instead of leaving it
   inferable.
+- 2026-11-13: terminology rule adopted — model identifiers stay stable;
+  each carries a doc-comment anchor to a concrete code entity; the mapping
+  table lives in utils/quint/README.md; "the writer" is not used unqualified
+  in catalogs/plans (name tasks/queue/writer.rs, flush_tree.rs::
+  sweep_remove_batch, or queue/worker.rs).
 - 2026-11-13: upload reframed as store-and-return. Catalogs and model
   described the removed synchronous upload/barrier; upload now places
   the file and fire-and-forget enqueues via submit_uploaded_path ->
@@ -75,10 +80,13 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
   modeling (the leases/exact-path/dir-move guards survive via impose's
   independent implementations, but shapes and evidence need re-checks);
   (b) `SweepRootLeased` is more atomic than
-  `sweep_stale_asset_paths`: the code enumerates, then re-checks
-  generation + mutation-lease busy + FS per candidate, then submits an
-  exact-path batch the serial writer resolves-then-validates — the
-  windows those guards close are invisible in the model as written.
+  `sweep_stale_asset_paths`: the code enumerates (candidates from
+  ASSET_BY_PATH rows with missing files), then re-checks generation +
+  mutation-lease busy + FS per candidate in the sweep actor, then submits
+  an exact-path batch via tasks/queue/writer.rs::submit(WriteOp::SweepRemoveBatch);
+  flush_tree.rs::sweep_remove_batch applies path.exists skip + asset-id/record
+  resolution only (no generation/lease check). The windows those guards
+  close are invisible in the model as written.
   Intake supersession is already modeled (WorkerSkipSuperseded).
 
 ## Steps
@@ -197,7 +205,9 @@ check` or the individual recipes.
     only exists+resolve (no generation/lease) — re-checks are pre-submit in
     the sweep actor; prune-while-leased is absorbed by the mutation rewrite.
     enumerate → per-candidate re-check (generation unchanged, mutation
-    lease not busy, FS) → exact-path batch → writer resolve-then-validate;
+    lease not busy, FS) → writer::submit(WriteOp::SweepRemoveBatch) →
+    flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune, no
+    gen/lease);
     model the superseded-batch case. Makes N2's move-vs-sweep window
     visible; each lifted micro-stage gets a scope entry
     (bound/why-safe/lifting).
@@ -235,8 +245,9 @@ survey claim contradicts a done item — re-check the tree first.
 - N2 move rename→rewrite window vs sweep/remove (d,e): missing-path
   rows mid-move pruned by another op. [guarded, re-verified 2026-11-13:
   sweep_stale_asset_paths inline generation/lease/fs re-checks plus
-  exact-path SweepRemoveBatch in the serial writer; handle_removed_file
-  restores the exact path for resolution.] Modeled in step 10: SweepEnumerate
+  exact-path SweepRemoveBatch via tasks/queue/writer.rs::submit (flush_tree.rs::
+  sweep_remove_batch: exists-skip + resolve + prune); handle_removed_file
+  restores the exact path for sweep_remove_batch resolution.] Modeled in step 10: SweepEnumerate
   (generation snapshot) + SweepRecheck (actor: generation unchanged, not
   leased, file absent) + SweepWriterApply (writer: exists-skip + row resolve
   only) + ApiMoveFsOnly/MoveLeaseAcquire lease (leasedPaths) +

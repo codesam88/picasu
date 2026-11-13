@@ -83,6 +83,7 @@ module asset_aspects {
 
   // @operation OP-9
   // @scope SCOPE-8
+  // SweepEnumerate maps to the enumeration loop of tasks/actor/album_index.rs::sweep_stale_asset_paths (candidates from ASSET_BY_PATH rows with missing files, per-candidate generation snapshot).
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
@@ -99,6 +100,7 @@ module asset_aspects {
 
   // @operation OP-9
   // @scope SCOPE-9
+  // SweepRecheck maps to the inline re-check loop of sweep_stale_asset_paths (generation unchanged + path_epoch::is_busy + path.exists, pre-submit).
   action SweepRecheck: bool = all {
     sweepBatch.keys().size() > 0,
     sweepBatch' = sweepBatch.keys().filter(p =>
@@ -118,6 +120,7 @@ module asset_aspects {
 
   // @operation OP-9
   // @scope SCOPE-11
+  // SweepWriterApply maps to flush_tree.rs::sweep_remove_batch, submitted as WriteOp::SweepRemoveBatch via tasks/queue/writer.rs::submit; checks path.exists skip + asset-id/record resolution only, no generation/lease check.
   action SweepWriterApply: bool = all {
     sweepBatch.keys().size() > 0,
     rows' = rows.keys().filter(p =>
@@ -137,6 +140,7 @@ module asset_aspects {
 
   // @operation OP-4
   // @scope SCOPE-10
+  // MoveLeaseAcquire maps to assign_album.rs move window opening lease_paths(source, dest).
   action MoveLeaseAcquire(p: str, q: str): bool = all {
     p.in(PATHS),
     q.in(PATHS),
@@ -157,6 +161,7 @@ module asset_aspects {
 
   // @operation OP-4
   // @scope SCOPE-10
+  // MoveRowRewrite maps to assign_album.rs moveAssetIntoAlbum row rewrite (put_asset_by_id + remove_asset_by_path + put_asset_by_path) and lease release.
   action MoveRowRewrite(p: str, q: str): bool = all {
     p.in(PATHS),
     q.in(PATHS),
@@ -408,6 +413,7 @@ module asset_aspects {
   // @operation OP-2
   // @scope SCOPE-5
   // @assumes ASS-6
+  // UploadStoredOnly maps to post_upload.rs::upload store + submit_uploaded_path -> submit_watcher_index.
   action UploadStoredOnly(p: str): bool = {
     nondet cv = HASHES.oneOf()
     nondet mt = SMALL.oneOf()
@@ -432,6 +438,7 @@ module asset_aspects {
   // @assumes ASS-4
   // @assumes ASS-5
   // @scope SCOPE-4
+  // UploadIndexed maps to tasks/queue/worker.rs intake application running workflow::process_file (index path).
   action UploadIndexed(p: str): bool = {
     nondet it = oneOf(if (intake.exists(i => i.path == p)) intake.filter(i => i.path == p) else Set({ path: p, generation: 0, kind: "watcher", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
     all {
@@ -465,6 +472,7 @@ module asset_aspects {
   // @assumes ASS-3
   // @assumes ASS-6
   // @scope SCOPE-4
+  // IntakePickupFileGone maps to tasks/queue/worker.rs intake application running workflow::process_file (gone-file outcome per worker drop).
   action IntakePickupFileGone(p: str): bool = {
     nondet it = oneOf(if (intake.exists(i => i.path == p)) intake.filter(i => i.path == p) else Set({ path: p, generation: 0, kind: "watcher", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
     all {
@@ -549,14 +557,17 @@ module asset_aspects {
   // @assumes ASS-3
   // @assumes ASS-6
   // @scope SCOPE-11
+  // SweepWriterNeverPrunesPresentFile maps to the `if path.exists() { continue }` skip in flush_tree.rs::sweep_remove_batch.
   val SweepWriterNeverPrunesPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
 
   // @assumes ASS-3
   // @assumes ASS-6
   // @scope SCOPE-9
+  // SweepRecheckBatchClean maps to the sweep_stale_asset_paths re-check guarantee (generation unchanged + not leased + file absent).
   val SweepRecheckBatchClean = sweepBatch.keys().forall(p => sweepBatch.get(p) == generations.get(p) and not(p.in(leasedPaths)) and not(files.get(p).present))
 
   // @assumes ASS-6
   // @scope SCOPE-11
+  // SweepWriterPruneOnly is a vacuous bound (sweepBatch.keys().size() >= 0 always); kept as a scope placeholder, real prune-only behaviour is exercised by the sweep runs (aspectsCleanSweepTest / aspectsAbsorbedSweepTest).
   val SweepWriterPruneOnly = sweepBatch.keys().size() >= 0 and rows.keys().size() <= PATHS.size()
 }
