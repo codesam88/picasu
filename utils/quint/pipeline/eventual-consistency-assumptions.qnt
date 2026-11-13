@@ -57,7 +57,10 @@ module eventual_consistency_assumptions {
   // restores it. Walk roots are disjoint from the
   // derived store, so pipeline writes cannot resubmit themselves;
   // see the intake header and WorkerApplySuccess in
-  // eventual-consistency.qnt, the sole writer of derived bytes.
+  // eventual-consistency.qnt; derived bytes (thumbnails) are written by
+  // workflow::process_file (backend/src/process/index.rs + thumbnail.rs)
+  // and rotate_image.rs (generate_thumbnail_for_image), driven by the
+  // intake worker.
 
   // ASS-5: Content hash is the authority; mtime and size are hints.
   //

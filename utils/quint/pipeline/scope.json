@@ -38,7 +38,7 @@
     {
       "id": "SCOPE-5",
       "title": "Synchronous direct writes",
-      "bound": "Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in the worker.",
+      "bound": "Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.",
       "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.",
       "lifting": "A writerInbox pending state mirroring the serial writer.",
       "provisional": true
@@ -71,7 +71,7 @@
       "id": "SCOPE-9",
       "title": "Sweep re-check micro-stage",
       "bound": "SweepRecheck drains one enumerated batch, dropping candidates whose generation moved, whose path is now leased, or whose file reappeared; survivors stay in sweepBatch.",
-      "why_safe": "Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; the writer does not re-check these.",
+      "why_safe": "Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; sweep_remove_batch checks only path.exists skip + asset-id/record resolution (no generation/lease re-check).",
       "lifting": "Per-chunk cancel/shutdown and interleaving between re-check and writer-apply (absorbed window).",
       "provisional": true
     },
@@ -85,10 +85,10 @@
     },
     {
       "id": "SCOPE-11",
-      "title": "Sweep writer-apply micro-stage",
+      "title": "sweep_remove_batch micro-stage",
       "bound": "SweepWriterApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.",
-      "why_safe": "Matches sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.",
-      "lifting": "Per-path writer resolve-then-validate in sweep_remove_batch.",
+      "why_safe": "Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.",
+      "lifting": "Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).",
       "provisional": true
     }
   ]

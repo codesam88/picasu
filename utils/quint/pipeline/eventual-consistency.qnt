@@ -441,6 +441,7 @@ module eventual_consistency {
 
   // ---------- Worker steps ----------
 
+  // Worker* = the intake worker (tasks/queue/worker.rs) applying an IntakeItem; the index work is workflow::process_file; IntakeKind handling in tasks/queue/intake.rs.
   // @assumes ASS-4
   // @scope SCOPE-4
   action WorkerApplySuccess: bool = {

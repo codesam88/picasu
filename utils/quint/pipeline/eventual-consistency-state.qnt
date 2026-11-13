@@ -44,14 +44,23 @@ module eventual_consistency_state {
     assetHash: int
   }
 
+  // files maps to the filesystem under the data roots (media bytes + sidecar bytes).
   var files: str -> FileState
+  // generations maps to tasks/path_epoch.rs GENERATIONS via next_generation/current_generation.
   var generations: str -> int
+  // intake maps to the IntakeItem set in tasks/queue/intake.rs.
   var intake: Set[IntakeItem]
+  // rows maps to AssetRecord in storage/asset_store.rs ASSET_BY_ID/ASSET_BY_PATH.
   var rows: str -> AssetRecord
+  // sweepPending maps to the per-root sweep pending flag set by ScanRoot/the scan job in tasks/actor/album_index.rs (sweep_stale_asset_paths runs after the walk).
   var sweepPending: str -> bool
+  // sweepBatch maps to sweep_stale_asset_paths survivors -> WriteOp::SweepRemoveBatch.
   var sweepBatch: str -> int
+  // leasedPaths maps to EXACT_LEASES/SUBTREE_LEASES in tasks/path_epoch.rs.
   var leasedPaths: Set[str]
+  // nextAssetId models asset-id allocation via generate_random_hash in model/asset.rs (AssetRecord::new_media/new_album) and flush_tree.rs; code uses random hashes, not a counter.
   var nextAssetId: int
+  // unprocessable is model-only: no persistent code counterpart; ingest failures are logged via note_file_failed/handle_error, not stored as a set.
   var unprocessable: Set[str]
 
   // @scope SCOPE-1
