@@ -62,6 +62,13 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
   `handle_sweep_dir_albums`) stay unanchored by design; record the
   exemption explicitly in `operations.json`/README instead of leaving it
   inferable.
+- 2026-11-13: upload reframed as store-and-return. Catalogs and model
+  described the removed synchronous upload/barrier; upload now places
+  the file and fire-and-forget enqueues via submit_uploaded_path ->
+  submit_watcher_index. N8 hazard is the unindexed window, not a
+  barrier bug. Read-model freshness bounded by mark_tree_dirty_background
+  (~1 s leading-edge throttle). Freshness gate:
+  docs-eventual-consistency-check added to check aggregate.
 
 ## Steps
 
@@ -88,7 +95,7 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
    executions = 33 imported + 11 new), traceability regenerated for the
    new definitions, `operations-check` and `specs-check` green; the
    generated doc now counts both model entries in its Proof line.
-7. [open] Spec-alignment pass onto the impose pipeline (found by the
+7. [done] Spec-alignment pass onto the impose pipeline (found by the
    2026-11-13 carry-over review; all catalog checks stay green while
    these describe the dropped pipeline, so nothing else catches them):
    - `events.json` API_UPLOAD: drop "row written synchronously; the
@@ -112,6 +119,20 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
    - Regenerate `docs/eventual-consistency.md`; decide whether
      `docs-eventual-consistency` joins the `check` aggregate as a
      freshness gate (currently nothing detects catalog→doc drift).
+
+   Outcomes:
+   - events.json API_UPLOAD rewritten: store-and-return, intake enqueue,
+     eventual visibility window, crash between placement and intake
+     pickup (covered).
+   - goals.json G3 rewritten around mark_tree_dirty_background freshness
+     contract; upload 200 implies stored, not visible.
+   - scope.json SCOPE-5 and model ApiUpload now store + intake enqueue;
+     ApiUpload no longer a synchronous projection write.
+   - operations.json OP-2 writes=["asset_file"], guard "none —
+     fire-and-forget intake enqueue"; N8 reframed as unindexed window.
+   - N8 updated in plan (below) as by-design eventual window.
+   - docs/eventual-consistency.md regenerated; freshness gate added as
+     docs-eventual-consistency-check in check aggregate (green).
 
 ## Known gaps and next phase
 

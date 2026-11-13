@@ -267,20 +267,22 @@
     {
       "name": "API_UPLOAD",
       "status": "established",
-      "description": "A client uploads a new asset over HTTP. The file is placed atomically (tmp written into the target dir, mtime set, then atomic rename to the final name) and the row is written synchronously; the intake queue is not involved.",
+      "description": "A client uploads a new asset over HTTP. The file is placed atomically (tmp written into the target dir, mtime set, then atomic rename to the final name) and then enqueued for background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs); the request returns 200 on storage, not on indexing.",
       "actor": "api",
       "target": "file path",
       "preconditions": ["file present on disk"],
-      "affected_state": ["files", "generations", "rows", "nextAssetId"],
+      "affected_state": ["files", "generations", "intake"],
       "code_ref": "backend/src/router/post/post_upload.rs:upload",
       "effects": [
-        "Row visible after the upload barrier (G3 queued: upload waits on the flush batch; assign and delete unverified).",
-        "Validation failure rejects with no row."
+        "File stored at its final path; an intake item is queued via submit_uploaded_path -> submit_watcher_index (backend/src/router/post/post_upload.rs:286-294, 534-538) for background indexing.",
+        "Row becomes visible only after background indexing completes; a 200 implies stored, not visible (read-after-write is not implied for upload).",
+        "Read-model freshness after writer batches is governed by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation.",
+        "Validation failure (name, extension, content) rejects with 400 before anything is written and no enqueue."
       ],
       "faults": [
         {
-          "fault": "read before the barrier",
-          "consequence": "reads may not see the new row; G3 queued, barrier unverified",
+          "fault": "read before indexing completes",
+          "consequence": "by design the row may not be visible until background intake processes the file; the unindexed window is the N8 hazard, bounded by the intake queue and the mark_tree_dirty_background freshness contract",
           "status": "open"
         },
         {
@@ -294,13 +296,12 @@
           "status": "open"
         },
         {
-          "fault": "crash between placement and row write",
-          "consequence": "converges: the file is indexed by the next rescan (fs-wins)",
+          "fault": "crash between placement and intake pickup",
+          "consequence": "converges: the file is indexed by the next rescan (fs-wins); submit is fire-and-forget, so a missed enqueue heals via rescan",
           "status": "covered"
         }
       ],
-      "notes": "Synchronous row write; no intake involved. Placement verified: tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), atomic rename (post_upload.rs). See G3 in utils/quint/pipeline/goals.json for the barrier."
-    },
+      "notes": "Store-and-return: the file is placed with tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), then atomic rename (post_upload.rs save_file); indexing is enqueued fire-and-forget via submit_uploaded_path -> submit_watcher_index (post_upload.rs). No synchronous row write and no FlushTreeTask::insert barrier on this route (the barrier survives only on edit/regenerate/rotate routes). See G3 in utils/quint/pipeline/goals.json for the read-after-write framing and N8 for the unindexed window."    },
     {
       "name": "API_DELETE",
       "status": "established",

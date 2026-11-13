@@ -1,8 +1,7 @@
 {
   "version": 1,
   "description": "Modeling bounds and abstractions: each states its bound, why the bounded property is safe, and how to lift it.",
-  "modeled_scope": "Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes are synchronous; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths.",
-  "scopes": [
+  "modeled_scope": "Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths.",  "scopes": [
     {
       "id": "SCOPE-1",
       "title": "Initial converged state",
@@ -38,9 +37,8 @@
     {
       "id": "SCOPE-5",
       "title": "Synchronous direct writes",
-      "bound": "Actions that write the projection without the intake (ApiUpload, ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt).",
-      "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away.",
-      "lifting": "A writerInbox pending state mirroring the serial writer.",
+      "bound": "Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in the worker.",
+      "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.",      "lifting": "A writerInbox pending state mirroring the serial writer.",
       "provisional": true
     },
     {

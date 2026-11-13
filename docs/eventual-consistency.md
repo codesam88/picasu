@@ -25,7 +25,7 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 - Requirements: 12 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 3 held, 1 partial, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
-- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes are synchronous; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths.
+- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths.
 
 ## Goals
 
@@ -75,7 +75,7 @@ A 200 response implies subsequent reads observe the mutation.
 
 Anchors: none — unanchored.
 
-Notes: Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. The upload path waits on the flush batch (backend/src/router/post/post_upload.rs:330); assign and delete have no verified equivalent.
+Notes: Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. For upload, a 200 implies stored, not visible: visibility follows background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs). Read-model freshness after writer batches is bounded by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation. Assign and delete have no verified equivalent barrier.
 
 ### G4: Graceful-degradation contract (decision: dropped)
 
@@ -173,9 +173,9 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-5: Synchronous direct writes
 
-Bound: Actions that write the projection without the intake (ApiUpload, ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt).
+Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in the worker.
 
-Why safe: The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away.
+Why safe: The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.
 
 Lifting: A writerInbox pending state mirroring the serial writer.
 
@@ -708,27 +708,29 @@ Notes: Resubmit the sibling media path; reprocessing must drop the sidecar-deriv
 
 ### API_UPLOAD (established, actor: api)
 
-A client uploads a new asset over HTTP. The file is placed atomically (tmp written into the target dir, mtime set, then atomic rename to the final name) and the row is written synchronously; the intake queue is not involved.
+A client uploads a new asset over HTTP. The file is placed atomically (tmp written into the target dir, mtime set, then atomic rename to the final name) and then enqueued for background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs); the request returns 200 on storage, not on indexing.
 
 Target: file path. Code anchor: `backend/src/router/post/post_upload.rs:upload`.
 
 Preconditions: file present on disk.
 
-Touches: files, generations, rows, nextAssetId.
+Touches: files, generations, intake.
 
 Effects (settled state assuming quiescence after the event):
 
-- Row visible after the upload barrier (G3 queued: upload waits on the flush batch; assign and delete unverified).
-- Validation failure rejects with no row.
+- File stored at its final path; an intake item is queued via submit_uploaded_path -> submit_watcher_index (backend/src/router/post/post_upload.rs:286-294, 534-538) for background indexing.
+- Row becomes visible only after background indexing completes; a 200 implies stored, not visible (read-after-write is not implied for upload).
+- Read-model freshness after writer batches is governed by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation.
+- Validation failure (name, extension, content) rejects with 400 before anything is written and no enqueue.
 
 Faults:
 
-- read before the barrier (open): reads may not see the new row; G3 queued, barrier unverified
+- read before indexing completes (open): by design the row may not be visible until background intake processes the file; the unindexed window is the N8 hazard, bounded by the intake queue and the mark_tree_dirty_background freshness contract
 - validation failure behavior (tbd): rejection path unverified
 - pre-rename crash residue: tmp file stays in the target dir (open): inert for indexing (the .tmp extension fails the media-extension gate, so no partial file is ever indexed; watcher picks the file only after the rename) but never cleaned - no cleanup path exists (verified). REQ-10: sweep stale tmp files at startup/scan so the upload either lands or not, with no residue
-- crash between placement and row write (covered): converges: the file is indexed by the next rescan (fs-wins)
+- crash between placement and intake pickup (covered): converges: the file is indexed by the next rescan (fs-wins); submit is fire-and-forget, so a missed enqueue heals via rescan
 
-Notes: Synchronous row write; no intake involved. Placement verified: tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), atomic rename (post_upload.rs). See G3 in utils/quint/pipeline/goals.json for the barrier.
+Notes: Store-and-return: the file is placed with tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), then atomic rename (post_upload.rs save_file); indexing is enqueued fire-and-forget via submit_uploaded_path -> submit_watcher_index (post_upload.rs). No synchronous row write and no FlushTreeTask::insert barrier on this route (the barrier survives only on edit/regenerate/rotate routes). See G3 in utils/quint/pipeline/goals.json for the read-after-write framing and N8 for the unindexed window.
 
 ### API_DELETE (established, actor: api)
 

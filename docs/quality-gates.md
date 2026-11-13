@@ -12,6 +12,7 @@ graph LR
   check --> branches-prune-test
   check --> catalog-check
   check --> docs-check
+  check --> docs-eventual-consistency-check
   check --> env-var-check
   check --> events-check
   check --> frontend-check
@@ -129,6 +130,7 @@ graph TD
   auth-matrix-check
   catalog-check
   docs-eventual-consistency
+  docs-eventual-consistency-check
   dylint-check
   env-var-check
   events-check
@@ -160,40 +162,41 @@ graph TD
   openapi-check --> openapi-lint
   openapi-check --> openapi-sanity
   utils-check --> zizmor-check
-  auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & operations-check & plan & plan-format & plan-lint & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
+  auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & docs-eventual-consistency-check & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & operations-check & plan & plan-format & plan-lint & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
 ```
 
-| Rule (justfile)             | Description                                                                                 | CI Workflow           | Trigger             |
-| --------------------------- | ------------------------------------------------------------------------------------------- | --------------------- | ------------------- |
-| `auth-matrix-check`         | ensure auth-matrix artifacts match generator                                                | (openapi-check)       | local, PR, main     |
-| `catalog-check`             | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️                    | local               |
-| `docs-eventual-consistency` | Regenerate docs/eventual-consistency.md from the JSON catalogs                              | ❌️                    | -                   |
-| `dylint-check`              | run dylint auth lints (advisory)                                                            | ci                    | PR, main            |
-| `env-var-check`             | check PICASU_* env vars match docs/config.md                                                | ci                    | local, PR, main     |
-| `events-check`              | Validate the eventual-consistency event catalog                                             | ❌️                    | local               |
-| `fuzz-check`                | tier-1 gate: seeded sweep, baseline-compared                                                | ci, fuzz-advisory     | PR, main, scheduled |
-| `fuzz-matrix`               | run fuzz matrix (auth checks)                                                               | ci                    | local, PR, main     |
-| `fuzz-run`                  | run fuzz campaign (budget via FUZZ_MIN)                                                     | ❌️                    | -                   |
-| `fuzz-serve`                | —                                                                                           | ❌️                    | -                   |
-| `gates-check`               | ensure all test/check rules are called from CI and global rules                             | ci, docs-check        | local, PR, main     |
-| `msrv-check`                | Non-blocking by design: MSRV floor check (nightly lane).                                    | msrv                  | scheduled           |
-| `openapi-breakcheck`        | Fail on breaking OpenAPI changes                                                            | (openapi-check)       | local, PR, main     |
-| `openapi-check`             | Run all OpenAPI checks.                                                                     | ci                    | local, PR, main     |
-| `openapi-gen`               | Regenerate the checked-in OpenAPI artifact                                                  | ❌️                    | -                   |
-| `openapi-lint`              | Lint the OpenAPI document (errors fail)                                                     | (openapi-check)       | local, PR, main     |
-| `openapi-routes-release`    | Run the already-built release binary's route-set gate against the committed spec.           | release               | tags                |
-| `openapi-sanity`            | check OpenAPI annotation conventions                                                        | (openapi-check)       | local, PR, main     |
-| `operations-check`          | Validate the implementation-tracking operation catalog and its backend annotations          | ❌️                    | local               |
-| `plan`                      | run plan <args> (needs install-plan)                                                        | ❌️                    | -                   |
-| `plan-format`               | Auto-format .plan task frontmatter and body                                                 | ❌️                    | -                   |
-| `plan-lint`                 | check .plan task frontmatter correctness                                                    | ci, docs-check        | local, PR, main     |
-| `quint-check`               | Typecheck + test the pipeline specs (Node-only, no JDK)                                     | ❌️                    | local               |
-| `spec-check`                | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️                    | local               |
-| `utils-check`               | utils fmt + clippy (all targets)                                                            | ci                    | local, PR, main     |
-| `utils-format`              | cargo fmt on utils/ crates                                                                  | ❌️                    | -                   |
-| `utils-test`                | cargo test utils/ + Schemathesis derivations                                                | ci                    | local, PR, main     |
-| `zizmor-check`              | audit workflows/deps offline (no GH_TOKEN)                                                  | zizmor, (utils-check) | local, PR, main     |
-| `zizmor-check-online`       | e.g. --format=sarif                                                                         | ❌️                    | -                   |
+| Rule (justfile)                   | Description                                                                                 | CI Workflow           | Trigger             |
+| --------------------------------- | ------------------------------------------------------------------------------------------- | --------------------- | ------------------- |
+| `auth-matrix-check`               | ensure auth-matrix artifacts match generator                                                | (openapi-check)       | local, PR, main     |
+| `catalog-check`                   | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️                    | local               |
+| `docs-eventual-consistency`       | Regenerate docs/eventual-consistency.md from the JSON catalogs                              | ❌️                    | -                   |
+| `docs-eventual-consistency-check` | Ensure docs/eventual-consistency.md matches the generator (drift gate)                      | ❌️                    | local               |
+| `dylint-check`                    | run dylint auth lints (advisory)                                                            | ci                    | PR, main            |
+| `env-var-check`                   | check PICASU_* env vars match docs/config.md                                                | ci                    | local, PR, main     |
+| `events-check`                    | Validate the eventual-consistency event catalog                                             | ❌️                    | local               |
+| `fuzz-check`                      | tier-1 gate: seeded sweep, baseline-compared                                                | ci, fuzz-advisory     | PR, main, scheduled |
+| `fuzz-matrix`                     | run fuzz matrix (auth checks)                                                               | ci                    | local, PR, main     |
+| `fuzz-run`                        | run fuzz campaign (budget via FUZZ_MIN)                                                     | ❌️                    | -                   |
+| `fuzz-serve`                      | —                                                                                           | ❌️                    | -                   |
+| `gates-check`                     | ensure all test/check rules are called from CI and global rules                             | ci, docs-check        | local, PR, main     |
+| `msrv-check`                      | Non-blocking by design: MSRV floor check (nightly lane).                                    | msrv                  | scheduled           |
+| `openapi-breakcheck`              | Fail on breaking OpenAPI changes                                                            | (openapi-check)       | local, PR, main     |
+| `openapi-check`                   | Run all OpenAPI checks.                                                                     | ci                    | local, PR, main     |
+| `openapi-gen`                     | Regenerate the checked-in OpenAPI artifact                                                  | ❌️                    | -                   |
+| `openapi-lint`                    | Lint the OpenAPI document (errors fail)                                                     | (openapi-check)       | local, PR, main     |
+| `openapi-routes-release`          | Run the already-built release binary's route-set gate against the committed spec.           | release               | tags                |
+| `openapi-sanity`                  | check OpenAPI annotation conventions                                                        | (openapi-check)       | local, PR, main     |
+| `operations-check`                | Validate the implementation-tracking operation catalog and its backend annotations          | ❌️                    | local               |
+| `plan`                            | run plan <args> (needs install-plan)                                                        | ❌️                    | -                   |
+| `plan-format`                     | Auto-format .plan task frontmatter and body                                                 | ❌️                    | -                   |
+| `plan-lint`                       | check .plan task frontmatter correctness                                                    | ci, docs-check        | local, PR, main     |
+| `quint-check`                     | Typecheck + test the pipeline specs (Node-only, no JDK)                                     | ❌️                    | local               |
+| `spec-check`                      | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️                    | local               |
+| `utils-check`                     | utils fmt + clippy (all targets)                                                            | ci                    | local, PR, main     |
+| `utils-format`                    | cargo fmt on utils/ crates                                                                  | ❌️                    | -                   |
+| `utils-test`                      | cargo test utils/ + Schemathesis derivations                                                | ci                    | local, PR, main     |
+| `zizmor-check`                    | audit workflows/deps offline (no GH_TOKEN)                                                  | zizmor, (utils-check) | local, PR, main     |
+| `zizmor-check-online`             | e.g. --format=sarif                                                                         | ❌️                    | -                   |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
 Note: `fuzz-check` - CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)

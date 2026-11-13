@@ -103,6 +103,7 @@
         "eventual-consistency-assumptions.qnt:NoLostUpload",
         "eventual-consistency-assumptions.qnt:NoPermanentStale",
         "eventual-consistency-goal.qnt:Converged",
+        "eventual-consistency.qnt:ApiUpload",
         "eventual-consistency.qnt:ExternalRenameFile",
         "eventual-consistency.qnt:ExternalSidecarCreate",
         "eventual-consistency.qnt:ExternalSidecarDelete",
@@ -111,10 +112,12 @@
         "eventual-consistency.qnt:SubmitScan",
         "eventual-consistency.qnt:SubmitWatcherIndex",
         "eventual-consistency.qnt:SubmitWatcherRemove",
+        "eventual-consistency.qnt:apiMoveSkipsRescanTest",
         "eventual-consistency.qnt:fsCreateTest",
         "eventual-consistency.qnt:fsModifyTest",
         "eventual-consistency.qnt:scanApplyTest",
-        "eventual-consistency.qnt:step"
+        "eventual-consistency.qnt:step",
+        "eventual-consistency.qnt:uploadTest"
       ]
     },
     {
@@ -184,7 +187,6 @@
         "eventual-consistency.qnt:ApiAssignDirMove",
         "eventual-consistency.qnt:ApiMove",
         "eventual-consistency.qnt:ApiRemove",
-        "eventual-consistency.qnt:ApiUpload",
         "eventual-consistency.qnt:AppSidecarEdit",
         "eventual-consistency.qnt:ExternalRenameDir",
         "eventual-consistency.qnt:RotateFinish",
@@ -193,8 +195,7 @@
         "eventual-consistency.qnt:assignDirMoveTest",
         "eventual-consistency.qnt:rotateCrashTest",
         "eventual-consistency.qnt:rotateTest",
-        "eventual-consistency.qnt:subtreeMoveTest",
-        "eventual-consistency.qnt:uploadTest"
+        "eventual-consistency.qnt:subtreeMoveTest"
       ]
     },
     {
