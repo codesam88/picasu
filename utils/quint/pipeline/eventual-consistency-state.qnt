@@ -1,6 +1,7 @@
 // Index pipeline shared state: the filesystem projection, the
-// per-path submission versions, the intake queue, the redb row
-// projection, and the initial state every run starts from.
+// per-path submission versions, the intake queue, the per-asset aspect
+// tables (identity, path map, dupe index, metadata payload, thumbnail
+// presence, album pending), and the initial state every run starts from.
 // Imported by utils/quint/pipeline/eventual-consistency-assumptions.qnt (predicates
 // over this state) and utils/quint/pipeline/eventual-consistency.qnt (actions and runs).
 module eventual_consistency_state {
@@ -24,14 +25,38 @@ module eventual_consistency_state {
     sidecar: int
   }
 
+  // AssetRecord mirrors backend/src/model/asset.rs AssetRecord identity
+  // fields. Only the fields the operations need are modeled: path,
+  // contentHash, albumId, kind (media|album), isTrashed. ext and scanTime
+  // are dropped: no action in the model reads or writes them, and they
+  // carry no convergence or hazard semantics (scan_time is an ordering
+  // tiebreak, excluded from Converged per the goal module).
   type AssetRecord = {
     assetId: int,
+    kind: str,
+    path: str,
+    contentHash: int,
+    albumId: int,
+    isTrashed: bool
+  }
+
+  // MetadataRecord mirrors backend/src/model/metadata_record.rs
+  // MetadataRecord. Only a coarse subset is modeled: for media records the
+  // content-snapshot fields (assetHash, modified, fileSize, sidecar,
+  // converged) that the convergence goal compares against the filesystem;
+  // for album records itemCount, itemSize, hasShareList. Full metadata
+  // fields (tags, description, ...) are out of scope (no operation in this
+  // model mutates them).
+  type MetadataRecord = {
+    kind: str,
     assetHash: int,
     modified: int,
     fileSize: int,
     sidecar: int,
     converged: bool,
-    thumb: bool
+    itemCount: int,
+    itemSize: int,
+    hasShareList: bool
   }
 
   type IntakeItem = {
@@ -50,8 +75,18 @@ module eventual_consistency_state {
   var generations: str -> int
   // intake maps to the IntakeItem set in tasks/queue/intake.rs.
   var intake: Set[IntakeItem]
-  // rows maps to AssetRecord in storage/asset_store.rs ASSET_BY_ID/ASSET_BY_PATH.
-  var rows: str -> AssetRecord
+  // assetById maps to storage/asset_store.rs ASSET_BY_ID (aspect (d) identity).
+  var assetById: int -> AssetRecord
+  // assetByPath maps to storage/asset_store.rs ASSET_BY_PATH (aspect (e)).
+  var assetByPath: str -> int
+  // dupeIndex maps to storage/asset_store.rs DUPE_INDEX (aspect (g), hash-keyed).
+  var dupeIndex: int -> Set[int]
+  // metadataPayload maps to storage/asset_store.rs METADATA_TABLE (aspects (f)+(i)).
+  var metadataPayload: int -> MetadataRecord
+  // thumbPresent maps to the thumbnail store paths (aspect (c), content-hash keyed).
+  var thumbPresent: int -> bool
+  // albumPending maps to PENDING_ALBUM_UPDATES (aspect (h) pending set).
+  var albumPending: Set[int]
   // sweepPending maps to the per-root sweep pending flag set by ScanRoot/the scan job in tasks/actor/album_index.rs (sweep_stale_asset_paths runs after the walk).
   var sweepPending: str -> bool
   // sweepBatch maps to sweep_stale_asset_paths survivors -> WriteOp::SweepRemoveBatch.
@@ -77,14 +112,26 @@ module eventual_consistency_state {
   }
 
   // @scope SCOPE-1
-  pure def initialRow(p: str): AssetRecord = {
+  pure def initialAssetRecord(p: str): AssetRecord = {
     assetId: initialId(p),
+    kind: "media",
+    path: p,
+    contentHash: 0,
+    albumId: 0,
+    isTrashed: false
+  }
+
+  // @scope SCOPE-1
+  pure def initialMetadataRecord(p: str): MetadataRecord = {
+    kind: "media",
     assetHash: 0,
     modified: 0,
     fileSize: 0,
     sidecar: 0,
     converged: true,
-    thumb: true
+    itemCount: 0,
+    itemSize: 0,
+    hasShareList: false
   }
 
   // @scope SCOPE-1: initial converged state; runs diverge from here.
@@ -92,7 +139,12 @@ module eventual_consistency_state {
     files' = PATHS.mapBy(p => initialFile(p)),
     generations' = PATHS.mapBy(_ => 0),
     intake' = Set(),
-    rows' = PATHS.mapBy(p => initialRow(p)),
+    assetById' = Map(1 -> initialAssetRecord("p1"), 2 -> initialAssetRecord("p2"), 3 -> initialAssetRecord("p3"), 4 -> initialAssetRecord("p4"), 5 -> initialAssetRecord("p5")),
+    assetByPath' = Map("p1" -> 1, "p2" -> 2, "p3" -> 3, "p4" -> 4, "p5" -> 5),
+    dupeIndex' = Map(0 -> Set(1, 2, 3, 4, 5), 1 -> Set(), 2 -> Set()),
+    metadataPayload' = Map(1 -> initialMetadataRecord("p1"), 2 -> initialMetadataRecord("p2"), 3 -> initialMetadataRecord("p3"), 4 -> initialMetadataRecord("p4"), 5 -> initialMetadataRecord("p5")),
+    thumbPresent' = Map(0 -> true, 1 -> false, 2 -> false),
+    albumPending' = Set(),
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = Map(),
     leasedPaths' = Set(),
