@@ -93,12 +93,13 @@ module eventual_consistency_assumptions {
     ii.path.in(unprocessable) or (
     (ii.generation == generations.get(ii.path)) or
     (intake.exists(jj => (jj.path == ii.path) and (jj.generation > ii.generation))) or
-    ((files.get(ii.path).present) and (rows.keys().contains(ii.path)) and
-     (rows.get(ii.path).assetHash == files.get(ii.path).assetHash) and
-     (rows.get(ii.path).modified == files.get(ii.path).mtime) and
-     (rows.get(ii.path).fileSize == files.get(ii.path).len) and
-     (rows.get(ii.path).sidecar == files.get(ii.path).sidecar)) or
-    ((not(files.get(ii.path).present)) and (not(rows.keys().contains(ii.path))))
+    ((files.get(ii.path).present) and (assetByPath.keys().contains(ii.path)) and
+     (metadataPayload.keys().contains(assetByPath.get(ii.path)) and
+     (metadataPayload.get(assetByPath.get(ii.path)).assetHash == files.get(ii.path).assetHash) and
+     (metadataPayload.get(assetByPath.get(ii.path)).modified == files.get(ii.path).mtime) and
+     (metadataPayload.get(assetByPath.get(ii.path)).fileSize == files.get(ii.path).len) and
+     (metadataPayload.get(assetByPath.get(ii.path)).sidecar == files.get(ii.path).sidecar))) or
+    ((not(files.get(ii.path).present)) and (not(assetByPath.keys().contains(ii.path))))
     )
   )
 
@@ -109,14 +110,14 @@ module eventual_consistency_assumptions {
   val NoPermanentStale = PATHS.forall(p =>
     p.in(unprocessable) or
     if (files.get(p).present) {
-      if (rows.keys().contains(p)) {
-        (rows.get(p).assetHash == files.get(p).assetHash and rows.get(p).modified == files.get(p).mtime and rows.get(p).fileSize == files.get(p).len and rows.get(p).sidecar == files.get(p).sidecar) or
+      if (assetByPath.keys().contains(p)) {
+        (metadataPayload.keys().contains(assetByPath.get(p)) and metadataPayload.get(assetByPath.get(p)).assetHash == files.get(p).assetHash and metadataPayload.get(assetByPath.get(p)).modified == files.get(p).mtime and metadataPayload.get(assetByPath.get(p)).fileSize == files.get(p).len and metadataPayload.get(assetByPath.get(p)).sidecar == files.get(p).sidecar) or
         intake.exists(i => i.path == p)
       } else {
         intake.exists(i => i.path == p)
       }
     } else {
-      (not(rows.keys().contains(p))) or
+      (not(assetByPath.keys().contains(p))) or
       intake.exists(i => i.path == p and i.kind == "remove") or
       sweepPending.get(rootOf(p))
     }

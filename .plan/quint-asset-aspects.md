@@ -211,7 +211,7 @@ check` or the individual recipes.
     model the superseded-batch case. Makes N2's move-vs-sweep window
     visible; each lifted micro-stage gets a scope entry
     (bound/why-safe/lifting).
-11. [open] Widen the aspect boundary from 4 to 8 aspects (media bytes,
+11. [partial] stage A done: per-asset aspect split; stage B (album-level cascade + dir-album pending drain) next. Widen the aspect boundary from 4 to 8 aspects (media bytes,
     sidecar bytes, rendition, identity, metadata payload, dupe
     membership, album stats, tree epoch). Rewrites the predicates the
     slice sits on; prerequisite for N13 (stats vs member writes),
@@ -298,3 +298,5 @@ survey claim contradicts a done item — re-check the tree first.
   per-entry snapshot outside the txn; the write txn re-checks album
   liveness and re-marks pending on a race.] Bounded staleness, no lost
   update.
+
+- 2026-11-13: step 11 stage A done — split `rows` into assetById/assetByPath/dupeIndex/metadataPayload/thumbPresent/albumPending; predicates/runs/invariants rewritten; new runs N5 split window, dupe-group delete, remove torn window, member-write album cascade. Code-semantics surprises: Remove paths (asset_store.rs::remove_asset) writes id/path/dupe tables in separate txns as verified; flush_tables writes all four tables in one txn per asset; Move (assign_album.rs::move_asset_into_album) writes ASSET_BY_ID separately from ASSET_BY_PATH (N5). No invariant failures found.

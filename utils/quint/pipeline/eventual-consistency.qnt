@@ -32,6 +32,22 @@ module eventual_consistency {
   // @scope SCOPE-7
   pure val SUBTREE_PAIRS = [{ src: "p1", dst: "p3" }, { src: "p2", dst: "p4" }]
 
+  // Derived view of the old `rows` map, reconstructed from the split
+  // aspect tables. Kept as a read-only projection so existing run
+  // assertions and guards that reference `rows` keep their meaning.
+  // @exempt observer
+  val rows = assetByPath.keys().mapBy(p =>
+    {
+      assetId: assetByPath.get(p),
+      assetHash: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).assetHash } else { assetById.get(assetByPath.get(p)).contentHash },
+      modified: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).modified } else { 0 },
+      fileSize: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 },
+      sidecar: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).sidecar } else { 0 },
+      converged: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).converged } else { false },
+      thumb: (assetById.get(assetByPath.get(p)).contentHash >= 0 and thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))
+    }
+  )
+
   // ---------- Environment injections ----------
 
   // @exempt environment
@@ -45,7 +61,7 @@ module eventual_consistency {
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
       generations' = generations,
       intake' = intake,
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -60,7 +76,7 @@ module eventual_consistency {
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }),
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -85,7 +101,7 @@ module eventual_consistency {
         { path: p, generation: generations.get(p) + 1, kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 },
         { path: q, generation: generations.get(q) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash }
       )),
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -104,13 +120,24 @@ module eventual_consistency {
     ),
     generations' = generations,
     intake' = intake,
-    rows' = SUBTREE_PAIRS.foldl(rows, (acc, pr) =>
-      if (rows.keys().contains(pr.src)) {
-        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k)).put(pr.dst, rows.get(pr.src))
+    assetById' = SUBTREE_PAIRS.foldl(assetById, (acc, pr) =>
+      if (assetByPath.keys().contains(pr.src)) {
+        acc.put(assetByPath.get(pr.src), { assetId: assetByPath.get(pr.src), kind: acc.get(assetByPath.get(pr.src)).kind, path: pr.dst, contentHash: acc.get(assetByPath.get(pr.src)).contentHash, albumId: acc.get(assetByPath.get(pr.src)).albumId, isTrashed: acc.get(assetByPath.get(pr.src)).isTrashed })
+      } else {
+        acc
+      }
+    ),
+    assetByPath' = SUBTREE_PAIRS.foldl(assetByPath, (acc, pr) =>
+      if (acc.keys().contains(pr.src)) {
+        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k)).put(pr.dst, acc.get(pr.src))
       } else {
         acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k))
       }
     ),
+    dupeIndex' = dupeIndex,
+    metadataPayload' = metadataPayload,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -128,7 +155,7 @@ module eventual_consistency {
       files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: sc }),
       generations' = generations.set(p, generations.get(p) + 1),
       intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: sc, assetHash: files.get(p).assetHash })),
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -147,7 +174,7 @@ module eventual_consistency {
       files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: sc }),
       generations' = generations.set(p, generations.get(p) + 1),
       intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: sc, assetHash: files.get(p).assetHash })),
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -165,7 +192,7 @@ module eventual_consistency {
       files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: 0 }),
       generations' = generations.set(p, generations.get(p) + 1),
       intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: 0, assetHash: files.get(p).assetHash })),
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -180,7 +207,7 @@ module eventual_consistency {
     files' = files.set(p, { present: true, assetHash: files.get(p).assetHash + 1, mtime: files.get(p).mtime + 1, len: files.get(p).len + 1, sidecar: files.get(p).sidecar }),
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -195,7 +222,7 @@ module eventual_consistency {
     files' = files,
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -210,7 +237,7 @@ module eventual_consistency {
     files' = files.set(p, { present: true, assetHash: rows.get(p).assetHash, mtime: rows.get(p).modified, len: rows.get(p).fileSize, sidecar: rows.get(p).sidecar }),
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -226,7 +253,7 @@ module eventual_consistency {
     leasedPaths' = Set(),
     files' = files,
     generations' = generations,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -235,7 +262,12 @@ module eventual_consistency {
   // @exempt environment
   // @scope SCOPE-6
   action LoseThumbs: bool = all {
-    rows' = rows.keys().mapBy(k => { ...rows.get(k), thumb: false }),
+    thumbPresent' = HASHES.mapBy(h => false),
+    assetById' = assetById,
+    assetByPath' = assetByPath,
+    dupeIndex' = dupeIndex,
+    metadataPayload' = metadataPayload,
+    albumPending' = albumPending,
     files' = files,
     generations' = generations,
     intake' = intake,
@@ -249,7 +281,12 @@ module eventual_consistency {
   // @exempt environment
   // @scope SCOPE-6
   action DbLoss: bool = all {
-    rows' = Map(),
+    assetById' = Map(),
+    assetByPath' = Map(),
+    dupeIndex' = HASHES.mapBy(h => Set()),
+    metadataPayload' = Map(),
+    thumbPresent' = HASHES.mapBy(h => false),
+    albumPending' = Set(),
     generations' = PATHS.mapBy(_ => 0),
     nextAssetId' = 1,
     intake' = Set(),
@@ -269,7 +306,12 @@ module eventual_consistency {
     rows.keys().contains(p),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: 1 }),
     generations' = generations.set(p, generations.get(p) + 1),
-    rows' = rows.put(p, { assetId: rows.get(p).assetId, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: 1, converged: true, thumb: true }),
+    metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: 1, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
+    assetById' = assetById,
+    assetByPath' = assetByPath,
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     intake' = intake,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
@@ -285,7 +327,7 @@ module eventual_consistency {
     rows.keys().contains(p),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: if (files.get(p).sidecar == 1) 2 else 1 }),
     generations' = generations.set(p, generations.get(p) + 1),
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     intake' = intake,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
@@ -300,7 +342,12 @@ module eventual_consistency {
     files.get(p).present,
     rows.keys().contains(p),
     files.get(p).sidecar != rows.get(p).sidecar,
-    rows' = rows.put(p, { assetId: rows.get(p).assetId, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: files.get(p).sidecar, converged: true, thumb: true }),
+    metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: files.get(p).sidecar, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
+    assetById' = assetById,
+    assetByPath' = assetByPath,
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     files' = files,
     generations' = generations,
     intake' = intake,
@@ -322,7 +369,7 @@ module eventual_consistency {
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
       generations' = generations.set(p, generations.get(p) + 1),
       intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -339,7 +386,12 @@ module eventual_consistency {
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }),
     generations' = generations,
     intake' = intake,
-    rows' = rows.keys().exclude(Set(p)).mapBy(k => rows.get(k)),
+    assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
+    assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)),
+    metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k)),
+    dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
+    thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
+    albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -359,7 +411,12 @@ module eventual_consistency {
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }).set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
     generations' = generations,
     intake' = intake,
-    rows' = rows.keys().exclude(Set(p)).mapBy(k => rows.get(k)).put(q, rows.get(p)),
+    assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
+    assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
+    metadataPayload' = metadataPayload,
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -378,13 +435,24 @@ module eventual_consistency {
     ),
     generations' = generations,
     intake' = intake,
-    rows' = SUBTREE_PAIRS.foldl(rows, (acc, pr) =>
-      if (rows.keys().contains(pr.src)) {
-        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k)).put(pr.dst, rows.get(pr.src))
+    assetById' = SUBTREE_PAIRS.foldl(assetById, (acc, pr) =>
+      if (assetByPath.keys().contains(pr.src)) {
+        acc.put(assetByPath.get(pr.src), { assetId: assetByPath.get(pr.src), kind: acc.get(assetByPath.get(pr.src)).kind, path: pr.dst, contentHash: acc.get(assetByPath.get(pr.src)).contentHash, albumId: acc.get(assetByPath.get(pr.src)).albumId, isTrashed: acc.get(assetByPath.get(pr.src)).isTrashed })
+      } else {
+        acc
+      }
+    ),
+    assetByPath' = SUBTREE_PAIRS.foldl(assetByPath, (acc, pr) =>
+      if (acc.keys().contains(pr.src)) {
+        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k)).put(pr.dst, acc.get(pr.src))
       } else {
         acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k))
       }
     ),
+    dupeIndex' = dupeIndex,
+    metadataPayload' = metadataPayload,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -401,7 +469,7 @@ module eventual_consistency {
     generations' = generations.set(p, generations.get(p) + 1),
     intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "scan", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })),
     files' = files,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -416,7 +484,7 @@ module eventual_consistency {
     generations' = generations.set(p, generations.get(p) + 1),
     intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })),
     files' = files,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -431,7 +499,7 @@ module eventual_consistency {
     generations' = generations.set(p, generations.get(p) + 1),
     intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 })),
     files' = files,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -451,20 +519,34 @@ module eventual_consistency {
       it.generation == generations.get(it.path),
       files.get(it.path).present,
       snapshotMatches(files.get(it.path), it),
-      rows' = rows.put(it.path, {
-        assetId: if (rows.keys().contains(it.path)) { rows.get(it.path).assetId } else { nextAssetId },
-        assetHash: it.assetHash,
-        modified: it.mtime,
-        fileSize: it.len,
-        sidecar: it.sidecar,
-        converged: true,
-        thumb: true
-      }),
+      assetById' = (if (assetByPath.keys().contains(it.path)) { assetById } else { assetById }).put(
+        if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
+        { assetId: if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
+          kind: if (assetByPath.keys().contains(it.path)) { assetById.get(assetByPath.get(it.path)).kind } else { "media" },
+          path: it.path,
+          contentHash: it.assetHash,
+          albumId: if (assetByPath.keys().contains(it.path)) { assetById.get(assetByPath.get(it.path)).albumId } else { 0 },
+          isTrashed: if (assetByPath.keys().contains(it.path)) { assetById.get(assetByPath.get(it.path)).isTrashed } else { false } }),
+      assetByPath' = assetByPath.put(it.path, if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }),
+      metadataPayload' = metadataPayload.put(
+        if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
+        { kind: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).kind } else { "media" },
+          assetHash: it.assetHash,
+          modified: it.mtime,
+          fileSize: it.len,
+          sidecar: it.sidecar,
+          converged: true,
+          itemCount: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
+          itemSize: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
+          hasShareList: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
+      dupeIndex' = (if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path)) and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }))),
+      thumbPresent' = thumbPresent.put(it.assetHash, true),
+      albumPending' = albumPending,
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
       sweepPending' = sweepPending,
-      nextAssetId' = if (rows.keys().contains(it.path)) { nextAssetId } else { nextAssetId + 1 },
+      nextAssetId' = if (assetByPath.keys().contains(it.path)) { nextAssetId } else { nextAssetId + 1 },
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -480,7 +562,7 @@ module eventual_consistency {
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -500,7 +582,7 @@ module eventual_consistency {
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -528,7 +610,7 @@ module eventual_consistency {
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -548,7 +630,7 @@ module eventual_consistency {
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -565,7 +647,12 @@ module eventual_consistency {
       it.kind == "remove",
       it.generation == generations.get(it.path),
       not(files.get(it.path).present),
-      rows' = if (rows.keys().contains(it.path)) { rows.keys().exclude(Set(it.path)).mapBy(k => rows.get(k)) } else { rows },
+      assetById' = if (assetByPath.keys().contains(it.path)) { assetById.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => assetById.get(k)) } else { assetById },
+      assetByPath' = if (assetByPath.keys().contains(it.path)) { assetByPath.keys().exclude(Set(it.path)).mapBy(k => assetByPath.get(k)) } else { assetByPath },
+      metadataPayload' = if (assetByPath.keys().contains(it.path)) { metadataPayload.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => metadataPayload.get(k)) } else { metadataPayload },
+      dupeIndex' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
+      thumbPresent' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
+      albumPending' = albumPending,
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
@@ -591,7 +678,7 @@ module eventual_consistency {
     ),
     sweepPending' = sweepPending.put(r, true),
     files' = files,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
@@ -602,7 +689,12 @@ module eventual_consistency {
   action SweepRoot(r: str): bool = all {
     r.in(ROOTS),
     sweepPending.get(r),
-    rows' = rows.keys().filter(p => not (rootOf(p) == r and not(files.get(p).present))).mapBy(k => rows.get(k)),
+    assetByPath' = assetByPath.keys().filter(p => not (rootOf(p) == r and not(files.get(p).present))).mapBy(k => assetByPath.get(k)),
+    assetById' = assetById,
+    metadataPayload' = metadataPayload,
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     sweepPending' = sweepPending.put(r, false),
     files' = files,
     generations' = generations,
@@ -618,7 +710,7 @@ module eventual_consistency {
     files' = files,
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -633,7 +725,7 @@ module eventual_consistency {
     files' = files,
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -685,14 +777,14 @@ module eventual_consistency {
   run scanApplyTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt no-backing
   run skipSupersededTest = init
     .then(SubmitScan("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerSkipSuperseded)
-    .then(all { assert(NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // Pins the FS_MODIFY_INFLIGHT gap: the in-flight item is dropped and nothing resubmits the path until the next scan, so permanent staleness is expected here.
   // @assumes ASS-5
@@ -700,7 +792,7 @@ module eventual_consistency {
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(WorkerSkipStale)
-    .then(all { assert(NoLostUpload and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoLostUpload and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-2
   // @assumes ASS-5
@@ -709,7 +801,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(SubmitScan("p1"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-2
   // @assumes ASS-5
@@ -720,7 +812,7 @@ module eventual_consistency {
     .then(RestoreIndexed("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   run copyDistinctIdsTest = init
@@ -728,7 +820,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(SubmitScan("p2"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetHash == rows.get("p2").assetHash and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetHash == rows.get("p2").assetHash and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run sidecarDeleteConvergesTest = init
@@ -738,7 +830,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(ExternalSidecarDelete("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run renameFileTest = init
@@ -750,13 +842,13 @@ module eventual_consistency {
     .then(ExternalRenameFile("p1", "p2"))
     .then(WorkerRemoveApply)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and rows.keys().contains("p2")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and rows.keys().contains("p2")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   run uploadTest = init
     .then(ApiUpload("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run removeTest = init
@@ -765,7 +857,7 @@ module eventual_consistency {
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   // @assumes ASS-6
@@ -778,7 +870,7 @@ module eventual_consistency {
     .then(ApiMove("p1", "p2"))
     .then(SubmitWatcherIndex("p2"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p2").assetId == 1), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p2").assetId == 1), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   run apiRemoveTest = init
@@ -787,19 +879,19 @@ module eventual_consistency {
     .then(ApiRemove("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run scanOnlyConvergenceTest = init
     .then(ExternalDelete("p1"))
-    .then(all { assert(rows.keys().contains("p1") and not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
-    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SweepRoot("r1"))
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run scanHealsMissingRowTest = init
@@ -807,7 +899,7 @@ module eventual_consistency {
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(ExternalModify("p1"))
-    .then(all { assert(not(rows.keys().contains("p1")) and not(Converged)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
@@ -816,32 +908,32 @@ module eventual_consistency {
     .then(WorkerSkipSuperseded)
     .then(WorkerSkipSuperseded)
     .then(WorkerSkipSuperseded)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run scanHealsStaleRowTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
     .then(ForceModify("p1"))
-    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run perRootSweepTest = init
     .then(ExternalDelete("p5"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r2"))
-    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SweepRoot("r2"))
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   run fsCreateTest = init
@@ -850,7 +942,7 @@ module eventual_consistency {
     .then(ExternalModify("p1"))
     .then(SubmitWatcherIndex("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   run fsModifyTest = init
@@ -859,20 +951,20 @@ module eventual_consistency {
     .then(ExternalModify("p1"))
     .then(SubmitWatcherIndex("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-5
   run fsModifyInflightTest = init
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(WorkerSkipStale)
-    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run fsAtomicReplaceTest = init
@@ -881,7 +973,7 @@ module eventual_consistency {
     .then(ExternalModify("p1"))
     .then(SubmitWatcherIndex("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run sidecarCreateTest = init
@@ -889,7 +981,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(ExternalSidecarCreate("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == files.get("p1").sidecar and rows.get("p1").sidecar != 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == files.get("p1").sidecar and rows.get("p1").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run sidecarModifyTest = init
@@ -897,7 +989,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(ExternalSidecarModify("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   // @scope SCOPE-5
@@ -910,7 +1002,7 @@ module eventual_consistency {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(ExternalRenameDir)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   // @scope SCOPE-5
@@ -923,16 +1015,16 @@ module eventual_consistency {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(ApiAssignDirMove)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   run rotateTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
     .then(RotateWriteSidecar("p1"))
-    .then(all { assert(rows.get("p1").sidecar != files.get("p1").sidecar and not(Converged)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.get("p1").sidecar != files.get("p1").sidecar and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   // @scope SCOPE-6
@@ -946,7 +1038,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run watcherGapTest = init
@@ -958,7 +1050,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // A scan that snapshots before the change drops the stale item; the next
   // backstop scan heals it, so convergence is bounded by two scan cycles
@@ -972,33 +1064,33 @@ module eventual_consistency {
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-6
   run crashTest = init
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(ProcessCrash)
-    .then(all { assert(intake.size() == 0 and not(Converged)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(intake.size() == 0 and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-4
   run derivedLossTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
     .then(LoseThumbs)
-    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(ScanRoot("r2"))
     .then(WorkerApplySuccess)
@@ -1006,7 +1098,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-6
   run dbLossTest = init
@@ -1015,7 +1107,7 @@ module eventual_consistency {
     .then(SubmitScan("p2"))
     .then(WorkerApplySuccess)
     .then(DbLoss)
-    .then(all { assert(rows.keys().size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(ScanRoot("r2"))
     .then(WorkerApplySuccess)
@@ -1023,7 +1115,7 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt no-backing
   run failingForeverTest = init
@@ -1037,17 +1129,17 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(not(rows.keys().contains("p1")) and Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run readMissingTest = init
     .then(ExternalDelete("p1"))
     .then(ReadMissing("p1"))
-    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 }
