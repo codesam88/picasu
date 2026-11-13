@@ -130,6 +130,11 @@ test("trigger column reflects the lanes a rule runs in", () => {
     md,
     /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
   );
+  // A job-level if: on zizmor.yml restricts the job to push/PR.
+  assert.match(
+    md,
+    /`zizmor-check`[^\n]*\| ci-backend, ci-zizmor\s*\| local, PR, main\s*\|/,
+  );
 });
 
 test("family tables share the full-width style and four-column header", () => {

@@ -23,7 +23,7 @@ Checks no other recipe calls: `backend-test-release`, `dylint-check`, `fuzz-chec
 
 ## Check families
 
-`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, excluding `workflow_dispatch`, which any workflow can expose). A cross marks a rule that does not run there.
+`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there.
 
 <style>
   h3 + .table-wrapper > table {
@@ -51,14 +51,14 @@ Checks no other recipe calls: `backend-test-release`, `dylint-check`, `fuzz-chec
 
 ### Backend (Rust)
 
-| Rule (justfile)        | Description                                              | CI Lane               | Trigger                    |
-| ---------------------- | -------------------------------------------------------- | --------------------- | -------------------------- |
-| `backend-check`        | cargo fmt --check + clippy (all targets)                 | ci-backend            | local, PR, main            |
-| `backend-test`         | Backend tests (cargo-nextest)                            | ci-backend            | local, PR, main            |
-| `backend-test-release` | Backend tests in release mode                            | release               | tags                       |
-| `utils-check`          | utils fmt + clippy (all targets)                         | ci-backend, ci-zizmor | local, PR, main, scheduled |
-| `utils-test`           | cargo test utils/ + Schemathesis derivations             | ci-backend            | local, PR, main            |
-| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly               | scheduled                  |
+| Rule (justfile)        | Description                                              | CI Lane               | Trigger         |
+| ---------------------- | -------------------------------------------------------- | --------------------- | --------------- |
+| `backend-check`        | cargo fmt --check + clippy (all targets)                 | ci-backend            | local, PR, main |
+| `backend-test`         | Backend tests (cargo-nextest)                            | ci-backend            | local, PR, main |
+| `backend-test-release` | Backend tests in release mode                            | release               | tags            |
+| `utils-check`          | utils fmt + clippy (all targets)                         | ci-backend, ci-zizmor | local, PR, main |
+| `utils-test`           | cargo test utils/ + Schemathesis derivations             | ci-backend            | local, PR, main |
+| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly               | scheduled       |
 
 ### Frontend
 
@@ -84,13 +84,13 @@ Checks no other recipe calls: `backend-test-release`, `dylint-check`, `fuzz-chec
 
 ### Security & supply chain
 
-| Rule (justfile)  | Description                                | CI Lane               | Trigger                    |
-| ---------------- | ------------------------------------------ | --------------------- | -------------------------- |
-| `audit`          | Run security audits (backend + frontend)   | audit                 | PR, main, scheduled        |
-| `backend-audit`  | cargo deny                                 | audit                 | PR, main, scheduled        |
-| `frontend-audit` | npm audit                                  | audit                 | PR, main, scheduled        |
-| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | ci-backend, ci-zizmor | local, PR, main, scheduled |
-| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint             | PR, main                   |
+| Rule (justfile)  | Description                                | CI Lane               | Trigger             |
+| ---------------- | ------------------------------------------ | --------------------- | ------------------- |
+| `audit`          | Run security audits (backend + frontend)   | audit                 | PR, main, scheduled |
+| `backend-audit`  | cargo deny                                 | audit                 | PR, main, scheduled |
+| `frontend-audit` | npm audit                                  | audit                 | PR, main, scheduled |
+| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | ci-backend, ci-zizmor | local, PR, main     |
+| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint             | PR, main            |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
 

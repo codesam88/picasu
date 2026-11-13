@@ -15,9 +15,11 @@
 //
 // Trigger labels: triggerTokens(wfText) scans the workflow's `on:` region
 // for pull_request/PR, push+branches:main/main, tags:/tags, schedule/
-// scheduled. laneTriggers[lane] unions tokens over its backing workflow
-// files; tokens ordered PR, main, tags, scheduled. workflow_dispatch is not
-// labeled: any workflow that declares it can be run by hand.
+// scheduled. A job-level `if:` that compares github.event_name narrows the
+// tokens to the events that reach that job. laneTriggers[lane] unions tokens
+// over its backing workflow files; tokens ordered PR, main, tags, scheduled.
+// workflow_dispatch is not labeled: any workflow that declares it can be run
+// by hand.
 //
 // Usage: quality-gates.mjs [repo-root] [--generate <path>] [--check <path>] [--check-only]
 //
@@ -253,6 +255,29 @@ function triggerTokens(text) {
   return [...new Set(tokens)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
 }
 
+// A job-level `if:` narrows the events that reach the job. Only equality
+// checks on github.event_name are considered; other expressions keep the
+// file-level triggers.
+function jobTriggerTokens(fileTriggers, jobIf) {
+  if (!jobIf) return fileTriggers;
+  const events = new Set(
+    [...jobIf.matchAll(/github\.event_name\s*==\s*['"]([a-z_]+)['"]/g)].map(
+      (m) => m[1],
+    ),
+  );
+  if (!events.size) return fileTriggers;
+  const tokens = [];
+  if (events.has("pull_request") && fileTriggers.includes("PR")) tokens.push("PR");
+  if (events.has("push")) {
+    if (fileTriggers.includes("main")) tokens.push("main");
+    if (fileTriggers.includes("tags")) tokens.push("tags");
+  }
+  if (events.has("schedule") && fileTriggers.includes("scheduled")) {
+    tokens.push("scheduled");
+  }
+  return tokens;
+}
+
 // ---------- workflow parsing ----------
 function laneForWorkflow(file, job) {
   const base = basename(file);
@@ -328,6 +353,7 @@ for (const wf of workflowFiles) {
   if (fileTriggers.includes("PR")) prTriggeredFiles.add(file);
   let inJobs = false;
   let currentJob = null;
+  let currentJobIf = null;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -343,9 +369,12 @@ for (const wf of workflowFiles) {
       const jm = line.match(/^  ([A-Za-z_][\w-]*):\s*$/);
       if (jm) {
         currentJob = jm[1];
+        currentJobIf = null;
         i += 1;
         continue;
       }
+      const ifm = line.match(/^    if:\s*(.+)$/);
+      if (ifm) currentJobIf = ifm[1];
     }
     const runMatch = line.match(/^(\s*)(?:-\s*)?run:\s*(.*)$/);
     if (runMatch) {
@@ -408,7 +437,9 @@ for (const wf of workflowFiles) {
           const lane = laneForWorkflow(file, currentJob);
           if (!lane) continue;
           if (!laneTriggers.has(lane)) laneTriggers.set(lane, new Set());
-          for (const t of fileTriggers) laneTriggers.get(lane).add(t);
+          for (const t of jobTriggerTokens(fileTriggers, currentJobIf)) {
+            laneTriggers.get(lane).add(t);
+          }
           directInvocations.push({
             recipe,
             lane,
@@ -750,7 +781,7 @@ if (noCaller.length) {
 docLines.push("## Check families");
 docLines.push("");
 docLines.push(
-  "`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, excluding `workflow_dispatch`, which any workflow can expose). A cross marks a rule that does not run there.",
+  "`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there.",
 );
 docLines.push("");
 // mdBook wraps tables in .table-wrapper; these rules give every family table
