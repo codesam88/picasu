@@ -104,7 +104,7 @@ test("regenerated doc lists openapi-routes-release with its release trigger", (t
   );
 });
 
-test("rule graph has separate check and test trees", () => {
+test("Test and Check Flows contain the two trees", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   const section = md.slice(0, md.indexOf("## Orphans"));
   const blocks = [...section.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
@@ -145,15 +145,14 @@ test("trigger column reflects the CI workflow files and callers", () => {
   assert.match(md, /`auth-matrix-check`[^\n]*\| \(openapi-check\)\s*\|/);
 });
 
-test("family tables share the full-width style and five-column header", () => {
+test("group tables use the four-column header", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /h3 \+ \.table-wrapper > table \{\n\s+width: 100%;\n\s+table-layout: fixed;/);
   const headers = md.match(
     /^\| Rule \(justfile\)\s+\| Description\s+\| CI Workflow\s+\| Trigger\s+\|$/gm,
   );
-  const families = md.slice(md.indexOf("## Rules by group")).match(/^### /gm);
-  assert.ok(families.length > 0, "group sections present");
-  assert.equal(headers.length, families.length, "every group has the header");
+  const groups = md.slice(md.indexOf("## Rules by group")).match(/^### /gm);
+  assert.ok(groups.length > 0, "group sections present");
+  assert.equal(headers.length, groups.length, "every group has the header");
 });
 
 test("each group has a local mermaid diagram", () => {
@@ -217,7 +216,7 @@ test("inline check tooling without a just recipe is flagged", (t) => {
   assert.match(r.out, /without a just recipe/);
 });
 
-test("allowlisted CI-only recipe passes with its reason rendered", () => {
+test("CI-only recipe note is rendered", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /dylint-check/);
   assert.match(

@@ -210,7 +210,6 @@ Orphans (not a global, not CI workflow, no justfile parent) section flags rules 
 justfile caller, and no `global` group. It also renders check families (rule, description, CI lane, trigger) with allowlist
 notes; lane triggers are folded into the family tables, so there is no
 separate lane section.
-The family tables render full width through a scoped style block.
 Families are an explicit map in the script; an unmapped gate recipe
 lands in `Other` with a warning. The table layout was superseded by
 step 11.

@@ -125,6 +125,7 @@ function loadRecipes() {
 const recipes = loadRecipes();
 const recipeByName = new Map(recipes.map((r) => [r.name, r]));
 
+// Flatten `just --json` body fragments into plain command lines.
 function flattenBody(r) {
   const out = [];
   for (const line of r.body || []) {
@@ -389,7 +390,8 @@ while (changed) {
 // There is no reverse propagation; an aggregate's trigger is what actually
 // invokes it (for `check`/`test`, the precommit hook).
 
-const locallyUnexercised = [
+// Policy notes rendered under the corresponding group table.
+const localNotes = [
   {
     name: "dylint-check",
     reason:
@@ -401,7 +403,7 @@ const locallyUnexercised = [
       "CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)",
   },
 ];
-const allowlistByName = new Map(locallyUnexercised.map((e) => [e.name, e.reason]));
+const noteByName = new Map(localNotes.map((e) => [e.name, e.reason]));
 
 // ---------- display set ----------
 const displayRecipes = recipes.filter((r) => !r.private);
@@ -453,14 +455,14 @@ const PREFERRED_GROUPS = ["backend", "frontend", "utils", "docs", "deps", "globa
 for (const r of displayRecipes) {
   if (!r.group) r.group = "Other";
 }
-const groupSet2 = new Set(displayRecipes.map((r) => r.group));
-const otherGroups = [...groupSet2]
+const groupNames = new Set(displayRecipes.map((r) => r.group));
+const otherGroups = [...groupNames]
   .filter((g) => !PREFERRED_GROUPS.includes(g) && g !== "Other")
   .sort();
 const orderedGroups = [
-  ...PREFERRED_GROUPS.filter((g) => groupSet2.has(g)),
+  ...PREFERRED_GROUPS.filter((g) => groupNames.has(g)),
   ...otherGroups,
-  ...(groupSet2.has("Other") ? ["Other"] : []),
+  ...(groupNames.has("Other") ? ["Other"] : []),
 ];
 
 function capitalize(g) {
@@ -468,6 +470,7 @@ function capitalize(g) {
 }
 
 // ---------- render ----------
+// Markdown table with prettier-compatible cell padding.
 function renderTable(headers, rows) {
   const widths = headers.map((h, i) =>
     Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length)),
@@ -480,6 +483,8 @@ function renderTable(headers, rows) {
   return out;
 }
 
+// Red cross with emoji presentation; the variation selector keeps the
+// codepoint count equal to the rendered width so table padding stays aligned.
 const CROSS = "\u274C\uFE0F";
 
 const triggerOrder = ["local", "PR", "main", "tags", "scheduled"];
@@ -539,26 +544,6 @@ docLines.push(
   "`Rule` names the justfile recipe, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a recipe with no workflow or CI caller; a dash marks no trigger. Recipes are grouped by their justfile group.",
 );
 docLines.push("");
-docLines.push("<style>");
-docLines.push("  h3 + .table-wrapper > table {");
-docLines.push("    width: 100%;");
-docLines.push("    table-layout: fixed;");
-docLines.push("  }");
-docLines.push("  h3 + .table-wrapper > table td,");
-docLines.push("  h3 + .table-wrapper > table th {");
-docLines.push("    padding-left: 6px;");
-docLines.push("    padding-right: 6px;");
-docLines.push("  }");
-for (const [index, width] of [20, 44, 18, 18].entries()) {
-  docLines.push(
-    `  h3 + .table-wrapper > table th:nth-child(${index + 1}) {`,
-  );
-  docLines.push(`    width: ${width}%;`);
-  docLines.push("  }");
-}
-docLines.push("</style>");
-docLines.push("");
-
 // Workflow files that invoke each recipe directly, for the CI Workflow column.
 const directFiles = new Map();
 for (const inv of directInvocations) {
@@ -570,7 +555,7 @@ function workflowLabel(file) {
   return basename(file).replace(/\.ya?ml$/, "");
 }
 
-const familyHeaders = ["Rule (justfile)", "Description", "CI Workflow", "Trigger"];
+const groupHeaders = ["Rule (justfile)", "Description", "CI Workflow", "Trigger"];
 
 function mermaidId(name) {
   return name.replace(/::/g, "__").replace(/[^A-Za-z0-9_-]/g, "_");
@@ -672,13 +657,13 @@ for (const g of orderedGroups) {
       triggers.length ? triggers.join(", ") : "-",
     ];
   });
-  docLines.push(...renderTable(familyHeaders, rows));
+  docLines.push(...renderTable(groupHeaders, rows));
   docLines.push("");
   for (const name of members) {
-    const reason = allowlistByName.get(name);
+    const reason = noteByName.get(name);
     if (reason) docLines.push("Note: `" + name + "` - " + reason);
   }
-  if (members.some((n) => allowlistByName.has(n))) docLines.push("");
+  if (members.some((n) => noteByName.has(n))) docLines.push("");
 }
 
 let content = docLines.join("\n");

@@ -66,30 +66,6 @@ graph LR
 
 `Rule` names the justfile recipe, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a recipe with no workflow or CI caller; a dash marks no trigger. Recipes are grouped by their justfile group.
 
-<style>
-  h3 + .table-wrapper > table {
-    width: 100%;
-    table-layout: fixed;
-  }
-  h3 + .table-wrapper > table td,
-  h3 + .table-wrapper > table th {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-  h3 + .table-wrapper > table th:nth-child(1) {
-    width: 20%;
-  }
-  h3 + .table-wrapper > table th:nth-child(2) {
-    width: 44%;
-  }
-  h3 + .table-wrapper > table th:nth-child(3) {
-    width: 18%;
-  }
-  h3 + .table-wrapper > table th:nth-child(4) {
-    width: 18%;
-  }
-</style>
-
 ### Backend
 
 ```mermaid
