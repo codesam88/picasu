@@ -11,6 +11,21 @@ Upload and other long operations need first-class, user-specific
 progress tracking instead of the current fire-and-forget POST plus a
 spinner that cannot report anything.
 
+### Decision (2026-11-13): upload is async, final
+
+Store-and-return upload shipped (`f3703c17`, `763ca3b8`): the 200
+response is the completion signal; indexing runs in the background.
+The interim wait-for-indexed grid poll was removed from
+`uploadStore` — completion toast fires on 200 and the grid refresh
+picks up rows within the ~1 s view freshness window (decoupled view
+invalidation). A prototype `GET /get/asset/exists` poll target was
+discarded: nothing consumes it, and an arbitrary-path lookup route
+needs share-subtree scoping to avoid an existence oracle — any future
+status endpoint exposing per-file state must carry the same scoping
+review. This ticket is now the sole mechanism for surfacing background
+status (scan/indexing/move progress) and feeds
+`error-handling-and-activity-log`.
+
 ## Problem (verified 2026-11-07 against `post_upload.rs` + `uploadStore`)
 
 - `POST /post/upload` is fully synchronous: one multipart request with
