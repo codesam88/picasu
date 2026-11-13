@@ -31,8 +31,24 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
   completed-write crashes) are the lifting targets; each lifted
   micro-stage gets a scope entry with bound/why-safe/lifting.
 - 2026-11-12: survey complete, filed as N1–N13 with provenance +
-  status tags; N3 guarded by C5, N11 refuted against the tree,
-  N13 added from C11.
+  status tags; N3 guarded by C5, N11 refuted as an open hazard (the
+  fixed sidecar-first order is pinned by the rotate runs), N13 added
+  from C11.
+- 2026-11-12: first asset-aspects slice shipped in
+  `utils/quint/pipeline/asset-aspects.qnt`: predicates
+  AspectAligned/AspectsAligned/ThumbPresent over existing state; actions
+  DirMoveFsOnly, ApiMoveFsOnly, SweepRootLeased, SidecarEditPartial,
+  DroppedSidecarModify; 11 runs. Deferred: N5, N8, N9, N10, N13 and the
+  full eight-aspect boundary beyond the four-aspect
+  (file/sidecar/thumbnail/row) slice.
+
+- 2026-11-12: implementation tracking starts with no-op Rust attributes
+  (`quint_annotations::operation`/`event`, crate
+  `utils/quint-annotations`), `pipeline/operations.json` for OP-1..OP-12,
+  and `utils/quint/operations-check.mjs`. The catalog records event names,
+  four-aspect reads/writes, guards, status and N nodes; source markers
+  derive the code mapping without line numbers or model references in the
+  JSON.
 
 ## Steps
 
@@ -40,13 +56,43 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
    plus pairwise interleaving hazards with file:line evidence.
 2. [done] Interaction nodes N1–N13 (aspects, interleaving, guard or
    gap); `[verify]` items resolved where the tree already answers.
-3. State extension: aspect-level fields + invariants; keep bounds small.
-4. Actions: one action per mutating op at aspect granularity; lift the
-   SCOPE-4/5/6 deferrals it covers.
-5. Runs: conflicting-pair runs (scan-vs-edit, move-vs-sweep,
-   edit-vs-edit, upload-vs-scan, stats-vs-member-write).
-6. Gates: `just quint-check`, traceability entries, regen
-   `docs/eventual-consistency.md` if the generator consumes the model.
+3. [partial] State extension: no new state fields; aspect alignment
+   expressed as predicates over existing `FileState`/`AssetRecord` in
+   `asset-aspects.qnt` (AspectAligned/AspectsAligned/ThumbPresent).
+   Full aspect-field split (media bytes vs sidecar vs rendition vs
+   identity) deferred.
+4. [done] Actions: DirMoveFsOnly (OP-5), SidecarEditPartial (OP-7),
+   DroppedSidecarModify (environment) in `asset-aspects.qnt`; all update
+   every state var.
+5. [partial] Runs: 9 conflicting-pair runs modeled (scan-apply,
+   scan-supersedes-edit, move-vs-sweep, dir-move-crash-heal,
+   sidecar-partial-edit, dropped-sidecar, thumb-loss, watcher-remove,
+   rotate). Deferred: N5/N8/N9/N10/N13 and stats-vs-member-write (N13),
+   upload-vs-scan (N8), edit-vs-edit beyond N4, full aspect boundary
+   (media bytes vs sidecar vs rendition vs identity vs metadata vs dupe
+   vs album stats vs tree epoch).
+6. [done] Gates: `just quint-check` (33 convergence + 44 asset-aspect
+   executions = 33 imported + 11 new), traceability regenerated for the
+   new definitions, `operations-check` and `specs-check` green; the
+   generated doc now counts both model entries in its Proof line.
+
+## Known gaps and next phase
+
+- Model tracking is one-directional: `operations-check` validates that
+  every OP has a backend marker and that model `@operation` tags are
+  known, but it does not require every guarded OP to have a model action,
+  nor every event to have an operation claimant.
+- Guards/statuses are free text. The next phase should link guard strings
+  to REQ/C ids (or at least notes with code paths) so OP-4/OP-5/N11-style
+  contradictions are machine-detectable.
+- Existing model actions (OP-1/3/4/6/9/12) are not yet tagged with
+  `@operation`; only the new aspect actions are. Add those tags before
+  requiring reverse coverage.
+- Event markers cover the main handlers; watcher multi-event paths and
+  metadata-edit handlers remain unannotated.
+- `quint-check` and `operations-check` are precommit/check-aggregate
+  gates, not direct CI job steps; decide whether CI should run `just
+check` or the individual recipes.
 
 ## Interaction nodes (survey 2026-11-12, claims need tree-verification)
 

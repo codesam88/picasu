@@ -1,0 +1,12 @@
+[package]
+name = "quint-annotations"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true

@@ -48,6 +48,8 @@ add()
 // ── Status ──
 const modelSource = readFileSync(join(specsDir, 'eventual-consistency.qnt'), 'utf8')
 const runCount = (modelSource.match(/^\s+run\s+\w+/gm) ?? []).length
+const aspectSource = readFileSync(join(specsDir, 'asset-aspects.qnt'), 'utf8')
+const aspectRunCount = (aspectSource.match(/^\s+run\s+\w+/gm) ?? []).length
 const goalDecisions = new Map()
 for (const g of goals.goals) goalDecisions.set(g.decision, (goalDecisions.get(g.decision) ?? 0) + 1)
 const openRequirements = requirements.requirements.filter(r => r.status === 'open')
@@ -62,7 +64,7 @@ add()
 add(`Computed from the catalog statuses and \`utils/quint/pipeline/eventual-consistency.qnt\`;`)
 add(`the modeled-scope line comes from \`utils/quint/pipeline/scope.json\`.`)
 add()
-add(`- Proof: ${runCount} scripted runs (\`just quint-check\`); simulator traces are advisory.`)
+add(`- Proof: ${runCount} convergence runs + ${aspectRunCount} asset-aspect runs (${runCount + aspectRunCount} executed including imported runs; \`just quint-check\`); simulator traces are advisory.`)
 add(`- Goals: ${goalDecisions.get('committed') ?? 0} committed, ${goalDecisions.get('queued') ?? 0} queued, ${goalDecisions.get('dropped') ?? 0} dropped.`)
 add(`- Requirements: ${verifiedRequirements.length} verified, ${openRequirements.length} open${openRequirements.length ? ` (${openRequirements.map(r => r.id).join(', ')})` : ''}.`)
 add(`- Assumptions: ${[...assumptionStatuses].map(([status, count]) => `${count} ${status}`).join(', ')}.`)

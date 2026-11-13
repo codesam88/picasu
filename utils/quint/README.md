@@ -40,6 +40,13 @@ Current contents of `pipeline/`:
   `eventual-consistency.qnt` holds the actions, the `step`
   interleaving, and the runs.
 
+- `asset-aspects.qnt` — the four-aspect slice (asset file, sidecar,
+  thumbnail/derived, DB asset row): alignment predicates and
+  conflicting-pair runs over the same state; imports
+  `eventual-consistency.qnt`.
+- `operations.json` — internal mutation operations OP-1..OP-12 with
+  events, aspect reads/writes, guards, status and interaction nodes;
+  validated by `just operations-check` against backend annotations.
 - `events.json` — boundary and recovery events with their settled
   effects and known faults, validated by `just events-check`.
 - `goals.json` — goals G0–G4 with decision (`committed`, `queued`,
@@ -89,7 +96,21 @@ never silent.
   `pipeline/traceability.json` map.
 - `events-check.mjs`, `catalog-check.mjs` — catalog validation against
   `pipeline/catalog.schema.json`.
+- `operations-check.mjs` — validates `pipeline/operations.json` and the
+  `#[quint_annotations::operation(...)]` / `#[quint_annotations::event(...)]`
+  markers in `backend/src/**/*.rs`.
 - `gen-eventual-consistency-doc.mjs` — writes `docs/eventual-consistency.md`.
+
+## Operations and annotations
+
+`pipeline/operations.json` tracks the implementation of the four-aspect slice
+(asset file, sidecar, thumbnail/derived, DB asset row) as operations OP-1..OP-12.
+Each operation records its events, aspect reads/writes, guards, status and
+interaction nodes. Backend functions carry no-op attribute markers from the
+`utils/quint-annotations` crate (`#[quint_annotations::operation("OP-N")]`,
+`#[quint_annotations::event("EVENT_NAME")]`) so the validator can confirm every
+tracked operation has at least one implementation site. The macros return the
+item unchanged.
 
 The Quint toolchain installer stays in `scripts/deps/quint.sh` with the
 shared pins in `scripts/deps/versions.env`.
