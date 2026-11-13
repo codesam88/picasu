@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "description": "Implementation-tracking catalog for the four-aspect slice (asset file, sidecar, thumbnail/derived, DB asset row): maps operation ids OP-1..OP-12 to their implementing functions, events, aspect reads/writes, guards, nodes and status.",
+  "operations": [
+    {
+      "id": "OP-1",
+      "name": "SCAN_INDEX_APPLY",
+      "events": [
+        "FS_CREATE",
+        "FS_MODIFY",
+        "FS_MODIFY_INFLIGHT",
+        "FS_RENAME_FILE",
+        "FS_ATOMIC_REPLACE",
+        "FS_RENAME_DIR",
+        "FS_SIDECAR_CREATE",
+        "FS_SIDECAR_MODIFY",
+        "FS_SIDECAR_DELETE"
+      ],
+      "reads": ["asset_file", "sidecar"],
+      "writes": ["db_row", "thumbnail"],
+      "guards": ["C10 generation abort", "per-path lease"],
+      "status": "guarded",
+      "nodes": ["N1"],
+      "notes": "process_file: Open -> Hash -> Dedup -> Index -> Video; per-path try-and-abort cancels stale scans. Watcher sidecar-only events are dropped by the media gate (N7); scan/backfill is the current repair path."
+    },
+    {
+      "id": "OP-2",
+      "name": "API_UPLOAD",
+      "events": ["API_UPLOAD"],
+      "reads": [],
+      "writes": ["asset_file", "db_row", "thumbnail"],
+      "guards": ["FlushTreeTask::insert barrier (N8 open)"],
+      "status": "open",
+      "nodes": ["N8"],
+      "notes": "post_upload::upload writes the file in place and indexes before returning; premature-ack hazard tracked as N8."
+    },
+    {
+      "id": "OP-3",
+      "name": "API_DELETE",
+      "events": ["API_DELETE"],
+      "reads": ["asset_file", "db_row"],
+      "writes": ["asset_file", "sidecar", "thumbnail", "db_row"],
+      "guards": [
+        "C9 inline re-check",
+        "C10 leases",
+        "validate_paths_unchanged"
+      ],
+      "status": "guarded",
+      "nodes": ["N2", "N12"],
+      "notes": "delete::process_deletes plus cleanup_album_descendants; exact-path thumbnail reap."
+    },
+    {
+      "id": "OP-4",
+      "name": "API_ASSIGN_ASSET",
+      "events": ["API_ASSIGN_ALBUM_DIR_MOVE"],
+      "reads": ["asset_file", "sidecar", "db_row"],
+      "writes": ["asset_file", "sidecar", "db_row"],
+      "guards": ["C9 inline re-check", "C10 leases"],
+      "status": "open",
+      "nodes": ["N2", "N5"],
+      "notes": "move_asset_into_album: N2 guarded by C9/C10; N5 cross-table split remains open, so the operation status is open."
+    },
+    {
+      "id": "OP-5",
+      "name": "API_ASSIGN_DIR",
+      "events": ["API_ASSIGN_ALBUM_DIR_MOVE", "FS_RENAME_DIR"],
+      "reads": ["asset_file", "sidecar", "db_row"],
+      "writes": ["asset_file", "sidecar", "db_row"],
+      "guards": ["C5 cookie-paired prefix rewrite", "DB-state fallback"],
+      "status": "open",
+      "nodes": ["N3", "N5"],
+      "notes": "move_album_into_album plus apply_dir_move_plans: N3 guarded by C5; N5 cross-table split remains open, so the operation status is open."
+    },
+    {
+      "id": "OP-6",
+      "name": "API_ROTATE_IMAGE",
+      "events": ["API_ROTATE_IMAGE"],
+      "reads": ["sidecar", "thumbnail", "db_row"],
+      "writes": ["sidecar", "thumbnail", "db_row"],
+      "guards": ["sidecar persisted before thumbnail/DB", "C10 path lease"],
+      "status": "guarded",
+      "nodes": ["N1"],
+      "notes": "rotate_image: N11 is refuted (the pre-fix thumbnail-before-sidecar order no longer exists); aspectsRotateTest pins the sidecar-first order. Lease coverage is modeled by aspectsRotateVsScanTest."
+    },
+    {
+      "id": "OP-7",
+      "name": "API_EDIT_METADATA",
+      "events": ["API_EDIT_METADATA", "FS_SIDECAR_MODIFY"],
+      "reads": ["asset_file", "sidecar", "db_row"],
+      "writes": ["sidecar", "db_row"],
+      "guards": [
+        "sidecar write-before-store",
+        "rollback on store failure",
+        "C10 path lease"
+      ],
+      "status": "open",
+      "nodes": ["N4"],
+      "notes": "commit_metadata_edits: write sidecar then store; best-effort rollback."
+    },
+    {
+      "id": "OP-8",
+      "name": "ALBUM_STATS_CASCADE",
+      "events": [],
+      "reads": ["db_row"],
+      "writes": ["db_row"],
+      "guards": ["per-entry snapshot", "write-txn liveness re-check"],
+      "status": "deferred",
+      "nodes": ["N13"],
+      "notes": "album_task: album stats cascade; bounded staleness, no lost update."
+    },
+    {
+      "id": "OP-9",
+      "name": "SWEEP_STALE_PATHS",
+      "events": ["FS_DELETE", "WATCHER_GAP"],
+      "reads": ["db_row", "asset_file"],
+      "writes": ["db_row", "thumbnail"],
+      "guards": ["exact-path batches", "inline generation/lease/fs re-checks"],
+      "status": "guarded",
+      "nodes": ["N2", "N12"],
+      "notes": "sweep_stale_asset_paths plus sweep_remove_batch; missing paths only."
+    },
+    {
+      "id": "OP-10",
+      "name": "THUMBNAIL_GENERATE",
+      "events": [],
+      "reads": ["asset_file"],
+      "writes": ["thumbnail"],
+      "guards": ["atomic temp-file rename"],
+      "status": "open",
+      "nodes": ["N6"],
+      "notes": "generate_thumbnail_for_image: derived corruption undetected; regen frame can orphan."
+    },
+    {
+      "id": "OP-11",
+      "name": "RESET_CLEAR_TABLES",
+      "events": [],
+      "reads": [],
+      "writes": ["db_row"],
+      "guards": [],
+      "status": "open",
+      "nodes": ["N9"],
+      "notes": "clear_asset_tables_and_caches: drops tables and caches; derived bytes orphaned."
+    },
+    {
+      "id": "OP-12",
+      "name": "WATCHER_REMOVE",
+      "events": ["FS_DELETE"],
+      "reads": ["db_row", "asset_file"],
+      "writes": ["db_row", "thumbnail", "asset_file", "sidecar"],
+      "guards": ["path lease + generation re-check in submit path"],
+      "status": "open",
+      "nodes": ["N2"],
+      "notes": "handle_removed_file plus prune_asset_path: clear path, remove record/thumbnail if last path. prune_asset_path removes the media file and sidecar; handle_removed_file is the FS_DELETE lane, distinct from sweep OP-9."
+    }
+  ]
+}
