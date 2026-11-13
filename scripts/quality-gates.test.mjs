@@ -61,18 +61,7 @@ test("check mode writes nothing", (t) => {
   );
 });
 
-test("blob-link format for a known recipe", () => {
-  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(
-    md,
-    /https:\/\/github\.com\/codesam88\/picasu\/blob\/main\/justfile#L\d+-L\d+/,
-  );
-  assert.match(md, /justfile:\d+-\d+/);
-  assert.match(md, /backend-check/);
-});
-
 test("widened gate rule: unwired foo-lint is flagged, wired default-param recipe passes", (t) => {
-  // An unwired foo-lint recipe warns (exit 0).
   const dir1 = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir1, { recursive: true, force: true }));
   writeFileSync(join(dir1, "justfile"), "# foo\nfoo-lint:\n    echo foo\n");
@@ -84,7 +73,6 @@ test("widened gate rule: unwired foo-lint is flagged, wired default-param recipe
   assert.match(r1.out, /foo-lint/);
   assert.match(r1.out, /orphan/);
 
-  // A wired default-param recipe (bar-playwright baz="") passes.
   const dir2 = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir2, { recursive: true, force: true }));
   writeFileSync(
@@ -110,73 +98,40 @@ test("regenerated doc lists openapi-routes-release in the release lane", (t) => 
   const r = run(repoRoot, ["--generate", md]);
   assert.equal(r.code, 0, r.out);
   const content = readFileSync(md, "utf8");
-  assert.match(content, /### `openapi-routes-release`/);
-  assert.match(content, /### `openapi-routes-release`[\s\S]*?- Lanes: [^\n]*release/);
+  assert.match(content, /^\| release\b.*openapi-routes-release/m);
 });
 
-
-test("precommit lane present on backend-check", () => {
+test("rule graph adjacency", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /### `backend-check`[\s\S]*?- Lanes: [^\n]*precommit/);
-});
-
-test("every emitted lane node has at least one edge and no self-loops", () => {
-  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const m = md.match(/```mermaid\n([\s\S]*?)```/);
-  assert.ok(m, "mermaid block present");
+  const m = md.match(/```text\n([\s\S]*?)```/);
+  assert.ok(m, "text block present");
   const block = m[1];
-  const laneNodes = [...block.matchAll(/^\s*(lane_[A-Za-z0-9_]+)\[/gm)].map((x) => x[1]);
-  const edges = [...block.matchAll(/^\s*(\S+?)\s*-->\s*([A-Za-z0-9_]+)/gm)].map((x) => ({
-    from: x[1],
-    to: x[2],
-  }));
-  for (const node of laneNodes) {
-    assert.ok(
-      edges.some((e) => e.from === node),
-      `lane node ${node} has no outgoing edge`,
-    );
-  }
-  for (const e of edges) {
-    assert.notEqual(e.from, e.to, `self-loop edge ${e.from} --> ${e.to}`);
-  }
-  // Only lane_* ids may be sourceless: every recipe node has an incoming edge.
-  const nodeIds = new Set(edges.flatMap((e) => [e.from, e.to]));
-  for (const id of nodeIds) {
-    if (id.startsWith("lane_")) continue;
-    assert.ok(
-      edges.some((e) => e.to === id),
-      `recipe node ${id} has no incoming edge`,
-    );
-  }
-  assert.ok(
-    edges.some((e) => e.from === "lane_precommit" && e.to === "check"),
-    "lane_precommit --> check edge missing",
-  );
-  assert.ok(
-    edges.some((e) => e.from === "lane_precommit" && e.to === "test"),
-    "lane_precommit --> test edge missing",
-  );
+  assert.match(block, /utils-check, zizmor-check/);
+  assert.match(block, /openapi-routes-match, openapi-sanity/);
+  assert.match(block, /^frontend-test\b.*frontend-vitest/m);
+  assert.match(block, /^frontend-test\b.*frontend-playwright/m);
+  assert.match(block, /^utils-check\s+->\s*zizmor-check\s*$/m);
 });
 
-test("openapi-sanity has no direct lane edge", () => {
+test("lane rows for ci-backend, ci-zizmor triggers, and release invokes", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const m = md.match(/```mermaid\n([\s\S]*?)```/);
-  assert.ok(m);
-  const block = m[1];
-  const directLaneEdges = [...block.matchAll(/^\s*lane_[A-Za-z0-9_]+\s*-->\s*openapi_sanity\b/gm)];
-  assert.equal(directLaneEdges.length, 0, "openapi-sanity should not be a direct lane target");
+  assert.match(md, /^\| ci-backend\s+\| PR, main, manual\s*\|/m);
+  assert.match(md, /^\| ci-zizmor\s+\| PR, main, scheduled, manual\s*\|/m);
+  assert.match(md, /^\| release\b.*openapi-routes-release/m);
+  assert.doesNotMatch(md, /ci-zizmor-scheduled/);
+  assert.doesNotMatch(md, /—\s*\|\s*$/m);
 });
 
-test("checks sections carry a Required by line", () => {
+test("backend-check row shows precommit, ci-backend", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const backend = md.match(/### `backend-check`([\s\S]*?)(?=\n### `|\s*$)/);
-  assert.ok(backend, "backend-check section present");
-  assert.match(backend[1], /- Required by: `check`\n/);
-  const sanity = md.match(/### `openapi-sanity`([\s\S]*?)(?=\n### `|\s*$)/);
-  assert.ok(sanity, "openapi-sanity section present");
-  assert.match(sanity[1], /- Required by: .*`openapi-check`/);
+  assert.match(md, /`backend-check`[^\n]*precommit, ci-backend/);
 });
 
+test("doc contains no #L anchors and no file:line references", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.doesNotMatch(md, /#L/);
+  assert.doesNotMatch(md, /:\d+-\d+/);
+});
 
 test("orphan foo-check in neither set is flagged", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
@@ -189,6 +144,22 @@ test("orphan foo-check in neither set is flagged", (t) => {
   const r = run(dir);
   assert.match(r.out, /foo-check/);
   assert.match(r.out, /orphan/);
+});
+
+test("synthetic foo-check generates Other family and missing-family warning", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, "justfile"), "# foo\nfoo-check:\n    echo foo\n");
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  const md = readFileSync(join(dir, "docs", "quality-gates.md"), "utf8");
+  assert.match(md, /### Other/);
+  assert.match(md, /`foo-check`/);
+  const r = run(dir);
+  assert.match(r.out, /foo-check/);
+  assert.match(r.out, /has no check family/);
 });
 
 test("bar-test reachable from test aggregate without workflow is flagged as not-run-in-CI", (t) => {
@@ -208,8 +179,6 @@ test("bar-test reachable from test aggregate without workflow is flagged as not-
 });
 
 test("non-allowlisted PR-only recipe is flagged as unreachable from aggregates", (t) => {
-  // Job `security` exists in no mapping table: an unknown job must still
-  // be captured as its own lane, not silently dropped.
   const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "justfile"), "# lint\nlint-check:\n    echo lint\n");
@@ -243,22 +212,12 @@ test("inline check tooling without a just recipe is flagged", (t) => {
   assert.match(r.out, /without a just recipe/);
 });
 
-test("mermaid labels carry invocation and CI-job prefixes", () => {
-  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const m = md.match(/```mermaid\n([\s\S]*?)```/);
-  assert.ok(m, "mermaid block present");
-  const block = m[1];
-  assert.match(block, /\["just backend-check"\]/);
-  assert.match(block, /\["ci backend \(/);
-  assert.match(block, /\["just precommit"\]/);
-});
-
 test("allowlisted CI-only recipe passes with its reason rendered", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /### `dylint-check`/);
+  assert.match(md, /dylint-check/);
   assert.match(
     md,
-    /### `dylint-check`[\s\S]*?Note: needs nightly-2026-08-01 toolchain\+rDylint; CI-only by decision 2026-11-05/,
+    /Note: `dylint-check` - needs nightly-2026-08-01 toolchain\+rDylint; CI-only by decision 2026-11-05/,
   );
   const r = run(repoRoot);
   assert.equal(r.code, 0, r.out);

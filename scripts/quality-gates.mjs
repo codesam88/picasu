@@ -33,7 +33,6 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
@@ -583,60 +582,12 @@ for (const name of prRecipes) {
   );
 }
 
-// ---------- base url ----------
-function baseUrl() {
-  try {
-    const out = execFileSync("git", ["remote", "get-url", "origin"], {
-      cwd: root,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-    let m = out.match(/github\.com[:/](.+?)(?:\.git)?$/);
-    if (m) {
-      return `https://github.com/${m[1].replace(/\.git$/, "")}`;
-    }
-  } catch {
-    // ignore
-  }
-  return "https://github.com/codesam88/picasu";
-}
-const base = baseUrl();
-const blobBase = `${base}/blob/main`;
-
-function link(path, start, end) {
-  const url = `${blobBase}/${path}#L${start}-L${end}`;
-  return `[${path}:${start}-${end}](${url})`;
-}
-
-// ---------- underlying paths ----------
-function underlyingPaths(r) {
-  const set = new Set();
-  for (const bl of r.bodyLines) {
-    const txt = bl.text;
-    const tokens = txt.split(/[\s'"`()]+/);
-    for (const t of tokens) {
-      const p = t.replace(/[),]+$/, "").replace(/^\.\//, "");
-      if (/\.(mjs|sh|py|md|yaml|yml|rs|toml|json)$/.test(p)) {
-        const full = join(root, p);
-        if (existsSync(full)) {
-          try {
-            if (statSync(full).isFile()) set.add(p);
-          } catch (e) {
-            // ignore
-          }
-        }
-      }
-    }
-  }
-  return [...set].sort();
-}
-
 // ---------- generate doc ----------
 const gateRecipes = recipes.filter(isGateRecipe).sort((a, b) =>
   a.name < b.name ? -1 : 1,
 );
 const displaySet = new Set([
-  ...gateRecipes.map((r) => r.name).filter((n) => U.has(n)),
+  ...gateRecipes.map((r) => r.name),
   "precommit",
   "test",
   "check",
@@ -652,83 +603,170 @@ const preferredLaneOrder = [
   "audit",
   "nightly",
   "release",
+];
+// Lanes table order: precommit first, then preferred CI order, then others.
+const allLanes = new Set(directInvocations.map((inv) => inv.lane));
+if (precommitRecipe) allLanes.add("precommit");
+const laneOrder = [
   "precommit",
-];
-// Newcomer lanes (new jobs/files) join after the preferred order,
-// sorted for determinism. Lane nodes are emitted only where edged.
-const laneIds = [
   ...preferredLaneOrder,
-  ...[...new Set(directInvocations.map((inv) => inv.lane))].sort().filter(
-    (l) => !preferredLaneOrder.includes(l),
+  ...[...allLanes].sort().filter(
+    (l) => l !== "precommit" && !preferredLaneOrder.includes(l),
   ),
-];
-// Label rule: every node is labeled by how you invoke it. Recipe nodes:
-// `just <name>`. Workflow lane nodes: `ci <short>`. The `precommit` lane
-// is entered by running `just precommit` (the git hook runs exactly that),
-// so it is labeled `just precommit`.
-function laneDisplayBase(lane) {
-  if (lane === "precommit") return "just precommit";
-  if (lane.startsWith("ci-")) return `ci ${lane.slice(3)}`;
-  return `ci ${lane}`;
-}
-function laneLabelFor(lane) {
-  const toks = [...(laneTriggers.get(lane) || new Set())];
-  const base = laneDisplayBase(lane);
-  if (toks.length === 0) return base;
-  return `${base} (${toks.join("+")})`;
-}
-const laneLabel = Object.fromEntries(laneIds.map((l) => [l, laneLabelFor(l)]));
+].filter((l) => allLanes.has(l));
+// Drop lanes that invoke no displayed recipe (plus keep precommit).
+const includedLanes = laneOrder.filter(
+  (lane) =>
+    lane === "precommit" ||
+    directInvocations.some(
+      (inv) => inv.lane === lane && displaySet.has(inv.recipe),
+    ),
+);
 
-// mermaid: left-to-right. Edges only (a) lane -> directly-invoked
-// entry recipes and (b) recipe -> its justfile deps.
-const mermaidLines = ["```mermaid", "graph LR"];
-const edgeSet = new Set();
-// (a) lane -> directly-invoked entry recipes (displayed recipes: gate
-// recipes plus the check/test root aggregates)
-const directPairs = new Set();
-for (const inv of directInvocations) {
-  if (!laneIds.includes(inv.lane)) continue;
-  if (!recipeByName.has(inv.recipe)) continue;
-  if (!displaySet.has(inv.recipe)) continue;
-  const r = recipeByName.get(inv.recipe);
-  const isEntry =
-    isGateRecipe(r) || inv.recipe === "check" || inv.recipe === "test";
-  if (!isEntry) continue;
-  directPairs.add(`${inv.lane}::${inv.recipe}`);
-}
-for (const pair of directPairs) {
-  const [lane, recipe] = pair.split("::");
-  edgeSet.add(
-    `  lane_${lane.replace(/-/g, "_")} --> ${recipe.replace(/-/g, "_")}["just ${recipe}"]`,
-  );
-}
-// (b) recipe -> its justfile deps (displayed recipes that have lanes only)
-for (const name of displaySet) {
+// Displayed children for the rule graph.
+function displayedChildren(name) {
   const r = recipeByName.get(name);
-  if (!r) continue;
-  if (!recipeLanes.has(name)) continue;
-  for (const dep of r.deps) {
-    if (!recipeByName.has(dep)) continue;
-    if (!displaySet.has(dep)) continue;
-    edgeSet.add(
-      `  ${name.replace(/-/g, "_")} --> ${dep.replace(/-/g, "_")}["just ${dep}"]`,
-    );
+  if (!r) return [];
+  if (name === "precommit") {
+    return ["check", "test"].filter((n) => recipeByName.has(n) && displaySet.has(n)).sort();
+  }
+  return (r.deps || []).filter((d) => displaySet.has(d)).sort();
+}
+
+// displayed recipes with no displayed parent
+const childSet = new Set();
+for (const name of displaySet) {
+  for (const c of displayedChildren(name)) childSet.add(c);
+}
+// Displayed recipes that no other recipe calls and that call nothing.
+const noCaller = [...displaySet].filter(
+  (n) => !childSet.has(n) && displayedChildren(n).length === 0,
+).sort();
+
+// render rule graph as an adjacency list
+const graphSources = [...displaySet].filter((n) => displayedChildren(n).length > 0);
+const priority = ["precommit", "check", "test", "audit"];
+const orderedSources = [
+  ...priority.filter((s) => graphSources.includes(s)),
+  ...graphSources.filter((s) => !priority.includes(s)).sort(),
+];
+const maxSrcWidth = orderedSources.reduce((m, s) => Math.max(m, s.length), 0);
+const graphIndent = " ".repeat(maxSrcWidth + 4);
+const graphLines = [];
+for (const src of orderedSources) {
+  const items = displayedChildren(src);
+  const prefix = src.padEnd(maxSrcWidth) + " -> ";
+  let cur = prefix;
+  const out = [];
+  for (const item of items) {
+    const withItem = cur === prefix ? prefix + item : cur + ", " + item;
+    if (withItem.length <= 100) {
+      cur = withItem;
+    } else {
+      if (cur !== prefix) out.push(cur + ",");
+      cur = graphIndent + item;
+    }
+  }
+  if (cur !== prefix && cur.trim() !== "") out.push(cur);
+  graphLines.push(...out);
+}
+
+// table helper (prettier-canonical)
+function renderTable(headers, rows) {
+  const widths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length)),
+  );
+  const fmtRow = (cells) =>
+    "| " + cells.map((c, i) => String(c).padEnd(widths[i])).join(" | ") + " |";
+  const sep = "| " + widths.map((w) => "-".repeat(w)).join(" | ") + " |";
+  const out = [fmtRow(headers), sep];
+  for (const r of rows) out.push(fmtRow(r));
+  return out;
+}
+
+// Lanes table rows
+const laneRows = [];
+for (const lane of includedLanes) {
+  const triggers =
+    lane === "precommit"
+      ? "local"
+      : [...(laneTriggers.get(lane) || new Set())].join(", ") || "\u2014";
+  // distinct files
+  const files = [
+    ...new Set(directInvocations.filter((inv) => inv.lane === lane).map((inv) => basename(inv.file))),
+  ];
+  const workflowCell =
+    lane === "precommit"
+      ? "`justfile`"
+      : files.length
+      ? files.map((f) => "`" + f + "`").join(", ")
+      : "\u2014";
+  // directly invoked gate recipes
+  let invokes = [];
+  if (lane === "precommit") {
+    invokes = ["check", "test"];
+  } else {
+    invokes = [
+      ...new Set(
+        directInvocations
+          .filter((inv) => inv.lane === lane)
+          .map((inv) => inv.recipe)
+          .filter((name) => recipeByName.has(name) && isGateRecipe(recipeByName.get(name))),
+      ),
+    ].sort();
+  }
+  const invokesCell = invokes.length ? invokes.map((n) => "`" + n + "`").join(", ") : "\u2014";
+  laneRows.push([lane, triggers, workflowCell, invokesCell]);
+}
+
+// Check families for the overview. Membership is curated; a gate recipe
+// that matches no entry lands in "Other" with a warning.
+const familyMap = [
+  ["Backend (Rust)", ["backend-check", "backend-test", "backend-test-release", "utils-check", "utils-test", "msrv-check"]],
+  ["Frontend", ["frontend-check", "frontend-vitest", "frontend-playwright", "frontend-test"]],
+  ["API contract", ["openapi-check", "openapi-breakcheck", "openapi-json-match", "openapi-lint", "openapi-routes-match", "openapi-routes-release", "openapi-sanity", "auth-matrix-check"]],
+  ["Security & supply chain", ["audit", "backend-audit", "frontend-audit", "zizmor-check", "dylint-check"]],
+  ["Fuzzing", ["fuzz-check", "fuzz-matrix"]],
+  ["Specs & catalogs", ["quint-check", "spec-check", "events-check", "catalog-check"]],
+  ["Repo & docs hygiene", ["docs-check", "plan-lint", "env-var-check", "gates-check", "branches-prune-test"]],
+];
+
+const displayedGateNames = [...displaySet].filter((n) => {
+  const r = recipeByName.get(n);
+  return r && isGateRecipe(r);
+});
+
+// map recipe -> family
+const recipeFamily = new Map();
+for (const [fam, members] of familyMap) {
+  for (const m of members) recipeFamily.set(m, fam);
+}
+
+const familySections = []; // {name, recipes:[]}
+const otherRecipes = [];
+for (const name of displayedGateNames) {
+  if (recipeFamily.has(name)) {
+    // ensure section exists
+    if (!familySections.find((s) => s.name === recipeFamily.get(name))) {
+      familySections.push({ name: recipeFamily.get(name), recipes: [] });
+    }
+    familySections.find((s) => s.name === recipeFamily.get(name)).recipes.push(name);
+  } else {
+    otherRecipes.push(name);
   }
 }
-// lane nodes: only those with at least one edge
-const laneNodesWithEdges = new Set();
-for (const e of edgeSet) {
-  const mm = e.match(/^\s*(lane_[A-Za-z0-9_]+)\s*-->/);
-  if (mm) laneNodesWithEdges.add(mm[1]);
-}
-for (const lane of laneIds) {
-  const id = `lane_${lane.replace(/-/g, "_")}`;
-  if (!laneNodesWithEdges.has(id)) continue;
-  mermaidLines.push(`  ${id}["${laneLabel[lane]}"]`);
-}
-for (const e of [...edgeSet].sort()) mermaidLines.push(e);
-mermaidLines.push("```");
+// order families per familyMap, then Other
+const orderedFamilies = familyMap
+  .map(([fam]) => fam)
+  .filter((fam) => familySections.some((s) => s.name === fam));
+if (otherRecipes.length) orderedFamilies.push("Other");
 
+// warning for unmapped
+for (const name of otherRecipes.sort()) {
+  warnings.push(`recipe '${name}' has no check family (add it to the family map in scripts/quality-gates.mjs)`);
+}
+
+// build doc
 const docLines = [];
 docLines.push("# Quality gates");
 docLines.push("");
@@ -736,62 +774,81 @@ docLines.push(
   "Generated by `scripts/quality-gates.mjs` from the `justfile` and workflow files. Do not edit by hand.",
 );
 docLines.push("");
-docLines.push("## Lane graph");
+docLines.push("## Rule graph");
 docLines.push("");
-docLines.push(...mermaidLines);
+docLines.push("```text");
+docLines.push(...graphLines);
+docLines.push("```");
 docLines.push("");
-docLines.push("## Checks");
+docLines.push(
+  "`precommit` runs `check` and `test` on `main`; on other branches it runs a path-targeted subset of their members.",
+);
 docLines.push("");
-
-for (const r of gateRecipes) {
-  const lanes = [...(recipeLanes.get(r.name) || new Set())].sort();
-  docLines.push(`### \`${r.name}\``);
-  docLines.push("");
-  if (r.annotation) {
-    docLines.push(`Annotation: ${r.annotation}`);
-    docLines.push("");
-  }
+if (noCaller.length) {
   docLines.push(
-    `- Recipe: ${link("justfile", r.startLine, r.endLine)} \`justfile:${r.startLine}-${r.endLine}\``,
-  );
-  docLines.push(`- Lanes: ${lanes.length ? lanes.join(", ") : "(none)"}`);
-  const note = allowlistByName.get(r.name);
-  if (note) docLines.push(`  Note: ${note}`);
-  // invocations
-  const invs = directInvocations.filter((inv) => inv.recipe === r.name);
-  if (invs.length) {
-    docLines.push("- Invocations:");
-    for (const inv of invs) {
-      docLines.push(
-        `  - ${link(inv.file, inv.startLine, inv.endLine)} \`${inv.file}:${inv.startLine}-${inv.endLine}\``,
-      );
-    }
-  } else {
-    docLines.push("- Invocations: (none direct; reached via aggregate)");
-  }
-  // underlying
-  const ups = underlyingPaths(r);
-  if (ups.length) {
-    docLines.push("- Underlying:");
-    for (const p of ups) {
-      const lc = readFileSync(join(root, p), "utf8").split("\n").length;
-      docLines.push(
-        `  - ${link(p, 1, lc)} \`${p}:1-${lc}\``,
-      );
-    }
-  }
-  // required by (all recipes, including non-gate aggregates)
-  const parents = recipes
-    .filter((q) => q.deps.includes(r.name))
-    .map((q) => q.name)
-    .sort();
-  docLines.push(
-    `- Required by: ${parents.length ? parents.map((p) => `\`${p}\``).join(", ") : "(none - lane entry)"}`,
+    "Checks no other recipe calls: " + noCaller.map((n) => "`" + n + "`").join(", ") + ".",
   );
   docLines.push("");
 }
 
-const content = docLines.join("\n");
+docLines.push("## Lanes");
+docLines.push("");
+docLines.push(
+  "Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block.",
+);
+docLines.push("");
+docLines.push(...renderTable(["Lane", "Triggers", "Workflow", "Invokes"], laneRows));
+docLines.push("");
+
+docLines.push("## Check families");
+docLines.push("");
+
+for (const fam of orderedFamilies) {
+  docLines.push("### " + fam);
+  docLines.push("");
+  const section = familySections.find((s) => s.name === fam);
+  const members = fam === "Other" ? otherRecipes.sort() : (section ? section.recipes : []);
+  // sort members by family map order if possible
+  let orderedMembers = members;
+  if (fam !== "Other") {
+    const fm = familyMap.find(([f]) => f === fam);
+    if (fm) {
+      const orderIndex = new Map(fm[1].map((n, i) => [n, i]));
+      orderedMembers = [...members].sort((a, b) => (orderIndex.get(a) ?? 999) - (orderIndex.get(b) ?? 999));
+    }
+  } else {
+    orderedMembers = [...members].sort();
+  }
+  const rows = orderedMembers.map((name) => {
+    const r = recipeByName.get(name);
+    const desc = r && r.annotation ? r.annotation : "\u2014";
+    const lanes = [...(recipeLanes.get(name) || new Set())].sort((a, b) => {
+      const ia = laneOrder.indexOf(a);
+      const ib = laneOrder.indexOf(b);
+      if (ia !== -1 || ib !== -1) {
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      }
+      return a < b ? -1 : 1;
+    });
+    const runsIn = lanes.length ? lanes.join(", ") : "\u2014";
+    return ["`" + name + "`", desc, runsIn];
+  });
+  docLines.push(...renderTable(["Check", "Description", "Runs in"], rows));
+  docLines.push("");
+  // allowlist notes for this family
+  for (const name of orderedMembers) {
+    const reason = allowlistByName.get(name);
+    if (reason) docLines.push("Note: `" + name + "` - " + reason);
+  }
+  if (orderedMembers.some((n) => allowlistByName.has(n))) docLines.push("");
+}
+
+let content = docLines.join("\n");
+if (!content.endsWith("\n")) content += "\n";
+content = content.replace(/\n{2,}$/, "\n");
+
 
 // ---------- generate and/or drift-check ----------
 // --generate <path>: write fresh output there (explicit generation).

@@ -55,8 +55,8 @@ change the dependency set.
 Settled 2026-11-05: tracking follows option A — the `justfile` is the
 source of truth; a `just gates-check` gate verifies every
 check/test recipe is scheduled in its lane and generates
-`docs/quality-gates.md` (lane graph plus per-check annotation taken
-from the `justfile` recipe comments).
+`docs/quality-gates.md` (rule graph, lane coverage, check families;
+see step 10).
 
 ## Steps
 
@@ -155,6 +155,7 @@ gates-check` runs inside `just check` and in CI so a new check
 such as `shellshock` cannot land unscheduled: adding the recipe
 without wiring its lane fails the gate, and the docs regenerate with
 it. `just docs-check`, `just plan-lint` pass.
+The doc layout described here was replaced in step 10.
 Out: lane-semantics changes (steps 1-5 own those), registry files
 (option B, not pursued), runtime CI reporting.
 
@@ -196,6 +197,20 @@ fails the gate. Seed allowlist (c):
 `dylint-check` — nightly toolchain, CI-only by decision). Graph and
 sections otherwise unchanged in style. `just gates-check` passes.
 Out: steps 1-6, recipe/workflow content changes, new lanes.
+
+### 10. Reshape the generated doc for scanning (done 2026-11-13)
+
+Scope: `scripts/quality-gates.mjs` (+ test), `justfile` `gates-check`,
+regenerated `docs/quality-gates.md`.
+Done: the doc drops the mermaid lane graph, per-check sections,
+line references and underlying-file lists. It renders a textual rule
+graph (recipe edges only, no lanes), a lane table (triggers, workflow,
+directly invoked recipes), and check families (check, annotation,
+lanes) with allowlist notes. Families are an explicit map in the
+script; an unmapped gate recipe lands in `Other` with a warning.
+`gates-check` runs the generator's node tests before the drift check,
+so the doc's structure is covered by the gate that produces it.
+Out: lane derivation, wiring checks, recipe/workflow content.
 
 ## Verification
 
