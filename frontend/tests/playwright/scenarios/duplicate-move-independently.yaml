@@ -5,7 +5,7 @@ covers:
     - PUT /put/assign_album
   ui:
     - .desktop-small-image
-    - toast:success:Moved to album
+    - toast:success:Moved 1 file to album
 
 given:
   - user:
@@ -86,7 +86,7 @@ steps:
     assert:
       - ui.toast:
           type: success
-          contains: Moved to album
+          contains: Moved 1 file to album
       - ui.modal: closed
 
   # Verify we're back at the timeline — all images still visible (moving

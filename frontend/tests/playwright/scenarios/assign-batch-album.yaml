@@ -3,7 +3,7 @@ covers:
   api:
     - PUT /put/assign_album
   ui:
-    - toast:success:Moved to album
+    - toast:success:Moved 2 files to album
     - .desktop-small-image
 
 given:
@@ -71,7 +71,7 @@ steps:
     assert:
       - ui.toast:
           type: success
-          contains: Moved to album
+          contains: Moved 2 files to album
 
   # Both photos should now live in the destination album
   - when:
