@@ -151,6 +151,7 @@ pub async fn submit_index(src: &Path, job_id: u64) -> Result<()> {
 /// blocking pool, CPU work (hash, index, video) on the shared Rayon pool
 /// behind the N-1 admittance semaphore. Asset-table flushes go to the
 /// serial writer (`tasks::queue::writer`), never to detached batches.
+#[quint::operation("OP-1")]
 pub async fn process_file(path: PathBuf) -> Result<()> {
     use crate::tasks::queue::writer::submit_flush_insert;
 

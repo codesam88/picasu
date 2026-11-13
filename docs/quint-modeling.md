@@ -69,9 +69,12 @@ review of each classification.
   with `quint run`.
 - `scripts/deps/quint.sh` + `QUINT_VERSION`: pinned toolchain,
   installed via `just install quint`, no JDK required.
-- `just quint-check`: typecheck plus `quint test` over the model entry
-  point (`utils/quint/pipeline/eventual-consistency.qnt`), wired into the `check`
-  aggregate so every precommit runs it.
+- `just quint-check`: typecheck plus `quint test` over both pipeline specs
+  (`utils/quint/pipeline/eventual-consistency.qnt` and
+  `utils/quint/pipeline/asset-aspects.qnt`), wired into the `check`
+  aggregate so every precommit runs it. The operations layer
+  (`pipeline/operations.json` and backend markers) is validated by
+  `just operations-check`.
 - Requirement registry: `utils/quint/pipeline/requirements.json` carries each derived
   obligation with owner, gate and status; the generated
   `utils/quint/pipeline/traceability.json` maps model definitions to their assumption
