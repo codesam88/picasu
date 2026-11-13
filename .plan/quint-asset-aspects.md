@@ -175,7 +175,7 @@ check` or the individual recipes.
 8. [open] Re-verify the interaction survey (N1–N13) and the OP guard
    strings in `operations.json` against the merged tree; refresh node
    statuses, guard strings and evidence. Blocks all modeling below.
-9. [open] Model the unindexed upload window (N8) in the four-aspect
+9. [done] Model the unindexed upload window (N8) in the four-aspect
    slice: `UploadStoredOnly` (file present, row/thumb/sidecar absent —
    unaligned by design), upload-vs-sweep on a reused path (stale prior
    row → prune → re-index vs prune-after-upload keeps a stale row until
@@ -252,14 +252,7 @@ survey claim contradicts a done item — re-check the tree first.
   metadata until media rescan. [open, re-verified 2026-11-13: watcher
   media gate still filters `.xmp`; scan/backfill remains the repair
   path.]
-- N8 upload 200-before-visibility. [open, reframed 2026-11-13 and
-  re-verified 2026-11-13: store-and-return + fire-and-forget intake
-  enqueue unchanged; 200-before-visibility window is by-design eventual.
-  The stale note about `FlushTreeTask::insert([])` + `tree_changed()`
-  described the dropped pipeline and no longer applies. Model the
-  unindexed window instead: file stored but not yet picked up by intake,
-  watcher supersession semantics, and whether scan-vs-upload can
-  resurrect or drop an uploaded file before first indexing.]
+- N8 upload 200-before-visibility. [modeled 2026-11-13 (step 9): store-and-return + fire-and-forget intake enqueue; UploadStoredOnly/UploadIndexed/IntakePickupFileGone actions + UploadingWindow predicate in asset-aspects.qnt (49 tests, +5 new runs); no unguarded hazard found. By-design eventual window remains.]
 - N9 reset drops tables but leaves derived bytes orphaned. [open,
   re-verified 2026-11-13: clear_asset_tables_and_caches drops tables and
   caches; derived bytes orphaned.] [minor].
