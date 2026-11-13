@@ -300,7 +300,7 @@
     {
       "id": "SCOPE-11",
       "kind": "SCOPE",
-      "title": "Sweep writer-apply micro-stage",
+      "title": "sweep_remove_batch micro-stage",
       "refs": [
         "asset-aspects.qnt:SweepWriterApply",
         "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",

@@ -145,7 +145,7 @@
       "events": ["FS_DELETE"],
       "reads": ["db_row", "asset_file"],
       "writes": ["db_row", "thumbnail", "asset_file", "sidecar"],
-      "guards": ["submit_watcher_remove bumps the path generation", "process_watcher_remove checks is_superseded and path_epoch::is_busy", "handle_removed_file restores the exact path for writer resolution"],
+      "guards": ["submit_watcher_remove bumps the path generation", "process_watcher_remove checks is_superseded and path_epoch::is_busy", "handle_removed_file restores the exact path for sweep_remove_batch resolution"],
       "status": "open",
       "nodes": ["N2"],
       "notes": "handle_removed_file plus prune_asset_path: clear path, remove record/thumbnail if last path. prune_asset_path removes the media file and sidecar; handle_removed_file is the FS_DELETE lane, distinct from sweep OP-9."
