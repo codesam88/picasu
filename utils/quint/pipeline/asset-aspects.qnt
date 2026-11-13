@@ -99,13 +99,30 @@ module asset_aspects {
 
   // @operation OP-9
   // @scope SCOPE-9
-  action SweepRemoveBatchApply: bool = all {
+  action SweepRecheck: bool = all {
+    sweepBatch.keys().size() > 0,
+    sweepBatch' = sweepBatch.keys().filter(p =>
+      sweepBatch.get(p) == generations.get(p) and
+      not(p.in(leasedPaths)) and
+      not(files.get(p).present)
+    ).mapBy(p => sweepBatch.get(p)),
+    sweepPending' = sweepPending,
+    files' = files,
+    generations' = generations,
+    intake' = intake,
+    rows' = rows,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+    leasedPaths' = leasedPaths,
+  }
+
+  // @operation OP-9
+  // @scope SCOPE-11
+  action SweepWriterApply: bool = all {
     sweepBatch.keys().size() > 0,
     rows' = rows.keys().filter(p =>
       not (sweepBatch.keys().contains(p) and
            rows.keys().contains(p) and
-           sweepBatch.get(p) == generations.get(p) and
-           not(p.in(leasedPaths)) and
            not(files.get(p).present))
     ).mapBy(k => rows.get(k)),
     sweepBatch' = Map(),
@@ -116,6 +133,26 @@ module asset_aspects {
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths,
+  }
+
+  // @operation OP-4
+  // @scope SCOPE-10
+  action MoveLeaseAcquire(p: str, q: str): bool = all {
+    p.in(PATHS),
+    q.in(PATHS),
+    not(p == q),
+    files.get(p).present,
+    not(files.get(q).present),
+    rows.keys().contains(p),
+    files' = files,
+    rows' = rows,
+    generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
+    intake' = intake,
+    sweepPending' = sweepPending,
+    sweepBatch' = sweepBatch,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+    leasedPaths' = leasedPaths.union(Set(p, q)),
   }
 
   // @operation OP-4
@@ -268,7 +305,7 @@ module asset_aspects {
     .then(ApiMoveFsOnly("p1", "p3"))
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
-    .then(SweepRemoveBatchApply)
+    .then(SweepRecheck)
     .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
@@ -284,7 +321,7 @@ module asset_aspects {
     .then(ApiMoveFsOnly("p1", "p3"))
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
-    .then(SweepRemoveBatchApply)
+    .then(SweepRecheck)
     .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(MoveRowRewrite("p1", "p3"))
     .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
@@ -297,7 +334,7 @@ module asset_aspects {
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SubmitWatcherRemove("p1"))
-    .then(SweepRemoveBatchApply)
+    .then(SweepRecheck)
     .then(all { assert(rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
@@ -307,8 +344,26 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
-    .then(SweepRemoveBatchApply)
+    .then(SweepRecheck)
+    .then(SweepWriterApply)
     .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  // @scope SCOPE-10
+  // @scope SCOPE-11
+  run aspectsAbsorbedSweepTest = init
+    .then(ExternalDelete("p3"))
+    .then(ScanRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(MoveLeaseAcquire("p1", "p3"))
+    .then(SweepWriterApply)
+    .then(all { assert(not(rows.keys().contains("p3"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(ApiMoveFsOnly("p1", "p3"))
+    .then(MoveRowRewrite("p1", "p3"))
+    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -493,20 +548,15 @@ module asset_aspects {
 
   // @assumes ASS-3
   // @assumes ASS-6
-  // @scope SCOPE-9
-  val SweepNeverPrunesLeased = leasedPaths.forall(p => rows.keys().contains(p) or not(leasedPaths.contains(p)))
+  // @scope SCOPE-11
+  val SweepWriterNeverPrunesPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
 
   // @assumes ASS-3
   // @assumes ASS-6
   // @scope SCOPE-9
-  val SweepNeverPrunesPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
-
-  // @assumes ASS-3
-  // @assumes ASS-6
-  // @scope SCOPE-9
-  val SweepNeverPrunesChangedGeneration = sweepBatch.keys().forall(p => sweepBatch.get(p) == generations.get(p) or not(sweepBatch.keys().contains(p)))
+  val SweepRecheckBatchClean = sweepBatch.keys().forall(p => sweepBatch.get(p) == generations.get(p) and not(p.in(leasedPaths)) and not(files.get(p).present))
 
   // @assumes ASS-6
-  // @scope SCOPE-9
-  val SweepBatchPruneOnly = sweepBatch.keys().size() >= 0 and rows.keys().size() <= PATHS.size()
+  // @scope SCOPE-11
+  val SweepWriterPruneOnly = sweepBatch.keys().size() >= 0 and rows.keys().size() <= PATHS.size()
 }

@@ -218,7 +218,8 @@
             "SCOPE-7",
             "SCOPE-8",
             "SCOPE-9",
-            "SCOPE-10"
+            "SCOPE-10",
+            "SCOPE-11"
           ]
         },
         "title": { "type": "string" },
