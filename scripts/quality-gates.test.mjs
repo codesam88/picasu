@@ -122,9 +122,24 @@ test("lane rows for ci-backend, ci-zizmor triggers, and release invokes", () => 
   assert.doesNotMatch(md, /—\s*\|\s*$/m);
 });
 
-test("backend-check row shows precommit, ci-backend", () => {
+test("family row splits CI lane and local markers", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /`backend-check`[^\n]*precommit, ci-backend/);
+  assert.match(md, /`backend-check`[^\n]*\| ci-backend\s*\| ✔️/);
+  // CI-only check: no local marker.
+  assert.match(md, /`dylint-check`[^\n]*\| ci-dylint\s*\| ❌️/);
+  // Local-only check: no CI lane.
+  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| ✔️/);
+});
+
+test("family tables share the full-width style and four-column header", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.match(md, /h3 \+ \.table-wrapper > table \{\n\s+width: 100%;\n\s+table-layout: fixed;/);
+  const headers = md.match(
+    /^\| Check\s+\| Description\s+\| CI Lane\s+\| Local\s+\|$/gm,
+  );
+  const families = md.match(/^### /gm);
+  assert.ok(families.length > 0, "family sections present");
+  assert.equal(headers.length, families.length, "every family has the header");
 });
 
 test("doc contains no #L anchors and no file:line references", () => {

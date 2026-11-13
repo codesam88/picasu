@@ -39,75 +39,96 @@ Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane ca
 
 ## Check families
 
+`CI Lane` lists the workflow lanes a check runs in; `Local` marks checks invoked by the `precommit` recipe (path-targeted on branches). A cross marks a check that does not run there.
+
+<style>
+  h3 + .table-wrapper > table {
+    width: 100%;
+    table-layout: fixed;
+  }
+  h3 + .table-wrapper > table th:nth-child(1) {
+    width: 22%;
+  }
+  h3 + .table-wrapper > table th:nth-child(2) {
+    width: 46%;
+  }
+  h3 + .table-wrapper > table th:nth-child(3) {
+    width: 22%;
+  }
+  h3 + .table-wrapper > table th:nth-child(4) {
+    width: 10%;
+  }
+</style>
+
 ### Backend (Rust)
 
-| Check                  | Description                                              | Runs in                          |
-| ---------------------- | -------------------------------------------------------- | -------------------------------- |
-| `backend-check`        | cargo fmt --check + clippy (all targets)                 | precommit, ci-backend            |
-| `backend-test`         | Backend tests (cargo-nextest)                            | precommit, ci-backend            |
-| `backend-test-release` | Backend tests in release mode                            | release                          |
-| `utils-check`          | utils fmt + clippy (all targets)                         | precommit, ci-backend, ci-zizmor |
-| `utils-test`           | cargo test utils/ + Schemathesis derivations             | precommit, ci-backend            |
-| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly                          |
+| Check                  | Description                                              | CI Lane               | Local |
+| ---------------------- | -------------------------------------------------------- | --------------------- | ----- |
+| `backend-check`        | cargo fmt --check + clippy (all targets)                 | ci-backend            | ✔️    |
+| `backend-test`         | Backend tests (cargo-nextest)                            | ci-backend            | ✔️    |
+| `backend-test-release` | Backend tests in release mode                            | release               | ❌️    |
+| `utils-check`          | utils fmt + clippy (all targets)                         | ci-backend, ci-zizmor | ✔️    |
+| `utils-test`           | cargo test utils/ + Schemathesis derivations             | ci-backend            | ✔️    |
+| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly               | ❌️    |
 
 ### Frontend
 
-| Check                 | Description                            | Runs in                         |
-| --------------------- | -------------------------------------- | ------------------------------- |
-| `frontend-check`      | prettier --check + vue-tsc + eslint    | precommit, ci-frontend          |
-| `frontend-vitest`     | vitest run                             | precommit, ci-frontend          |
-| `frontend-playwright` | run playwright tests (optional filter) | precommit, ci-frontend, release |
-| `frontend-test`       | all frontend tests                     | precommit, ci-frontend, release |
+| Check                 | Description                            | CI Lane              | Local |
+| --------------------- | -------------------------------------- | -------------------- | ----- |
+| `frontend-check`      | prettier --check + vue-tsc + eslint    | ci-frontend          | ✔️    |
+| `frontend-vitest`     | vitest run                             | ci-frontend          | ✔️    |
+| `frontend-playwright` | run playwright tests (optional filter) | ci-frontend, release | ✔️    |
+| `frontend-test`       | all frontend tests                     | ci-frontend, release | ✔️    |
 
 ### API contract
 
-| Check                    | Description                                                                       | Runs in               |
-| ------------------------ | --------------------------------------------------------------------------------- | --------------------- |
-| `openapi-check`          | Run all OpenAPI checks.                                                           | precommit, ci-backend |
-| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | precommit, ci-backend |
-| `openapi-json-match`     | Ensure that committed/staged json matches current --dump-openapi output           | precommit, ci-backend |
-| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | precommit, ci-backend |
-| `openapi-routes-match`   | Compare mounted Rocket routes with documented OpenAPI operations.                 | precommit, ci-backend |
-| `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release               |
-| `openapi-sanity`         | check OpenAPI annotation conventions                                              | precommit, ci-backend |
-| `auth-matrix-check`      | ensure auth-matrix artifacts match generator                                      | precommit, ci-backend |
+| Check                    | Description                                                                       | CI Lane    | Local |
+| ------------------------ | --------------------------------------------------------------------------------- | ---------- | ----- |
+| `openapi-check`          | Run all OpenAPI checks.                                                           | ci-backend | ✔️    |
+| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | ci-backend | ✔️    |
+| `openapi-json-match`     | Ensure that committed/staged json matches current --dump-openapi output           | ci-backend | ✔️    |
+| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | ci-backend | ✔️    |
+| `openapi-routes-match`   | Compare mounted Rocket routes with documented OpenAPI operations.                 | ci-backend | ✔️    |
+| `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release    | ❌️    |
+| `openapi-sanity`         | check OpenAPI annotation conventions                                              | ci-backend | ✔️    |
+| `auth-matrix-check`      | ensure auth-matrix artifacts match generator                                      | ci-backend | ✔️    |
 
 ### Security & supply chain
 
-| Check            | Description                                | Runs in                          |
-| ---------------- | ------------------------------------------ | -------------------------------- |
-| `audit`          | Run security audits (backend + frontend)   | audit                            |
-| `backend-audit`  | cargo deny                                 | audit                            |
-| `frontend-audit` | npm audit                                  | audit                            |
-| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | precommit, ci-backend, ci-zizmor |
-| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint                        |
+| Check            | Description                                | CI Lane               | Local |
+| ---------------- | ------------------------------------------ | --------------------- | ----- |
+| `audit`          | Run security audits (backend + frontend)   | audit                 | ❌️    |
+| `backend-audit`  | cargo deny                                 | audit                 | ❌️    |
+| `frontend-audit` | npm audit                                  | audit                 | ❌️    |
+| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | ci-backend, ci-zizmor | ✔️    |
+| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint             | ❌️    |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
 
 ### Fuzzing
 
-| Check         | Description                                  | Runs in               |
-| ------------- | -------------------------------------------- | --------------------- |
-| `fuzz-check`  | tier-1 gate: seeded sweep, baseline-compared | ci-backend, nightly   |
-| `fuzz-matrix` | run fuzz matrix (auth checks)                | precommit, ci-backend |
+| Check         | Description                                  | CI Lane             | Local |
+| ------------- | -------------------------------------------- | ------------------- | ----- |
+| `fuzz-check`  | tier-1 gate: seeded sweep, baseline-compared | ci-backend, nightly | ❌️    |
+| `fuzz-matrix` | run fuzz matrix (auth checks)                | ci-backend          | ✔️    |
 
 Note: `fuzz-check` - CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)
 
 ### Specs & catalogs
 
-| Check           | Description                                                                                 | Runs in   |
-| --------------- | ------------------------------------------------------------------------------------------- | --------- |
-| `quint-check`   | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | precommit |
-| `spec-check`    | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | precommit |
-| `events-check`  | Validate the eventual-consistency event catalog                                             | precommit |
-| `catalog-check` | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | precommit |
+| Check           | Description                                                                                 | CI Lane | Local |
+| --------------- | ------------------------------------------------------------------------------------------- | ------- | ----- |
+| `quint-check`   | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️      | ✔️    |
+| `spec-check`    | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️      | ✔️    |
+| `events-check`  | Validate the eventual-consistency event catalog                                             | ❌️      | ✔️    |
+| `catalog-check` | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️      | ✔️    |
 
 ### Repo & docs hygiene
 
-| Check                 | Description                                                     | Runs in                      |
-| --------------------- | --------------------------------------------------------------- | ---------------------------- |
-| `docs-check`          | check markdown (docs, .plan, utils)                             | precommit, ci-frontend, docs |
-| `plan-lint`           | check .plan task frontmatter correctness                        | precommit, ci-frontend, docs |
-| `env-var-check`       | check PICASU_* env vars match docs/config.md                    | precommit, ci-backend        |
-| `gates-check`         | ensure all test/check rules are called from CI and global rules | precommit, ci-backend, docs  |
-| `branches-prune-test` | Test the branch pruning helper against a fixture repository     | precommit                    |
+| Check                 | Description                                                     | CI Lane           | Local |
+| --------------------- | --------------------------------------------------------------- | ----------------- | ----- |
+| `docs-check`          | check markdown (docs, .plan, utils)                             | ci-frontend, docs | ✔️    |
+| `plan-lint`           | check .plan task frontmatter correctness                        | ci-frontend, docs | ✔️    |
+| `env-var-check`       | check PICASU_* env vars match docs/config.md                    | ci-backend        | ✔️    |
+| `gates-check`         | ensure all test/check rules are called from CI and global rules | ci-backend, docs  | ✔️    |
+| `branches-prune-test` | Test the branch pruning helper against a fixture repository     | ❌️                | ✔️    |

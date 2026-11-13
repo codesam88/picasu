@@ -801,47 +801,78 @@ docLines.push("");
 
 docLines.push("## Check families");
 docLines.push("");
+docLines.push(
+  "`CI Lane` lists the workflow lanes a check runs in; `Local` marks checks invoked by the `precommit` recipe (path-targeted on branches). A cross marks a check that does not run there.",
+);
+docLines.push("");
+// mdBook wraps tables in .table-wrapper; these rules give every family table
+// the same full-width proportions (description roughly twice the side columns).
+docLines.push("<style>");
+docLines.push("  h3 + .table-wrapper > table {");
+docLines.push("    width: 100%;");
+docLines.push("    table-layout: fixed;");
+docLines.push("  }");
+for (const [index, width] of [22, 46, 22, 10].entries()) {
+  docLines.push(
+    `  h3 + .table-wrapper > table th:nth-child(${index + 1}) {`,
+  );
+  docLines.push(`    width: ${width}%;`);
+  docLines.push("  }");
+}
+docLines.push("</style>");
+docLines.push("");
 
+const TICK = "\u2714\uFE0F";
+const CROSS = "\u274C\uFE0F";
+
+function laneCompare(a, b) {
+  const ia = laneOrder.indexOf(a);
+  const ib = laneOrder.indexOf(b);
+  if (ia !== -1 || ib !== -1) {
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  }
+  return a < b ? -1 : 1;
+}
+
+const familyHeaders = ["Check", "Description", "CI Lane", "Local"];
 for (const fam of orderedFamilies) {
   docLines.push("### " + fam);
   docLines.push("");
-  const section = familySections.find((s) => s.name === fam);
-  const members = fam === "Other" ? otherRecipes.sort() : (section ? section.recipes : []);
-  // sort members by family map order if possible
-  let orderedMembers = members;
-  if (fam !== "Other") {
+  let members;
+  if (fam === "Other") {
+    members = [...otherRecipes].sort();
+  } else {
+    const section = familySections.find((s) => s.name === fam);
+    members = section ? [...section.recipes] : [];
     const fm = familyMap.find(([f]) => f === fam);
     if (fm) {
       const orderIndex = new Map(fm[1].map((n, i) => [n, i]));
-      orderedMembers = [...members].sort((a, b) => (orderIndex.get(a) ?? 999) - (orderIndex.get(b) ?? 999));
+      members.sort(
+        (a, b) => (orderIndex.get(a) ?? 999) - (orderIndex.get(b) ?? 999),
+      );
     }
-  } else {
-    orderedMembers = [...members].sort();
   }
-  const rows = orderedMembers.map((name) => {
+  const rows = members.map((name) => {
     const r = recipeByName.get(name);
-    const desc = r && r.annotation ? r.annotation : "\u2014";
-    const lanes = [...(recipeLanes.get(name) || new Set())].sort((a, b) => {
-      const ia = laneOrder.indexOf(a);
-      const ib = laneOrder.indexOf(b);
-      if (ia !== -1 || ib !== -1) {
-        if (ia === -1) return 1;
-        if (ib === -1) return -1;
-        return ia - ib;
-      }
-      return a < b ? -1 : 1;
-    });
-    const runsIn = lanes.length ? lanes.join(", ") : "\u2014";
-    return ["`" + name + "`", desc, runsIn];
+    const lanes = [...(recipeLanes.get(name) || new Set())].sort(laneCompare);
+    const ciLanes = lanes.filter((lane) => lane !== "precommit");
+    return [
+      "`" + name + "`",
+      r && r.annotation ? r.annotation : "\u2014",
+      ciLanes.length ? ciLanes.join(", ") : CROSS,
+      lanes.includes("precommit") ? TICK : CROSS,
+    ];
   });
-  docLines.push(...renderTable(["Check", "Description", "Runs in"], rows));
+  docLines.push(...renderTable(familyHeaders, rows));
   docLines.push("");
   // allowlist notes for this family
-  for (const name of orderedMembers) {
+  for (const name of members) {
     const reason = allowlistByName.get(name);
     if (reason) docLines.push("Note: `" + name + "` - " + reason);
   }
-  if (orderedMembers.some((n) => allowlistByName.has(n))) docLines.push("");
+  if (members.some((n) => allowlistByName.has(n))) docLines.push("");
 }
 
 let content = docLines.join("\n");
