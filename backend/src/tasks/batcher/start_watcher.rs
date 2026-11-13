@@ -225,6 +225,8 @@ pub(crate) enum RemovalAction {
 /// Handle an external file removal: find the DB record that owns `path`,
 /// clear the record's path, and report whether the record (and its
 /// thumbnail) survives or must be removed.
+#[quint_annotations::event("FS_DELETE")]
+#[quint_annotations::operation("OP-12")]
 pub(crate) fn handle_removed_file(removed: &Path) -> Option<RemovalAction> {
     use crate::process::path::prune_asset_path;
 

@@ -248,7 +248,9 @@ zizmor-check: (install "zizmor")
 [group('utils')]
 quint-check: (install "quint")
     quint typecheck utils/quint/pipeline/eventual-consistency.qnt
+    quint typecheck utils/quint/pipeline/asset-aspects.qnt
     quint test utils/quint/pipeline/eventual-consistency.qnt
+    quint test utils/quint/pipeline/asset-aspects.qnt
 
 # Non-blocking by design: MSRV floor check (nightly lane).
 [group('utils')]
@@ -334,6 +336,11 @@ events-check:
 catalog-check:
     node {{justfile_directory()}}/utils/quint/catalog-check.mjs {{justfile_directory()}}/utils/quint/pipeline
 
+# Validate the implementation-tracking operation catalog and its backend annotations
+[group('utils')]
+operations-check:
+    node {{justfile_directory()}}/utils/quint/operations-check.mjs {{justfile_directory()}}
+
 # Regenerate docs/eventual-consistency.md from the JSON catalogs
 [group('utils')]
 docs-eventual-consistency:
@@ -409,7 +416,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check
+check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check operations-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check
 
 # run full test suite
 [group('global')]

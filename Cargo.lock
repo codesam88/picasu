@@ -2749,6 +2749,7 @@ dependencies = [
  "path-clean",
  "pbkdf2",
  "proptest",
+ "quint-annotations",
  "rand 0.10.3",
  "rayon",
  "redb",
@@ -2991,6 +2992,10 @@ dependencies = [
  "memchr",
  "serde",
 ]
+
+[[package]]
+name = "quint-annotations"
+version = "0.1.0"
 
 [[package]]
 name = "quote"

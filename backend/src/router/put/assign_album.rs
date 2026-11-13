@@ -88,6 +88,8 @@ pub enum AssignOutcome {
 /// no longer exists, or a destination album that has no directory — 401 missing
 /// or invalid credentials; share tokens are not accepted — 405 read-only
 /// mode — 500 storage failure.
+#[quint_annotations::event("API_ASSIGN_ALBUM_DIR_MOVE")]
+#[quint_annotations::operation("OP-4")]
 #[utoipa::path(
         tag = "albums",
         request_body = AssignAlbumData,
@@ -168,6 +170,7 @@ pub async fn assign_album(
 /// This is the path-primary move: only the one physical file at the asset's
 /// path is moved, regardless of hash-matched duplicates.
 /// Albums move as directory trees via `move_album_into_album`.
+#[quint_annotations::operation("OP-4")]
 fn move_asset_into_album(
     asset_id: ArrayString<64>,
     album_id: ArrayString<64>,
@@ -307,6 +310,7 @@ fn move_asset_into_album(
 /// - `Rename` renames the whole directory to a unique `-001` sibling
 ///   (`find_unique_path`) with the same path-rewrite, reported as
 ///   `RenamedFrom`.
+#[quint_annotations::operation("OP-5")]
 fn move_album_into_album(
     album_id: ArrayString<64>,
     target_album_id: ArrayString<64>,
@@ -509,6 +513,7 @@ pub(crate) fn collect_dir_move_plans(
 /// plan aborts the whole transaction (the dropped `txn` rolls back), so no
 /// partial prefix rewrite is ever committed. On success all path-map removes/
 /// inserts and record path updates land together.
+#[quint_annotations::operation("OP-5")]
 pub(crate) fn apply_dir_move_plans(plans: &[DirMovePlan]) -> Result<(), AppError> {
     use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, TREE};
 

@@ -59,6 +59,8 @@ type DeleteResult = (
 /// Errors: 400 empty `assetIds`, or an ID that exceeds 64 bytes — 401 missing
 /// or invalid credentials — 404 an ID names no asset — 405 read-only mode —
 /// 500 storage failure.
+#[quint_annotations::event("API_DELETE")]
+#[quint_annotations::operation("OP-3")]
 #[utoipa::path(
         tag = "assets",
         request_body = DeleteList,
@@ -146,6 +148,7 @@ pub async fn delete_data(
 
 /// Recursively clean up descendant assets for any albums in the removal list.
 /// Removes files, sidecars, asset table entries, and directories from disk.
+#[quint_annotations::operation("OP-3")]
 fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
     for abstract_data in abstract_data_to_remove {
         if let AbstractData::Album(alb) = abstract_data {
@@ -277,6 +280,7 @@ fn validate_paths_unchanged(
 /// 3. Remove the compressed thumbnail only if no other assets share the
 ///    same content hash (checked via `DUPE_INDEX`).
 /// 4. Collect affected album IDs for later self-update.
+#[quint_annotations::operation("OP-3")]
 fn process_deletes(
     asset_ids: &[String],
     _timestamp: i64,

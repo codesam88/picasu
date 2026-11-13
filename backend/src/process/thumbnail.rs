@@ -11,6 +11,7 @@ static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Generate a JPEG thumbnail for an **image** asset, propagating
 /// every error with clear human‑readable context strings.
+#[quint_annotations::operation("OP-10")]
 pub fn generate_thumbnail_for_image(
     abstract_data: &mut AbstractData,
     dynamic_image: &DynamicImage,

@@ -4,6 +4,7 @@ members = [
     "utils/openapi-sanity",
     "utils/snapfab",
     "utils/paste-shim",
+    "utils/quint-annotations",
 ]
 default-members = ["backend"]
 resolver = "2"

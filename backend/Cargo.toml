@@ -91,6 +91,7 @@ pbkdf2 = "0.13.0"
 sha2 = "0.11.0"
 subtle = "2.6.1"
 argon2 = "0.6.0"
+quint-annotations = { path = "../utils/quint-annotations" }
 tempfile = "3"
 
 [dev-dependencies]

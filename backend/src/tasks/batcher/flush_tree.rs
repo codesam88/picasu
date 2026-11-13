@@ -366,6 +366,7 @@ pub(crate) fn remove_asset_record_from_tables(
 /// only. A path that still exists on disk is skipped (the file reappeared or
 /// the candidate was stale), so a batch can never reap a live row. No
 /// hash-group reap is performed.
+#[quint_annotations::operation("OP-9")]
 pub(crate) fn sweep_remove_batch(paths: &[std::path::PathBuf]) {
     use crate::storage::asset_store;
 

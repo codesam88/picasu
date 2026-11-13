@@ -42,6 +42,7 @@ fn read_durable_album(album_id: &ArrayString<64>) -> Result<Option<AlbumCombined
     })
 }
 
+#[quint_annotations::operation("OP-8")]
 pub fn album_task(album_id: ArrayString<64>, ref_data: &[DatabaseTimestamp]) -> Result<()> {
     debug!("Perform album self-update");
     // Phase 1: read durable album under a short read txn.

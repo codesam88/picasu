@@ -88,6 +88,7 @@ static ACTIVE_INDEX: LazyLock<Mutex<Option<ActiveIndex>>> = LazyLock::new(|| Mut
 /// cache, so a following `index_album` rebuilds from an empty state instead
 /// of merging into stale rows. Used by the `clear` flag of
 /// `POST /post/index/album`.
+#[quint_annotations::operation("OP-11")]
 pub fn clear_asset_tables_and_caches() -> AppResult<()> {
     crate::storage::db::clear_all_asset_tables_drop()
         .map_err(|e| AppError::new(ErrorKind::Internal, format!("{e:#}")))?;
@@ -568,6 +569,7 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 /// writer as a batched `SweepRemoveBatch` op that resolves each record by
 /// its exact path/id. Per-chunk cancel/shutdown and inline re-checks
 /// (generation, mutation lease, filesystem) guard against races.
+#[quint_annotations::operation("OP-9")]
 async fn sweep_stale_asset_paths(root: &Path, cancel: &AtomicBool) {
     const CHUNK: usize = 200;
     use crate::storage::asset_store;
