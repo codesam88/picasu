@@ -605,4 +605,41 @@ mod tests {
             "barrier stalled after a panicking cascade entry"
         );
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn background_flushes_do_not_advance_request_invalidation() {
+        const FLUSHES: u64 = 5;
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        crate::tasks::observe::reset();
+        // Drain any writer state from the shared env before sampling counters.
+        barrier().await;
+        crate::storage::tree_view::reset_bg_invalidation_state();
+        // Freeze the throttle clock so every flush lands inside one window:
+        // the leading edge advances the request-visible counter exactly
+        // once; later flushes may only dirty the tree.
+        crate::storage::tree_view::set_bg_invalidation_now_ms(1_000_000);
+        let version_before = crate::storage::tree_view::bg_invalidation_version_for_test();
+        let epoch_before = crate::storage::tree_view::tree_epoch_for_test();
+
+        for _ in 0..FLUSHES {
+            submit_flush_insert(Vec::new()).await.expect("flush submit");
+            // A barrier between flushes keeps the writer loop from merging
+            // them into one batch, so each cycle dirties the tree once.
+            barrier().await;
+        }
+
+        let epoch_after = crate::storage::tree_view::tree_epoch_for_test();
+        let version_after = crate::storage::tree_view::bg_invalidation_version_for_test();
+        assert_eq!(
+            epoch_after - epoch_before,
+            FLUSHES,
+            "each background flush must dirty the tree exactly once"
+        );
+        assert_eq!(
+            version_after - version_before,
+            1,
+            "background flushes must advance the request-visible invalidation counter at most once (leading edge), got {}",
+            version_after - version_before
+        );
+    }
 }

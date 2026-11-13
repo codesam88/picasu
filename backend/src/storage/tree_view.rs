@@ -261,6 +261,19 @@ pub(crate) fn set_bg_invalidation_now_ms(ms: u64) {
     BG_INVALIDATION_NOW_OVERRIDE_MS.store(ms, Ordering::SeqCst);
 }
 
+/// Snapshot of the request-visible invalidation counter. Test-only, for
+/// contract tests that assert background writes do not advance it.
+#[cfg(test)]
+pub(crate) fn bg_invalidation_version_for_test() -> u64 {
+    INVALIDATION_VERSION.load(Ordering::SeqCst)
+}
+
+/// Snapshot of the tree dirtiness epoch. Test-only.
+#[cfg(test)]
+pub(crate) fn tree_epoch_for_test() -> u64 {
+    TREE_EPOCH.load(Ordering::SeqCst)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
