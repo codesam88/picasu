@@ -23,19 +23,19 @@ Checks no other recipe calls: `backend-test-release`, `dylint-check`, `fuzz-chec
 
 ## Lanes
 
-Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block.
+Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block. `workflow_dispatch` is not listed because any workflow that declares it can be run by hand.
 
-| Lane        | Triggers                    | Workflow                        | Invokes                                                                                                                                    |
-| ----------- | --------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| precommit   | local                       | `justfile`                      | `check`, `test`                                                                                                                            |
-| ci-backend  | PR, main, manual            | `ci.yml`                        | `backend-check`, `backend-test`, `env-var-check`, `fuzz-check`, `fuzz-matrix`, `gates-check`, `openapi-check`, `utils-check`, `utils-test` |
-| ci-frontend | PR, main, manual            | `ci.yml`                        | `docs-check`, `frontend-check`, `frontend-playwright`, `frontend-vitest`, `plan-lint`                                                      |
-| ci-dylint   | PR, main, manual            | `ci.yml`                        | `dylint-check`                                                                                                                             |
-| ci-zizmor   | PR, main, scheduled, manual | `zizmor.yml`                    | `zizmor-check`                                                                                                                             |
-| docs        | PR, main                    | `docs-check.yml`                | `docs-check`, `gates-check`, `plan-lint`                                                                                                   |
-| audit       | PR, main, scheduled         | `audit.yml`                     | `audit`                                                                                                                                    |
-| nightly     | scheduled, manual           | `fuzz-advisory.yml`, `msrv.yml` | `fuzz-check`, `msrv-check`                                                                                                                 |
-| release     | tags, manual                | `release.yml`                   | `backend-test-release`, `frontend-playwright`, `openapi-routes-release`                                                                    |
+| Lane        | Triggers            | Workflow                        | Invokes                                                                                                                                    |
+| ----------- | ------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| precommit   | local               | `justfile`                      | `check`, `test`                                                                                                                            |
+| ci-backend  | PR, main            | `ci.yml`                        | `backend-check`, `backend-test`, `env-var-check`, `fuzz-check`, `fuzz-matrix`, `gates-check`, `openapi-check`, `utils-check`, `utils-test` |
+| ci-frontend | PR, main            | `ci.yml`                        | `docs-check`, `frontend-check`, `frontend-playwright`, `frontend-vitest`, `plan-lint`                                                      |
+| ci-dylint   | PR, main            | `ci.yml`                        | `dylint-check`                                                                                                                             |
+| ci-zizmor   | PR, main, scheduled | `zizmor.yml`                    | `zizmor-check`                                                                                                                             |
+| docs        | PR, main            | `docs-check.yml`                | `docs-check`, `gates-check`, `plan-lint`                                                                                                   |
+| audit       | PR, main, scheduled | `audit.yml`                     | `audit`                                                                                                                                    |
+| nightly     | scheduled           | `fuzz-advisory.yml`, `msrv.yml` | `fuzz-check`, `msrv-check`                                                                                                                 |
+| release     | tags                | `release.yml`                   | `backend-test-release`, `frontend-playwright`, `openapi-routes-release`                                                                    |
 
 ## Check families
 

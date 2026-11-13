@@ -6,18 +6,18 @@
 //
 // Tracked universe (step 9): U = transitive closure of justfile deps from
 // roots {precommit, test, check, audit} UNION the same closure from every
-// `just X` invoked in any enabled workflow file. Display set D = (U ∩
-// isGateRecipe-incl-exacts) ∪ {precommit, test, check, audit}. Helpers stay
-// in U for reachability but are never sections/graph nodes/requirements.
+// `just X` invoked in any enabled workflow file. Display set D = every
+// isGateRecipe-incl-exacts recipe ∪ {precommit, test, check, audit}. Helpers
+// stay in U for reachability but are never displayed.
 //
 // Lane mapping rule: a recipe's lane comes from (1) the workflows that
 // invoke it directly and (2) the aggregates that reach it.
 //
 // Trigger labels: triggerTokens(wfText) scans the workflow's `on:` region
 // for pull_request/PR, push+branches:main/main, tags:/tags, schedule/
-// scheduled, workflow_dispatch/manual. laneTriggers[lane] unions tokens over
-// its backing workflow files; laneLabel appends " (a+b+...)" when non-empty,
-// tokens ordered PR, main, tags, scheduled, manual.
+// scheduled. laneTriggers[lane] unions tokens over its backing workflow
+// files; tokens ordered PR, main, tags, scheduled. workflow_dispatch is not
+// labeled: any workflow that declares it can be run by hand.
 //
 // Usage: quality-gates.mjs [repo-root] [--generate <path>] [--check <path>] [--check-only]
 //
@@ -249,8 +249,7 @@ function triggerTokens(text) {
   }
   if (/tags:/.test(regionText)) tokens.push("tags");
   if (/schedule/.test(regionText)) tokens.push("scheduled");
-  if (/workflow_dispatch/.test(regionText)) tokens.push("manual");
-  const order = ["PR", "main", "tags", "scheduled", "manual"];
+  const order = ["PR", "main", "tags", "scheduled"];
   return [...new Set(tokens)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
 }
 
@@ -794,7 +793,7 @@ if (noCaller.length) {
 docLines.push("## Lanes");
 docLines.push("");
 docLines.push(
-  "Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block.",
+  "Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block. `workflow_dispatch` is not listed because any workflow that declares it can be run by hand.",
 );
 docLines.push("");
 docLines.push(...renderTable(["Lane", "Triggers", "Workflow", "Invokes"], laneRows));

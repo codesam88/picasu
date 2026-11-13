@@ -115,8 +115,8 @@ test("rule graph adjacency", () => {
 
 test("lane rows for ci-backend, ci-zizmor triggers, and release invokes", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /^\| ci-backend\s+\| PR, main, manual\s*\|/m);
-  assert.match(md, /^\| ci-zizmor\s+\| PR, main, scheduled, manual\s*\|/m);
+  assert.match(md, /^\| ci-backend\s+\| PR, main\s*\|/m);
+  assert.match(md, /^\| ci-zizmor\s+\| PR, main, scheduled\s*\|/m);
   assert.match(md, /^\| release\b.*openapi-routes-release/m);
   assert.doesNotMatch(md, /ci-zizmor-scheduled/);
   assert.doesNotMatch(md, /—\s*\|\s*$/m);
