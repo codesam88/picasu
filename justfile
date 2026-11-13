@@ -351,6 +351,7 @@ spec-check:
 # ensure all test/check rules are called from CI and global rules
 [group('utils')]
 gates-check:
+    node --test {{justfile_directory()}}/scripts/quality-gates.test.mjs
     node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}}
 
 # run plan <args> (needs install-plan)
