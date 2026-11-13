@@ -3,12 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { buildUploadUrl, useUploadStore } from './uploadStore'
 import { useMessageStore } from './messageStore'
-import { prefetch } from '@/api/fetchPrefetch'
 import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
-
-vi.mock('@/api/fetchPrefetch', () => ({
-  prefetch: vi.fn()
-}))
 
 vi.mock('@/script/hook/usePrefetch', () => ({
   refreshGalleryAfterMutation: vi.fn()
@@ -72,21 +67,13 @@ describe('buildUploadUrl', () => {
 })
 
 describe('fileUpload sequential queue', () => {
-  test('posts once per file with a single file part, polls, refreshes once, completes', async () => {
+  test('posts once per file with a single file part, refreshes once, completes', async () => {
     const file1 = new File(['a'], 'a.png', { type: 'image/png', lastModified: 10 })
     const file2 = new File(['b'], 'b.png', { type: 'image/png', lastModified: 20 })
 
     vi.spyOn(axios, 'post')
       .mockResolvedValueOnce({ data: { files: ['a.png'], dir: '/img/album-1' }, status: 200 })
       .mockResolvedValueOnce({ data: { files: ['b.png'], dir: '/img/album-1' }, status: 200 })
-
-    vi.mocked(prefetch).mockResolvedValue({
-      prefetch: { timestamp: 1, dataLength: 2, locateTo: null },
-      token: '',
-      resolvedShare: null,
-      // rows containing the stored basenames
-      rows: ['a.png', 'b.png']
-    } as never)
 
     const refresh = vi.mocked(refreshGalleryAfterMutation)
 
@@ -102,41 +89,9 @@ describe('fileUpload sequential queue', () => {
     expect(firstForm.getAll('file')).toHaveLength(1)
     expect(secondForm.getAll('file')).toHaveLength(1)
 
+    // Store-and-return: the 200 is the completion signal — no polling.
     expect(store.status).toBe('Completed')
-    expect(store.uploadedNames).toEqual(['a.png', 'b.png'])
-    expect(store.uploadedDir).toBe('/img/album-1')
-    expect(prefetch).toHaveBeenCalled()
-    const filterArg = vi.mocked(prefetch).mock.calls[0]?.[0]
-    expect(filterArg).toContain('/img/album-1')
     expect(refresh).toHaveBeenCalledTimes(1)
-  })
-
-  test('dir-scoped poll falls back to album scope, then unfiltered', async () => {
-    const file1 = new File(['a'], 'a.png', { type: 'image/png', lastModified: 10 })
-
-    vi.mocked(prefetch).mockResolvedValue({
-      prefetch: { timestamp: 1, dataLength: 1, locateTo: null },
-      token: '',
-      resolvedShare: null,
-      rows: ['a.png']
-    } as never)
-    const refresh = vi.mocked(refreshGalleryAfterMutation)
-
-    const store = useUploadStore('mainId')
-
-    // No dir reported: falls back to the album-scoped filter.
-    vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: { files: ['a.png'] }, status: 200 })
-    await store.fileUpload([file1], 'album-9', true)
-    expect(store.uploadedDir).toBeUndefined()
-    expect(vi.mocked(prefetch).mock.calls.at(-1)?.[0]).toContain('album-9')
-
-    vi.mocked(prefetch).mockClear()
-
-    // No dir and no album: unfiltered poll as a last resort.
-    vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: { files: ['a.png'] }, status: 200 })
-    await store.fileUpload([file1], undefined, true)
-    expect(vi.mocked(prefetch).mock.calls.at(-1)?.[0]).toBeNull()
-    expect(refresh).toHaveBeenCalledTimes(2)
   })
 
   test('mid-queue failure stops further posts and cancels', async () => {

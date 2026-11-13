@@ -20,7 +20,6 @@
             :key="`progress-${uploadStore.status}`"
             color="primary"
             :model-value="circularValue"
-            :indeterminate="circularIndeterminate"
             class="ma-4"
           >
             <Transition name="fade-scale" mode="out-in">
@@ -68,8 +67,6 @@ const title = computed(() => {
   switch (uploadStore.status) {
     case 'Completed':
       return 'Done'
-    case 'Indexing':
-      return 'Indexing'
     case 'Canceled':
       return 'Canceled'
     default:
@@ -92,10 +89,6 @@ const subtitle = computed(() => {
     // Progress first, then the file being uploaded.
     return `${index}/${count} · ${name}${sizeText} · ${remaining} remaining`
   }
-  if (uploadStore.status === 'Indexing') {
-    const count = uploadStore.fileCount
-    return `${count} ${count === 1 ? 'file' : 'files'} stored · waiting for indexing…`
-  }
   return `${humanizeDuration(uploadStore.remainingTime * 1000, {
     units: ['h', 'm', 's'],
     largest: 1,
@@ -112,8 +105,6 @@ const circularValue = computed(() => {
     return undefined
   }
 })
-
-const circularIndeterminate = computed(() => uploadStore.status === 'Indexing')
 
 const circularIcon = computed(() => {
   if (uploadStore.status === 'Completed') {
