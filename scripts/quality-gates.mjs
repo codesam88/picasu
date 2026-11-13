@@ -712,65 +712,25 @@ for (const name of otherRecipes.sort()) {
   warnings.push(`recipe '${name}' has no check family (add it to the family map in scripts/quality-gates.mjs)`);
 }
 
-// Render the rule graph as mermaid subgraphs. An edge whose endpoints sit in
-// different families is kept inside the caller's family by copying the target
-// node there, so no edge crosses a family boundary.
-const familyIds = new Map([
-  ["Backend (Rust)", "backend"],
-  ["Frontend", "frontend"],
-  ["API contract", "api"],
-  ["Security & supply chain", "security"],
-  ["Fuzzing", "fuzzing"],
-  ["Specs & catalogs", "specs"],
-  ["Repo & docs hygiene", "repo"],
-  ["Other", "other"],
-]);
-function familyId(fam) {
-  return (
-    familyIds.get(fam) ??
-    fam.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
-  );
-}
-const familyOf = new Map();
-const membersByFamily = new Map();
-for (const fam of orderedFamilies) {
-  const members =
-    fam === "Other"
-      ? [...otherRecipes].sort()
-      : (familySections.find((s) => s.name === fam)?.recipes ?? []);
-  membersByFamily.set(fam, members);
-  for (const name of members) familyOf.set(name, fam);
-}
-const copyId = (name, fam) => `${name}-in-${familyId(fam)}`;
-const familyCopies = new Map(); // family -> Set<name>
-const graphEdges = [];
-const orderedSources = [...familyOf.keys()]
-  .filter((name) => displayedChildren(name).length > 0)
-  .sort();
-for (const src of orderedSources) {
-  for (const child of displayedChildren(src)) {
-    const srcFamily = familyOf.get(src);
-    const childFamily = familyOf.get(child);
-    if (!childFamily) continue;
-    if (srcFamily !== childFamily) {
-      if (!familyCopies.has(srcFamily)) familyCopies.set(srcFamily, new Set());
-      familyCopies.get(srcFamily).add(child);
-      graphEdges.push(`  ${src} --> ${copyId(child, srcFamily)}`);
-    } else {
-      graphEdges.push(`  ${src} --> ${child}`);
+// `check` and `test` trees: transitive displayed recipe dependencies.
+function tree(root) {
+  const nodes = new Set([root]);
+  const edges = [];
+  const queue = [root];
+  while (queue.length) {
+    const src = queue.shift();
+    for (const child of displayedChildren(src)) {
+      edges.push(`  ${src} --> ${child}`);
+      if (!nodes.has(child)) {
+        nodes.add(child);
+        queue.push(child);
+      }
     }
   }
+  return { edges, nodes };
 }
-const graphLines = ["graph LR"];
-for (const fam of orderedFamilies) {
-  graphLines.push(`  subgraph ${familyId(fam)}["${fam}"]`);
-  for (const name of membersByFamily.get(fam)) graphLines.push(`    ${name}`);
-  for (const name of familyCopies.get(fam) ?? []) {
-    graphLines.push(`    ${copyId(name, fam)}["${name}"]`);
-  }
-  graphLines.push("  end");
-}
-graphLines.push(...graphEdges);
+const checkTree = tree("check");
+const testTree = tree("test");
 
 // build doc
 const docLines = [];
@@ -782,10 +742,30 @@ docLines.push(
 docLines.push("");
 docLines.push("## Rule graph");
 docLines.push("");
+docLines.push("### `just check`");
+docLines.push("");
 docLines.push("```mermaid");
-docLines.push(...graphLines);
+docLines.push("graph LR", ...checkTree.edges);
 docLines.push("```");
 docLines.push("");
+docLines.push("### `just test`");
+docLines.push("");
+docLines.push("```mermaid");
+docLines.push("graph LR", ...testTree.edges);
+docLines.push("```");
+docLines.push("");
+const treeNodes = new Set([...checkTree.nodes, ...testTree.nodes]);
+const outsideTrees = [...displaySet]
+  .filter((n) => isGateRecipe(recipeByName.get(n)) && !treeNodes.has(n))
+  .sort();
+if (outsideTrees.length) {
+  docLines.push(
+    "Rules outside `check` and `test`: " +
+      outsideTrees.map((n) => "`" + n + "`").join(", ") +
+      ".",
+  );
+  docLines.push("");
+}
 
 docLines.push("## Check families");
 docLines.push("");

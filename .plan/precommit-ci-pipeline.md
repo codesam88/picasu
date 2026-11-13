@@ -204,10 +204,9 @@ Scope: `scripts/quality-gates.mjs` (+ test), `justfile` `gates-check`,
 regenerated `docs/quality-gates.md`.
 Done: the doc drops the mermaid lane graph, per-check sections,
 line references and underlying-file lists. It renders a mermaid rule
-graph (recipe edges only, no lanes) organized into family subgraphs;
-entry-point aggregates are not drawn, and a family-to-family edge is
-drawn by copying the target into the caller's family. It also renders
-check families (rule, description, CI lane, trigger) with allowlist
+graph (recipe edges only, no lanes) as two trees rooted at `check`
+and `test`; rules outside both trees are listed below them. It also
+renders check families (rule, description, CI lane, trigger) with allowlist
 notes; lane triggers are folded into the family tables, so there is no
 separate lane section.
 The family tables render full width through a scoped style block.

@@ -104,33 +104,23 @@ test("regenerated doc lists openapi-routes-release with its release trigger", (t
   );
 });
 
-test("rule graph edges", () => {
+test("rule graph has separate check and test trees", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const m = md.match(/```mermaid\n([\s\S]*?)```/);
-  assert.ok(m, "mermaid block present");
-  const block = m[1];
-  assert.match(block, /^graph LR$/m);
-  assert.match(block, /subgraph backend\["Backend \(Rust\)"\]/);
-  // Entry-point aggregates are not part of the graph.
-  assert.doesNotMatch(block, /^\s*(precommit|check|test)$/m);
-  // Intra-family edges only.
-  assert.match(block, /^  audit --> backend-audit$/m);
-  assert.match(block, /^  openapi-check --> openapi-sanity$/m);
-  assert.match(block, /^  frontend-test --> frontend-vitest$/m);
-  assert.match(block, /^  frontend-test --> frontend-playwright$/m);
-  // A cross-family edge is replaced by a copy in the caller's family.
-  assert.match(block, /zizmor-check-in-backend\["zizmor-check"\]/);
-  assert.match(block, /^  utils-check --> zizmor-check-in-backend$/m);
-  assert.doesNotMatch(block, /^  utils-check --> zizmor-check$/m);
-  for (const name of [
-    "backend-test-release",
-    "dylint-check",
-    "fuzz-check",
-    "msrv-check",
-    "openapi-routes-release",
-  ]) {
-    assert.match(block, new RegExp(`^    ${name}$`, "m"));
-  }
+  const blocks = [...md.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
+  assert.equal(blocks.length, 2);
+  const [checkBlock, testBlock] = blocks;
+  assert.match(checkBlock, /^graph LR$/m);
+  assert.match(checkBlock, /^  check --> backend-check$/m);
+  assert.match(checkBlock, /^  check --> openapi-check$/m);
+  assert.match(checkBlock, /^  openapi-check --> openapi-sanity$/m);
+  assert.match(checkBlock, /^  utils-check --> zizmor-check$/m);
+  assert.match(testBlock, /^  test --> frontend-test$/m);
+  assert.match(testBlock, /^  test --> fuzz-matrix$/m);
+  assert.match(testBlock, /^  frontend-test --> frontend-vitest$/m);
+  assert.match(testBlock, /^  frontend-test --> frontend-playwright$/m);
+  assert.doesNotMatch(checkBlock + testBlock, /precommit|subgraph|audit/);
+  assert.match(md, /Rules outside `check` and `test`: .*`audit`/);
+  assert.match(md, /Rules outside `check` and `test`: .*`fuzz-check`/);
 });
 
 test("trigger column reflects the lanes a rule runs in", () => {
@@ -160,7 +150,7 @@ test("family tables share the full-width style and four-column header", () => {
   const headers = md.match(
     /^\| Rule \(justfile\)\s+\| Description\s+\| CI Lane\s+\| Trigger\s+\|$/gm,
   );
-  const families = md.match(/^### /gm);
+  const families = md.slice(md.indexOf("## Check families")).match(/^### /gm);
   assert.ok(families.length > 0, "family sections present");
   assert.equal(headers.length, families.length, "every family has the header");
 });
