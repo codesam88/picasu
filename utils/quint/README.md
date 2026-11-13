@@ -115,11 +115,17 @@ crate (`#[quint::operation("OP-N")]`,
 annotation crate) rejects unknown or misspelled operation/event ids at
 `cargo check -p picasu`, so a typo'd or renamed OP id fails the build
 instead of surfacing only in `just check`. `operations-check.mjs` remains the
-catalog-side backstop. What is still NOT enforced until rung 1: a marker must
-sit on a real item (the text scan accepts comment, doc-comment, string or
-`#[cfg(test)]` mentions), a marker naming a wrong-but-valid id still
-compiles, and aspect/order drift between model and implementation is not
-checked.
+catalog-side backstop and is now the rung 1 gate: it counts a marker only
+when it sits on a real attribute line (comment, doc-comment, string and
+`#[cfg(test)]`-gated mentions do not count), requires every cataloged OP to
+have at least one marker and rejects markers naming an unknown OP, requires
+every event to be owned by at least one operation or to be an explicitly
+exempt read/recovery event, and reports (without failing) guarded OPs that
+have no `@operation` tag in `asset-aspects.qnt`. What is still NOT enforced
+(rung 2+): a marker naming a wrong-but-valid id still compiles (id
+correctness against the function is not checked), and aspect read/write set
+and order drift between model and implementation is not checked. The markers
+carry only ids; aspect read/write set matching is rung 2+ material.
 
 The Quint toolchain installer stays in `scripts/deps/quint.sh` with the
 shared pins in `scripts/deps/versions.env`.
