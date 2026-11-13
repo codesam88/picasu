@@ -212,10 +212,29 @@ notes; lane triggers are folded into the family tables, so there is no
 separate lane section.
 The family tables render full width through a scoped style block.
 Families are an explicit map in the script; an unmapped gate recipe
-lands in `Other` with a warning.
+lands in `Other` with a warning. The table layout was superseded by
+step 11.
 `gates-check` runs the generator's node tests before the drift check,
 so the doc's structure is covered by the gate that produces it.
 Out: lane derivation, wiring checks, recipe/workflow content.
+
+### 11. Track every recipe from `just --json` (done 2026-11-13)
+
+Scope: `scripts/quality-gates.mjs` (+ test), regenerated
+`docs/quality-gates.md`.
+Done: recipes come from `just --json`, including module recipes
+(`bench::*`) and parameterized recipes; private recipes stay out of the
+tables but remain for dependency resolution. Tables are grouped by the
+justfile `group` attribute (module name for module recipes) and add a
+`Params` column. The Workflow column links the workflow files that
+invoke each recipe instead of lane names. The name-based gate
+heuristics, curated family map, reverse lane propagation, and the
+gate-based orphan/not-run-in-CI warnings are gone. Orphans covers every
+non-private recipe with no workflow and no caller, excluding the four
+global entry points. The script header states that the doc is both a
+documentation overview and a manual review aid, so generated content
+should stay data-driven and manual maps/filters should stay minimal.
+Out: lane/trigger parsing, drift check, CLI.
 
 ## Verification
 

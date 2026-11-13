@@ -24,11 +24,12 @@ graph LR
   check --> zizmor-check
   openapi-check --> auth-matrix-check
   openapi-check --> openapi-breakcheck
-  openapi-check --> openapi-json-match
   openapi-check --> openapi-lint
-  openapi-check --> openapi-routes-match
   openapi-check --> openapi-sanity
+  quint-check --> install
   utils-check --> zizmor-check
+  zizmor-check --> install
+  openapi-breakcheck --> install
 ```
 
 ### `just test`
@@ -43,17 +44,39 @@ graph LR
   frontend-test --> frontend-vitest
 ```
 
-Rules outside `check` and `test`: `audit`, `backend-audit`, `backend-test-release`, `dylint-check`, `frontend-audit`, `fuzz-check`, `msrv-check`, `openapi-routes-release`.
-
 ## Orphans (Called Manually)
 
-Rules with no associated CI lane, no justfile parent caller, and not in the `global` group:
+Recipes with no associated CI workflow, no justfile parent caller, and not a global entry point (`precommit`, `check`, `test`, `audit`):
 
-None.
+- `bench::clean`
+- `bench::extract`
+- `bench::format`
+- `bench::lint`
+- `bench::seed-images`
+- `bench::server`
+- `bench::test`
+- `bench::workload`
+- `branches-prune`
+- `check-tools`
+- `distclean`
+- `docs-build`
+- `docs-eventual-consistency`
+- `docs-serve`
+- `format`
+- `fuzz-run`
+- `fuzz-serve`
+- `gates-docs`
+- `install-plan`
+- `plan`
+- `plan-format`
+- `run`
+- `setup-dev`
+- `test-release`
+- `zizmor-check-online`
 
-## Check families
+## Rules by group
 
-`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there.
+`Rule` names the justfile recipe, `Params` lists its parameters, `Workflow` links the workflow files that invoke it, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there. Recipes are grouped by their justfile group.
 
 <style>
   h3 + .table-wrapper > table {
@@ -66,88 +89,131 @@ None.
     padding-right: 6px;
   }
   h3 + .table-wrapper > table th:nth-child(1) {
-    width: 24%;
+    width: 18%;
   }
   h3 + .table-wrapper > table th:nth-child(2) {
-    width: 44%;
+    width: 36%;
   }
   h3 + .table-wrapper > table th:nth-child(3) {
-    width: 16%;
+    width: 10%;
   }
   h3 + .table-wrapper > table th:nth-child(4) {
-    width: 16%;
+    width: 18%;
+  }
+  h3 + .table-wrapper > table th:nth-child(5) {
+    width: 18%;
   }
 </style>
 
-### Backend (Rust)
+### Backend
 
-| Rule (justfile)        | Description                                              | CI Lane               | Trigger         |
-| ---------------------- | -------------------------------------------------------- | --------------------- | --------------- |
-| `backend-check`        | cargo fmt --check + clippy (all targets)                 | ci-backend            | local, PR, main |
-| `backend-test`         | Backend tests (cargo-nextest)                            | ci-backend            | local, PR, main |
-| `backend-test-release` | Backend tests in release mode                            | release               | tags            |
-| `utils-check`          | utils fmt + clippy (all targets)                         | ci-backend, ci-zizmor | local, PR, main |
-| `utils-test`           | cargo test utils/ + Schemathesis derivations             | ci-backend            | local, PR, main |
-| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly               | scheduled       |
+| Rule (justfile)         | Description                              | Params | Workflow                                    | Trigger             |
+| ----------------------- | ---------------------------------------- | ------ | ------------------------------------------- | ------------------- |
+| `backend-audit`         | cargo deny                               | —      | [audit](../.github/workflows/audit.yml)     | PR, main, scheduled |
+| `backend-build`         | cargo build (dev build)                  | —      | ❌️                                          | ❌️                  |
+| `backend-build-release` | cargo build (release build)              | —      | ❌️                                          | ❌️                  |
+| `backend-check`         | cargo fmt --check + clippy (all targets) | —      | [ci](../.github/workflows/ci.yml)           | local, PR, main     |
+| `backend-format`        | cargo fmt                                | —      | ❌️                                          | ❌️                  |
+| `backend-test`          | Backend tests (cargo-nextest)            | —      | [ci](../.github/workflows/ci.yml)           | local, PR, main     |
+| `backend-test-release`  | Backend tests in release mode            | —      | [release](../.github/workflows/release.yml) | tags                |
 
 ### Frontend
 
-| Rule (justfile)       | Description                            | CI Lane              | Trigger               |
-| --------------------- | -------------------------------------- | -------------------- | --------------------- |
-| `frontend-check`      | prettier --check + vue-tsc + eslint    | ci-frontend          | local, PR, main       |
-| `frontend-vitest`     | vitest run                             | ci-frontend          | local, PR, main       |
-| `frontend-playwright` | run playwright tests (optional filter) | ci-frontend, release | local, PR, main, tags |
-| `frontend-test`       | all frontend tests                     | ci-frontend, release | local, PR, main, tags |
+| Rule (justfile)       | Description                                                              | Params    | Workflow                                                                                   | Trigger               |
+| --------------------- | ------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------ | --------------------- |
+| `frontend-audit`      | npm audit                                                                | —         | [audit](../.github/workflows/audit.yml)                                                    | PR, main, scheduled   |
+| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | —         | [ci](../.github/workflows/ci.yml), [fuzz-advisory](../.github/workflows/fuzz-advisory.yml) | PR, main, scheduled   |
+| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | —         | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main       |
+| `frontend-format`     | prettier --write                                                         | —         | ❌️                                                                                         | ❌️                    |
+| `frontend-playwright` | run playwright tests (optional filter)                                   | filter="" | [ci](../.github/workflows/ci.yml), [release](../.github/workflows/release.yml)             | local, PR, main, tags |
+| `frontend-test`       | all frontend tests                                                       | —         | ❌️                                                                                         | local                 |
+| `frontend-vitest`     | vitest run                                                               | —         | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main       |
 
-### API contract
+### Utils
 
-| Rule (justfile)          | Description                                                                       | CI Lane    | Trigger         |
-| ------------------------ | --------------------------------------------------------------------------------- | ---------- | --------------- |
-| `openapi-check`          | Run all OpenAPI checks.                                                           | ci-backend | local, PR, main |
-| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | ci-backend | local, PR, main |
-| `openapi-json-match`     | Ensure that committed/staged json matches current --dump-openapi output           | ci-backend | local, PR, main |
-| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | ci-backend | local, PR, main |
-| `openapi-routes-match`   | Compare mounted Rocket routes with documented OpenAPI operations.                 | ci-backend | local, PR, main |
-| `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release    | tags            |
-| `openapi-sanity`         | check OpenAPI annotation conventions                                              | ci-backend | local, PR, main |
-| `auth-matrix-check`      | ensure auth-matrix artifacts match generator                                      | ci-backend | local, PR, main |
-
-### Security & supply chain
-
-| Rule (justfile)  | Description                                | CI Lane               | Trigger             |
-| ---------------- | ------------------------------------------ | --------------------- | ------------------- |
-| `audit`          | Run security audits (backend + frontend)   | audit                 | PR, main, scheduled |
-| `backend-audit`  | cargo deny                                 | audit                 | PR, main, scheduled |
-| `frontend-audit` | npm audit                                  | audit                 | PR, main, scheduled |
-| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | ci-backend, ci-zizmor | local, PR, main     |
-| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint             | PR, main            |
+| Rule (justfile)             | Description                                                                                 | Params | Workflow                                                                                   | Trigger             |
+| --------------------------- | ------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------ | ------------------- |
+| `auth-matrix-check`         | ensure auth-matrix artifacts match generator                                                | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `catalog-check`             | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | —      | ❌️                                                                                         | local               |
+| `docs-eventual-consistency` | Regenerate docs/eventual-consistency.md from the JSON catalogs                              | —      | ❌️                                                                                         | ❌️                  |
+| `dylint-check`              | run dylint auth lints (advisory)                                                            | —      | [ci](../.github/workflows/ci.yml)                                                          | PR, main            |
+| `env-var-check`             | check PICASU_* env vars match docs/config.md                                                | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `events-check`              | Validate the eventual-consistency event catalog                                             | —      | ❌️                                                                                         | local               |
+| `fuzz-check`                | tier-1 gate: seeded sweep, baseline-compared                                                | —      | [ci](../.github/workflows/ci.yml), [fuzz-advisory](../.github/workflows/fuzz-advisory.yml) | PR, main, scheduled |
+| `fuzz-matrix`               | run fuzz matrix (auth checks)                                                               | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `fuzz-run`                  | run fuzz campaign (budget via FUZZ_MIN)                                                     | *args  | ❌️                                                                                         | ❌️                  |
+| `fuzz-serve`                | —                                                                                           | *args  | ❌️                                                                                         | ❌️                  |
+| `gates-check`               | ensure all test/check rules are called from CI and global rules                             | —      | [ci](../.github/workflows/ci.yml), [docs-check](../.github/workflows/docs-check.yml)       | local, PR, main     |
+| `msrv-check`                | Non-blocking by design: MSRV floor check (nightly lane).                                    | —      | [msrv](../.github/workflows/msrv.yml)                                                      | scheduled           |
+| `openapi-breakcheck`        | Fail on breaking OpenAPI changes                                                            | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `openapi-check`             | Run all OpenAPI checks.                                                                     | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `openapi-gen`               | Regenerate the checked-in OpenAPI artifact                                                  | —      | ❌️                                                                                         | ❌️                  |
+| `openapi-lint`              | Lint the OpenAPI document (errors fail)                                                     | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `openapi-routes-release`    | Run the already-built release binary's route-set gate against the committed spec.           | —      | [release](../.github/workflows/release.yml)                                                | tags                |
+| `openapi-sanity`            | check OpenAPI annotation conventions                                                        | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `plan`                      | run plan <args> (needs install-plan)                                                        | *args  | ❌️                                                                                         | ❌️                  |
+| `plan-format`               | Auto-format .plan task frontmatter and body                                                 | —      | ❌️                                                                                         | ❌️                  |
+| `plan-lint`                 | check .plan task frontmatter correctness                                                    | —      | [ci](../.github/workflows/ci.yml), [docs-check](../.github/workflows/docs-check.yml)       | local, PR, main     |
+| `quint-check`               | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | —      | ❌️                                                                                         | local               |
+| `spec-check`                | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | —      | ❌️                                                                                         | local               |
+| `utils-check`               | utils fmt + clippy (all targets)                                                            | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `utils-format`              | cargo fmt on utils/ crates                                                                  | —      | ❌️                                                                                         | ❌️                  |
+| `utils-test`                | cargo test utils/ + Schemathesis derivations                                                | —      | [ci](../.github/workflows/ci.yml)                                                          | local, PR, main     |
+| `zizmor-check`              | audit workflows/deps offline (no GH_TOKEN)                                                  | —      | [ci](../.github/workflows/ci.yml), [zizmor](../.github/workflows/zizmor.yml)               | local, PR, main     |
+| `zizmor-check-online`       | e.g. --format=sarif                                                                         | *args  | ❌️                                                                                         | ❌️                  |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
-
-### Fuzzing
-
-| Rule (justfile) | Description                                  | CI Lane             | Trigger             |
-| --------------- | -------------------------------------------- | ------------------- | ------------------- |
-| `fuzz-check`    | tier-1 gate: seeded sweep, baseline-compared | ci-backend, nightly | PR, main, scheduled |
-| `fuzz-matrix`   | run fuzz matrix (auth checks)                | ci-backend          | local, PR, main     |
-
 Note: `fuzz-check` - CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)
 
-### Specs & catalogs
+### Docs
 
-| Rule (justfile) | Description                                                                                 | CI Lane | Trigger |
-| --------------- | ------------------------------------------------------------------------------------------- | ------- | ------- |
-| `quint-check`   | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️      | local   |
-| `spec-check`    | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️      | local   |
-| `events-check`  | Validate the eventual-consistency event catalog                                             | ❌️      | local   |
-| `catalog-check` | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️      | local   |
+| Rule (justfile) | Description                                       | Params | Workflow                                                                             | Trigger         |
+| --------------- | ------------------------------------------------- | ------ | ------------------------------------------------------------------------------------ | --------------- |
+| `docs-build`    | Build mdBook site at target/docs/                 | —      | ❌️                                                                                   | ❌️              |
+| `docs-check`    | check markdown (docs, .plan, utils)               | —      | [ci](../.github/workflows/ci.yml), [docs-check](../.github/workflows/docs-check.yml) | local, PR, main |
+| `docs-format`   | format markdown (README, docs, .plan, utils)      | —      | ❌️                                                                                   | ❌️              |
+| `docs-openapi`  | Generate OpenAPI spec and reference doc           | —      | ❌️                                                                                   | ❌️              |
+| `docs-serve`    | Serve mdbook documentation                        | —      | ❌️                                                                                   | ❌️              |
+| `gates-docs`    | Regenerate the gates doc (checked by gates-check) | —      | ❌️                                                                                   | ❌️              |
 
-### Repo & docs hygiene
+### Deps
 
-| Rule (justfile)       | Description                                                     | CI Lane           | Trigger         |
-| --------------------- | --------------------------------------------------------------- | ----------------- | --------------- |
-| `docs-check`          | check markdown (docs, .plan, utils)                             | ci-frontend, docs | local, PR, main |
-| `plan-lint`           | check .plan task frontmatter correctness                        | ci-frontend, docs | local, PR, main |
-| `env-var-check`       | check PICASU_* env vars match docs/config.md                    | ci-backend        | local, PR, main |
-| `gates-check`         | ensure all test/check rules are called from CI and global rules | ci-backend, docs  | local, PR, main |
-| `branches-prune-test` | Test the branch pruning helper against a fixture repository     | ❌️                | local           |
+| Rule (justfile) | Description                                                       | Params | Workflow                                                                                                                                                                                                                    | Trigger                          |
+| --------------- | ----------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `check-tools`   | verify installed tool versions                                    | —      | ❌️                                                                                                                                                                                                                          | ❌️                               |
+| `install`       | dispatcher loops scripts/deps/*.sh                                | tool   | [audit](../.github/workflows/audit.yml), [ci](../.github/workflows/ci.yml), [fuzz-advisory](../.github/workflows/fuzz-advisory.yml), [release](../.github/workflows/release.yml), [zizmor](../.github/workflows/zizmor.yml) | local, PR, main, tags, scheduled |
+| `install-dev`   | install managed dev tools                                         | —      | ❌️                                                                                                                                                                                                                          | ❌️                               |
+| `install-plan`  | Install 'plan' and 'gloss' tools (pinned)                         | —      | ❌️                                                                                                                                                                                                                          | ❌️                               |
+| `setup-dev`     | install dev tools + precommit hook                                | —      | ❌️                                                                                                                                                                                                                          | ❌️                               |
+| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | —      | ❌️                                                                                                                                                                                                                          | ❌️                               |
+
+### Global
+
+| Rule (justfile)       | Description                                                                | Params | Workflow                                | Trigger             |
+| --------------------- | -------------------------------------------------------------------------- | ------ | --------------------------------------- | ------------------- |
+| `audit`               | Run security audits (backend + frontend)                                   | —      | [audit](../.github/workflows/audit.yml) | PR, main, scheduled |
+| `branches-prune`      | Prune stale local/remote branches (report; --apply + --expire-* to delete) | *args  | ❌️                                      | ❌️                  |
+| `branches-prune-test` | Test the branch pruning helper against a fixture repository                | —      | ❌️                                      | local               |
+| `build`               | Build frontend then backend (dev build)                                    | —      | ❌️                                      | ❌️                  |
+| `build-release`       | Release build with embedded assets                                         | —      | ❌️                                      | ❌️                  |
+| `check`               | Run all linters and static checks                                          | —      | ❌️                                      | local               |
+| `clean`               | Remove transient generated state                                           | —      | ❌️                                      | ❌️                  |
+| `distclean`           | Clean all generated files                                                  | —      | ❌️                                      | ❌️                  |
+| `format`              | Format everything                                                          | —      | ❌️                                      | ❌️                  |
+| `precommit`           | Run format, linter, static checks and tests                                | —      | ❌️                                      | local               |
+| `run`                 | Build and run out of sandbox/{data,images}                                 | —      | ❌️                                      | ❌️                  |
+| `test`                | run full test suite                                                        | —      | ❌️                                      | local               |
+| `test-release`        | build + test release (webroot embedded)                                    | —      | ❌️                                      | ❌️                  |
+
+### Bench
+
+| Rule (justfile)      | Description                | Params                                                                | Workflow | Trigger |
+| -------------------- | -------------------------- | --------------------------------------------------------------------- | -------- | ------- |
+| `bench::clean`       | Remove the on-demand venv. | —                                                                     | ❌️       | ❌️      |
+| `bench::extract`     | Extract cell metrics.      | *args                                                                 | ❌️       | ❌️      |
+| `bench::format`      | Apply formatting.          | —                                                                     | ❌️       | ❌️      |
+| `bench::lint`        | Lint + format check.       | —                                                                     | ❌️       | ❌️      |
+| `bench::seed-images` | Seed an image repo.        | image_repo, images="100", template="", jobs="4"                       | ❌️       | ❌️      |
+| `bench::server`      | Serve a backend cell.      | —                                                                     | ❌️       | ❌️      |
+| `bench::test`        | Run the bench unit tests.  | —                                                                     | ❌️       | ❌️      |
+| `bench::workload`    | Run a benchmark cell.      | out, image_repo, images="100", ncpu="8", build="release", port="5795" | ❌️       | ❌️      |

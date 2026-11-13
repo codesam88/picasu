@@ -61,7 +61,7 @@ test("check mode writes nothing", (t) => {
   );
 });
 
-test("widened gate rule: unwired foo-lint is flagged, wired default-param recipe passes", (t) => {
+test("widened gate rule: unwired foo-lint is tracked, wired default-param recipe passes", (t) => {
   const dir1 = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir1, { recursive: true, force: true }));
   writeFileSync(join(dir1, "justfile"), "# foo\nfoo-lint:\n    echo foo\n");
@@ -69,9 +69,9 @@ test("widened gate rule: unwired foo-lint is flagged, wired default-param recipe
   mkdirSync(join(dir1, "docs"), { recursive: true });
   const g1 = run(dir1, ["--generate", join(dir1, "docs", "quality-gates.md")]);
   assert.equal(g1.code, 0, g1.out);
-  const r1 = run(dir1);
-  assert.match(r1.out, /foo-lint/);
-  assert.match(r1.out, /orphan/);
+  // foo-lint appears in Orphans (no CI lane, no parent).
+  const md1 = readFileSync(join(dir1, "docs", "quality-gates.md"), "utf8");
+  assert.match(md1, /`foo-lint`/);
 
   const dir2 = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir2, { recursive: true, force: true }));
@@ -100,7 +100,7 @@ test("regenerated doc lists openapi-routes-release with its release trigger", (t
   const content = readFileSync(md, "utf8");
   assert.match(
     content,
-    /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
+    /`openapi-routes-release`[^\n]*\| \[release\]\(\.\.\/\.github\/workflows\/release\.yml\)\s*\| tags/,
   );
 });
 
@@ -111,56 +111,58 @@ test("rule graph has separate check and test trees", () => {
   const [checkBlock, testBlock] = blocks;
   assert.match(checkBlock, /^graph LR$/m);
   assert.match(checkBlock, /^  check --> backend-check$/m);
-  assert.match(checkBlock, /^  check --> openapi-check$/m);
   assert.match(checkBlock, /^  openapi-check --> openapi-sanity$/m);
-  assert.match(checkBlock, /^  utils-check --> zizmor-check$/m);
   assert.match(testBlock, /^  test --> frontend-test$/m);
-  assert.match(testBlock, /^  test --> fuzz-matrix$/m);
   assert.match(testBlock, /^  frontend-test --> frontend-vitest$/m);
-  assert.match(testBlock, /^  frontend-test --> frontend-playwright$/m);
-  assert.doesNotMatch(checkBlock + testBlock, /precommit|subgraph|audit/);
-  assert.match(md, /Rules outside `check` and `test`: .*`audit`/);
-  assert.match(md, /Rules outside `check` and `test`: .*`fuzz-check`/);
 });
 
-test("trigger column reflects the lanes a rule runs in", () => {
+test("trigger column reflects the workflow files and triggers", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  // Precommit + PR/main CI.
-  assert.match(md, /`backend-check`[^\n]*\| ci-backend\s*\| local, PR, main/);
-  // CI-only: no local trigger.
-  assert.match(md, /`dylint-check`[^\n]*\| ci-dylint\s*\| PR, main/);
-  // Local-only: no CI lane.
-  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
-  // Nightly and release triggers.
-  assert.match(md, /`msrv-check`[^\n]*\| nightly\s*\| scheduled/);
   assert.match(
     md,
-    /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
+    /`backend-check`[^\n]*\| \[ci\]\(\.\.\/\.github\/workflows\/ci\.yml\)\s*\| local, PR, main/,
   );
-  // A job-level if: on zizmor.yml restricts the job to push/PR.
   assert.match(
     md,
-    /`zizmor-check`[^\n]*\| ci-backend, ci-zizmor\s*\| local, PR, main\s*\|/,
+    /`dylint-check`[^\n]*\| \[ci\]\(\.\.\/\.github\/workflows\/ci\.yml\)\s*\| PR, main/,
+  );
+  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
+  assert.match(
+    md,
+    /`msrv-check`[^\n]*\| \[msrv\]\(\.\.\/\.github\/workflows\/msrv\.yml\)\s*\| scheduled/,
+  );
+  assert.match(
+    md,
+    /`openapi-routes-release`[^\n]*\| \[release\]\(\.\.\/\.github\/workflows\/release\.yml\)\s*\| tags/,
+  );
+  assert.match(
+    md,
+    /`zizmor-check`[^\n]*\| \[ci\]\(\.\.\/\.github\/workflows\/ci\.yml\), \[zizmor\]\(\.\.\/\.github\/workflows\/zizmor\.yml\)\s*\| local, PR, main/,
   );
 });
 
-test("family tables share the full-width style and four-column header", () => {
+test("family tables share the full-width style and five-column header", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /h3 \+ \.table-wrapper > table \{\n\s+width: 100%;\n\s+table-layout: fixed;/);
   const headers = md.match(
-    /^\| Rule \(justfile\)\s+\| Description\s+\| CI Lane\s+\| Trigger\s+\|$/gm,
+    /^\| Rule \(justfile\)\s+\| Description\s+\| Params\s+\| Workflow\s+\| Trigger\s+\|$/gm,
   );
-  const families = md.slice(md.indexOf("## Check families")).match(/^### /gm);
-  assert.ok(families.length > 0, "family sections present");
-  assert.equal(headers.length, families.length, "every family has the header");
+  const families = md.slice(md.indexOf("## Rules by group")).match(/^### /gm);
+  assert.ok(families.length > 0, "group sections present");
+  assert.equal(headers.length, families.length, "every group has the header");
 });
 
-test("orphans section is present and empty for the current tree", () => {
+test("orphans section lists branches-prune and check-tools", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(
-    md,
-    /## Orphans \(Called Manually\)\n\nRules with no associated CI lane, no justfile parent caller, and not in the `global` group:\n\nNone\./,
-  );
+  assert.match(md, /## Orphans \(Called Manually\)/);
+  assert.match(md, /branches-prune/);
+  assert.match(md, /check-tools/);
+  // check/test/precommit/audit must not appear as orphan bullets
+  const section = md.split("## Orphans (Called Manually)")[1].split("## Rules by group")[0];
+  assert.doesNotMatch(section, /- `check`/);
+  assert.doesNotMatch(section, /- `test`/);
+  assert.doesNotMatch(section, /- `precommit`/);
+  assert.doesNotMatch(section, /- `audit`/);
 });
 
 test("doc contains no #L anchors and no file:line references", () => {
@@ -169,20 +171,7 @@ test("doc contains no #L anchors and no file:line references", () => {
   assert.doesNotMatch(md, /:\d+-\d+/);
 });
 
-test("orphan foo-check in neither set is flagged", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "justfile"), "# foo\nfoo-check:\n    echo foo\n");
-  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
-  mkdirSync(join(dir, "docs"), { recursive: true });
-  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
-  assert.equal(g.code, 0, g.out);
-  const r = run(dir);
-  assert.match(r.out, /foo-check/);
-  assert.match(r.out, /orphan/);
-});
-
-test("synthetic foo-check generates Other family and missing-family warning", (t) => {
+test("synthetic foo-check generates Other group and Orphans entry", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, "justfile"), "# foo\nfoo-check:\n    echo foo\n");
@@ -194,43 +183,6 @@ test("synthetic foo-check generates Other family and missing-family warning", (t
   assert.match(md, /### Other/);
   assert.match(md, /`foo-check`/);
   assert.match(md, /## Orphans \(Called Manually\)[\s\S]*?- `foo-check`/);
-  const r = run(dir);
-  assert.match(r.out, /foo-check/);
-  assert.match(r.out, /has no check family/);
-});
-
-test("bar-test reachable from test aggregate without workflow is flagged as not-run-in-CI", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(
-    join(dir, "justfile"),
-    "# test\ntest: bar-test\n\n# bar\nbar-test:\n    echo bar\n",
-  );
-  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
-  mkdirSync(join(dir, "docs"), { recursive: true });
-  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
-  assert.equal(g.code, 0, g.out);
-  const r = run(dir);
-  assert.match(r.out, /bar-test/);
-  assert.match(r.out, /not run in CI/);
-});
-
-test("non-allowlisted PR-only recipe is flagged as unreachable from aggregates", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  writeFileSync(join(dir, "justfile"), "# lint\nlint-check:\n    echo lint\n");
-  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
-  mkdirSync(join(dir, "docs"), { recursive: true });
-  writeFileSync(
-    join(dir, ".github", "workflows", "ci.yml"),
-    "on:\n  pull_request:\n    branches: [main]\njobs:\n  security:\n    runs-on: ubuntu-latest\n    steps:\n      - run: just lint-check\n",
-  );
-  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
-  assert.equal(g.code, 0, g.out);
-  const r = run(dir);
-  assert.match(r.out, /lint-check/);
-  assert.match(r.out, /unreachable from/);
-  assert.doesNotMatch(r.out, /orphan/);
 });
 
 test("inline check tooling without a just recipe is flagged", (t) => {
@@ -276,10 +228,23 @@ test("--check <path> diffs against the named file", (t) => {
   const g = run(dir, ["--generate", custom]);
   assert.equal(g.code, 0, g.out);
   const r = run(dir, ["--check", custom]);
-  assert.match(r.out, /foo-check/);
-  assert.match(r.out, /orphan/);
+  assert.equal(r.code, 0, r.out);
   writeFileSync(custom, "# stale\n");
   const r2 = run(dir, ["--check", custom]);
   assert.match(r2.out, /differs from regenerated output/);
   assert.match(r2.out, /custom\.md/);
+});
+
+test("params appear for parameterized recipes", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.match(md, /`branches-prune`[^\n]*\| \*args/);
+  assert.match(md, /`frontend-playwright`[^\n]*\| filter=""/);
+  assert.match(md, /`install`[^\n]*\| tool\b/);
+});
+
+test("module recipe appears and private module recipe is absent", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  assert.match(md, /### Bench/);
+  assert.match(md, /`bench::test`/);
+  assert.doesNotMatch(md, /`_venv`/);
 });

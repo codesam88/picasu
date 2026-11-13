@@ -1,25 +1,16 @@
 #!/usr/bin/env node
-// Verify the quality gates: every check/test recipe in the justfile is
-// scheduled in a pipeline lane, CI runs no check/test tooling outside
-// of a `just` recipe, and docs/quality-gates.md matches the generated
-// output. Also (re)generates docs/quality-gates.md.
+// Generate docs/quality-gates.md: an overview for documentation and a
+// manual review aid for the validation gates. The diagrams show recipe
+// wiring; the orphans list and per-group tables expose gaps such as
+// recipes with no workflow, no caller, or duplicate coverage.
 //
-// Tracked universe (step 9): U = transitive closure of justfile deps from
-// roots {precommit, test, check, audit} UNION the same closure from every
-// `just X` invoked in any enabled workflow file. Display set D = every
-// isGateRecipe-incl-exacts recipe ∪ {precommit, test, check, audit}. Helpers
-// stay in U for reachability but are never displayed.
+// The output is data-driven from `just --json` and the workflow files.
+// Keep manual maps and filters to a minimum; where one is unavoidable,
+// keep it narrow and close to the data it classifies.
 //
-// Lane mapping rule: a recipe's lane comes from (1) the workflows that
-// invoke it directly and (2) the aggregates that reach it.
-//
-// Trigger labels: triggerTokens(wfText) scans the workflow's `on:` region
-// for pull_request/PR, push+branches:main/main, tags:/tags, schedule/
-// scheduled. A job-level `if:` that compares github.event_name narrows the
-// tokens to the events that reach that job. laneTriggers[lane] unions tokens
-// over its backing workflow files; tokens ordered PR, main, tags, scheduled.
-// workflow_dispatch is not labeled: any workflow that declares it can be run
-// by hand.
+// Every non-private recipe is tracked; CI steps that run check tooling
+// outside a `just` recipe warn, and the committed doc must match the
+// generated output.
 //
 // Usage: quality-gates.mjs [repo-root] [--generate <path>] [--check <path>] [--check-only]
 //
@@ -37,7 +28,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 const args = process.argv.slice(2);
 function flagValue(flag) {
@@ -60,7 +51,6 @@ const positional = args.filter(
 );
 const root = positional[0] ?? ".";
 
-const justfilePath = join(root, "justfile");
 const workflowsDir = join(root, ".github", "workflows");
 const docsDir = join(root, "docs");
 const outPath = join(docsDir, "quality-gates.md");
@@ -68,161 +58,107 @@ const outPath = join(docsDir, "quality-gates.md");
 const failures = [];
 const warnings = [];
 
-// ---------- justfile parsing ----------
-function parseDeps(s) {
-  if (!s.trim()) return [];
-  const tokens = [];
-  let depth = 0;
-  let cur = "";
-  for (const ch of s) {
-    if (ch === "(") {
-      depth += 1;
-      cur += ch;
-    } else if (ch === ")") {
-      depth -= 1;
-      cur += ch;
-    } else if (ch === " " && depth === 0) {
-      if (cur.trim()) tokens.push(cur.trim());
-      cur = "";
-    } else {
-      cur += ch;
+// ---------- recipe loading via `just --json` ----------
+function loadRecipes() {
+  let out;
+  try {
+    out = execFileSync("just", ["--json"], { cwd: root, encoding: "utf8" });
+  } catch (e) {
+    const detail = e.stderr ? e.stderr.toString().trim() : e.message;
+    console.error(`Error: just --json failed in ${root}: ${detail}`);
+    process.exit(1);
+  }
+  const json = JSON.parse(out);
+  const recipes = [];
+  function walk(modObj) {
+    for (const r of Object.values(modObj.recipes || {})) {
+      const name = r.namepath;
+      const module = name.includes("::")
+        ? name.slice(0, name.lastIndexOf("::"))
+        : "";
+      const topLevelModule = module ? module.split("::")[0] : "";
+      let group = "";
+      for (const a of r.attributes || []) {
+        if (a && typeof a === "object" && a.group) {
+          group = a.group;
+          break;
+        }
+      }
+      if (!group && module) group = topLevelModule;
+      recipes.push({
+        name,
+        shortName: r.name,
+        module,
+        deps: [],
+        rawDeps: r.dependencies || [],
+        annotation: r.doc ?? "",
+        group,
+        private: !!r.private,
+        params: r.parameters || [],
+        body: r.body || [],
+      });
+    }
+    for (const sub of Object.values(modObj.modules || {})) {
+      walk(sub);
     }
   }
-  if (cur.trim()) tokens.push(cur.trim());
-  return tokens.map((t) => {
-    const m = t.match(/^\(([^)]*)\)/);
-    const inner = m ? m[1].trim() : t;
-    const nm = inner.match(/^([A-Za-z_][\w-]*)/);
-    return nm ? nm[1] : t;
-  });
-}
-
-function parseJustfile() {
-  const content = readFileSync(justfilePath, "utf8");
-  const lines = content.split("\n");
-  const recipes = [];
-  let comments = [];
-  let attrs = [];
-  let idx = 0;
-  while (idx < lines.length) {
-    const line = lines[idx];
-    const trimmed = line.trim();
-    if (trimmed === "") {
-      comments = [];
-      attrs = [];
-      idx += 1;
-      continue;
-    }
-    if (trimmed.startsWith("#")) {
-      comments.push(trimmed);
-      idx += 1;
-      continue;
-    }
-    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-      attrs.push(trimmed);
-      idx += 1;
-      continue;
-    }
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx > 0 && /^[A-Za-z_][\w-]*/.test(trimmed)) {
-      const before = trimmed.slice(0, colonIdx).trim();
-      const nameMatch = before.match(/^([A-Za-z_][\w-]*)/);
-      if (nameMatch) {
-        const name = nameMatch[1];
-        const params = before.slice(name.length).trim();
-        const after = trimmed.slice(colonIdx + 1).trim();
-        const deps = parseDeps(after);
-        const annotation =
-          comments.length > 0
-            ? comments[comments.length - 1].replace(/^#\s?/, "")
-            : "";
-        const isPrivate = attrs.some((a) => a.includes("private"));
-        const groupMatch = attrs
-          .map((a) => a.match(/group\('([^']+)'\)/))
-          .find(Boolean);
-        const group = groupMatch ? groupMatch[1] : "";
-        const startLine = idx + 1;
-        let lastBody = idx;
-        let j = idx + 1;
-        while (j < lines.length) {
-          const l = lines[j];
-          if (l.trim() === "") {
-            j += 1;
-            continue;
-          }
-          if (!/^\s/.test(l)) break;
-          lastBody = j;
-          j += 1;
-        }
-        let end = lastBody + 1;
-        if (end < startLine) end = startLine;
-        const bodyLines = lines.slice(idx + 1, end).map((l, k) => ({
-          text: l,
-          lineno: idx + 2 + k,
-        }));
-        recipes.push({
-          name,
-          params,
-          deps,
-          annotation,
-          startLine,
-          endLine: end,
-          bodyLines,
-          private: isPrivate,
-          group,
-        });
-        comments = [];
-        attrs = [];
-        idx = end;
-        continue;
+  walk(json);
+  const byName = new Map(recipes.map((r) => [r.name, r]));
+  for (const r of recipes) {
+    const depsSet = new Set();
+    for (const d of r.rawDeps) {
+      const depName = d.recipe;
+      if (depName.includes("::")) {
+        if (byName.has(depName)) depsSet.add(depName);
+      } else if (r.module) {
+        const q = `${r.module}::${depName}`;
+        if (byName.has(q)) depsSet.add(q);
+        else if (byName.has(depName)) depsSet.add(depName);
+      } else {
+        if (byName.has(depName)) depsSet.add(depName);
       }
     }
-    comments = [];
-    attrs = [];
-    idx += 1;
+    r.deps = [...depsSet].sort();
+    delete r.rawDeps;
   }
-  return { content, lines, recipes };
+  return recipes;
 }
 
-const { recipes } = parseJustfile();
+const recipes = loadRecipes();
 const recipeByName = new Map(recipes.map((r) => [r.name, r]));
 
-function paramsAllowed(r) {
-  const s = r.params.trim();
-  if (s === "") return true;
-  const tokens = s.split(/\s+/);
-  for (const t of tokens) {
-    if (t.startsWith("*")) return false;
-    if (!t.includes("=")) return false;
+function flattenBody(r) {
+  const out = [];
+  for (const line of r.body || []) {
+    if (Array.isArray(line)) {
+      const text = line
+        .map((part) =>
+          Array.isArray(part) ? part.join("") : String(part ?? ""),
+        )
+        .join("");
+      out.push(text);
+    } else {
+      out.push(String(line ?? ""));
+    }
   }
-  return true;
+  return out;
 }
 
-function isGateRecipe(r) {
-  if (!paramsAllowed(r)) return false;
-  const name = r.name;
-  // names matching -check/-test as substring (covers -test- infix)
-  if (name.includes("-check")) return true;
-  if (name.includes("-test")) return true;
-  // suffixes
-  if (name.endsWith("-lint")) return true;
-  if (name.endsWith("-sanity")) return true;
-  if (name.endsWith("-match")) return true;
-  if (name.endsWith("-breakcheck")) return true;
-  if (name.endsWith("-matrix")) return true;
-  if (name.endsWith("-audit")) return true;
-  // prefixes
-  if (name.startsWith("fuzz-")) return true;
-  if (name.startsWith("dylint-")) return true;
-  // exacts
-  if (name === "audit") return true;
-  if (name === "frontend-vitest") return true;
-  if (name === "frontend-playwright") return true;
-  if (name === "openapi-routes-release") return true;
-  return false;
+function formatParams(r) {
+  const params = r.params || [];
+  if (!params.length) return "\u2014";
+  const labels = params.map((p) => {
+    if (p.kind === "star") return `*${p.name}`;
+    if (p.kind === "plus") return `+${p.name}`;
+    if (p.default == null) return p.name;
+    const value =
+      typeof p.default === "string" ? JSON.stringify(p.default) : String(p.default);
+    return `${p.name}=${value}`;
+  });
+  return labels.join(", ");
 }
 
-// ---------- trigger parsing (step 9) ----------
+// ---------- trigger parsing ----------
 function onRegionLines(lines) {
   const out = [];
   let inOn = false;
@@ -255,9 +191,6 @@ function triggerTokens(text) {
   return [...new Set(tokens)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
 }
 
-// A job-level `if:` narrows the events that reach the job. Only equality
-// checks on github.event_name are considered; other expressions keep the
-// file-level triggers.
 function jobTriggerTokens(fileTriggers, jobIf) {
   if (!jobIf) return fileTriggers;
   const events = new Set(
@@ -282,7 +215,6 @@ function jobTriggerTokens(fileTriggers, jobIf) {
 function laneForWorkflow(file, job) {
   const base = basename(file);
   if (base === "ci.yml") {
-    // Open world: a new ci.yml job is its own lane, never silently dropped.
     return job ? `ci-${String(job).toLowerCase()}` : null;
   }
   if (base === "docs-check.yml") return "docs";
@@ -293,8 +225,6 @@ function laneForWorkflow(file, job) {
   if (base === "zizmor.yml") {
     return job ? `ci-${String(job).toLowerCase()}` : null;
   }
-  // Open world: any other workflow file is its own lane, named for the
-  // file. New files are tracked instead of silently dropped.
   const m = base.match(/^(.+?)\.ya?ml$/);
   return m ? m[1] : null;
 }
@@ -337,8 +267,8 @@ function isBootstrap(line) {
   return false;
 }
 
-const directInvocations = []; // { recipe, lane, file, startLine, endLine }
-const laneTriggers = new Map(); // lane -> Set<string>
+const directInvocations = [];
+const laneTriggers = new Map();
 const prTriggeredFiles = new Set();
 const workflowFiles = readdirSync(workflowsDir)
   .filter((n) => n.endsWith(".yml") || n.endsWith(".yaml"))
@@ -416,7 +346,6 @@ for (const wf of workflowFiles) {
         endLine = i + 1;
         i += 1;
       }
-      // (b) check tooling (warning only)
       for (const cl of collected) {
         const txt = cl.text.trim();
         if (!txt) continue;
@@ -427,10 +356,9 @@ for (const wf of workflowFiles) {
           );
         }
       }
-      // invocations
       for (const cl of collected) {
         const txt = cl.text;
-        const re = /\bjust\s+([A-Za-z_][\w-]*)/g;
+        const re = /\bjust\s+([A-Za-z_][\w:-]*)/g;
         let m;
         while ((m = re.exec(txt)) !== null) {
           const recipe = m[1];
@@ -458,37 +386,44 @@ for (const wf of workflowFiles) {
 // precommit recipe invocations
 const precommitRecipe = recipes.find((r) => r.name === "precommit");
 if (precommitRecipe) {
-  for (const bl of precommitRecipe.bodyLines) {
-    const re = /\bjust\s+([A-Za-z_][\w-]*)/g;
+  for (const text of flattenBody(precommitRecipe)) {
+    const re = /\bjust\s+([A-Za-z_][\w:-]*)/g;
     let m;
-    while ((m = re.exec(bl.text)) !== null) {
+    while ((m = re.exec(text)) !== null) {
       directInvocations.push({
         recipe: m[1],
         lane: "precommit",
         file: "justfile",
-        startLine: bl.lineno,
-        endLine: bl.lineno,
+        startLine: 0,
+        endLine: 0,
       });
     }
   }
 }
 
 // ---------- lane propagation ----------
-const recipeLanes = new Map(); // name -> Set<string>
+const recipeLanes = new Map();
+const recipeFiles = new Map();
 function addLane(recipe, lane) {
   if (!recipeLanes.has(recipe)) recipeLanes.set(recipe, new Set());
   recipeLanes.get(recipe).add(lane);
 }
+function addFile(recipe, file) {
+  if (file === "justfile") return;
+  if (!recipeFiles.has(recipe)) recipeFiles.set(recipe, new Set());
+  recipeFiles.get(recipe).add(file);
+}
 for (const inv of directInvocations) {
   addLane(inv.recipe, inv.lane);
+  addFile(inv.recipe, inv.file);
 }
-// Forward propagation: a scheduled recipe's deps are scheduled in the same lanes.
 let changed = true;
 while (changed) {
   changed = false;
   for (const r of recipes) {
     if (!recipeLanes.has(r.name)) continue;
     const lanes = recipeLanes.get(r.name);
+    const files = recipeFiles.get(r.name);
     for (const dep of r.deps) {
       if (!recipeByName.has(dep)) continue;
       if (!recipeLanes.has(dep)) {
@@ -499,65 +434,18 @@ while (changed) {
         for (const l of lanes) recipeLanes.get(dep).add(l);
         if (recipeLanes.get(dep).size !== before) changed = true;
       }
+      if (files && files.size) {
+        if (!recipeFiles.has(dep)) recipeFiles.set(dep, new Set());
+        const before = recipeFiles.get(dep).size;
+        for (const f of files) recipeFiles.get(dep).add(f);
+        if (recipeFiles.get(dep).size !== before) changed = true;
+      }
     }
   }
 }
-// Reverse propagation (single pass): an aggregate picks up the lanes of its
-// wired deps, even if already scheduled (so frontend-test gains ci-frontend).
-// Single pass avoids spreading lanes across siblings.
-for (const r of recipes) {
-  const wiredDeps = r.deps.filter(
-    (d) => recipeLanes.has(d) && isGateRecipe(recipeByName.get(d)),
-  );
-  if (wiredDeps.length === 0) continue;
-  if (!recipeLanes.has(r.name)) recipeLanes.set(r.name, new Set());
-  for (const d of wiredDeps) {
-    for (const l of recipeLanes.get(d)) recipeLanes.get(r.name).add(l);
-  }
-}
-
-
-// ---------- tracked universe U (step 9) ----------
-const aggregateRoots = ["precommit", "test", "check", "audit"];
-function closureFromRoots(rootNames) {
-  const visited = new Set();
-  const stack = rootNames.filter((n) => recipeByName.has(n));
-  for (const r of stack) visited.add(r);
-  while (stack.length) {
-    const cur = stack.pop();
-    const rec = recipeByName.get(cur);
-    if (!rec) continue;
-    for (const dep of rec.deps) {
-      if (!recipeByName.has(dep)) continue;
-      if (visited.has(dep)) continue;
-      visited.add(dep);
-      stack.push(dep);
-    }
-  }
-  return visited;
-}
-const workflowRoots = [
-  ...new Set(
-    directInvocations
-      .filter((inv) => inv.file !== "justfile")
-      .map((inv) => inv.recipe)
-      .filter((n) => recipeByName.has(n)),
-  ),
-];
-const U = closureFromRoots([...aggregateRoots, ...workflowRoots]);
-const closureFromAggregates = closureFromRoots(aggregateRoots);
-const reachableFromTest = closureFromRoots(["test"]);
-
-const WORKFLOW_LANES = (() => {
-  // Workflow-backed lanes: lanes of `just` invocations from workflow
-  // files (the local precommit dispatch lane excluded). Dynamic so new
-  // jobs/files count as CI automatically.
-  return new Set(
-    directInvocations
-      .filter((inv) => inv.file !== "justfile")
-      .map((inv) => inv.lane),
-  );
-})();
+// Lane propagation: a recipe inherits the lanes of the recipes it calls.
+// There is no reverse propagation; an aggregate's lane is what actually
+// invokes it (for `check`/`test`, the precommit hook).
 
 const locallyUnexercised = [
   {
@@ -573,57 +461,11 @@ const locallyUnexercised = [
 ];
 const allowlistByName = new Map(locallyUnexercised.map((e) => [e.name, e.reason]));
 
-// ---------- check (a): orphan (warning only) ----------
-for (const r of recipes) {
-  if (!isGateRecipe(r)) continue;
-  if (!U.has(r.name)) {
-    warnings.push(
-      `justfile: recipe '${r.name}' (${r.startLine}) is an orphan (not in tracked universe U)`,
-    );
-  }
-}
+// ---------- display set ----------
+const displayRecipes = recipes.filter((r) => !r.private);
+const displaySet = new Set(displayRecipes.map((r) => r.name));
 
-// ---------- check (b): tests not run in CI (warning only) ----------
-for (const r of recipes) {
-  if (!isGateRecipe(r)) continue;
-  if (!reachableFromTest.has(r.name)) continue;
-  const lanes = recipeLanes.get(r.name) || new Set();
-  const hasWorkflowLane = [...lanes].some((l) => WORKFLOW_LANES.has(l));
-  if (!hasWorkflowLane) {
-    warnings.push(
-      `justfile: recipe '${r.name}' (${r.startLine}) is a test reachable from 'test' but not run in CI (no workflow-backed lane)`,
-    );
-  }
-}
-
-// ---------- check (c): PR-triggered workflow recipes unreachable from aggregates (warning only) ----------
-const prRecipes = new Set();
-for (const inv of directInvocations) {
-  if (!prTriggeredFiles.has(inv.file)) continue;
-  if (!recipeByName.has(inv.recipe)) continue;
-  prRecipes.add(inv.recipe);
-}
-for (const name of prRecipes) {
-  if (!isGateRecipe(recipeByName.get(name))) continue;
-  if (closureFromAggregates.has(name)) continue;
-  if (allowlistByName.has(name)) continue;
-  warnings.push(
-    `justfile: recipe '${name}' is invoked by a PR-triggered workflow but unreachable from {precommit, test, check, audit}`,
-  );
-}
-
-// ---------- generate doc ----------
-const gateRecipes = recipes.filter(isGateRecipe).sort((a, b) =>
-  a.name < b.name ? -1 : 1,
-);
-const displaySet = new Set([
-  ...gateRecipes.map((r) => r.name),
-  "precommit",
-  "test",
-  "check",
-  "audit",
-].filter((n) => recipeByName.has(n)));
-
+// ---------- preferred lanes ----------
 const preferredLaneOrder = [
   "ci-backend",
   "ci-frontend",
@@ -634,7 +476,6 @@ const preferredLaneOrder = [
   "nightly",
   "release",
 ];
-// Lanes table order: precommit first, then preferred CI order, then others.
 const allLanes = new Set(directInvocations.map((inv) => inv.lane));
 if (precommitRecipe) allLanes.add("precommit");
 const laneOrder = [
@@ -645,78 +486,18 @@ const laneOrder = [
   ),
 ].filter((l) => allLanes.has(l));
 
-// Displayed children for the rule graph.
+// ---------- displayed children ----------
 function displayedChildren(name) {
   const r = recipeByName.get(name);
   if (!r) return [];
   return (r.deps || []).filter((d) => displaySet.has(d)).sort();
 }
 
-// table helper (prettier-canonical)
-function renderTable(headers, rows) {
-  const widths = headers.map((h, i) =>
-    Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length)),
-  );
-  const fmtRow = (cells) =>
-    "| " + cells.map((c, i) => String(c).padEnd(widths[i])).join(" | ") + " |";
-  const sep = "| " + widths.map((w) => "-".repeat(w)).join(" | ") + " |";
-  const out = [fmtRow(headers), sep];
-  for (const r of rows) out.push(fmtRow(r));
-  return out;
-}
-
-// Check families for the overview. Membership is curated; a gate recipe
-// that matches no entry lands in "Other" with a warning.
-const familyMap = [
-  ["Backend (Rust)", ["backend-check", "backend-test", "backend-test-release", "utils-check", "utils-test", "msrv-check"]],
-  ["Frontend", ["frontend-check", "frontend-vitest", "frontend-playwright", "frontend-test"]],
-  ["API contract", ["openapi-check", "openapi-breakcheck", "openapi-json-match", "openapi-lint", "openapi-routes-match", "openapi-routes-release", "openapi-sanity", "auth-matrix-check"]],
-  ["Security & supply chain", ["audit", "backend-audit", "frontend-audit", "zizmor-check", "dylint-check"]],
-  ["Fuzzing", ["fuzz-check", "fuzz-matrix"]],
-  ["Specs & catalogs", ["quint-check", "spec-check", "events-check", "catalog-check"]],
-  ["Repo & docs hygiene", ["docs-check", "plan-lint", "env-var-check", "gates-check", "branches-prune-test"]],
-];
-
-const displayedGateNames = [...displaySet].filter((n) => {
-  const r = recipeByName.get(n);
-  return r && isGateRecipe(r);
-});
-
-// map recipe -> family
-const recipeFamily = new Map();
-for (const [fam, members] of familyMap) {
-  for (const m of members) recipeFamily.set(m, fam);
-}
-
-const familySections = []; // {name, recipes:[]}
-const otherRecipes = [];
-for (const name of displayedGateNames) {
-  if (recipeFamily.has(name)) {
-    // ensure section exists
-    if (!familySections.find((s) => s.name === recipeFamily.get(name))) {
-      familySections.push({ name: recipeFamily.get(name), recipes: [] });
-    }
-    familySections.find((s) => s.name === recipeFamily.get(name)).recipes.push(name);
-  } else {
-    otherRecipes.push(name);
-  }
-}
-// order families per familyMap, then Other
-const orderedFamilies = familyMap
-  .map(([fam]) => fam)
-  .filter((fam) => familySections.some((s) => s.name === fam));
-if (otherRecipes.length) orderedFamilies.push("Other");
-
-// warning for unmapped
-for (const name of otherRecipes.sort()) {
-  warnings.push(`recipe '${name}' has no check family (add it to the family map in scripts/quality-gates.mjs)`);
-}
-
-// `check` and `test` trees: transitive displayed recipe dependencies.
-function tree(root) {
-  const nodes = new Set([root]);
+// ---------- trees ----------
+function tree(rootName) {
+  const nodes = new Set([rootName]);
   const edges = [];
-  const queue = [root];
+  const queue = [rootName];
   while (queue.length) {
     const src = queue.shift();
     for (const child of displayedChildren(src)) {
@@ -732,98 +513,56 @@ function tree(root) {
 const checkTree = tree("check");
 const testTree = tree("test");
 
-// A potential orphan has no CI lane, no justfile recipe calling it, and is
-// not a global aggregate.
+// ---------- orphans ----------
 const workflowLanes = new Set(
   directInvocations.filter((inv) => inv.file !== "justfile").map((inv) => inv.lane),
 );
-const potentialOrphans = displayedGateNames
-  .filter((name) => {
-    const r = recipeByName.get(name);
-    if (!r || r.group === "global") return false;
-    const inCi = [...(recipeLanes.get(name) || new Set())].some((lane) =>
+const potentialOrphans = displayRecipes
+  .filter((r) => !["check", "test", "precommit", "audit"].includes(r.name))
+  .filter((r) => {
+    const inCi = [...(recipeLanes.get(r.name) || new Set())].some((lane) =>
       workflowLanes.has(lane),
     );
-    const called = recipes.some((q) => q.name !== name && q.deps.includes(name));
+    const called = recipes.some(
+      (q) => q.name !== r.name && (q.deps || []).includes(r.name),
+    );
     return !inCi && !called;
   })
+  .map((r) => r.name)
   .sort();
 
-// build doc
-const docLines = [];
-docLines.push("# Quality gates");
-docLines.push("");
-docLines.push(
-  "Generated by `scripts/quality-gates.mjs` from the `justfile` and workflow files. Do not edit by hand.",
-);
-docLines.push("");
-docLines.push("## Rule graph");
-docLines.push("");
-docLines.push("### `just check`");
-docLines.push("");
-docLines.push("```mermaid");
-docLines.push("graph LR", ...checkTree.edges);
-docLines.push("```");
-docLines.push("");
-docLines.push("### `just test`");
-docLines.push("");
-docLines.push("```mermaid");
-docLines.push("graph LR", ...testTree.edges);
-docLines.push("```");
-docLines.push("");
-const treeNodes = new Set([...checkTree.nodes, ...testTree.nodes]);
-const outsideTrees = [...displaySet]
-  .filter((n) => isGateRecipe(recipeByName.get(n)) && !treeNodes.has(n))
+// ---------- group ordering ----------
+const PREFERRED_GROUPS = ["backend", "frontend", "utils", "docs", "deps", "global"];
+// normalize empty group -> Other
+for (const r of displayRecipes) {
+  if (!r.group) r.group = "Other";
+}
+const groupSet2 = new Set(displayRecipes.map((r) => r.group));
+const otherGroups = [...groupSet2]
+  .filter((g) => !PREFERRED_GROUPS.includes(g) && g !== "Other")
   .sort();
-if (outsideTrees.length) {
-  docLines.push(
-    "Rules outside `check` and `test`: " +
-      outsideTrees.map((n) => "`" + n + "`").join(", ") +
-      ".",
-  );
-  docLines.push("");
+const orderedGroups = [
+  ...PREFERRED_GROUPS.filter((g) => groupSet2.has(g)),
+  ...otherGroups,
+  ...(groupSet2.has("Other") ? ["Other"] : []),
+];
+
+function capitalize(g) {
+  return g ? g.charAt(0).toUpperCase() + g.slice(1) : g;
 }
 
-docLines.push("## Orphans (Called Manually)");
-docLines.push("");
-docLines.push(
-  "Rules with no associated CI lane, no justfile parent caller, and not in the `global` group:",
-);
-docLines.push("");
-if (potentialOrphans.length) {
-  for (const name of potentialOrphans) docLines.push("- `" + name + "`");
-} else {
-  docLines.push("None.");
-}
-docLines.push("");
-
-docLines.push("## Check families");
-docLines.push("");
-docLines.push(
-  "`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there.",
-);
-docLines.push("");
-// mdBook wraps tables in .table-wrapper; these rules give every family table
-// the same full-width proportions (description roughly twice the side columns).
-docLines.push("<style>");
-docLines.push("  h3 + .table-wrapper > table {");
-docLines.push("    width: 100%;");
-docLines.push("    table-layout: fixed;");
-docLines.push("  }");
-docLines.push("  h3 + .table-wrapper > table td,");
-docLines.push("  h3 + .table-wrapper > table th {");
-docLines.push("    padding-left: 6px;");
-docLines.push("    padding-right: 6px;");
-docLines.push("  }");
-for (const [index, width] of [24, 44, 16, 16].entries()) {
-  docLines.push(
-    `  h3 + .table-wrapper > table th:nth-child(${index + 1}) {`,
+// ---------- render ----------
+function renderTable(headers, rows) {
+  const widths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length)),
   );
-  docLines.push(`    width: ${width}%;`);
-  docLines.push("  }");
+  const fmtRow = (cells) =>
+    "| " + cells.map((c, i) => String(c).padEnd(widths[i])).join(" | ") + " |";
+  const sep = "| " + widths.map((w) => "-".repeat(w)).join(" | ") + " |";
+  const out = [fmtRow(headers), sep];
+  for (const r of rows) out.push(fmtRow(r));
+  return out;
 }
-docLines.push("</style>");
-docLines.push("");
 
 const CROSS = "\u274C\uFE0F";
 
@@ -850,39 +589,100 @@ function checkTriggers(lanes) {
   );
 }
 
-const familyHeaders = ["Rule (justfile)", "Description", "CI Lane", "Trigger"];
-for (const fam of orderedFamilies) {
-  docLines.push("### " + fam);
+// build doc
+const docLines = [];
+docLines.push("# Quality gates");
+docLines.push("");
+docLines.push(
+  "Generated by `scripts/quality-gates.mjs` from the `justfile` and workflow files. Do not edit by hand.",
+);
+docLines.push("");
+docLines.push("## Rule graph");
+docLines.push("");
+docLines.push("### `just check`");
+docLines.push("");
+docLines.push("```mermaid");
+docLines.push("graph LR", ...checkTree.edges);
+docLines.push("```");
+docLines.push("");
+docLines.push("### `just test`");
+docLines.push("");
+docLines.push("```mermaid");
+docLines.push("graph LR", ...testTree.edges);
+docLines.push("```");
+docLines.push("");
+
+docLines.push("## Orphans (Called Manually)");
+docLines.push("");
+docLines.push(
+  "Recipes with no associated CI workflow, no justfile parent caller, and not a global entry point (`precommit`, `check`, `test`, `audit`):",
+);
+docLines.push("");
+if (potentialOrphans.length) {
+  for (const name of potentialOrphans) docLines.push("- `" + name + "`");
+} else {
+  docLines.push("None.");
+}
+docLines.push("");
+
+docLines.push("## Rules by group");
+docLines.push("");
+docLines.push(
+  "`Rule` names the justfile recipe, `Params` lists its parameters, `Workflow` links the workflow files that invoke it, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there. Recipes are grouped by their justfile group.",
+);
+docLines.push("");
+docLines.push("<style>");
+docLines.push("  h3 + .table-wrapper > table {");
+docLines.push("    width: 100%;");
+docLines.push("    table-layout: fixed;");
+docLines.push("  }");
+docLines.push("  h3 + .table-wrapper > table td,");
+docLines.push("  h3 + .table-wrapper > table th {");
+docLines.push("    padding-left: 6px;");
+docLines.push("    padding-right: 6px;");
+docLines.push("  }");
+for (const [index, width] of [18, 36, 10, 18, 18].entries()) {
+  docLines.push(
+    `  h3 + .table-wrapper > table th:nth-child(${index + 1}) {`,
+  );
+  docLines.push(`    width: ${width}%;`);
+  docLines.push("  }");
+}
+docLines.push("</style>");
+docLines.push("");
+
+// Workflow files per lane, for the doc's Workflow column.
+function workflowLink(file) {
+  const label = basename(file).replace(/\.ya?ml$/, "");
+  return `[${label}](../${file})`;
+}
+
+const familyHeaders = ["Rule (justfile)", "Description", "Params", "Workflow", "Trigger"];
+
+for (const g of orderedGroups) {
+  const heading = capitalize(g);
+  docLines.push("### " + heading);
   docLines.push("");
-  let members;
-  if (fam === "Other") {
-    members = [...otherRecipes].sort();
-  } else {
-    const section = familySections.find((s) => s.name === fam);
-    members = section ? [...section.recipes] : [];
-    const fm = familyMap.find(([f]) => f === fam);
-    if (fm) {
-      const orderIndex = new Map(fm[1].map((n, i) => [n, i]));
-      members.sort(
-        (a, b) => (orderIndex.get(a) ?? 999) - (orderIndex.get(b) ?? 999),
-      );
-    }
-  }
+  const members = displayRecipes
+    .filter((r) => r.group === g)
+    .map((r) => r.name)
+    .sort();
   const rows = members.map((name) => {
     const r = recipeByName.get(name);
     const lanes = [...(recipeLanes.get(name) || new Set())].sort(laneCompare);
-    const ciLanes = lanes.filter((lane) => lane !== "precommit");
-    const triggers = checkTriggers(lanes);
+    const ciFiles = [...(recipeFiles.get(name) || [])].sort();
+    const triggers =
+      name === "precommit" ? ["local"] : checkTriggers(lanes);
     return [
       "`" + name + "`",
       r && r.annotation ? r.annotation : "\u2014",
-      ciLanes.length ? ciLanes.join(", ") : CROSS,
+      r ? formatParams(r) : "\u2014",
+      ciFiles.length ? ciFiles.map(workflowLink).join(", ") : CROSS,
       triggers.length ? triggers.join(", ") : CROSS,
     ];
   });
   docLines.push(...renderTable(familyHeaders, rows));
   docLines.push("");
-  // allowlist notes for this family
   for (const name of members) {
     const reason = allowlistByName.get(name);
     if (reason) docLines.push("Note: `" + name + "` - " + reason);
@@ -894,14 +694,7 @@ let content = docLines.join("\n");
 if (!content.endsWith("\n")) content += "\n";
 content = content.replace(/\n{2,}$/, "\n");
 
-
 // ---------- generate and/or drift-check ----------
-// --generate <path>: write fresh output there (explicit generation).
-// --check <path>: diff fresh output against that file instead of the
-//   committed doc (explicit drift target).
-// --check-only: check against the committed doc without writing
-//   anything (same as the default; makes the mode explicit).
-// Default (no flags): check-only against the committed doc.
 const checkOnly = args.includes("--check-only");
 if (generateArg && checkOnly) {
   console.error("Error: gates-check --generate and --check-only conflict");
@@ -922,10 +715,6 @@ if (generateArg) {
   formatFile(target);
   console.log(`gates-check: wrote ${generateArg}`);
 }
-// Skip the drift check when generation already covers it: lone
-// --generate just writes (drift is checked separately), and when the
-// generated file IS the check target the comparison is trivially true
-// (the written file went through prettier, the in-memory content did not).
 const genAbs =
   generateArg != null
     ? generateArg.startsWith("/")
@@ -950,7 +739,6 @@ if (!skipDrift) {
   }
 }
 
-// format with prettier if available
 function formatFile(p) {
   const prettierBin = join(root, "frontend", "node_modules", ".bin", "prettier");
   try {
@@ -971,7 +759,6 @@ function formatFile(p) {
   }
 }
 
-// ---------- report ----------
 for (const w of warnings) console.error(`gates-check: WARN: ${w}`);
 if (failures.length) {
   for (const f of failures) console.error(`gates-check: FAIL: ${f}`);
