@@ -91,6 +91,8 @@ fn write_bytes_atomically(target: &Path, bytes: &[u8]) -> io::Result<()> {
 /// not claim it is. The error is [`ErrorKind::IO`] — the filesystem refused the
 /// write, which is a server-side condition and not a malformed request, so it
 /// renders as a 500 rather than as the 400 or 403 a client mistake would get.
+#[quint::event("API_EDIT_METADATA")]
+#[quint::operation("OP-7")]
 pub fn commit_metadata_edits(
     items: &[EditedItem],
     mut store: impl FnMut(&ArrayString<64>, &AbstractData) -> Result<(), AppError>,

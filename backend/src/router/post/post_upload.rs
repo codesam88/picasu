@@ -165,6 +165,8 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 /// Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
 /// rejected filename, missing `imagePath` — 401 missing or invalid session —
 /// 405 read-only mode — 500 storage failure.
+#[quint::event("API_UPLOAD")]
+#[quint::operation("OP-2")]
 #[utoipa::path(
         tag = "upload",
         request_body(content_type = "multipart/form-data", content = Object),

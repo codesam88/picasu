@@ -23,6 +23,7 @@ fn remove_asset_file(file: &str) {
 /// be persisted), `false` once the path is gone. The serial writer owns the
 /// thumbnail and DB removal, so this never touches content-addressed
 /// renditions. Albums (no path) return `false`.
+#[quint::operation("OP-12")]
 pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
     remove_asset_file(target.to_string_lossy().as_ref());
 

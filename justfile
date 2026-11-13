@@ -124,18 +124,18 @@ frontend-audit:
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab -p paste -p openapi-sanity
+    cargo fmt -p snapfab -p paste -p openapi-sanity -p quint
 
 # utils fmt + clippy (all targets)
 [group('utils')]
 utils-check: zizmor-check
-    cargo fmt --check -p snapfab -p paste -p openapi-sanity
-    cargo clippy --all-targets -p snapfab -p paste -p openapi-sanity -- -D warnings
+    cargo fmt --check -p snapfab -p paste -p openapi-sanity -p quint
+    cargo clippy --all-targets -p snapfab -p paste -p openapi-sanity -p quint -- -D warnings
 
 # cargo test utils/ + Schemathesis derivations
 [group('utils')]
 utils-test:
-    cargo test -p snapfab -p openapi-sanity
+    cargo test -p snapfab -p openapi-sanity -p quint
     python3 {{justfile_directory()}}/utils/schemathesis/test_auth_rules.py
 
 # Benchmark tooling submodule (utils/bench/justfile); `just bench <recipe>`
@@ -244,11 +244,13 @@ zizmor-check: (install "zizmor")
     ./scripts/deps-install.sh --tool zizmor --check
     ./scripts/zizmor-run.sh --offline --no-progress .
 
-# Typecheck + test the eventual-consistency spec (Node-only, no JDK)
+# Typecheck + test the pipeline specs (Node-only, no JDK)
 [group('utils')]
 quint-check: (install "quint")
     quint typecheck utils/quint/pipeline/eventual-consistency.qnt
+    quint typecheck utils/quint/pipeline/asset-aspects.qnt
     quint test utils/quint/pipeline/eventual-consistency.qnt
+    quint test utils/quint/pipeline/asset-aspects.qnt
 
 # Non-blocking by design: MSRV floor check (nightly lane).
 [group('utils')]
@@ -328,6 +330,11 @@ plan-lint:
 [group('utils')]
 events-check:
     node {{justfile_directory()}}/utils/quint/events-check.mjs {{justfile_directory()}}/utils/quint/pipeline
+
+# Validate the implementation-tracking operation catalog and its backend annotations
+[group('utils')]
+operations-check:
+    node {{justfile_directory()}}/utils/quint/operations-check.mjs {{justfile_directory()}}
 
 # Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references
 [group('utils')]
@@ -410,7 +417,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
+check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check operations-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
 
 # run full test suite
 [group('global')]

@@ -14,7 +14,7 @@ by components out of scope here.
 - Assumptions are expensive and require human review.
 - If the assumption can be reasonably expressed as a requirement
   onto the implementation, it is a requirement, not an assumption.
-- If the assumption has no formalized representation in the model,
+- If the assumption has no formal representation in the model,
   it is likely vacuous or redundant. Consider consolidating.
 
 Current contents of `pipeline/`:
@@ -40,6 +40,13 @@ Current contents of `pipeline/`:
   `eventual-consistency.qnt` holds the actions, the `step`
   interleaving, and the runs.
 
+- `asset-aspects.qnt` — the four-aspect slice (asset file, sidecar,
+  thumbnail/derived, DB asset row): alignment predicates and
+  conflicting-pair runs over the same state; imports
+  `eventual-consistency.qnt`.
+- `operations.json` — internal mutation operations OP-1..OP-12 with
+  events, aspect reads/writes, guards, status and interaction nodes;
+  validated by `just operations-check` against backend annotations.
 - `events.json` — boundary and recovery events with their settled
   effects and known faults, validated by `just events-check`.
 - `goals.json` — goals G0–G4 with decision (`committed`, `queued`,
@@ -89,7 +96,27 @@ never silent.
   `pipeline/traceability.json` map.
 - `events-check.mjs`, `catalog-check.mjs` — catalog validation against
   `pipeline/catalog.schema.json`.
+- `operations-check.mjs` — validates `pipeline/operations.json` and the
+  `#[quint::operation(...)]` / `#[quint::event(...)]`
+  markers in `backend/src/**/*.rs`.
 - `gen-eventual-consistency-doc.mjs` — writes `docs/eventual-consistency.md`.
+
+## Operations and annotations
+
+`pipeline/operations.json` tracks the implementation of the four-aspect slice
+(asset file, sidecar, thumbnail/derived, DB asset row) as operations OP-1..OP-12.
+Each operation records its events, aspect reads/writes, guards, status and
+interaction nodes. Backend functions carry attribute markers from the `quint`
+crate (`#[quint::operation("OP-N")]`,
+`#[quint::event("EVENT_NAME")]`). Compile-time validation (rung 0 of the
+annotation crate) rejects unknown or misspelled operation/event ids at
+`cargo check -p picasu`, so a typo'd or renamed OP id fails the build
+instead of surfacing only in `just check`. `operations-check.mjs` remains the
+catalog-side backstop. What is still NOT enforced until rung 1: a marker must
+sit on a real item (the text scan accepts comment, doc-comment, string or
+`#[cfg(test)]` mentions), a marker naming a wrong-but-valid id still
+compiles, and aspect/order drift between model and implementation is not
+checked.
 
 The Quint toolchain installer stays in `scripts/deps/quint.sh` with the
 shared pins in `scripts/deps/versions.env`.

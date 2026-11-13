@@ -2749,6 +2749,7 @@ dependencies = [
  "path-clean",
  "pbkdf2",
  "proptest",
+ "quint",
  "rand 0.10.3",
  "rayon",
  "redb",
@@ -2990,6 +2991,13 @@ checksum = "2474bd2e5029e7ccb6abb2ba48cf2383a333851dedf495901544281590c7da7f"
 dependencies = [
  "memchr",
  "serde",
+]
+
+[[package]]
+name = "quint"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

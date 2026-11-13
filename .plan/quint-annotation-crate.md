@@ -35,9 +35,8 @@ renamed OP id fails `cargo check -p picasu` instead of surfacing only in
 
 ## Current state
 
-- `utils/quint-annotations` is a no-op proc-macro crate; the id argument
-  is never parsed. The only consumer is the text scan in
-  `utils/quint/operations-check.mjs`.
+- `utils/quint` is now a proc-macro crate (`quint`) that validates
+  operation/event ids at expansion time; `utils/quint-annotations` is gone.
 - Review findings 2026-11-13 that rung 0 must close:
   - The text scan accepts a comment, doc-comment, string or
     `#[cfg(test)]` mention as a marker, so the README claim
@@ -57,7 +56,8 @@ utils-check`, so the crate is never fmt/lint/tested.
 
 ## Steps
 
-0. **[ ] Migrate to `utils/quint` with expansion-time validation** —
+0. **[done] Migrate to `utils/quint` with expansion-time validation** —
+   crate at `utils/quint`, expansion-time validation, backstop unchanged.
    add `Cargo.toml` (`proc-macro = true`, serde_json dep) and `src/lib.rs`
    to `utils/quint`; implement `operation`/`event` macros that validate
    the id against `pipeline/operations.json` / `events.json`; drop

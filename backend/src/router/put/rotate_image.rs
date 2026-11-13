@@ -45,6 +45,8 @@ pub struct RotateImageRequest {
 /// missing or invalid credentials; share tokens are not accepted — 404
 /// `asset_id` names no asset record — 405 read-only mode — 500 decode,
 /// thumbnail write, XMP sidecar write, or storage failure.
+#[quint::event("API_ROTATE_IMAGE")]
+#[quint::operation("OP-6")]
 #[utoipa::path(
         tag = "assets",
         request_body = RotateImageRequest,

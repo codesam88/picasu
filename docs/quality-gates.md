@@ -17,6 +17,7 @@ graph LR
   check --> frontend-check
   check --> gates-check
   check --> openapi-check
+  check --> operations-check
   check --> plan-lint
   check --> quint-check
   check --> spec-check
@@ -143,6 +144,7 @@ graph TD
   openapi-lint
   openapi-routes-release
   openapi-sanity
+  operations-check
   plan
   plan-format
   plan-lint
@@ -158,7 +160,7 @@ graph TD
   openapi-check --> openapi-lint
   openapi-check --> openapi-sanity
   utils-check --> zizmor-check
-  auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & plan & plan-format & plan-lint & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
+  auth-matrix-check ~~~ catalog-check & docs-eventual-consistency & dylint-check & env-var-check & events-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & operations-check & plan & plan-format & plan-lint & quint-check & spec-check & utils-format & utils-test & zizmor-check-online
 ```
 
 | Rule (justfile)             | Description                                                                                 | CI Workflow           | Trigger             |
@@ -181,10 +183,11 @@ graph TD
 | `openapi-lint`              | Lint the OpenAPI document (errors fail)                                                     | (openapi-check)       | local, PR, main     |
 | `openapi-routes-release`    | Run the already-built release binary's route-set gate against the committed spec.           | release               | tags                |
 | `openapi-sanity`            | check OpenAPI annotation conventions                                                        | (openapi-check)       | local, PR, main     |
+| `operations-check`          | Validate the implementation-tracking operation catalog and its backend annotations          | ❌️                    | local               |
 | `plan`                      | run plan <args> (needs install-plan)                                                        | ❌️                    | -                   |
 | `plan-format`               | Auto-format .plan task frontmatter and body                                                 | ❌️                    | -                   |
 | `plan-lint`                 | check .plan task frontmatter correctness                                                    | ci, docs-check        | local, PR, main     |
-| `quint-check`               | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️                    | local               |
+| `quint-check`               | Typecheck + test the pipeline specs (Node-only, no JDK)                                     | ❌️                    | local               |
 | `spec-check`                | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️                    | local               |
 | `utils-check`               | utils fmt + clippy (all targets)                                                            | ci                    | local, PR, main     |
 | `utils-format`              | cargo fmt on utils/ crates                                                                  | ❌️                    | -                   |
