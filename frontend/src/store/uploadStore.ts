@@ -5,7 +5,6 @@ import { useMessageStore } from './messageStore'
 import { useModalStore } from './modalStore'
 import { errorDisplay } from '@/script/utils/errorDisplay'
 import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
-import { prefetch } from '@/api/fetchPrefetch'
 import { IsolationId } from '@type/types'
 
 /** Build the upload endpoint URL with the target album (if any) and the
@@ -17,24 +16,6 @@ export function buildUploadUrl(albumId: string | undefined, autoRename: boolean)
   }
   params.push(`auto_rename=${autoRename}`)
   return params.length > 0 ? `/post/upload?${params.join('&')}` : '/post/upload'
-}
-
-/** Recursively collect every string value nested in `value`. */
-function collectStrings(value: unknown, out: string[] = []): string[] {
-  if (typeof value === 'string') {
-    out.push(value)
-  } else if (Array.isArray(value)) {
-    for (const item of value) collectStrings(item, out)
-  } else if (value !== null && typeof value === 'object') {
-    for (const v of Object.values(value as Record<string, unknown>)) collectStrings(v, out)
-  }
-  return out
-}
-
-/** Basename of a (possibly path-like) stored name. */
-function baseName(name: string): string {
-  const parts = name.split(/[/\\]/)
-  return parts[parts.length - 1] ?? name
 }
 
 export const useUploadStore = (isolationId: IsolationId) =>
@@ -51,16 +32,12 @@ export const useUploadStore = (isolationId: IsolationId) =>
       autoRename: true,
       // Number of files in the batch being uploaded.
       fileCount: 0,
-      // Target directory reported by the server for the batch; every stored
-      // file landed directly in it, so it scopes the wait-for-indexed poll.
-      uploadedDir: undefined as string | undefined,
       // Per-file progress tracking for the sequential queue.
       currentFileName: undefined as string | undefined,
       currentFileSize: undefined as number | undefined,
       currentIndex: 0,
       completedBytes: 0,
-      totalBytes: 0,
-      uploadedNames: [] as string[]
+      totalBytes: 0
     }),
 
     getters: {
@@ -151,8 +128,6 @@ export const useUploadStore = (isolationId: IsolationId) =>
         const uploadUrl = buildUploadUrl(albumId, autoRename)
 
         this.fileCount = files.length
-        this.uploadedNames = []
-        this.uploadedDir = undefined
         this.completedBytes = 0
         this.totalBytes = files.reduce((sum, f) => sum + f.size, 0)
         this.loaded = 0
@@ -180,7 +155,7 @@ export const useUploadStore = (isolationId: IsolationId) =>
             const requestController = new AbortController()
             this.abortController = requestController
 
-            const response = await axios.post(uploadUrl, formData, {
+            await axios.post(uploadUrl, formData, {
               headers: { 'Content-Type': 'multipart/form-data' },
               signal: requestController.signal,
               onUploadProgress: (e: AxiosProgressEvent) => {
@@ -193,27 +168,11 @@ export const useUploadStore = (isolationId: IsolationId) =>
 
             this.completedBytes += file.size
             this.loaded = this.completedBytes
-
-            const serverFiles = (response.data as { files?: unknown } | undefined)?.files
-            if (Array.isArray(serverFiles)) {
-              for (const name of serverFiles) {
-                if (typeof name === 'string') this.uploadedNames.push(name)
-              }
-            }
-            // Target directory reported by the server; sanitize/rename may
-            // have changed file names, but everything landed in this dir.
-            const serverDir = (response.data as { dir?: unknown } | undefined)?.dir
-            if (typeof serverDir === 'string' && serverDir !== '') {
-              this.uploadedDir = serverDir
-            }
           }
 
-          // Files are stored; wait for them to be indexed before refreshing
-          // so the grid shows them. Distinct status so the UI does not keep
-          // claiming "Uploading" with no bytes left to send.
-          this.status = 'Indexing'
-          await this.waitForIndexed(this.uploadedDir, albumId, this.uploadedNames)
-
+          // Upload is store-and-return: indexing runs in the background and
+          // the grid refresh below picks the rows up within the ~1 s view
+          // freshness window. Completion is the upload's own 200 response.
           this.status = 'Completed'
           messageStore.success('Files uploaded successfully')
           // Same grid reload as assign-album/batch-tag mutations; a failed
@@ -235,39 +194,6 @@ export const useUploadStore = (isolationId: IsolationId) =>
             messageStore.error(errorDisplay(err))
           }
         }
-      },
-
-      async waitForIndexed(
-        uploadedDir: string | undefined,
-        albumId: string | undefined,
-        uploadedNames: string[]
-      ): Promise<void> {
-        if (uploadedNames.length === 0) return
-        const targets = uploadedNames.map(baseName)
-        // Prefer the server-reported directory: every stored file landed
-        // directly in it, so dir + basename matching is exact (filesystem
-        // uniqueness). Fall back to the album scope, then to an unfiltered
-        // poll, when the server did not report a dir.
-        const filter =
-          uploadedDir !== undefined
-            ? `and(trashed:false, Path:"${uploadedDir}")`
-            : albumId !== undefined
-              ? `and(trashed:false, or(album:"${albumId}", parent_album:"${albumId}"))`
-              : null
-
-        const deadline = Date.now() + 60000
-        while (Date.now() < deadline) {
-          try {
-            const result = await prefetch(filter, undefined, undefined, null, false)
-            const strings = collectStrings(result)
-            const found = targets.every((t) => strings.some((s) => baseName(s) === t))
-            if (found) return
-          } catch {
-            // ignore and retry
-          }
-          await new Promise<void>((resolve) => setTimeout(resolve, 1000))
-        }
-        // Timeout: refresh anyway (rows arrive via backstop later).
       },
 
       cancelUpload(): void {
