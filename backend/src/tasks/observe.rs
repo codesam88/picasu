@@ -54,6 +54,26 @@
 //! | `blocking_queue_wait` | `50_000` | Tokio blocking-pool queueing before prefetch work starts; dispatch normally takes microseconds |
 //! | `interactive_exec` | `500_000` | interactive-lane job bodies; they must stay short, so half a second flags a hog |
 //!
+//! # Context values
+//!
+//! Every sample carries a `context: u64` printed as `context=…` in breach
+//! lines: the stage-specific scalar that explains the sample.
+//!
+//! | stage | context |
+//! | --- | --- |
+//! | `filter_snapshot_clone` | source tree row count |
+//! | `filter_par_iter` | surviving row count |
+//! | `compute_locate` | rows scanned |
+//! | `tree_refresh_*` | rows built (a failed rebuild leaves no sample) |
+//! | `cpu_permit_wait` | permits still available when the wait ended |
+//! | `prefetch_total` | result row count (0 on the early-return path) |
+//! | `blocking_queue_wait`, `cpu_exec`, `interactive_exec` | 0 — the queue wait or job body is itself the payload |
+//!
+//! A breach line also embeds live state at emit time: the ring summary
+//! (`n`, `recorded`, `p50_us`, `p95_us`, `max_us`, `breaches`), the
+//! per-stage `in_flight [...]` timers, and `server queue:` with the
+//! available CPU permits plus the writer/cascade sequence watermarks.
+//!
 //! # Debug builds
 //!
 //! Debug timings are unoptimized, so a `warn!`/`info!` on every breach or
@@ -573,6 +593,9 @@ impl Timer {
     }
 
     /// Stop timing, record the sample and return its duration.
+    ///
+    /// `context` is the stage-specific scalar printed in breach lines —
+    /// see the module-level "Context values" table.
     pub fn finish(mut self, context: u64) -> u64 {
         let duration_us = elapsed_us(self.start);
         let Some(stage) = self.stage.take() else {
@@ -592,7 +615,8 @@ impl Drop for Timer {
     }
 }
 
-/// Time `f` under `stage` with a fixed `context` value.
+/// Time `f` under `stage` with a fixed `context` value (see the
+/// module-level "Context values" table).
 #[must_use]
 pub fn timed<T>(stage: Stage, context: u64, f: impl FnOnce() -> T) -> T {
     let timer = Timer::start(stage);
@@ -606,6 +630,9 @@ pub fn timed<T>(stage: Stage, context: u64, f: impl FnOnce() -> T) -> T {
 /// line (the full table lives in `drain_report`). A wrap line prints only
 /// for a stage that breached its threshold since the last reset; healthy
 /// churn is silent (see `recorded` vs `n` in the drain table).
+///
+/// `context` is the stage-specific scalar printed in breach lines — see
+/// the module-level "Context values" table.
 pub fn record(stage: Stage, duration_us: u64, context: u64) {
     match OBSERVE.record_at(stage, duration_us, context, mono_ms()) {
         Some(Report::Breach) => emit_breach(stage, duration_us, context),
@@ -627,6 +654,10 @@ pub fn reset() {
 }
 
 /// Emit the once-per-scan table and reset for the next scan.
+///
+/// `context` is a one-line description embedded in the table header; the
+/// scan terminal transition passes a summary of the finished job
+/// (job id, state, scanned/matched/processed/failed counts).
 ///
 /// Called from the scan terminal transition, not per round.
 pub fn drain_report(context: &str) {
