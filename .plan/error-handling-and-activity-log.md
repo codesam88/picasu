@@ -37,6 +37,11 @@ Replace ephemeral snackbar-only notifications with a persistent user-centric act
 - **Storage**: Pinia store backed by `localStorage` (or IndexedDB for large logs). Configurable retention (e.g. 500 entries max, 30-day TTL).
 - **Migration path**: Existing `messageStore.push()` calls remain as-is initially; the activity log subscribes to the same event stream and persists entries. Gradually migrate callers to an `activityLog` API that handles both toast + persistence.
 - **User control**: toggle in settings to enable/disable toast popups independently of log persistence.
+- **Backend operation status** (2026-11-13): user-facing background state —
+  indexing after store-and-return upload, scans, file moves — comes from
+  `upload-progress-status-log`'s server-side operation registry, which feeds
+  this log. The upload-side wait-for-indexed poll was removed; the toast fires
+  on the upload 200 and the grid refresh covers row visibility.
 
 #### 4. Backend error logging
 
