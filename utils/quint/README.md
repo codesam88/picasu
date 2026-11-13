@@ -132,8 +132,20 @@ cannot resubmit themselves.
 
 ## Model-to-code terminology
 
-Model terms map to named code entities; identifiers are stable — anchors are
-documented rather than renamed to avoid drift.
+Rule: model identifiers must map to a concrete class, function,
+operation or table in the implementation. When the mapping is direct and
+stable (op names, function names, table names), the identifier takes the
+code entity's name — e.g. `SweepRemoveBatchApply` is named after
+`WriteOp::SweepRemoveBatch` / `flush_tree.rs::sweep_remove_batch`. When
+the mapping is conceptual or likely to move (phases inside one function,
+per-worker branches, generic state), the identifier keeps a descriptive
+name and carries a doc-comment anchor (`// <term> maps to <entity>`), as
+in the table below. Renaming an identifier is done only when its mapping
+is stable, and as its own small commit — never bundled with behavior
+changes. Unqualified role words like "the writer" are not used in model
+names, catalogs or docs; name the entity
+(`tasks/queue/writer.rs`, `flush_tree.rs::sweep_remove_batch`,
+`tasks/queue/worker.rs`).
 
 | Model identifier                                                                                                                    | Code anchor                                                                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -148,7 +160,7 @@ documented rather than renamed to avoid drift.
 | `unprocessable`                                                                                                                     | model-only; ingest failures are logged via `note_file_failed`/`handle_error`, not a stored set                                                |
 | `SweepEnumerate`                                                                                                                    | enumeration loop of `tasks/actor/album_index.rs::sweep_stale_asset_paths`                                                                     |
 | `SweepRecheck`                                                                                                                      | inline re-check loop of `sweep_stale_asset_paths` (generation, `is_busy`, `path.exists`, pre-submit)                                          |
-| `SweepWriterApply`                                                                                                                  | `flush_tree.rs::sweep_remove_batch`, submitted as `WriteOp::SweepRemoveBatch` via `tasks/queue/writer.rs::submit`; exists-skip + resolve only |
+| `SweepRemoveBatchApply`                                                                                                             | `flush_tree.rs::sweep_remove_batch`, submitted as `WriteOp::SweepRemoveBatch` via `tasks/queue/writer.rs::submit`; exists-skip + resolve only |
 | `MoveLeaseAcquire`                                                                                                                  | `assign_album.rs` move window opening `lease_paths(source, dest)`                                                                             |
 | `MoveRowRewrite`                                                                                                                    | `assign_album.rs::move_asset_into_album` row rewrite (`put_asset_by_id` + `remove_asset_by_path` + `put_asset_by_path`) and lease release     |
 | `UploadStoredOnly`                                                                                                                  | `post_upload.rs::upload` store + `submit_uploaded_path` → `submit_watcher_index`                                                              |

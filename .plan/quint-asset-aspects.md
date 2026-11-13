@@ -195,7 +195,7 @@ check` or the individual recipes.
    after intake applies.
 10. [done] Refine sweep to the code's granularity (SCOPE-4 lifting):
     outcomes: SweepEnumerate + SweepRecheck (actor: gen/lease/FS) +
-    SweepWriterApply (writer: exists-skip + row resolve only) replace
+    SweepRemoveBatchApply (writer stage: exists-skip + row resolve only) replace
     SweepRootLeased; ApiMoveFsOnly now bumps generation and holds leasedPaths;
     MoveLeaseAcquire added for the lease-before-FS-move window;
     MoveRowRewrite closes the window; RotateWriteSidecar/Finish track
@@ -249,7 +249,7 @@ survey claim contradicts a done item — re-check the tree first.
   sweep_remove_batch: exists-skip + resolve + prune); handle_removed_file
   restores the exact path for sweep_remove_batch resolution.] Modeled in step 10: SweepEnumerate
   (generation snapshot) + SweepRecheck (actor: generation unchanged, not
-  leased, file absent) + SweepWriterApply (writer: exists-skip + row resolve
+  leased, file absent) + SweepRemoveBatchApply (writer stage: exists-skip + row resolve
   only) + ApiMoveFsOnly/MoveLeaseAcquire lease (leasedPaths) +
   MoveRowRewrite release. Guard resolution named: lease (is_busy) and
   generation bump at the actor re-check; writer has no gen/lease check;
