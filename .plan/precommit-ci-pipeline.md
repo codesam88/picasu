@@ -204,11 +204,12 @@ Scope: `scripts/quality-gates.mjs` (+ test), `justfile` `gates-check`,
 regenerated `docs/quality-gates.md`.
 Done: the doc drops the mermaid lane graph, per-check sections,
 line references and underlying-file lists. It renders a textual rule
-graph (recipe edges only, no lanes), a lane table (triggers, workflow,
-directly invoked recipes), and check families (check, description,
-CI lane, local marker) with allowlist notes; the family tables render
-full width through a scoped style block. Families are an explicit map
-in the script; an unmapped gate recipe lands in `Other` with a warning.
+graph (recipe edges only, no lanes) and check families (rule,
+description, CI lane, trigger) with allowlist notes; lane triggers are
+folded into the family tables, so there is no separate lane section.
+The family tables render full width through a scoped style block.
+Families are an explicit map in the script; an unmapped gate recipe
+lands in `Other` with a warning.
 `gates-check` runs the generator's node tests before the drift check,
 so the doc's structure is covered by the gate that produces it.
 Out: lane derivation, wiring checks, recipe/workflow content.

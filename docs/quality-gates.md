@@ -21,114 +21,103 @@ utils-check   -> zizmor-check
 
 Checks no other recipe calls: `backend-test-release`, `dylint-check`, `fuzz-check`, `msrv-check`, `openapi-routes-release`.
 
-## Lanes
-
-Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block. `workflow_dispatch` is not listed because any workflow that declares it can be run by hand.
-
-| Lane        | Triggers            | Workflow                        | Invokes                                                                                                                                    |
-| ----------- | ------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| precommit   | local               | `justfile`                      | `check`, `test`                                                                                                                            |
-| ci-backend  | PR, main            | `ci.yml`                        | `backend-check`, `backend-test`, `env-var-check`, `fuzz-check`, `fuzz-matrix`, `gates-check`, `openapi-check`, `utils-check`, `utils-test` |
-| ci-frontend | PR, main            | `ci.yml`                        | `docs-check`, `frontend-check`, `frontend-playwright`, `frontend-vitest`, `plan-lint`                                                      |
-| ci-dylint   | PR, main            | `ci.yml`                        | `dylint-check`                                                                                                                             |
-| ci-zizmor   | PR, main, scheduled | `zizmor.yml`                    | `zizmor-check`                                                                                                                             |
-| docs        | PR, main            | `docs-check.yml`                | `docs-check`, `gates-check`, `plan-lint`                                                                                                   |
-| audit       | PR, main, scheduled | `audit.yml`                     | `audit`                                                                                                                                    |
-| nightly     | scheduled           | `fuzz-advisory.yml`, `msrv.yml` | `fuzz-check`, `msrv-check`                                                                                                                 |
-| release     | tags                | `release.yml`                   | `backend-test-release`, `frontend-playwright`, `openapi-routes-release`                                                                    |
-
 ## Check families
 
-`CI Lane` lists the workflow lanes a check runs in; `Local` marks checks invoked by the `precommit` recipe (path-targeted on branches). A cross marks a check that does not run there.
+`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, excluding `workflow_dispatch`, which any workflow can expose). A cross marks a rule that does not run there.
 
 <style>
   h3 + .table-wrapper > table {
     width: 100%;
     table-layout: fixed;
   }
+  h3 + .table-wrapper > table td,
+  h3 + .table-wrapper > table th {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
   h3 + .table-wrapper > table th:nth-child(1) {
-    width: 22%;
+    width: 24%;
   }
   h3 + .table-wrapper > table th:nth-child(2) {
-    width: 46%;
+    width: 44%;
   }
   h3 + .table-wrapper > table th:nth-child(3) {
-    width: 22%;
+    width: 16%;
   }
   h3 + .table-wrapper > table th:nth-child(4) {
-    width: 10%;
+    width: 16%;
   }
 </style>
 
 ### Backend (Rust)
 
-| Check                  | Description                                              | CI Lane               | Local |
-| ---------------------- | -------------------------------------------------------- | --------------------- | ----- |
-| `backend-check`        | cargo fmt --check + clippy (all targets)                 | ci-backend            | ✔️    |
-| `backend-test`         | Backend tests (cargo-nextest)                            | ci-backend            | ✔️    |
-| `backend-test-release` | Backend tests in release mode                            | release               | ❌️    |
-| `utils-check`          | utils fmt + clippy (all targets)                         | ci-backend, ci-zizmor | ✔️    |
-| `utils-test`           | cargo test utils/ + Schemathesis derivations             | ci-backend            | ✔️    |
-| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly               | ❌️    |
+| Rule (justfile)        | Description                                              | CI Lane               | Trigger                    |
+| ---------------------- | -------------------------------------------------------- | --------------------- | -------------------------- |
+| `backend-check`        | cargo fmt --check + clippy (all targets)                 | ci-backend            | local, PR, main            |
+| `backend-test`         | Backend tests (cargo-nextest)                            | ci-backend            | local, PR, main            |
+| `backend-test-release` | Backend tests in release mode                            | release               | tags                       |
+| `utils-check`          | utils fmt + clippy (all targets)                         | ci-backend, ci-zizmor | local, PR, main, scheduled |
+| `utils-test`           | cargo test utils/ + Schemathesis derivations             | ci-backend            | local, PR, main            |
+| `msrv-check`           | Non-blocking by design: MSRV floor check (nightly lane). | nightly               | scheduled                  |
 
 ### Frontend
 
-| Check                 | Description                            | CI Lane              | Local |
-| --------------------- | -------------------------------------- | -------------------- | ----- |
-| `frontend-check`      | prettier --check + vue-tsc + eslint    | ci-frontend          | ✔️    |
-| `frontend-vitest`     | vitest run                             | ci-frontend          | ✔️    |
-| `frontend-playwright` | run playwright tests (optional filter) | ci-frontend, release | ✔️    |
-| `frontend-test`       | all frontend tests                     | ci-frontend, release | ✔️    |
+| Rule (justfile)       | Description                            | CI Lane              | Trigger               |
+| --------------------- | -------------------------------------- | -------------------- | --------------------- |
+| `frontend-check`      | prettier --check + vue-tsc + eslint    | ci-frontend          | local, PR, main       |
+| `frontend-vitest`     | vitest run                             | ci-frontend          | local, PR, main       |
+| `frontend-playwright` | run playwright tests (optional filter) | ci-frontend, release | local, PR, main, tags |
+| `frontend-test`       | all frontend tests                     | ci-frontend, release | local, PR, main, tags |
 
 ### API contract
 
-| Check                    | Description                                                                       | CI Lane    | Local |
-| ------------------------ | --------------------------------------------------------------------------------- | ---------- | ----- |
-| `openapi-check`          | Run all OpenAPI checks.                                                           | ci-backend | ✔️    |
-| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | ci-backend | ✔️    |
-| `openapi-json-match`     | Ensure that committed/staged json matches current --dump-openapi output           | ci-backend | ✔️    |
-| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | ci-backend | ✔️    |
-| `openapi-routes-match`   | Compare mounted Rocket routes with documented OpenAPI operations.                 | ci-backend | ✔️    |
-| `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release    | ❌️    |
-| `openapi-sanity`         | check OpenAPI annotation conventions                                              | ci-backend | ✔️    |
-| `auth-matrix-check`      | ensure auth-matrix artifacts match generator                                      | ci-backend | ✔️    |
+| Rule (justfile)          | Description                                                                       | CI Lane    | Trigger         |
+| ------------------------ | --------------------------------------------------------------------------------- | ---------- | --------------- |
+| `openapi-check`          | Run all OpenAPI checks.                                                           | ci-backend | local, PR, main |
+| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | ci-backend | local, PR, main |
+| `openapi-json-match`     | Ensure that committed/staged json matches current --dump-openapi output           | ci-backend | local, PR, main |
+| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | ci-backend | local, PR, main |
+| `openapi-routes-match`   | Compare mounted Rocket routes with documented OpenAPI operations.                 | ci-backend | local, PR, main |
+| `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release    | tags            |
+| `openapi-sanity`         | check OpenAPI annotation conventions                                              | ci-backend | local, PR, main |
+| `auth-matrix-check`      | ensure auth-matrix artifacts match generator                                      | ci-backend | local, PR, main |
 
 ### Security & supply chain
 
-| Check            | Description                                | CI Lane               | Local |
-| ---------------- | ------------------------------------------ | --------------------- | ----- |
-| `audit`          | Run security audits (backend + frontend)   | audit                 | ❌️    |
-| `backend-audit`  | cargo deny                                 | audit                 | ❌️    |
-| `frontend-audit` | npm audit                                  | audit                 | ❌️    |
-| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | ci-backend, ci-zizmor | ✔️    |
-| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint             | ❌️    |
+| Rule (justfile)  | Description                                | CI Lane               | Trigger                    |
+| ---------------- | ------------------------------------------ | --------------------- | -------------------------- |
+| `audit`          | Run security audits (backend + frontend)   | audit                 | PR, main, scheduled        |
+| `backend-audit`  | cargo deny                                 | audit                 | PR, main, scheduled        |
+| `frontend-audit` | npm audit                                  | audit                 | PR, main, scheduled        |
+| `zizmor-check`   | audit workflows/deps offline (no GH_TOKEN) | ci-backend, ci-zizmor | local, PR, main, scheduled |
+| `dylint-check`   | run dylint auth lints (advisory)           | ci-dylint             | PR, main                   |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
 
 ### Fuzzing
 
-| Check         | Description                                  | CI Lane             | Local |
-| ------------- | -------------------------------------------- | ------------------- | ----- |
-| `fuzz-check`  | tier-1 gate: seeded sweep, baseline-compared | ci-backend, nightly | ❌️    |
-| `fuzz-matrix` | run fuzz matrix (auth checks)                | ci-backend          | ✔️    |
+| Rule (justfile) | Description                                  | CI Lane             | Trigger             |
+| --------------- | -------------------------------------------- | ------------------- | ------------------- |
+| `fuzz-check`    | tier-1 gate: seeded sweep, baseline-compared | ci-backend, nightly | PR, main, scheduled |
+| `fuzz-matrix`   | run fuzz matrix (auth checks)                | ci-backend          | local, PR, main     |
 
 Note: `fuzz-check` - CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)
 
 ### Specs & catalogs
 
-| Check           | Description                                                                                 | CI Lane | Local |
-| --------------- | ------------------------------------------------------------------------------------------- | ------- | ----- |
-| `quint-check`   | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️      | ✔️    |
-| `spec-check`    | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️      | ✔️    |
-| `events-check`  | Validate the eventual-consistency event catalog                                             | ❌️      | ✔️    |
-| `catalog-check` | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️      | ✔️    |
+| Rule (justfile) | Description                                                                                 | CI Lane | Trigger |
+| --------------- | ------------------------------------------------------------------------------------------- | ------- | ------- |
+| `quint-check`   | Typecheck + test the eventual-consistency spec (Node-only, no JDK)                          | ❌️      | local   |
+| `spec-check`    | node utils/quint/specs-check.mjs utils/quint/pipeline --generate                            | ❌️      | local   |
+| `events-check`  | Validate the eventual-consistency event catalog                                             | ❌️      | local   |
+| `catalog-check` | Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references | ❌️      | local   |
 
 ### Repo & docs hygiene
 
-| Check                 | Description                                                     | CI Lane           | Local |
-| --------------------- | --------------------------------------------------------------- | ----------------- | ----- |
-| `docs-check`          | check markdown (docs, .plan, utils)                             | ci-frontend, docs | ✔️    |
-| `plan-lint`           | check .plan task frontmatter correctness                        | ci-frontend, docs | ✔️    |
-| `env-var-check`       | check PICASU_* env vars match docs/config.md                    | ci-backend        | ✔️    |
-| `gates-check`         | ensure all test/check rules are called from CI and global rules | ci-backend, docs  | ✔️    |
-| `branches-prune-test` | Test the branch pruning helper against a fixture repository     | ❌️                | ✔️    |
+| Rule (justfile)       | Description                                                     | CI Lane           | Trigger         |
+| --------------------- | --------------------------------------------------------------- | ----------------- | --------------- |
+| `docs-check`          | check markdown (docs, .plan, utils)                             | ci-frontend, docs | local, PR, main |
+| `plan-lint`           | check .plan task frontmatter correctness                        | ci-frontend, docs | local, PR, main |
+| `env-var-check`       | check PICASU_* env vars match docs/config.md                    | ci-backend        | local, PR, main |
+| `gates-check`         | ensure all test/check rules are called from CI and global rules | ci-backend, docs  | local, PR, main |
+| `branches-prune-test` | Test the branch pruning helper against a fixture repository     | ❌️                | local           |

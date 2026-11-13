@@ -91,14 +91,17 @@ test("widened gate rule: unwired foo-lint is flagged, wired default-param recipe
   assert.equal(r2.code, 0, r2.out);
 });
 
-test("regenerated doc lists openapi-routes-release in the release lane", (t) => {
+test("regenerated doc lists openapi-routes-release with its release trigger", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const md = join(dir, "quality-gates.md");
   const r = run(repoRoot, ["--generate", md]);
   assert.equal(r.code, 0, r.out);
   const content = readFileSync(md, "utf8");
-  assert.match(content, /^\| release\b.*openapi-routes-release/m);
+  assert.match(
+    content,
+    /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
+  );
 });
 
 test("rule graph adjacency", () => {
@@ -113,29 +116,27 @@ test("rule graph adjacency", () => {
   assert.match(block, /^utils-check\s+->\s*zizmor-check\s*$/m);
 });
 
-test("lane rows for ci-backend, ci-zizmor triggers, and release invokes", () => {
+test("trigger column reflects the lanes a rule runs in", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /^\| ci-backend\s+\| PR, main\s*\|/m);
-  assert.match(md, /^\| ci-zizmor\s+\| PR, main, scheduled\s*\|/m);
-  assert.match(md, /^\| release\b.*openapi-routes-release/m);
-  assert.doesNotMatch(md, /ci-zizmor-scheduled/);
-  assert.doesNotMatch(md, /—\s*\|\s*$/m);
-});
-
-test("family row splits CI lane and local markers", () => {
-  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /`backend-check`[^\n]*\| ci-backend\s*\| ✔️/);
-  // CI-only check: no local marker.
-  assert.match(md, /`dylint-check`[^\n]*\| ci-dylint\s*\| ❌️/);
-  // Local-only check: no CI lane.
-  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| ✔️/);
+  // Precommit + PR/main CI.
+  assert.match(md, /`backend-check`[^\n]*\| ci-backend\s*\| local, PR, main/);
+  // CI-only: no local trigger.
+  assert.match(md, /`dylint-check`[^\n]*\| ci-dylint\s*\| PR, main/);
+  // Local-only: no CI lane.
+  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
+  // Nightly and release triggers.
+  assert.match(md, /`msrv-check`[^\n]*\| nightly\s*\| scheduled/);
+  assert.match(
+    md,
+    /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
+  );
 });
 
 test("family tables share the full-width style and four-column header", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /h3 \+ \.table-wrapper > table \{\n\s+width: 100%;\n\s+table-layout: fixed;/);
   const headers = md.match(
-    /^\| Check\s+\| Description\s+\| CI Lane\s+\| Local\s+\|$/gm,
+    /^\| Rule \(justfile\)\s+\| Description\s+\| CI Lane\s+\| Trigger\s+\|$/gm,
   );
   const families = md.match(/^### /gm);
   assert.ok(families.length > 0, "family sections present");

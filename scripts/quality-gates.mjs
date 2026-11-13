@@ -613,14 +613,6 @@ const laneOrder = [
     (l) => l !== "precommit" && !preferredLaneOrder.includes(l),
   ),
 ].filter((l) => allLanes.has(l));
-// Drop lanes that invoke no displayed recipe (plus keep precommit).
-const includedLanes = laneOrder.filter(
-  (lane) =>
-    lane === "precommit" ||
-    directInvocations.some(
-      (inv) => inv.lane === lane && displaySet.has(inv.recipe),
-    ),
-);
 
 // Displayed children for the rule graph.
 function displayedChildren(name) {
@@ -681,41 +673,6 @@ function renderTable(headers, rows) {
   const out = [fmtRow(headers), sep];
   for (const r of rows) out.push(fmtRow(r));
   return out;
-}
-
-// Lanes table rows
-const laneRows = [];
-for (const lane of includedLanes) {
-  const triggers =
-    lane === "precommit"
-      ? "local"
-      : [...(laneTriggers.get(lane) || new Set())].join(", ") || "\u2014";
-  // distinct files
-  const files = [
-    ...new Set(directInvocations.filter((inv) => inv.lane === lane).map((inv) => basename(inv.file))),
-  ];
-  const workflowCell =
-    lane === "precommit"
-      ? "`justfile`"
-      : files.length
-      ? files.map((f) => "`" + f + "`").join(", ")
-      : "\u2014";
-  // directly invoked gate recipes
-  let invokes = [];
-  if (lane === "precommit") {
-    invokes = ["check", "test"];
-  } else {
-    invokes = [
-      ...new Set(
-        directInvocations
-          .filter((inv) => inv.lane === lane)
-          .map((inv) => inv.recipe)
-          .filter((name) => recipeByName.has(name) && isGateRecipe(recipeByName.get(name))),
-      ),
-    ].sort();
-  }
-  const invokesCell = invokes.length ? invokes.map((n) => "`" + n + "`").join(", ") : "\u2014";
-  laneRows.push([lane, triggers, workflowCell, invokesCell]);
 }
 
 // Check families for the overview. Membership is curated; a gate recipe
@@ -790,19 +747,10 @@ if (noCaller.length) {
   docLines.push("");
 }
 
-docLines.push("## Lanes");
-docLines.push("");
-docLines.push(
-  "Workflows live under `.github/workflows/`. `Invokes` lists the recipes a lane calls directly (aggregate members are in the rule graph); triggers come from each workflow's `on:` block. `workflow_dispatch` is not listed because any workflow that declares it can be run by hand.",
-);
-docLines.push("");
-docLines.push(...renderTable(["Lane", "Triggers", "Workflow", "Invokes"], laneRows));
-docLines.push("");
-
 docLines.push("## Check families");
 docLines.push("");
 docLines.push(
-  "`CI Lane` lists the workflow lanes a check runs in; `Local` marks checks invoked by the `precommit` recipe (path-targeted on branches). A cross marks a check that does not run there.",
+  "`Rule` names the justfile recipe, `CI Lane` lists the workflow lanes it runs in, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, excluding `workflow_dispatch`, which any workflow can expose). A cross marks a rule that does not run there.",
 );
 docLines.push("");
 // mdBook wraps tables in .table-wrapper; these rules give every family table
@@ -812,7 +760,12 @@ docLines.push("  h3 + .table-wrapper > table {");
 docLines.push("    width: 100%;");
 docLines.push("    table-layout: fixed;");
 docLines.push("  }");
-for (const [index, width] of [22, 46, 22, 10].entries()) {
+docLines.push("  h3 + .table-wrapper > table td,");
+docLines.push("  h3 + .table-wrapper > table th {");
+docLines.push("    padding-left: 6px;");
+docLines.push("    padding-right: 6px;");
+docLines.push("  }");
+for (const [index, width] of [24, 44, 16, 16].entries()) {
   docLines.push(
     `  h3 + .table-wrapper > table th:nth-child(${index + 1}) {`,
   );
@@ -822,7 +775,6 @@ for (const [index, width] of [22, 46, 22, 10].entries()) {
 docLines.push("</style>");
 docLines.push("");
 
-const TICK = "\u2714\uFE0F";
 const CROSS = "\u274C\uFE0F";
 
 function laneCompare(a, b) {
@@ -836,7 +788,19 @@ function laneCompare(a, b) {
   return a < b ? -1 : 1;
 }
 
-const familyHeaders = ["Check", "Description", "CI Lane", "Local"];
+const triggerOrder = ["local", "PR", "main", "tags", "scheduled"];
+function checkTriggers(lanes) {
+  const tokens = new Set();
+  for (const lane of lanes) {
+    if (lane === "precommit") tokens.add("local");
+    for (const t of laneTriggers.get(lane) || []) tokens.add(t);
+  }
+  return [...tokens].sort(
+    (a, b) => triggerOrder.indexOf(a) - triggerOrder.indexOf(b),
+  );
+}
+
+const familyHeaders = ["Rule (justfile)", "Description", "CI Lane", "Trigger"];
 for (const fam of orderedFamilies) {
   docLines.push("### " + fam);
   docLines.push("");
@@ -858,11 +822,12 @@ for (const fam of orderedFamilies) {
     const r = recipeByName.get(name);
     const lanes = [...(recipeLanes.get(name) || new Set())].sort(laneCompare);
     const ciLanes = lanes.filter((lane) => lane !== "precommit");
+    const triggers = checkTriggers(lanes);
     return [
       "`" + name + "`",
       r && r.annotation ? r.annotation : "\u2014",
       ciLanes.length ? ciLanes.join(", ") : CROSS,
-      lanes.includes("precommit") ? TICK : CROSS,
+      triggers.length ? triggers.join(", ") : CROSS,
     ];
   });
   docLines.push(...renderTable(familyHeaders, rows));
