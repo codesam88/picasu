@@ -33,7 +33,7 @@
         "asset-aspects.qnt:AspectsAligned",
         "asset-aspects.qnt:IntakePickupFileGone",
         "asset-aspects.qnt:SweepRecheckBatchClean",
-        "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",
+        "asset-aspects.qnt:SweepRemoveBatchSkipsPresentFile",
         "asset-aspects.qnt:aspectsAbsorbedSweepTest",
         "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
@@ -105,8 +105,7 @@
         "asset-aspects.qnt:DroppedSidecarModify",
         "asset-aspects.qnt:IntakePickupFileGone",
         "asset-aspects.qnt:SweepRecheckBatchClean",
-        "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",
-        "asset-aspects.qnt:SweepWriterPruneOnly",
+        "asset-aspects.qnt:SweepRemoveBatchSkipsPresentFile",
         "asset-aspects.qnt:UploadDoesNotMintRow",
         "asset-aspects.qnt:UploadStoredOnly",
         "asset-aspects.qnt:UploadingIsNotCorrupt",
@@ -302,9 +301,8 @@
       "kind": "SCOPE",
       "title": "sweep_remove_batch micro-stage",
       "refs": [
-        "asset-aspects.qnt:SweepWriterApply",
-        "asset-aspects.qnt:SweepWriterNeverPrunesPresentFile",
-        "asset-aspects.qnt:SweepWriterPruneOnly",
+        "asset-aspects.qnt:SweepRemoveBatchApply",
+        "asset-aspects.qnt:SweepRemoveBatchSkipsPresentFile",
         "asset-aspects.qnt:aspectsAbsorbedSweepTest"
       ]
     }

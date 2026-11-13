@@ -120,8 +120,8 @@ module asset_aspects {
 
   // @operation OP-9
   // @scope SCOPE-11
-  // SweepWriterApply maps to flush_tree.rs::sweep_remove_batch, submitted as WriteOp::SweepRemoveBatch via tasks/queue/writer.rs::submit; checks path.exists skip + asset-id/record resolution only, no generation/lease check.
-  action SweepWriterApply: bool = all {
+  // SweepRemoveBatchApply maps to flush_tree.rs::sweep_remove_batch, submitted as WriteOp::SweepRemoveBatch via tasks/queue/writer.rs::submit; checks path.exists skip + asset-id/record resolution only, no generation/lease check.
+  action SweepRemoveBatchApply: bool = all {
     sweepBatch.keys().size() > 0,
     rows' = rows.keys().filter(p =>
       not (sweepBatch.keys().contains(p) and
@@ -350,7 +350,7 @@ module asset_aspects {
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
-    .then(SweepWriterApply)
+    .then(SweepRemoveBatchApply)
     .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
@@ -364,7 +364,7 @@ module asset_aspects {
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(MoveLeaseAcquire("p1", "p3"))
-    .then(SweepWriterApply)
+    .then(SweepRemoveBatchApply)
     .then(all { assert(not(rows.keys().contains("p3"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ApiMoveFsOnly("p1", "p3"))
     .then(MoveRowRewrite("p1", "p3"))
@@ -557,8 +557,8 @@ module asset_aspects {
   // @assumes ASS-3
   // @assumes ASS-6
   // @scope SCOPE-11
-  // SweepWriterNeverPrunesPresentFile maps to the `if path.exists() { continue }` skip in flush_tree.rs::sweep_remove_batch.
-  val SweepWriterNeverPrunesPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
+  // SweepRemoveBatchSkipsPresentFile maps to the `if path.exists() { continue }` skip in flush_tree.rs::sweep_remove_batch.
+  val SweepRemoveBatchSkipsPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -568,6 +568,4 @@ module asset_aspects {
 
   // @assumes ASS-6
   // @scope SCOPE-11
-  // SweepWriterPruneOnly is a vacuous bound (sweepBatch.keys().size() >= 0 always); kept as a scope placeholder, real prune-only behaviour is exercised by the sweep runs (aspectsCleanSweepTest / aspectsAbsorbedSweepTest).
-  val SweepWriterPruneOnly = sweepBatch.keys().size() >= 0 and rows.keys().size() <= PATHS.size()
 }

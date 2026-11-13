@@ -203,7 +203,7 @@ Lifting: Hierarchical path IDs with arbitrary subtree enumeration.
 
 Bound: SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; chunking/cancel are abstracted.
 
-Why safe: Enumeration only reads; the per-candidate re-check happens in SweepRemoveBatchApply, so an interleaving between enumerate and apply is modeled rather than hidden.
+Why safe: Enumeration only reads; the per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.
 
 Lifting: Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).
 
@@ -215,7 +215,7 @@ Bound: SweepRecheck drains one enumerated batch, dropping candidates whose gener
 
 Why safe: Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; sweep_remove_batch checks only path.exists skip + asset-id/record resolution (no generation/lease re-check).
 
-Lifting: Per-chunk cancel/shutdown and interleaving between re-check and writer-apply (absorbed window).
+Lifting: Per-chunk cancel/shutdown and interleaving between re-check and sweep_remove_batch apply (absorbed window).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
@@ -231,7 +231,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-11: sweep_remove_batch micro-stage
 
-Bound: SweepWriterApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
+Bound: SweepRemoveBatchApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
 
 Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
 
