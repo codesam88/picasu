@@ -170,15 +170,15 @@ test("each group has a local mermaid diagram", () => {
 
 test("orphans section lists branches-prune and check-tools", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /## Orphans \(Called Manually\)/);
+  assert.match(md, /## Orphans \(not a global, not CI workflow, no justfile parent\)/);
   assert.match(md, /branches-prune/);
   assert.match(md, /check-tools/);
   // check/test/precommit/audit must not appear as orphan bullets
-  const section = md.split("## Orphans (Called Manually)")[1].split("## Rules by group")[0];
-  assert.doesNotMatch(section, /- `check`/);
-  assert.doesNotMatch(section, /- `test`/);
-  assert.doesNotMatch(section, /- `precommit`/);
-  assert.doesNotMatch(section, /- `audit`/);
+  const section = md.split("## Orphans (not a global, not CI workflow, no justfile parent)")[1].split("## Rules by group")[0];
+  assert.doesNotMatch(section, /\| `check`\s*\|/);
+  assert.doesNotMatch(section, /\| `test`\s*\|/);
+  assert.doesNotMatch(section, /\| `precommit`\s*\|/);
+  assert.doesNotMatch(section, /\| `audit`\s*\|/);
 });
 
 test("doc contains no #L anchors and no file:line references", () => {
@@ -198,7 +198,7 @@ test("synthetic foo-check generates Other group and Orphans entry", (t) => {
   const md = readFileSync(join(dir, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /### Other/);
   assert.match(md, /`foo-check`/);
-  assert.match(md, /## Orphans \(Called Manually\)[\s\S]*?- `foo-check`/);
+  assert.match(md, /## Orphans \(not a global, not CI workflow, no justfile parent\)[\s\S]*?\| `foo-check`/);
 });
 
 test("inline check tooling without a just recipe is flagged", (t) => {
