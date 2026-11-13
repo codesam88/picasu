@@ -166,7 +166,26 @@ fn viewer_upload_assign_and_create_dir() {
         .to_string();
 
     // Locate the uploaded asset through the viewer's own prefetch chain.
-    let (_ts, rows) = snapshot_rows(&client, viewer.clone(), &asset_id);
+    // Upload is store-and-return: the row lands after the background
+    // flush, so poll the snapshot instead of racing it.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let rows = loop {
+        let (_, rows) = snapshot_rows(&client, viewer.clone(), &asset_id);
+        let hit = rows.iter().find(|r| {
+            r["abstractData"]["path"]["file"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("second.")
+        });
+        if hit.is_some() {
+            break rows;
+        }
+        assert!(
+            std::time::Instant::now() <= deadline,
+            "uploaded row visible to viewer"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
     let uploaded = rows
         .iter()
         .find(|r| {
