@@ -100,13 +100,14 @@ test("regenerated doc lists openapi-routes-release with its release trigger", (t
   const content = readFileSync(md, "utf8");
   assert.match(
     content,
-    /`openapi-routes-release`[^\n]*\| \[release\]\(\.\.\/\.github\/workflows\/release\.yml\)\s*\| tags/,
+    /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
   );
 });
 
 test("rule graph has separate check and test trees", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const blocks = [...md.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const section = md.slice(0, md.indexOf("## Orphans"));
+  const blocks = [...section.matchAll(/```mermaid\n([\s\S]*?)```/g)].map((m) => m[1]);
   assert.equal(blocks.length, 2);
   const [checkBlock, testBlock] = blocks;
   assert.match(checkBlock, /^graph LR$/m);
@@ -116,40 +117,54 @@ test("rule graph has separate check and test trees", () => {
   assert.match(testBlock, /^  frontend-test --> frontend-vitest$/m);
 });
 
-test("trigger column reflects the workflow files and triggers", () => {
+test("trigger column reflects the CI workflow files and callers", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.match(
     md,
-    /`backend-check`[^\n]*\| \[ci\]\(\.\.\/\.github\/workflows\/ci\.yml\)\s*\| local, PR, main/,
+    /`backend-check`[^\n]*\| ci\s*\| local, PR, main/,
   );
   assert.match(
     md,
-    /`dylint-check`[^\n]*\| \[ci\]\(\.\.\/\.github\/workflows\/ci\.yml\)\s*\| PR, main/,
+    /`dylint-check`[^\n]*\| ci\s*\| PR, main/,
   );
-  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
+  assert.match(md, /`quint-check`[^\n]*\| —\s*\| local/);
   assert.match(
     md,
-    /`msrv-check`[^\n]*\| \[msrv\]\(\.\.\/\.github\/workflows\/msrv\.yml\)\s*\| scheduled/,
-  );
-  assert.match(
-    md,
-    /`openapi-routes-release`[^\n]*\| \[release\]\(\.\.\/\.github\/workflows\/release\.yml\)\s*\| tags/,
+    /`msrv-check`[^\n]*\| msrv\s*\| scheduled/,
   );
   assert.match(
     md,
-    /`zizmor-check`[^\n]*\| \[ci\]\(\.\.\/\.github\/workflows\/ci\.yml\), \[zizmor\]\(\.\.\/\.github\/workflows\/zizmor\.yml\)\s*\| local, PR, main/,
+    /`openapi-routes-release`[^\n]*\| release\s*\| tags/,
   );
+  assert.match(
+    md,
+    /`zizmor-check`[^\n]*\| zizmor, \(utils-check\)\s*\| local, PR, main/,
+  );
+  // An indirectly-run recipe names the CI caller instead of repeating the file.
+  assert.match(md, /`auth-matrix-check`[^\n]*\| \(openapi-check\)\s*\|/);
 });
 
 test("family tables share the full-width style and five-column header", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /h3 \+ \.table-wrapper > table \{\n\s+width: 100%;\n\s+table-layout: fixed;/);
   const headers = md.match(
-    /^\| Rule \(justfile\)\s+\| Description\s+\| Params\s+\| Workflow\s+\| Trigger\s+\|$/gm,
+    /^\| Rule \(justfile\)\s+\| Description\s+\| Params\s+\| CI Workflow\s+\| Trigger\s+\|$/gm,
   );
   const families = md.slice(md.indexOf("## Rules by group")).match(/^### /gm);
   assert.ok(families.length > 0, "group sections present");
   assert.equal(headers.length, families.length, "every group has the header");
+});
+
+test("each group has a local mermaid diagram", () => {
+  const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
+  const section = md.slice(md.indexOf("## Rules by group"));
+  const groups = section.match(/^### .*$/gm) ?? [];
+  const blocks = section.match(/```mermaid\n/g) ?? [];
+  assert.equal(blocks.length, groups.length, "one diagram per group");
+  assert.match(section, /openapi-check --> auth-matrix-check/);
+  assert.match(section, /utils-check --> zizmor-check/);
+  assert.match(section, /~~~ /);
+  assert.match(section, /bench__test\["bench::test"\]/);
 });
 
 test("orphans section lists branches-prune and check-tools", () => {

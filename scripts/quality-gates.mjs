@@ -628,7 +628,7 @@ docLines.push("");
 docLines.push("## Rules by group");
 docLines.push("");
 docLines.push(
-  "`Rule` names the justfile recipe, `Params` lists its parameters, `Workflow` links the workflow files that invoke it, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A cross marks a rule that does not run there. Recipes are grouped by their justfile group.",
+  "`Rule` names the justfile recipe, `Params` lists its parameters, `CI Workflow` lists the workflow files that invoke it directly and, in parentheses, any caller that itself runs in CI, and `Trigger` lists what starts them (`local` is the pre-commit hook; the rest come from each workflow's `on:` block, narrowed by a job's `if:` when present, and `workflow_dispatch` is not listed because any workflow can expose it). A dash marks a recipe with no workflow, no CI caller, or no trigger. Recipes are grouped by their justfile group.",
 );
 docLines.push("");
 docLines.push("<style>");
@@ -651,13 +651,79 @@ for (const [index, width] of [18, 36, 10, 18, 18].entries()) {
 docLines.push("</style>");
 docLines.push("");
 
-// Workflow files per lane, for the doc's Workflow column.
-function workflowLink(file) {
-  const label = basename(file).replace(/\.ya?ml$/, "");
-  return `[${label}](../${file})`;
+// Workflow files that invoke each recipe directly, for the CI Workflow column.
+const directFiles = new Map();
+for (const inv of directInvocations) {
+  if (inv.file === "justfile") continue;
+  if (!directFiles.has(inv.recipe)) directFiles.set(inv.recipe, new Set());
+  directFiles.get(inv.recipe).add(inv.file);
+}
+function workflowLabel(file) {
+  return basename(file).replace(/\.ya?ml$/, "");
 }
 
-const familyHeaders = ["Rule (justfile)", "Description", "Params", "Workflow", "Trigger"];
+const familyHeaders = ["Rule (justfile)", "Description", "Params", "CI Workflow", "Trigger"];
+
+function mermaidId(name) {
+  return name.replace(/::/g, "__").replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
+// Group-local rule graph. Edges only between members of the group; nodes with
+// no such edge are ranked below the connected component via one invisible link
+// from the deepest sink.
+function groupDiagram(members) {
+  const memberSet = new Set(members);
+  const edges = [];
+  const connected = new Set();
+  for (const src of members) {
+    for (const dep of displayedChildren(src)) {
+      if (!memberSet.has(dep)) continue;
+      edges.push(`  ${mermaidId(src)} --> ${mermaidId(dep)}`);
+      connected.add(src);
+      connected.add(dep);
+    }
+  }
+  const orphans = members.filter((n) => !connected.has(n));
+  const rank = new Map(members.map((n) => [n, 0]));
+  for (let round = 0; round < members.length; round += 1) {
+    let changed = false;
+    for (const src of members) {
+      for (const dep of displayedChildren(src)) {
+        if (!memberSet.has(dep)) continue;
+        const next = (rank.get(src) ?? 0) + 1;
+        if (next > (rank.get(dep) ?? 0)) {
+          rank.set(dep, next);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  const sinks = members.filter(
+    (name) =>
+      connected.has(name) &&
+      !displayedChildren(name).some((dep) => memberSet.has(dep)),
+  );
+  const maxRank = sinks.length
+    ? Math.max(...sinks.map((name) => rank.get(name) ?? 0))
+    : 0;
+  const anchor = sinks
+    .filter((name) => (rank.get(name) ?? 0) === maxRank)
+    .sort()[0];
+  const lines = ["graph TD"];
+  for (const name of members) {
+    const id = mermaidId(name);
+    if (id !== name) lines.push(`  ${id}["${name}"]`);
+    else lines.push(`  ${name}`);
+  }
+  lines.push(...edges);
+  if (anchor && orphans.length) {
+    lines.push(
+      `  ${mermaidId(anchor)} ~~~ ${orphans.map(mermaidId).join(" & ")}`,
+    );
+  }
+  return lines;
+}
 
 for (const g of orderedGroups) {
   const heading = capitalize(g);
@@ -667,17 +733,37 @@ for (const g of orderedGroups) {
     .filter((r) => r.group === g)
     .map((r) => r.name)
     .sort();
+  docLines.push("```mermaid");
+  docLines.push(...groupDiagram(members));
+  docLines.push("```");
+  docLines.push("");
   const rows = members.map((name) => {
     const r = recipeByName.get(name);
     const lanes = [...(recipeLanes.get(name) || new Set())].sort(laneCompare);
-    const ciFiles = [...(recipeFiles.get(name) || [])].sort();
+    const direct = [...(directFiles.get(name) || [])]
+      .map(workflowLabel)
+      .sort();
+    const callers = recipes
+      .filter(
+        (q) =>
+          q.name !== name &&
+          !q.private &&
+          (q.deps || []).includes(name) &&
+          (recipeFiles.get(q.name)?.size ?? 0) > 0,
+      )
+      .map((q) => q.name)
+      .sort();
+    const workflowParts = [
+      ...direct,
+      ...callers.map((caller) => `(${caller})`),
+    ];
     const triggers =
       name === "precommit" ? ["local"] : checkTriggers(lanes);
     return [
       "`" + name + "`",
       r && r.annotation ? r.annotation : "\u2014",
       r ? formatParams(r) : "\u2014",
-      ciFiles.length ? ciFiles.map(workflowLink).join(", ") : CROSS,
+      workflowParts.length ? workflowParts.join(", ") : "\u2014",
       triggers.length ? triggers.join(", ") : CROSS,
     ];
   });
