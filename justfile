@@ -347,6 +347,24 @@ docs-eventual-consistency:
     node {{justfile_directory()}}/utils/quint/gen-eventual-consistency-doc.mjs {{justfile_directory()}}/utils/quint/pipeline {{justfile_directory()}}
     cd {{justfile_directory()}}/frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../docs/eventual-consistency.md'
 
+# Ensure docs/eventual-consistency.md matches the generator (drift gate)
+[group('utils')]
+docs-eventual-consistency-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmpdir="$(mktemp -d)"
+    trap 'rm -rf "$tmpdir"' EXIT
+    mkdir -p "$tmpdir/docs"
+    node "{{justfile_directory()}}/utils/quint/gen-eventual-consistency-doc.mjs" "{{justfile_directory()}}/utils/quint/pipeline" "$tmpdir"
+    cd "{{justfile_directory()}}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "$tmpdir/docs/eventual-consistency.md" >/dev/null
+    if ! diff -u "{{justfile_directory()}}/docs/eventual-consistency.md" "$tmpdir/docs/eventual-consistency.md"; then
+        echo ""
+        echo "docs/eventual-consistency.md is out of date with the generator."
+        echo "Run 'just docs-eventual-consistency' and commit the result."
+        exit 1
+    fi
+    echo "docs/eventual-consistency.md matches the generated output"
+
 # Closed-world audit over utils/quint/pipeline/*.qnt: every definition
 # carries a resolving tag, every registry ID is cited. Regenerate the
 # traceability map (utils/quint/pipeline/traceability.json) with:
@@ -417,7 +435,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check operations-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
+check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check operations-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check docs-eventual-consistency-check branches-prune-test
 
 # run full test suite
 [group('global')]

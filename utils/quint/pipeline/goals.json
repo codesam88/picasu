@@ -59,8 +59,7 @@
       "description": "A 200 response implies subsequent reads observe the mutation.",
       "anchors": [],
       "assumptions": [],
-      "notes": "Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. The upload path waits on the flush batch (backend/src/router/post/post_upload.rs:330); assign and delete have no verified equivalent."
-    },
+      "notes": "Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. For upload, a 200 implies stored, not visible: visibility follows background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs). Read-model freshness after writer batches is bounded by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation. Assign and delete have no verified equivalent barrier."    },
     {
       "id": "G4",
       "decision": "dropped",
