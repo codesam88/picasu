@@ -206,8 +206,7 @@ Done: the doc drops the mermaid lane graph, per-check sections,
 line references and underlying-file lists. It renders a mermaid rule
 graph (recipe edges only, no lanes) as two trees rooted at `check`
 and `test`; rules outside both trees are listed below them, and an
-Orphans (not a global, not CI workflow, no justfile parent) section flags rules with no CI lane, no
-justfile caller, and no `global` group. It also renders check families (rule, description, CI lane, trigger) with allowlist
+Orphans section flags rules not reachable from a global rule or direct invocation. It also renders check families (rule, description, CI lane, trigger) with allowlist
 notes; lane triggers are folded into the family tables, so there is no
 separate lane section.
 Families are an explicit map in the script; an unmapped gate recipe
@@ -232,9 +231,9 @@ that itself runs in CI (in parentheses), without links; a cross marks
 no workflow/caller, and the Trigger column uses a dash for no trigger. The name-based gate
 heuristics, curated family map, reverse lane propagation, and the
 gate-based orphan/not-run-in-CI warnings are gone. Orphans (rendered as a
-two-column table) covers every
-non-private recipe with no workflow and no caller, excluding the four
-global entry points. Each workflow invocation carries its workflow file
+two-column table) covers every non-private recipe not reachable from
+the four global entry points or a direct invocation; `gates-check`
+prints the same list as advisory output and never fails on it. Each workflow invocation carries its workflow file
 and trigger tokens directly; the lane mapping layer was removed, with
 no change to the generated doc. The script header states that the doc is both a
 documentation overview and a manual review aid, so generated content

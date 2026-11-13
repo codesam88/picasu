@@ -44,23 +44,29 @@ graph LR
   frontend-test --> frontend-vitest
 ```
 
-## Orphans (not a global, not CI workflow, no justfile parent)
+## Orphans (not reachable from a global rule or CI workflow)
 
 | Orphan                      | Orphan                |
 | --------------------------- | --------------------- |
-| `bench::clean`              | `docs-serve`          |
-| `bench::extract`            | `format`              |
+| `backend-build`             | `docs-format`         |
+| `backend-build-release`     | `docs-openapi`        |
+| `backend-format`            | `docs-serve`          |
+| `bench::clean`              | `format`              |
+| `bench::extract`            | `frontend-format`     |
 | `bench::format`             | `fuzz-run`            |
 | `bench::lint`               | `fuzz-serve`          |
 | `bench::seed-images`        | `gates-docs`          |
-| `bench::server`             | `install-plan`        |
-| `bench::test`               | `plan`                |
-| `bench::workload`           | `plan-format`         |
-| `branches-prune`            | `run`                 |
+| `bench::server`             | `install-dev`         |
+| `bench::test`               | `install-plan`        |
+| `bench::workload`           | `openapi-gen`         |
+| `branches-prune`            | `plan`                |
+| `build`                     | `plan-format`         |
+| `build-release`             | `run`                 |
 | `check-tools`               | `setup-dev`           |
+| `clean`                     | `setup-sccache`       |
 | `distclean`                 | `test-release`        |
-| `docs-build`                | `zizmor-check-online` |
-| `docs-eventual-consistency` |                       |
+| `docs-build`                | `utils-format`        |
+| `docs-eventual-consistency` | `zizmor-check-online` |
 
 ## Rules by group
 

@@ -169,11 +169,11 @@ test("each group has a local mermaid diagram", () => {
 
 test("orphans section lists branches-prune and check-tools", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  assert.match(md, /## Orphans \(not a global, not CI workflow, no justfile parent\)/);
+  assert.match(md, /## Orphans \(not reachable from a global rule or CI workflow\)/);
   assert.match(md, /branches-prune/);
   assert.match(md, /check-tools/);
   // check/test/precommit/audit must not appear as orphan bullets
-  const section = md.split("## Orphans (not a global, not CI workflow, no justfile parent)")[1].split("## Rules by group")[0];
+  const section = md.split("## Orphans (not reachable from a global rule or CI workflow)")[1].split("## Rules by group")[0];
   assert.doesNotMatch(section, /\| `check`\s*\|/);
   assert.doesNotMatch(section, /\| `test`\s*\|/);
   assert.doesNotMatch(section, /\| `precommit`\s*\|/);
@@ -197,7 +197,37 @@ test("synthetic foo-check generates Other group and Orphans entry", (t) => {
   const md = readFileSync(join(dir, "docs", "quality-gates.md"), "utf8");
   assert.match(md, /### Other/);
   assert.match(md, /`foo-check`/);
-  assert.match(md, /## Orphans \(not a global, not CI workflow, no justfile parent\)[\s\S]*?\| `foo-check`/);
+  assert.match(md, /## Orphans \(not reachable from a global rule or CI workflow\)[\s\S]*?\| `foo-check`/);
+});
+
+test("orphan candidates use reachability, not just parent callers", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "pipelint-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(
+    join(dir, "justfile"),
+    "# check\ncheck: covered\n\n# covered\ncovered:\n    echo covered\n\n# detached\ndetached: detached-child\n    echo detached\n\n# child\ndetached-child:\n    echo child\n",
+  );
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  const g = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g.code, 0, g.out);
+  const r = run(dir);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /orphan candidates \(advisory\)/);
+  assert.match(r.out, /gates-check:   detached\b/);
+  assert.match(r.out, /gates-check:   detached-child\b/);
+  assert.doesNotMatch(r.out, /gates-check:   covered\b/);
+
+  writeFileSync(
+    join(dir, ".github", "workflows", "ci.yml"),
+    "on:\n  pull_request:\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: just detached\n",
+  );
+  const g2 = run(dir, ["--generate", join(dir, "docs", "quality-gates.md")]);
+  assert.equal(g2.code, 0, g2.out);
+  const r2 = run(dir);
+  assert.equal(r2.code, 0, r2.out);
+  assert.doesNotMatch(r2.out, /gates-check:   detached\b/);
+  assert.doesNotMatch(r2.out, /gates-check:   detached-child\b/);
 });
 
 test("inline check tooling without a just recipe is flagged", (t) => {

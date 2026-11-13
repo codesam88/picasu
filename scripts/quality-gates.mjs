@@ -436,16 +436,28 @@ function tree(rootName) {
 const checkTree = tree("check");
 const testTree = tree("test");
 
-// ---------- orphans ----------
-const potentialOrphans = displayRecipes
-  .filter((r) => !["check", "test", "precommit", "audit"].includes(r.name))
-  .filter((r) => {
-    const inCi = recipeFiles.has(r.name);
-    const called = recipes.some(
-      (q) => q.name !== r.name && (q.deps || []).includes(r.name),
-    );
-    return !inCi && !called;
-  })
+// ---------- orphans (advisory) ----------
+function closureFromRoots(rootNames) {
+  const visited = new Set();
+  const stack = rootNames.filter((name) => recipeByName.has(name));
+  for (const name of stack) visited.add(name);
+  while (stack.length) {
+    const recipe = recipeByName.get(stack.pop());
+    for (const dep of recipe.deps) {
+      if (!recipeByName.has(dep) || visited.has(dep)) continue;
+      visited.add(dep);
+      stack.push(dep);
+    }
+  }
+  return visited;
+}
+const globalRoots = ["precommit", "check", "test", "audit"];
+const invocationRoots = [
+  ...new Set(directInvocations.map((inv) => inv.recipe)),
+];
+const covered = closureFromRoots([...globalRoots, ...invocationRoots]);
+const orphanCandidates = displayRecipes
+  .filter((r) => !covered.has(r.name))
   .map((r) => r.name)
   .sort();
 
@@ -520,16 +532,16 @@ docLines.push("```");
 docLines.push("");
 
 docLines.push(
-  "## Orphans (not a global, not CI workflow, no justfile parent)",
+  "## Orphans (not reachable from a global rule or CI workflow)",
 );
 docLines.push("");
-if (potentialOrphans.length) {
-  const half = Math.ceil(potentialOrphans.length / 2);
+if (orphanCandidates.length) {
+  const half = Math.ceil(orphanCandidates.length / 2);
   const rows = [];
   for (let i = 0; i < half; i += 1) {
     rows.push([
-      "`" + potentialOrphans[i] + "`",
-      potentialOrphans[i + half] ? "`" + potentialOrphans[i + half] + "`" : "",
+      "`" + orphanCandidates[i] + "`",
+      orphanCandidates[i + half] ? "`" + orphanCandidates[i + half] + "`" : "",
     ]);
   }
   docLines.push(...renderTable(["Orphan", "Orphan"], rows));
@@ -736,6 +748,12 @@ function formatFile(p) {
 }
 
 for (const w of warnings) console.error(`gates-check: WARN: ${w}`);
+if (orphanCandidates.length) {
+  console.log("gates-check: orphan candidates (advisory):");
+  for (const name of orphanCandidates) console.log(`gates-check:   ${name}`);
+} else {
+  console.log("gates-check: orphan candidates: none");
+}
 if (failures.length) {
   for (const f of failures) console.error(`gates-check: FAIL: ${f}`);
   process.exit(1);
