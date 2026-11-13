@@ -18,15 +18,24 @@ module asset_aspects {
     if (p.in(unprocessable)) {
       true
     } else if (files.get(p).present) {
-      rows.keys().contains(p) and
-      rows.get(p).assetHash == files.get(p).assetHash and
-      rows.get(p).modified == files.get(p).mtime and
-      rows.get(p).fileSize == files.get(p).len and
-      rows.get(p).sidecar == files.get(p).sidecar and
-      rows.get(p).converged and
-      rows.get(p).thumb
+      assetByPath.keys().contains(p) and
+      assetById.keys().contains(assetByPath.get(p)) and
+      assetById.get(assetByPath.get(p)).path == p and
+      assetById.get(assetByPath.get(p)).contentHash == files.get(p).assetHash and
+      metadataPayload.keys().contains(assetByPath.get(p)) and
+      metadataPayload.get(assetByPath.get(p)).assetHash == files.get(p).assetHash and
+      metadataPayload.get(assetByPath.get(p)).modified == files.get(p).mtime and
+      metadataPayload.get(assetByPath.get(p)).fileSize == files.get(p).len and
+      metadataPayload.get(assetByPath.get(p)).sidecar == files.get(p).sidecar and
+      metadataPayload.get(assetByPath.get(p)).converged and
+      (assetById.get(assetByPath.get(p)).contentHash < 0 or
+        (thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
+         thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))) and
+      (assetById.get(assetByPath.get(p)).contentHash < 0 or
+        dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
+        dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).contains(assetByPath.get(p)))
     } else {
-      not(rows.keys().contains(p))
+      not(assetByPath.keys().contains(p))
     }
   }
 
@@ -36,7 +45,11 @@ module asset_aspects {
 
   // @assumes ASS-4
   def ThumbPresent(p: str): bool =
-    if (rows.keys().contains(p)) { rows.get(p).thumb } else { false }
+    if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) {
+      // @exempt observer
+      val h = assetById.get(assetByPath.get(p)).contentHash
+      h >= 0 and thumbPresent.keys().contains(h) and thumbPresent.get(h)
+    } else { false }
 
   // @operation OP-5
   // @scope SCOPE-5
@@ -52,7 +65,7 @@ module asset_aspects {
          .set(pr.dst, generations.get(pr.dst) + 1)
     ),
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -73,7 +86,7 @@ module asset_aspects {
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }).set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
     generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -87,12 +100,12 @@ module asset_aspects {
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
-    sweepBatch' = PATHS.filter(p => rootOf(p) == root and rows.keys().contains(p) and not(files.get(p).present)).mapBy(p => generations.get(p)),
+    sweepBatch' = PATHS.filter(p => rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present)).mapBy(p => generations.get(p)),
     sweepPending' = sweepPending.put(root, false),
     files' = files,
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths,
@@ -112,7 +125,7 @@ module asset_aspects {
     files' = files,
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths,
@@ -123,11 +136,16 @@ module asset_aspects {
   // SweepRemoveBatchApply maps to flush_tree.rs::sweep_remove_batch, submitted as WriteOp::SweepRemoveBatch via tasks/queue/writer.rs::submit; checks path.exists skip + asset-id/record resolution only, no generation/lease check.
   action SweepRemoveBatchApply: bool = all {
     sweepBatch.keys().size() > 0,
-    rows' = rows.keys().filter(p =>
+    assetByPath' = assetByPath.keys().filter(p =>
       not (sweepBatch.keys().contains(p) and
-           rows.keys().contains(p) and
+           assetByPath.keys().contains(p) and
            not(files.get(p).present))
-    ).mapBy(k => rows.get(k)),
+    ).mapBy(k => assetByPath.get(k)),
+    assetById' = assetById,
+    metadataPayload' = metadataPayload,
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     sweepBatch' = Map(),
     sweepPending' = sweepPending,
     files' = files,
@@ -149,7 +167,7 @@ module asset_aspects {
     not(files.get(q).present),
     rows.keys().contains(p),
     files' = files,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
     intake' = intake,
     sweepPending' = sweepPending,
@@ -168,7 +186,12 @@ module asset_aspects {
     not(p == q),
     rows.keys().contains(p),
     leasedPaths' = leasedPaths.exclude(Set(p, q)),
-    rows' = rows.keys().exclude(Set(p)).mapBy(k => rows.get(k)).put(q, rows.get(p)),
+    assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
+    assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
+    metadataPayload' = metadataPayload,
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
     files' = files,
     generations' = generations,
     intake' = intake,
@@ -187,7 +210,7 @@ module asset_aspects {
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: if (f.sidecar == 0) 1 else 0 }),
     generations' = generations.set(p, generations.get(p) + 1),
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -203,7 +226,7 @@ module asset_aspects {
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: if (f.sidecar == 0) 1 else 0 }),
     generations' = generations,
     intake' = intake,
-    rows' = rows,
+    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -216,7 +239,7 @@ module asset_aspects {
     .then(ForceModify("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -224,7 +247,7 @@ module asset_aspects {
     .then(SubmitScan("p1"))
     .then(AppSidecarEdit("p1"))
     .then(WorkerSkipSuperseded)
-    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -240,7 +263,7 @@ module asset_aspects {
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -254,41 +277,41 @@ module asset_aspects {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(DirMoveFsOnly)
-    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @operation OP-7
   // @scope SCOPE-5
   // @assumes ASS-6
   run aspectsSidecarPartialEditTest = init
     .then(SidecarEditPartial("p1"))
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt environment
   // @assumes ASS-6
   // @assumes ASS-7
   run aspectsDroppedSidecarTest = init
     .then(DroppedSidecarModify("p1"))
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-4
   // @assumes ASS-6
   run aspectsThumbLossTest = init
     .then(LoseThumbs)
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(AspectAligned("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AspectAligned("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -296,7 +319,7 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -311,7 +334,7 @@ module asset_aspects {
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
-    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -327,9 +350,9 @@ module asset_aspects {
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
-    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(MoveRowRewrite("p1", "p3"))
-    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -340,7 +363,7 @@ module asset_aspects {
     .then(SweepEnumerate("r1"))
     .then(SubmitWatcherRemove("p1"))
     .then(SweepRecheck)
-    .then(all { assert(rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -351,7 +374,7 @@ module asset_aspects {
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -365,10 +388,10 @@ module asset_aspects {
     .then(SweepRecheck)
     .then(MoveLeaseAcquire("p1", "p3"))
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not(rows.keys().contains("p3"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p3"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ApiMoveFsOnly("p1", "p3"))
     .then(MoveRowRewrite("p1", "p3"))
-    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -377,25 +400,25 @@ module asset_aspects {
     .then(RotateWriteSidecar("p1"))
     .then(WorkerSkipSuperseded)
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   // @assumes ASS-6
   run aspectsRotateTest = init
     .then(RotateWriteSidecar("p1"))
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   def UploadingWindow(p: str): bool =
-    files.get(p).present and not(rows.keys().contains(p)) and intake.exists(i => i.path == p and i.kind == "watcher")
+    files.get(p).present and not(assetByPath.keys().contains(p)) and intake.exists(i => i.path == p and i.kind == "watcher")
 
   // @assumes ASS-6
   def Corrupt(p: str): bool =
-    files.get(p).present and rows.keys().contains(p) and not(AspectAligned(p)) and not(UploadingWindow(p))
+    files.get(p).present and assetByPath.keys().contains(p) and not(AspectAligned(p)) and not(UploadingWindow(p))
 
   // @assumes ASS-6
-  val UploadDoesNotMintRow = PATHS.forall(p => UploadingWindow(p) implies not(rows.keys().contains(p)))
+  val UploadDoesNotMintRow = PATHS.forall(p => UploadingWindow(p) implies not(assetByPath.keys().contains(p)))
 
   // @assumes ASS-6
   val UploadingIsNotCorrupt = PATHS.forall(p => UploadingWindow(p) implies not(Corrupt(p)))
@@ -425,7 +448,7 @@ module asset_aspects {
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
       generations' = generations.set(p, generations.get(p) + 1),
       intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -448,15 +471,12 @@ module asset_aspects {
       it.generation == generations.get(p),
       files.get(p).present,
       snapshotMatches(files.get(p), it),
-      rows' = rows.put(p, {
-        assetId: if (rows.keys().contains(p)) { rows.get(p).assetId } else { nextAssetId },
-        assetHash: it.assetHash,
-        modified: it.mtime,
-        fileSize: it.len,
-        sidecar: it.sidecar,
-        converged: true,
-        thumb: true
-      }),
+      assetById' = assetById.put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { assetId: if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, kind: if (assetByPath.keys().contains(p)) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if (assetByPath.keys().contains(p)) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if (assetByPath.keys().contains(p)) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
+      assetByPath' = assetByPath.put(p, if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }),
+      metadataPayload' = metadataPayload.put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { kind: if (assetByPath.keys().contains(p)) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false }),
+      dupeIndex' = dupeIndex.put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }))),
+      thumbPresent' = thumbPresent.put(it.assetHash, true),
+      albumPending' = albumPending,
       intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
       files' = files,
       generations' = generations,
@@ -484,7 +504,7 @@ module asset_aspects {
       intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
       files' = files,
       generations' = generations,
-      rows' = rows,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending,
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
@@ -500,11 +520,11 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadStoredOnly("p1"))
-    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadIndexed("p1"))
-    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -514,7 +534,7 @@ module asset_aspects {
     .then(UploadStoredOnly("p1"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -526,7 +546,7 @@ module asset_aspects {
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerSkipSuperseded)
     .then(WorkerRemoveApply)
-    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -537,7 +557,7 @@ module asset_aspects {
     .then(ExternalSidecarModify("p1"))
     .then(WorkerSkipSuperseded)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -546,13 +566,13 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(UploadStoredOnly("p1"))
     .then(ProcessCrash)
-    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -568,4 +588,152 @@ module asset_aspects {
 
   // @assumes ASS-6
   // @scope SCOPE-11
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-11
+  // Path-map/identity coherence: no asset whose path is present on disk
+  // may have its identity stored in assetById without a corresponding
+  // assetByPath entry.
+  val PathMapIdentityCoherence = assetById.keys().forall(id =>
+    assetById.get(id).path.in(PATHS) implies (
+      files.get(assetById.get(id).path).present implies assetByPath.keys().contains(assetById.get(id).path)
+    )
+  )
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-11
+  // Dupe-index bijective consistency: dupeIndex membership exactly
+  // matches assetById contentHash grouping.
+  val DupeIndexBijective = assetById.keys().forall(id =>
+    assetById.get(id).contentHash >= 0 implies
+      (dupeIndex.keys().contains(assetById.get(id).contentHash) and
+       dupeIndex.get(assetById.get(id).contentHash).contains(id))
+  ) and dupeIndex.keys().forall(h =>
+    dupeIndex.get(h).forall(id =>
+      assetById.keys().contains(id) and assetById.get(id).contentHash == h
+    )
+  )
+
+  // @operation OP-3
+  // @scope SCOPE-5
+  // @assumes ASS-6
+  // RemoveIdOnly models a remove that commits ASSET_BY_ID (and metadata)
+  // but crashes before ASSET_BY_PATH is rewritten (N5 torn window).
+  action RemoveIdOnly(p: str): bool = all {
+    p.in(PATHS),
+    assetByPath.keys().contains(p),
+    assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
+    assetByPath' = assetByPath,
+    metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k)),
+    dupeIndex' = dupeIndex,
+    thumbPresent' = thumbPresent,
+    albumPending' = albumPending,
+    files' = files,
+    generations' = generations,
+    intake' = intake,
+    sweepPending' = sweepPending,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+  }
+
+  // @exempt environment
+  // @assumes ASS-6
+  action MemberWrite(p: str): bool = all {
+    p.in(PATHS),
+    assetByPath.keys().contains(p),
+    albumPending' = albumPending.union(Set(assetByPath.get(p))),
+    assetById' = assetById,
+    assetByPath' = assetByPath,
+    dupeIndex' = dupeIndex,
+    metadataPayload' = metadataPayload,
+    thumbPresent' = thumbPresent,
+    files' = files,
+    generations' = generations,
+    intake' = intake,
+    sweepPending' = sweepPending,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+  }
+
+  // @exempt environment
+  // @assumes ASS-6
+  action AlbumTaskApply: bool = all {
+    albumPending.size() > 0,
+    albumPending' = Set(),
+    assetById' = assetById,
+    assetByPath' = assetByPath,
+    dupeIndex' = dupeIndex,
+    metadataPayload' = metadataPayload,
+    thumbPresent' = thumbPresent,
+    files' = files,
+    generations' = generations,
+    intake' = intake,
+    sweepPending' = sweepPending,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+  }
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsN5SplitWindowTest = init
+    .then(ExternalDelete("p1"))
+    .then(RemoveIdOnly("p1"))
+    .then(all { assert(assetByPath.keys().contains("p1") and not(assetById.keys().contains(assetByPath.get("p1")))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(ScanRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(not(assetByPath.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsDupeGroupDeleteTest = init
+    .then(ExternalDelete("p2"))
+    .then(SubmitWatcherRemove("p2"))
+    .then(WorkerRemoveApply)
+    .then(ExternalDelete("p3"))
+    .then(SubmitWatcherRemove("p3"))
+    .then(WorkerRemoveApply)
+    .then(ExternalDelete("p4"))
+    .then(SubmitWatcherRemove("p4"))
+    .then(WorkerRemoveApply)
+    .then(ExternalDelete("p5"))
+    .then(SubmitWatcherRemove("p5"))
+    .then(WorkerRemoveApply)
+    .then(all { assert(assetByPath.keys().contains("p1") and thumbPresent.get(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(ExternalDelete("p1"))
+    .then(SubmitWatcherRemove("p1"))
+    .then(WorkerRemoveApply)
+    .then(all { assert(not(assetByPath.keys().contains("p1")) and (not(thumbPresent.keys().contains(0)) or not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsRemoveTornWindowTest = init
+    .then(ExternalDelete("p1"))
+    .then(RemoveIdOnly("p1"))
+    .then(all { assert(assetByPath.keys().contains("p1") and not(assetById.keys().contains(assetByPath.get("p1")))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(ScanRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(not(assetByPath.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsMemberWriteAlbumCascadeTest = init
+    .then(MemberWrite("p1"))
+    .then(all { assert(albumPending.size() > 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(AlbumTaskApply)
+    .then(all { assert(albumPending.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
 }
