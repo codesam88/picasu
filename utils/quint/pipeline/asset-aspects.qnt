@@ -237,4 +237,165 @@ module asset_aspects {
     .then(RotateWriteSidecar("p1"))
     .then(RotateFinish("p1"))
     .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+
+  // @assumes ASS-6
+  def UploadingWindow(p: str): bool =
+    files.get(p).present and not(rows.keys().contains(p)) and intake.exists(i => i.path == p and i.kind == "watcher")
+
+  // @assumes ASS-6
+  def Corrupt(p: str): bool =
+    files.get(p).present and rows.keys().contains(p) and not(AspectAligned(p)) and not(UploadingWindow(p))
+
+  // @assumes ASS-6
+  val UploadDoesNotMintRow = PATHS.forall(p => UploadingWindow(p) implies not(rows.keys().contains(p)))
+
+  // @assumes ASS-6
+  val UploadingIsNotCorrupt = PATHS.forall(p => UploadingWindow(p) implies not(Corrupt(p)))
+
+  // @assumes ASS-6
+  // @exempt observer
+  val WitnessUploadStoredOnly = PATHS.exists(p => not(files.get(p).present))
+
+  // @assumes ASS-6
+  // @exempt observer
+  val WitnessUploadIndexed = PATHS.exists(p => files.get(p).present and intake.exists(i => i.path == p))
+
+  // @assumes ASS-6
+  // @exempt observer
+  val WitnessIntakePickupFileGone = PATHS.exists(p => not(files.get(p).present) and intake.exists(i => i.path == p))
+
+  // @operation OP-2
+  // @scope SCOPE-5
+  // @assumes ASS-6
+  action UploadStoredOnly(p: str): bool = {
+    nondet cv = HASHES.oneOf()
+    nondet mt = SMALL.oneOf()
+    nondet ln = SMALL.oneOf()
+    nondet sc = SMALL.oneOf()
+    all {
+      p.in(PATHS),
+      not(files.get(p).present),
+      files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
+      generations' = generations.set(p, generations.get(p) + 1),
+      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
+      rows' = rows,
+      sweepPending' = sweepPending,
+      nextAssetId' = nextAssetId,
+      unprocessable' = unprocessable,
+    }
+  }
+
+  // @operation OP-1
+  // @assumes ASS-4
+  // @assumes ASS-5
+  // @scope SCOPE-4
+  action UploadIndexed(p: str): bool = {
+    nondet it = oneOf(if (intake.exists(i => i.path == p)) intake.filter(i => i.path == p) else Set({ path: p, generation: 0, kind: "watcher", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
+    all {
+      p.in(PATHS),
+      intake.exists(i => i.path == p),
+      it.path == p,
+      it.generation == generations.get(p),
+      files.get(p).present,
+      snapshotMatches(files.get(p), it),
+      rows' = rows.put(p, {
+        assetId: if (rows.keys().contains(p)) { rows.get(p).assetId } else { nextAssetId },
+        assetHash: it.assetHash,
+        modified: it.mtime,
+        fileSize: it.len,
+        sidecar: it.sidecar,
+        converged: true,
+        thumb: true
+      }),
+      intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
+      files' = files,
+      generations' = generations,
+      sweepPending' = sweepPending,
+      nextAssetId' = if (rows.keys().contains(p)) { nextAssetId } else { nextAssetId + 1 },
+      unprocessable' = unprocessable,
+    }
+  }
+
+  // @operation OP-1
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-4
+  action IntakePickupFileGone(p: str): bool = {
+    nondet it = oneOf(if (intake.exists(i => i.path == p)) intake.filter(i => i.path == p) else Set({ path: p, generation: 0, kind: "watcher", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
+    all {
+      p.in(PATHS),
+      intake.exists(i => i.path == p),
+      it.path == p,
+      it.generation == generations.get(p),
+      not(files.get(p).present),
+      intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
+      files' = files,
+      generations' = generations,
+      rows' = rows,
+      sweepPending' = sweepPending,
+      nextAssetId' = nextAssetId,
+      unprocessable' = unprocessable,
+    }
+  }
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsUploadVsSweepPruneTest = init
+    .then(ExternalDelete("p1"))
+    .then(ScanRoot("r1"))
+    .then(SweepRoot("r1"))
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(UploadStoredOnly("p1"))
+    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(UploadIndexed("p1"))
+    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsUploadBeforeSweepTest = init
+    .then(ExternalDelete("p1"))
+    .then(UploadStoredOnly("p1"))
+    .then(ScanRoot("r1"))
+    .then(SweepRoot("r1"))
+    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsUploadWatcherRemoveBeforeIndexTest = init
+    .then(ExternalDelete("p1"))
+    .then(UploadStoredOnly("p1"))
+    .then(ExternalDelete("p1"))
+    .then(SubmitWatcherRemove("p1"))
+    .then(WorkerSkipSuperseded)
+    .then(WorkerRemoveApply)
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  run aspectsUploadThenSidecarEditTest = init
+    .then(ExternalDelete("p1"))
+    .then(UploadStoredOnly("p1"))
+    .then(ExternalSidecarModify("p1"))
+    .then(WorkerSkipSuperseded)
+    .then(WorkerApplySuccess)
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-6
+  run aspectsUploadCrashHealsTest = init
+    .then(ExternalDelete("p1"))
+    .then(UploadStoredOnly("p1"))
+    .then(ProcessCrash)
+    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(ScanRoot("r1"))
+    .then(WorkerApplySuccess)
+    .then(WorkerApplySuccess)
+    .then(WorkerApplySuccess)
+    .then(WorkerApplySuccess)
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 }
