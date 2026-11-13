@@ -47,7 +47,10 @@ Current contents of `pipeline/`:
 - `operations.json` — internal mutation operations OP-1..OP-12 with
   events, aspect reads/writes, guards, status and interaction nodes;
   validated by `just operations-check` against backend annotations.
-- `events.json` — boundary and recovery events with their settled
+  Out of scope by design: the read-model invalidation advance
+  (`mark_tree_dirty_background`) and the dir-album sweep lane
+  (`handle_sweep_dir_albums`); tree-epoch modeling is deferred
+  (node N5 / the full aspect boundary).- `events.json` — boundary and recovery events with their settled
   effects and known faults, validated by `just events-check`.
 - `goals.json` — goals G0–G4 with decision (`committed`, `queued`,
   `dropped`), anchors and assumptions; only committed goals source

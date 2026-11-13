@@ -1,7 +1,6 @@
 {
   "version": 1,
-  "description": "Implementation-tracking catalog for the four-aspect slice (asset file, sidecar, thumbnail/derived, DB asset row): maps operation ids OP-1..OP-12 to their implementing functions, events, aspect reads/writes, guards, nodes and status.",
-  "operations": [
+  "description": "Implementation-tracking catalog for the four-aspect slice (asset file, sidecar, thumbnail/derived, DB asset row): maps operation ids OP-1..OP-12 to their implementing functions, events, aspect reads/writes, guards, nodes and status. Out of catalog scope by design: the read-model invalidation advance (mark_tree_dirty_background in backend/src/tasks/queue/writer.rs) and the dir-album sweep lane (handle_sweep_dir_albums) are not anchored here; tree-epoch modeling is deferred (node N5 / the full aspect boundary).",  "operations": [
     {
       "id": "OP-1",
       "name": "SCAN_INDEX_APPLY",
@@ -28,12 +27,11 @@
       "name": "API_UPLOAD",
       "events": ["API_UPLOAD"],
       "reads": [],
-      "writes": ["asset_file", "db_row", "thumbnail"],
-      "guards": ["FlushTreeTask::insert barrier (N8 open)"],
+      "writes": ["asset_file"],
+      "guards": ["none — fire-and-forget intake enqueue"],
       "status": "open",
       "nodes": ["N8"],
-      "notes": "post_upload::upload writes the file in place and indexes before returning; premature-ack hazard tracked as N8."
-    },
+      "notes": "post_upload::upload stores the file (atomic tmp->rename) and fire-and-forget enqueues via submit_uploaded_path -> submit_watcher_index (post_upload.rs:286-294, 534-538); db_row/thumbnail are OP-1's writes after background indexing. Premature-ack hazard tracked as N8 (unindexed window), not a barrier bug."    },
     {
       "id": "OP-3",
       "name": "API_DELETE",

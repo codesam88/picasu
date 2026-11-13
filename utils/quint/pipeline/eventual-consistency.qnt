@@ -279,7 +279,7 @@ module eventual_consistency {
     unprocessable' = unprocessable,
   }
 
-  // @scope SCOPE-5
+  // @assumes ASS-6
   action ApiUpload(p: str): bool = {
     nondet cv = HASHES.oneOf()
     nondet mt = SMALL.oneOf()
@@ -289,10 +289,10 @@ module eventual_consistency {
       p.in(PATHS),
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
       generations' = generations.set(p, generations.get(p) + 1),
-      rows' = rows.put(p, { assetId: nextAssetId, assetHash: cv, modified: mt, fileSize: ln, sidecar: sc, converged: true, thumb: true }),
-      intake' = intake,
+      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
+      rows' = rows,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId + 1,
+      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     }
   }
@@ -685,9 +685,10 @@ module eventual_consistency {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and rows.keys().contains("p2")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
-  // @scope SCOPE-5
+  // @assumes ASS-6
   run uploadTest = init
     .then(ApiUpload("p1"))
+    .then(WorkerApplySuccess)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
   // @assumes ASS-3
@@ -700,15 +701,17 @@ module eventual_consistency {
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
   // @assumes ASS-1
+  // @assumes ASS-6
   run apiMoveSkipsRescanTest = init
     .then(ExternalDelete("p2"))
     .then(SubmitWatcherRemove("p2"))
     .then(WorkerRemoveApply)
     .then(ApiUpload("p1"))
+    .then(WorkerApplySuccess)
     .then(ApiMove("p1", "p2"))
     .then(SubmitWatcherIndex("p2"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p2").assetId == 6), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p2").assetId == 1), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
 
   // @scope SCOPE-5
   run apiRemoveTest = init
