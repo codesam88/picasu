@@ -56,10 +56,13 @@ module asset_aspects {
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
   }
 
   // @operation OP-4
   // @scope SCOPE-5
+  // @scope SCOPE-10
   action ApiMoveFsOnly(p: str, q: str): bool = all {
     p.in(PATHS),
     q.in(PATHS),
@@ -68,26 +71,67 @@ module asset_aspects {
     not(files.get(q).present),
     rows.keys().contains(p),
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }).set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
-    generations' = generations,
+    generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
     intake' = intake,
     rows' = rows,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths.union(Set(p, q)),
   }
 
   // @operation OP-9
-  // @scope SCOPE-5
-  action SweepRootLeased(p: str): bool = all {
-    p.in(PATHS),
-    sweepPending.get(rootOf(p)),
-    rows.keys().contains(p),
-    not(files.get(p).present),
-    rows' = rows,
-    sweepPending' = sweepPending.put(rootOf(p), false),
+  // @scope SCOPE-8
+  action SweepEnumerate(root: str): bool = all {
+    root.in(ROOTS),
+    sweepPending.get(root),
+    sweepBatch' = PATHS.filter(p => rootOf(p) == root and rows.keys().contains(p) and not(files.get(p).present)).mapBy(p => generations.get(p)),
+    sweepPending' = sweepPending.put(root, false),
     files' = files,
     generations' = generations,
     intake' = intake,
+    rows' = rows,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+    leasedPaths' = leasedPaths,
+  }
+
+  // @operation OP-9
+  // @scope SCOPE-9
+  action SweepRemoveBatchApply: bool = all {
+    sweepBatch.keys().size() > 0,
+    rows' = rows.keys().filter(p =>
+      not (sweepBatch.keys().contains(p) and
+           rows.keys().contains(p) and
+           sweepBatch.get(p) == generations.get(p) and
+           not(p.in(leasedPaths)) and
+           not(files.get(p).present))
+    ).mapBy(k => rows.get(k)),
+    sweepBatch' = Map(),
+    sweepPending' = sweepPending,
+    files' = files,
+    generations' = generations,
+    intake' = intake,
+    nextAssetId' = nextAssetId,
+    unprocessable' = unprocessable,
+    leasedPaths' = leasedPaths,
+  }
+
+  // @operation OP-4
+  // @scope SCOPE-10
+  action MoveRowRewrite(p: str, q: str): bool = all {
+    p.in(PATHS),
+    q.in(PATHS),
+    not(p == q),
+    rows.keys().contains(p),
+    leasedPaths' = leasedPaths.exclude(Set(p, q)),
+    rows' = rows.keys().exclude(Set(p)).mapBy(k => rows.get(k)).put(q, rows.get(p)),
+    files' = files,
+    generations' = generations,
+    intake' = intake,
+    sweepPending' = sweepPending,
+    sweepBatch' = sweepBatch,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
@@ -99,12 +143,14 @@ module asset_aspects {
     files.get(p).present,
     rows.keys().contains(p),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: if (f.sidecar == 0) 1 else 0 }),
-    generations' = generations,
+    generations' = generations.set(p, generations.get(p) + 1),
     intake' = intake,
     rows' = rows,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
   }
 
   // @exempt environment
@@ -119,6 +165,8 @@ module asset_aspects {
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
   }
 
   // @assumes ASS-6
@@ -126,7 +174,7 @@ module asset_aspects {
     .then(ForceModify("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -134,7 +182,7 @@ module asset_aspects {
     .then(SubmitScan("p1"))
     .then(AppSidecarEdit("p1"))
     .then(WorkerSkipSuperseded)
-    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -150,7 +198,7 @@ module asset_aspects {
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -164,41 +212,41 @@ module asset_aspects {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(DirMoveFsOnly)
-    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @operation OP-7
   // @scope SCOPE-5
   // @assumes ASS-6
   run aspectsSidecarPartialEditTest = init
     .then(SidecarEditPartial("p1"))
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt environment
   // @assumes ASS-6
   // @assumes ASS-7
   run aspectsDroppedSidecarTest = init
     .then(DroppedSidecarModify("p1"))
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-4
   // @assumes ASS-6
   run aspectsThumbLossTest = init
     .then(LoseThumbs)
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(AspectAligned("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(AspectAligned("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -206,7 +254,7 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -219,8 +267,48 @@ module asset_aspects {
     .then(WorkerRemoveApply)
     .then(ApiMoveFsOnly("p1", "p3"))
     .then(ScanRoot("r1"))
-    .then(SweepRootLeased("p1"))
-    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(SweepEnumerate("r1"))
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  // @scope SCOPE-10
+  run aspectsMoveInFlightThenRewriteSweepTest = init
+    .then(ExternalDelete("p3"))
+    .then(SubmitWatcherRemove("p3"))
+    .then(WorkerRemoveApply)
+    .then(ExternalDelete("p4"))
+    .then(SubmitWatcherRemove("p4"))
+    .then(WorkerRemoveApply)
+    .then(ApiMoveFsOnly("p1", "p3"))
+    .then(ScanRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(MoveRowRewrite("p1", "p3"))
+    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  run aspectsSupersededSweepTest = init
+    .then(ExternalDelete("p1"))
+    .then(ScanRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SubmitWatcherRemove("p1"))
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  run aspectsCleanSweepTest = init
+    .then(ExternalDelete("p1"))
+    .then(ScanRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -229,14 +317,14 @@ module asset_aspects {
     .then(RotateWriteSidecar("p1"))
     .then(WorkerSkipSuperseded)
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   // @assumes ASS-6
   run aspectsRotateTest = init
     .then(RotateWriteSidecar("p1"))
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   def UploadingWindow(p: str): bool =
@@ -280,6 +368,8 @@ module asset_aspects {
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
     }
   }
 
@@ -311,6 +401,8 @@ module asset_aspects {
       sweepPending' = sweepPending,
       nextAssetId' = if (rows.keys().contains(p)) { nextAssetId } else { nextAssetId + 1 },
       unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
     }
   }
 
@@ -333,6 +425,8 @@ module asset_aspects {
       sweepPending' = sweepPending,
       nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
+    sweepBatch' = sweepBatch,
+    leasedPaths' = leasedPaths,
     }
   }
 
@@ -343,11 +437,11 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadStoredOnly("p1"))
-    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadIndexed("p1"))
-    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -357,7 +451,7 @@ module asset_aspects {
     .then(UploadStoredOnly("p1"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -369,7 +463,7 @@ module asset_aspects {
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerSkipSuperseded)
     .then(WorkerRemoveApply)
-    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -380,7 +474,7 @@ module asset_aspects {
     .then(ExternalSidecarModify("p1"))
     .then(WorkerSkipSuperseded)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -389,11 +483,30 @@ module asset_aspects {
     .then(ExternalDelete("p1"))
     .then(UploadStoredOnly("p1"))
     .then(ProcessCrash)
-    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, rows' = rows, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  val SweepNeverPrunesLeased = leasedPaths.forall(p => rows.keys().contains(p) or not(leasedPaths.contains(p)))
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  val SweepNeverPrunesPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
+
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  val SweepNeverPrunesChangedGeneration = sweepBatch.keys().forall(p => sweepBatch.get(p) == generations.get(p) or not(sweepBatch.keys().contains(p)))
+
+  // @assumes ASS-6
+  // @scope SCOPE-9
+  val SweepBatchPruneOnly = sweepBatch.keys().size() >= 0 and rows.keys().size() <= PATHS.size()
 }

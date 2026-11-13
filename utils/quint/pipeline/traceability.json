@@ -32,8 +32,13 @@
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
         "asset-aspects.qnt:IntakePickupFileGone",
+        "asset-aspects.qnt:SweepNeverPrunesChangedGeneration",
+        "asset-aspects.qnt:SweepNeverPrunesLeased",
+        "asset-aspects.qnt:SweepNeverPrunesPresentFile",
+        "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsMoveVsSweepTest",
+        "asset-aspects.qnt:aspectsSupersededSweepTest",
         "asset-aspects.qnt:aspectsUploadBeforeSweepTest",
         "asset-aspects.qnt:aspectsUploadCrashHealsTest",
         "asset-aspects.qnt:aspectsUploadThenSidecarEditTest",
@@ -99,19 +104,26 @@
         "asset-aspects.qnt:Corrupt",
         "asset-aspects.qnt:DroppedSidecarModify",
         "asset-aspects.qnt:IntakePickupFileGone",
+        "asset-aspects.qnt:SweepBatchPruneOnly",
+        "asset-aspects.qnt:SweepNeverPrunesChangedGeneration",
+        "asset-aspects.qnt:SweepNeverPrunesLeased",
+        "asset-aspects.qnt:SweepNeverPrunesPresentFile",
         "asset-aspects.qnt:UploadDoesNotMintRow",
         "asset-aspects.qnt:UploadStoredOnly",
         "asset-aspects.qnt:UploadingIsNotCorrupt",
         "asset-aspects.qnt:UploadingWindow",
         "asset-aspects.qnt:WitnessUploadStoredOnly",
+        "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDroppedSidecarTest",
+        "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest",
         "asset-aspects.qnt:aspectsMoveVsSweepTest",
         "asset-aspects.qnt:aspectsRotateTest",
         "asset-aspects.qnt:aspectsRotateVsScanTest",
         "asset-aspects.qnt:aspectsScanApplyTest",
         "asset-aspects.qnt:aspectsScanSupersedesEditTest",
         "asset-aspects.qnt:aspectsSidecarPartialEditTest",
+        "asset-aspects.qnt:aspectsSupersededSweepTest",
         "asset-aspects.qnt:aspectsSweepLeasedMoveTest",
         "asset-aspects.qnt:aspectsThumbLossTest",
         "asset-aspects.qnt:aspectsUploadBeforeSweepTest",
@@ -199,9 +211,9 @@
         "asset-aspects.qnt:ApiMoveFsOnly",
         "asset-aspects.qnt:DirMoveFsOnly",
         "asset-aspects.qnt:SidecarEditPartial",
-        "asset-aspects.qnt:SweepRootLeased",
         "asset-aspects.qnt:UploadStoredOnly",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
+        "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest",
         "asset-aspects.qnt:aspectsRotateTest",
         "asset-aspects.qnt:aspectsRotateVsScanTest",
         "asset-aspects.qnt:aspectsScanSupersedesEditTest",
@@ -251,6 +263,38 @@
         "eventual-consistency.qnt:SUBTREE_PAIRS",
         "eventual-consistency.qnt:assignDirMoveTest",
         "eventual-consistency.qnt:subtreeMoveTest"
+      ]
+    },
+    {
+      "id": "SCOPE-8",
+      "kind": "SCOPE",
+      "title": "Sweep enumeration micro-stage",
+      "refs": [
+        "asset-aspects.qnt:SweepEnumerate"
+      ]
+    },
+    {
+      "id": "SCOPE-9",
+      "kind": "SCOPE",
+      "title": "Sweep batch apply micro-stage",
+      "refs": [
+        "asset-aspects.qnt:SweepBatchPruneOnly",
+        "asset-aspects.qnt:SweepNeverPrunesChangedGeneration",
+        "asset-aspects.qnt:SweepNeverPrunesLeased",
+        "asset-aspects.qnt:SweepNeverPrunesPresentFile",
+        "asset-aspects.qnt:SweepRemoveBatchApply",
+        "asset-aspects.qnt:aspectsCleanSweepTest",
+        "asset-aspects.qnt:aspectsSupersededSweepTest"
+      ]
+    },
+    {
+      "id": "SCOPE-10",
+      "kind": "SCOPE",
+      "title": "Move lease window micro-stage",
+      "refs": [
+        "asset-aspects.qnt:ApiMoveFsOnly",
+        "asset-aspects.qnt:MoveRowRewrite",
+        "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest"
       ]
     }
   ]

@@ -1,7 +1,8 @@
 {
   "version": 1,
   "description": "Modeling bounds and abstractions: each states its bound, why the bounded property is safe, and how to lift it.",
-  "modeled_scope": "Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths.",  "scopes": [
+  "modeled_scope": "Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.",
+  "scopes": [
     {
       "id": "SCOPE-1",
       "title": "Initial converged state",
@@ -22,7 +23,7 @@
       "id": "SCOPE-3",
       "title": "Collapsed intake lanes",
       "bound": "The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in utils/quint/pipeline/eventual-consistency.qnt).",
-      "why_safe": "No checked property depends on lane order — guards are per-item (generation, snapshot), never positional.",
+      "why_safe": "No checked property depends on lane order \u2014 guards are per-item (generation, snapshot), never positional.",
       "lifting": "Lane-aware scheduling with fairness properties (explicitly out of scope; Apalache/TLC stay out as well).",
       "provisional": false
     },
@@ -30,7 +31,7 @@
       "id": "SCOPE-4",
       "title": "Atomic worker step",
       "bound": "Each worker action (WorkerApply*, skips, removes) applies in one step; there are no open/hash/apply micro-stages, so no modify-during-pipeline interleaving exists in the model.",
-      "why_safe": "The hash-to-skip re-stat window is the only guarded window in code; the open-to-hash window is unguarded there too — the model matches the implementation's actual guarantee, not a stronger one.",
+      "why_safe": "The hash-to-skip re-stat window is the only guarded window in code; the open-to-hash window is unguarded there too \u2014 the model matches the implementation's actual guarantee, not a stronger one.",
       "lifting": "Worker micro-stages plus FS_MODIFY_INFLIGHT (model v2).",
       "provisional": true
     },
@@ -38,7 +39,8 @@
       "id": "SCOPE-5",
       "title": "Synchronous direct writes",
       "bound": "Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no writer inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in the worker.",
-      "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.",      "lifting": "A writerInbox pending state mirroring the serial writer.",
+      "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.",
+      "lifting": "A writerInbox pending state mirroring the serial writer.",
       "provisional": true
     },
     {
@@ -56,6 +58,30 @@
       "why_safe": "The property under proof is per-descendant row/path consistency plus all-or-nothing row updates, which a fixed two-asset pair set exhibits at the model's bounds.",
       "lifting": "Hierarchical path IDs with arbitrary subtree enumeration.",
       "provisional": false
+    },
+    {
+      "id": "SCOPE-8",
+      "title": "Sweep enumeration micro-stage",
+      "bound": "SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; chunking/cancel are abstracted.",
+      "why_safe": "Enumeration only reads; the per-candidate re-check happens in SweepRemoveBatchApply, so an interleaving between enumerate and apply is modeled rather than hidden.",
+      "lifting": "Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).",
+      "provisional": true
+    },
+    {
+      "id": "SCOPE-9",
+      "title": "Sweep batch apply micro-stage",
+      "bound": "SweepRemoveBatchApply drains one enumerated batch, pruning a candidate only when row still exists, snapshot generation == current generation, path not leased, and file still absent; otherwise the candidate is skipped.",
+      "why_safe": "Matches sweep_remove_batch exact-path resolution plus the inline re-checks; prune-only (no row creation or file writes).",
+      "lifting": "Per-path writer resolve-then-validate and exact-path existence re-check in sweep_remove_batch.",
+      "provisional": true
+    },
+    {
+      "id": "SCOPE-10",
+      "title": "Move lease window micro-stage",
+      "bound": "ApiMoveFsOnly acquires a path lease (bumping generation) and holds it until MoveRowRewrite rewrites the row and releases it; the FS-moved/row-stale window is now visible.",
+      "why_safe": "Matches lease_paths/release_generation across the FS rename to DB rewrite; generation bumps guard concurrent scans/sweeps.",
+      "lifting": "Crash between FS move and row rewrite heals via sweep/backstop (SCOPE-6).",
+      "provisional": true
     }
   ]
 }
