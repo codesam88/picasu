@@ -31,8 +31,37 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
   completed-write crashes) are the lifting targets; each lifted
   micro-stage gets a scope entry with bound/why-safe/lifting.
 - 2026-11-12: survey complete, filed as N1–N13 with provenance +
-  status tags; N3 guarded by C5, N11 refuted against the tree,
-  N13 added from C11.
+  status tags; N3 guarded by C5, N11 refuted as an open hazard (the
+  fixed sidecar-first order is pinned by the rotate runs), N13 added
+  from C11.
+- 2026-11-12: first asset-aspects slice shipped in
+  `utils/quint/pipeline/asset-aspects.qnt`: predicates
+  AspectAligned/AspectsAligned/ThumbPresent over existing state; actions
+  DirMoveFsOnly, ApiMoveFsOnly, SweepRootLeased, SidecarEditPartial,
+  DroppedSidecarModify; 11 runs. Deferred: N5, N8, N9, N10, N13 and the
+  full eight-aspect boundary beyond the four-aspect
+  (file/sidecar/thumbnail/row) slice.
+
+- 2026-11-12: implementation tracking starts with Rust attributes
+  (`operation`/`event` markers backed by the annotation crate, see
+  `quint-annotation-crate`), `pipeline/operations.json` for OP-1..OP-12,
+  and `utils/quint/operations-check.mjs`. The catalog records event names,
+  four-aspect reads/writes, guards, status and N nodes; source markers
+  derive the code mapping without line numbers or model references in the
+  JSON.
+- 2026-11-13: branch rebased specs-only onto `feat/impose-requirements`
+  (settled user decision): the quint branch's backend rework was dropped
+  in favour of impose's independently reworked pipeline (single-file
+  store-and-return upload with background intake, background flush
+  advancing read-model invalidation, exact-path watcher removals, album
+  stats rebuild outside the write txn). Specs, catalogs, tooling and
+  markers were carried losslessly onto the new backend; the carry-over
+  review found the upload-semantics descriptions stale (step 7).
+- 2026-11-13: lanes outside the four-aspect catalog scope
+  (`mark_tree_dirty_background` read-model invalidation advance,
+  `handle_sweep_dir_albums`) stay unanchored by design; record the
+  exemption explicitly in `operations.json`/README instead of leaving it
+  inferable.
 
 ## Steps
 
@@ -40,13 +69,74 @@ REQ-1/REQ-8 skip optimization, liveness/fairness properties.
    plus pairwise interleaving hazards with file:line evidence.
 2. [done] Interaction nodes N1–N13 (aspects, interleaving, guard or
    gap); `[verify]` items resolved where the tree already answers.
-3. State extension: aspect-level fields + invariants; keep bounds small.
-4. Actions: one action per mutating op at aspect granularity; lift the
-   SCOPE-4/5/6 deferrals it covers.
-5. Runs: conflicting-pair runs (scan-vs-edit, move-vs-sweep,
-   edit-vs-edit, upload-vs-scan, stats-vs-member-write).
-6. Gates: `just quint-check`, traceability entries, regen
-   `docs/eventual-consistency.md` if the generator consumes the model.
+3. [partial] State extension: no new state fields; aspect alignment
+   expressed as predicates over existing `FileState`/`AssetRecord` in
+   `asset-aspects.qnt` (AspectAligned/AspectsAligned/ThumbPresent).
+   Full aspect-field split (media bytes vs sidecar vs rendition vs
+   identity) deferred.
+4. [done] Actions: DirMoveFsOnly (OP-5), SidecarEditPartial (OP-7),
+   DroppedSidecarModify (environment) in `asset-aspects.qnt`; all update
+   every state var.
+5. [partial] Runs: 9 conflicting-pair runs modeled (scan-apply,
+   scan-supersedes-edit, move-vs-sweep, dir-move-crash-heal,
+   sidecar-partial-edit, dropped-sidecar, thumb-loss, watcher-remove,
+   rotate). Deferred: N5/N8/N9/N10/N13 and stats-vs-member-write (N13),
+   upload-vs-scan (N8), edit-vs-edit beyond N4, full aspect boundary
+   (media bytes vs sidecar vs rendition vs identity vs metadata vs dupe
+   vs album stats vs tree epoch).
+6. [done] Gates: `just quint-check` (33 convergence + 44 asset-aspect
+   executions = 33 imported + 11 new), traceability regenerated for the
+   new definitions, `operations-check` and `specs-check` green; the
+   generated doc now counts both model entries in its Proof line.
+7. [open] Spec-alignment pass onto the impose pipeline (found by the
+   2026-11-13 carry-over review; all catalog checks stay green while
+   these describe the dropped pipeline, so nothing else catches them):
+   - `events.json` API_UPLOAD: drop "row written synchronously; the
+     intake queue is not involved" / upload-barrier effects; the
+     endpoint stores the file and fire-and-forget enqueues via
+     `submit_uploaded_path` → `submit_watcher_index`
+     (`post_upload.rs:286-294, 534-538`).
+   - `goals.json` G3: the flush-barrier note cites
+     `post_upload.rs:330`, which is now content-validation code; rewrite
+     G3 around the read-model freshness contract
+     (`mark_tree_dirty_background`, ~1 s leading-edge throttle,
+     `writer.rs`, contract test in 265ae9f0).
+   - `scope.json` SCOPE-5 and `eventual-consistency.qnt` `ApiUpload`:
+     model upload as store + intake enqueue, not a synchronous row
+     write.
+   - `operations.json` OP-2: `writes` shrinks to `asset_file`
+     (db_row/thumbnail belong to OP-1/`process_file`); replace the
+     `FlushTreeTask::insert barrier` guard — the barrier survives only
+     on edit/regenerate/rotate routes, not upload.
+   - Rewrite node N8 (below).
+   - Regenerate `docs/eventual-consistency.md`; decide whether
+     `docs-eventual-consistency` joins the `check` aggregate as a
+     freshness gate (currently nothing detects catalog→doc drift).
+
+## Known gaps and next phase
+
+- Model tracking is one-directional: `operations-check` validates that
+  every OP has a backend marker and that model `@operation` tags are
+  known, but it does not require every guarded OP to have a model action,
+  nor every event to have an operation claimant.
+- Guards/statuses are free text. The next phase should link guard strings
+  to REQ/C ids (or at least notes with code paths) so OP-4/OP-5/N11-style
+  contradictions are machine-detectable.
+- Existing model actions (OP-1/3/4/6/9/12) are not yet tagged with
+  `@operation`; only the new aspect actions are. Add those tags before
+  requiring reverse coverage.
+- Event markers cover the main handlers; watcher multi-event paths and
+  metadata-edit handlers remain unannotated.
+- `quint-check` and `operations-check` are precommit/check-aggregate
+  gates, not direct CI job steps; decide whether CI should run `just
+check` or the individual recipes.
+- Doc freshness: `docs-eventual-consistency` is not in the `check`
+  aggregate, so catalog→generated-doc drift is invisible (found by the
+  2026-11-13 review; fold into step 7).
+- Docs pointers: the justfile `quint-check` comment says
+  "eventual-consistency spec" while the recipe checks two specs, and
+  `docs/quint-modeling.md` does not mention the operations/annotation
+  layer (tracked in `quint-annotation-crate`).
 
 ## Interaction nodes (survey 2026-11-12, claims need tree-verification)
 
@@ -80,10 +170,14 @@ survey claim contradicts a done item — re-check the tree first.
   id. [open] (returns with REQ-8).
 - N7 sidecar-only watcher events dropped (`.xmp` filtered) — delayed
   metadata until media rescan. [open].
-- N8 upload 200-before-visibility. [open, still current 2026-11-12:
-  `post_upload.rs` waits on `FlushTreeTask::insert([])` + `tree_changed()`.
-  Model must decide whether the empty insert actually barriers the
-  serial writer/cascade; if not, it is a real premature-ack hazard.]
+- N8 upload 200-before-visibility. [open, reframed 2026-11-13: with
+  store-and-return + background intake the 200-before-visibility window
+  is by-design eventual, not a barrier bug. The stale note about
+  `FlushTreeTask::insert([])` + `tree_changed()` described the dropped
+  pipeline and no longer applies. Model the unindexed window instead:
+  file stored but not yet picked up by intake, watcher supersession
+  semantics, and whether scan-vs-upload can resurrect or drop an
+  uploaded file before first indexing.]
 - N9 reset drops tables but leaves derived bytes orphaned. [open,
   minor].
 - N10 share/cover edits are DB-only with no lease; can race a scan

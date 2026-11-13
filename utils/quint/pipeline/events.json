@@ -599,7 +599,7 @@
     {
       "name": "API_ROTATE_IMAGE",
       "status": "proposed",
-      "description": "A client rotates an asset over HTTP. Four artifacts are involved: the compressed rendition, the thumbnail, the XMP sidecar (rotation persisted there), and the DB records. Verified order: thumbnail regenerated first, then sidecar write (failure aborts leaving DB and sidecar on the previous rotation together), then record flush.",
+      "description": "A client rotates an asset over HTTP. Four artifacts are involved: the compressed rendition, the thumbnail, the XMP sidecar (rotation persisted there), and the DB records. Verified order: the sidecar rotation is persisted first, then the thumbnail is regenerated, then the record flush.",
       "actor": "api",
       "target": "compressed bytes + thumbnail + sidecar + row of one asset",
       "preconditions": [
@@ -611,13 +611,13 @@
       "code_ref": "backend/src/router/put/rotate_image.rs:rotate_image",
       "effects": [
         "Settled state (no crash): thumbnail, sidecar rotation, and DB records all reflect the new rotation.",
-        "ADOPTED reorder (implement pending): write the sidecar rotation first, then the thumbnail, then merge dimensions/rotation/thumbhash into the DB records last."
+        "Verified order (REQ-11): sidecar rotation first, then thumbnail, then DB records. A post-sidecar interruption leaves a present sidecar that forces reprocess; the pipeline re-derives rotation from it and regenerates the thumbnail."
       ],
       "faults": [
         {
-          "fault": "current order places thumbnail before sidecar (the one deviation from the codebase's fs-first pattern)",
-          "consequence": "ADOPTED FIX (REQ-11): reorder to sidecar -> thumbnail -> DB. After reorder any post-sidecar interruption leaves a present sidecar, which forces reprocess; the pipeline re-derives rotation from the sidecar (verified source of truth, apply_rotation shared by endpoint and pipeline) and regenerates the thumbnail - converges",
-          "status": "open"
+          "fault": "interruption between sidecar write and thumbnail/DB",
+          "consequence": "sidecar-first order (REQ-11) leaves a present sidecar that forces reprocess; the pipeline re-derives rotation from the sidecar and regenerates the thumbnail - converges",
+          "status": "covered"
         },
         {
           "fault": "failed sidecar write mid-request",

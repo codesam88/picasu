@@ -20,7 +20,7 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 33 scripted runs (`just quint-check`); simulator traces are advisory.
+- Proof: 33 convergence runs + 11 asset-aspect runs (44 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 3 committed, 1 queued, 1 dropped.
 - Requirements: 12 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 3 held, 1 partial, 2 unverified, 1 open.
@@ -960,7 +960,7 @@ Notes: PROPOSED/TBD - new event discovered by the multi-file crash survey (edit_
 
 ### API_ROTATE_IMAGE (proposed, actor: api)
 
-A client rotates an asset over HTTP. Four artifacts are involved: the compressed rendition, the thumbnail, the XMP sidecar (rotation persisted there), and the DB records. Verified order: thumbnail regenerated first, then sidecar write (failure aborts leaving DB and sidecar on the previous rotation together), then record flush.
+A client rotates an asset over HTTP. Four artifacts are involved: the compressed rendition, the thumbnail, the XMP sidecar (rotation persisted there), and the DB records. Verified order: the sidecar rotation is persisted first, then the thumbnail is regenerated, then the record flush.
 
 Target: compressed bytes + thumbnail + sidecar + row of one asset. Code anchor: `backend/src/router/put/rotate_image.rs:rotate_image`.
 
@@ -971,11 +971,11 @@ Touches: rows, derived-bytes, files.
 Effects (settled state assuming quiescence after the event):
 
 - Settled state (no crash): thumbnail, sidecar rotation, and DB records all reflect the new rotation.
-- ADOPTED reorder (implement pending): write the sidecar rotation first, then the thumbnail, then merge dimensions/rotation/thumbhash into the DB records last.
+- Verified order (REQ-11): sidecar rotation first, then thumbnail, then DB records. A post-sidecar interruption leaves a present sidecar that forces reprocess; the pipeline re-derives rotation from it and regenerates the thumbnail.
 
 Faults:
 
-- current order places thumbnail before sidecar (the one deviation from the codebase's fs-first pattern) (open): ADOPTED FIX (REQ-11): reorder to sidecar -> thumbnail -> DB. After reorder any post-sidecar interruption leaves a present sidecar, which forces reprocess; the pipeline re-derives rotation from the sidecar (verified source of truth, apply_rotation shared by endpoint and pipeline) and regenerates the thumbnail - converges
+- interruption between sidecar write and thumbnail/DB (covered): sidecar-first order (REQ-11) leaves a present sidecar that forces reprocess; the pipeline re-derives rotation from the sidecar and regenerates the thumbnail - converges
 - failed sidecar write mid-request (covered): with the adopted order the abort precedes any other artifact change: DB, thumbnail, and sidecar all stay on the previous rotation
 - route doc says the compressed JPEG is written back; no such write located (tbd): rotation is sidecar-carried and applied at decode (verified); the doc comment appears stale - confirm or correct it with the rotate change (REQ-11)
 

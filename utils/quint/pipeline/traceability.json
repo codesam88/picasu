@@ -29,6 +29,11 @@
       "kind": "ASS",
       "title": "filesystem wins (converged direction, sweep, rescan heals)",
       "refs": [
+        "asset-aspects.qnt:AspectAligned",
+        "asset-aspects.qnt:AspectsAligned",
+        "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
+        "asset-aspects.qnt:aspectsMoveVsSweepTest",
+        "asset-aspects.qnt:aspectsWatcherRemoveTest",
         "eventual-consistency-goal.qnt:Converged",
         "eventual-consistency.qnt:ExternalSidecarDelete",
         "eventual-consistency.qnt:ScanRoot",
@@ -54,6 +59,8 @@
       "kind": "ASS",
       "title": "derived store is pipeline-private (walk roots disjoint)",
       "refs": [
+        "asset-aspects.qnt:ThumbPresent",
+        "asset-aspects.qnt:aspectsThumbLossTest",
         "eventual-consistency.qnt:WorkerApplySuccess",
         "eventual-consistency.qnt:WorkerSkipUnchanged",
         "eventual-consistency.qnt:derivedLossTest"
@@ -79,6 +86,20 @@
       "kind": "ASS",
       "title": "quiescence (safety invariants asserted at settled state)",
       "refs": [
+        "asset-aspects.qnt:AspectAligned",
+        "asset-aspects.qnt:AspectsAligned",
+        "asset-aspects.qnt:DroppedSidecarModify",
+        "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
+        "asset-aspects.qnt:aspectsDroppedSidecarTest",
+        "asset-aspects.qnt:aspectsMoveVsSweepTest",
+        "asset-aspects.qnt:aspectsRotateTest",
+        "asset-aspects.qnt:aspectsRotateVsScanTest",
+        "asset-aspects.qnt:aspectsScanApplyTest",
+        "asset-aspects.qnt:aspectsScanSupersedesEditTest",
+        "asset-aspects.qnt:aspectsSidecarPartialEditTest",
+        "asset-aspects.qnt:aspectsSweepLeasedMoveTest",
+        "asset-aspects.qnt:aspectsThumbLossTest",
+        "asset-aspects.qnt:aspectsWatcherRemoveTest",
         "eventual-consistency-assumptions.qnt:NoLostUpload",
         "eventual-consistency-assumptions.qnt:NoPermanentStale",
         "eventual-consistency-goal.qnt:Converged",
@@ -101,6 +122,7 @@
       "kind": "ASS",
       "title": "user enables backstop scans at regular intervals",
       "refs": [
+        "asset-aspects.qnt:aspectsDroppedSidecarTest",
         "eventual-consistency.qnt:ScanRoot",
         "eventual-consistency.qnt:boundedConvergenceTest"
       ]
@@ -149,6 +171,16 @@
       "kind": "SCOPE",
       "title": "Synchronous direct writes",
       "refs": [
+        "asset-aspects.qnt:ApiMoveFsOnly",
+        "asset-aspects.qnt:DirMoveFsOnly",
+        "asset-aspects.qnt:SidecarEditPartial",
+        "asset-aspects.qnt:SweepRootLeased",
+        "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
+        "asset-aspects.qnt:aspectsRotateTest",
+        "asset-aspects.qnt:aspectsRotateVsScanTest",
+        "asset-aspects.qnt:aspectsScanSupersedesEditTest",
+        "asset-aspects.qnt:aspectsSidecarPartialEditTest",
+        "asset-aspects.qnt:aspectsSweepLeasedMoveTest",
         "eventual-consistency.qnt:ApiAssignDirMove",
         "eventual-consistency.qnt:ApiMove",
         "eventual-consistency.qnt:ApiRemove",
@@ -170,6 +202,8 @@
       "kind": "SCOPE",
       "title": "Completed-write crash abstraction",
       "refs": [
+        "asset-aspects.qnt:DirMoveFsOnly",
+        "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "eventual-consistency.qnt:DbLoss",
         "eventual-consistency.qnt:LoseThumbs",
         "eventual-consistency.qnt:ProcessCrash",
