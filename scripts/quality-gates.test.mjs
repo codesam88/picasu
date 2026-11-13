@@ -104,16 +104,19 @@ test("regenerated doc lists openapi-routes-release with its release trigger", (t
   );
 });
 
-test("rule graph adjacency", () => {
+test("rule graph edges", () => {
   const md = readFileSync(join(repoRoot, "docs", "quality-gates.md"), "utf8");
-  const m = md.match(/```text\n([\s\S]*?)```/);
-  assert.ok(m, "text block present");
+  const m = md.match(/```mermaid\n([\s\S]*?)```/);
+  assert.ok(m, "mermaid block present");
   const block = m[1];
-  assert.match(block, /utils-check, zizmor-check/);
-  assert.match(block, /openapi-routes-match, openapi-sanity/);
-  assert.match(block, /^frontend-test\b.*frontend-vitest/m);
-  assert.match(block, /^frontend-test\b.*frontend-playwright/m);
-  assert.match(block, /^utils-check\s+->\s*zizmor-check\s*$/m);
+  assert.match(block, /^graph LR$/m);
+  assert.match(block, /^  precommit --> check$/m);
+  assert.match(block, /^  precommit --> test$/m);
+  assert.match(block, /^  check --> zizmor-check$/m);
+  assert.match(block, /^  utils-check --> zizmor-check$/m);
+  assert.match(block, /^  openapi-check --> openapi-sanity$/m);
+  assert.match(block, /^  frontend-test --> frontend-vitest$/m);
+  assert.match(block, /^  frontend-test --> frontend-playwright$/m);
 });
 
 test("trigger column reflects the lanes a rule runs in", () => {

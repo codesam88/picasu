@@ -665,32 +665,20 @@ const noCaller = [...displaySet].filter(
   (n) => !childSet.has(n) && displayedChildren(n).length === 0,
 ).sort();
 
-// render rule graph as an adjacency list
-const graphSources = [...displaySet].filter((n) => displayedChildren(n).length > 0);
+// Render the rule graph as a mermaid flowchart: recipe edges only, no lanes.
+const graphSources = [...displaySet].filter(
+  (n) => displayedChildren(n).length > 0,
+);
 const priority = ["precommit", "check", "test", "audit"];
 const orderedSources = [
   ...priority.filter((s) => graphSources.includes(s)),
   ...graphSources.filter((s) => !priority.includes(s)).sort(),
 ];
-const maxSrcWidth = orderedSources.reduce((m, s) => Math.max(m, s.length), 0);
-const graphIndent = " ".repeat(maxSrcWidth + 4);
-const graphLines = [];
+const graphLines = ["graph LR"];
 for (const src of orderedSources) {
-  const items = displayedChildren(src);
-  const prefix = src.padEnd(maxSrcWidth) + " -> ";
-  let cur = prefix;
-  const out = [];
-  for (const item of items) {
-    const withItem = cur === prefix ? prefix + item : cur + ", " + item;
-    if (withItem.length <= 100) {
-      cur = withItem;
-    } else {
-      if (cur !== prefix) out.push(cur + ",");
-      cur = graphIndent + item;
-    }
+  for (const child of displayedChildren(src)) {
+    graphLines.push(`  ${src} --> ${child}`);
   }
-  if (cur !== prefix && cur.trim() !== "") out.push(cur);
-  graphLines.push(...out);
 }
 
 // table helper (prettier-canonical)
@@ -763,7 +751,7 @@ docLines.push(
 docLines.push("");
 docLines.push("## Rule graph");
 docLines.push("");
-docLines.push("```text");
+docLines.push("```mermaid");
 docLines.push(...graphLines);
 docLines.push("```");
 docLines.push("");

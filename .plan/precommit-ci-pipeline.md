@@ -203,7 +203,7 @@ Out: steps 1-6, recipe/workflow content changes, new lanes.
 Scope: `scripts/quality-gates.mjs` (+ test), `justfile` `gates-check`,
 regenerated `docs/quality-gates.md`.
 Done: the doc drops the mermaid lane graph, per-check sections,
-line references and underlying-file lists. It renders a textual rule
+line references and underlying-file lists. It renders a mermaid rule
 graph (recipe edges only, no lanes) and check families (rule,
 description, CI lane, trigger) with allowlist notes; lane triggers are
 folded into the family tables, so there is no separate lane section.
