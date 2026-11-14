@@ -139,6 +139,39 @@ pub fn remove_asset_by_path(path: &str) -> Result<()> {
         .context("Failed to commit ASSET_BY_PATH remove")
 }
 
+/// Rewrite an asset's three move-related tables in one write transaction:
+/// `ASSET_BY_ID` (updated record), `ASSET_BY_PATH` (old mapping removed, new
+/// mapping added). All three land together or not at all, mirroring
+/// `apply_dir_move_plans`' single-transaction pattern. The `DUPE_INDEX` is not
+/// touched: the content hash is unchanged by a move.
+pub fn move_asset_mapping(old_path: &str, new_path: &str, updated: &AssetRecord) -> Result<()> {
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .context("Failed to begin write transaction for asset move")?;
+    {
+        let mut id_table = txn
+            .open_table(ASSET_BY_ID)
+            .context("Failed to open ASSET_BY_ID for write")?;
+        let mut path_table = txn
+            .open_table(ASSET_BY_PATH)
+            .context("Failed to open ASSET_BY_PATH for write")?;
+
+        let json = serde_json::to_string(updated).context("Failed to serialize AssetRecord")?;
+        id_table
+            .insert(&*updated.asset_id, json.as_str())
+            .context("Failed to update ASSET_BY_ID")?;
+
+        path_table
+            .remove(old_path)
+            .context("Failed to remove old path mapping")?;
+        path_table
+            .insert(new_path, &*updated.asset_id)
+            .context("Failed to add new path mapping")?;
+    }
+    txn.commit().context("Failed to commit asset move mapping")
+}
+
 // ── Asset by ID ──────────────────────────────────────────────────────────────
 
 /// Look up an asset record by its asset ID.
@@ -422,6 +455,52 @@ mod tests {
         put_asset_by_path(&record.path, record.asset_id).expect("put asset path mapping");
         let found = get_asset_id_by_path(&record.path).expect("read asset id by path");
         assert_eq!(found, Some(record.asset_id));
+
+        clear_tables();
+    }
+
+    #[test]
+    fn move_asset_mapping_rewrites_all_tables_in_one_txn() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        ensure_tables();
+        clear_tables();
+
+        let record = AssetRecord::new_media(
+            AssetKind::Image,
+            "/old/path.jpg".into(),
+            Some("abc".parse().expect("test content hash parses")),
+            100,
+            "jpg".into(),
+            0,
+        );
+        let asset_id = record.asset_id;
+        insert_asset(&record).expect("insert test asset");
+
+        let mut updated = record.clone();
+        updated.path = "/new/path.jpg".into();
+
+        move_asset_mapping("/old/path.jpg", "/new/path.jpg", &updated).expect("move asset mapping");
+
+        // Old mapping gone.
+        assert!(
+            get_asset_id_by_path("/old/path.jpg")
+                .expect("read old path")
+                .is_none(),
+            "old path mapping must be removed"
+        );
+        // New mapping present and points at the asset id.
+        assert_eq!(
+            get_asset_id_by_path("/new/path.jpg").expect("read new path"),
+            Some(asset_id),
+            "new path mapping must carry the asset id"
+        );
+        // Record updated.
+        let found = get_asset_by_id(asset_id.as_ref())
+            .expect("read asset by id")
+            .expect("asset present");
+        assert_eq!(found.path, "/new/path.jpg", "record path must be rewritten");
 
         clear_tables();
     }
