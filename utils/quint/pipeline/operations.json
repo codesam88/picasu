@@ -62,10 +62,12 @@
       ],
       "properties": [
         {
-          "model": "UploadDoesNotMintRow"
+          "model": "UploadDoesNotMintRow",
+          "test": "backend/src/tests/user_writes.rs::upload_is_stored_without_row_and_survives_sweep_until_intake_indexes"
         },
         {
-          "model": "UploadingIsNotCorrupt"
+          "model": "UploadingIsNotCorrupt",
+          "test": "backend/src/tests/user_writes.rs::upload_is_stored_without_row_and_survives_sweep_until_intake_indexes"
         },
         {
           "model": "aspectsUploadVsSweepPruneTest",
@@ -101,7 +103,8 @@
       ],
       "properties": [
         {
-          "model": "aspectsDupeGroupDeleteTest"
+          "model": "aspectsDupeGroupDeleteTest",
+          "test": "backend/tests/scenarios/dup_delete_preserves_shared_thumbnail.yaml"
         },
         {
           "model": "aspectsRemoveTornWindowTest"
@@ -398,7 +401,8 @@
       ],
       "properties": [
         {
-          "model": "aspectsWatcherRemoveTest"
+          "model": "aspectsWatcherRemoveTest",
+          "test": "backend/tests/scenarios/watcher_remove_preserves_sibling.yaml"
         },
         {
           "model": "SweepRemoveBatchSkipsPresentFile",
