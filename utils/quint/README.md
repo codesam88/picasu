@@ -168,18 +168,24 @@ cannot resubmit themselves.
 
 ## Source of truth
 
-The filesystem is the primary truth: asset media bytes, the asset's
-stored path, and its sidecar (`.xmp`, or `.albuminfo.xmp` for albums)
-carry user-authored metadata. Everything else is derived and exists for
-speed and caching only — the redb tables (`ASSET_BY_ID`, `ASSET_BY_PATH`,
-`DUPE_INDEX`, `METADATA_TABLE`) and the thumbnail/derived store. Loss,
-orphaning or tearing of derived state is not a goal violation: rescan
-rebuilds it from the media bytes and sidecar (ASS-3, goal G5). The
-enumerated exception is DB-only non-derived state — `share_list` (album
-access state) — which cannot be rebuilt from the filesystem and must be
-individually guarded. Model state vars carry their role
-(authoritative / derived / DB-only exception); when a survey note says
-"loss", the role decides whether that is a violation.
+The axiom (ASS-3): any external or user filesystem modification — edits,
+renames, deletions, restores from backup, crash residue — is
+authoritative over DB state and is adopted as part of convergence. This
+is a design premise, not a checked property; watcher events, rescan,
+snapshot comparison and the sweep operationalize it.
+
+The goal (G5): the system converges based on the filesystem as the
+primary truth — asset media bytes, the asset's stored path and its
+sidecar (`.xmp`, or `.albuminfo.xmp` for albums) carry user-authored
+metadata. The redb tables (`ASSET_BY_ID`, `ASSET_BY_PATH`,
+`DUPE_INDEX`, `METADATA_TABLE`) and the thumbnail/derived store are
+secondary and exist for speed and caching only: loss, orphaning or
+tearing of derived state is not a goal violation because convergence
+rebuilds it. The enumerated exception is DB-only non-derived state —
+`share_list` (album access state) — which cannot be rebuilt from the
+filesystem and must be individually guarded. Model state vars carry
+their role (authoritative / derived / DB-only exception); when a survey
+note says "loss", the role decides whether that is a violation.
 
 ## Model-to-code terminology
 

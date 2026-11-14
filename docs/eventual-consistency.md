@@ -23,7 +23,7 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 - Proof: 33 convergence runs + 27 asset-aspect runs (60 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
 - Requirements: 12 verified, 3 open (REQ-1, REQ-8, REQ-15).
-- Assumptions: 3 held, 1 partial, 2 unverified, 1 open.
+- Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
 
@@ -85,9 +85,9 @@ Anchors: none — unanchored.
 
 Notes: Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision.
 
-### G5: FS-first metadata durability (decision: committed)
+### G5: FS-primary / derived-secondary convergence roles (decision: committed)
 
-User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file (copy-before-rename on asset moves, atomic tree renames on dir moves). DB tables and thumbnails are derived caches; their loss or tearing is not a violation because rescan rebuilds them. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.
+The system converges based on the filesystem as the primary truth — asset media bytes, the asset's stored path and its sidecar carry user-authored metadata. The redb tables and the thumbnail store are secondary and exist for speed and caching only: loss, orphaning or tearing of derived state is not a goal violation because convergence rebuilds it from the primary state. User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.
 
 Anchors:
 
@@ -95,7 +95,7 @@ Anchors:
 
 Holds under: ASS-3.
 
-Notes: Designates the state-role hierarchy: authoritative = media bytes + sidecar bytes; derived = redb tables + thumbnails; exception = DB-only non-derived state. N10 (share edit racing scan flush) is the first designated exception to guard.
+Notes: Goal-level statement of the primary/secondary roles; the underlying fs-first adoption axiom is ASS-3. N10 (share edit racing scan flush) is the first designated DB-only exception to guard.
 
 ## Assumptions
 
@@ -115,11 +115,11 @@ Owner: hash function plus skip comparison.
 
 Status note: Imposed and tested; finite model bounds allow collisions the real hash function must not produce.
 
-### ASS-3: filesystem is the source of truth: asset bytes, path, sidecar (status: partial)
+### ASS-3: filesystem first: external FS modifications are authoritative and adopted by convergence (status: held)
 
-Owner: sweep (per root) plus rescan reconciliation rebuild every derived table and thumbnail from media bytes and sidecar; sidecar copy-before-rename in move paths (assign_album.rs::move_asset_into_album) and atomic tree renames (move_album_into_album) keep the sidecar with the asset.
+Owner: operationalized by watcher events (tasks/batcher/start_watcher.rs), rescan on the watcher flag, snapshot comparison and the sweep (process_file, album_index.rs); model encodes adoption via External* actions and fs-wins convergence.
 
-Status note: The system converges based on the filesystem as the primary truth; the redb tables and the thumbnail store are secondary and exist for speed and caching only. Loss, orphaning or tearing of derived state is not a goal violation because rescan rebuilds it from media bytes and sidecar. DB-only non-derived state (share_list, album access state) is the enumerated exception and must be individually guarded; user-authored metadata lives in sidecars and survives any pipeline interruption window.
+Status note: Design axiom, not falsifiable by a test: any external or user FS modification — edits, renames, deletions, restores from backup, crash residue — is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; see goal G5 for the primary/secondary contract this grounds.
 
 ### ASS-4: derived store is pipeline-private (walk roots disjoint) (status: unverified)
 

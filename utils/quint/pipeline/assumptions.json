@@ -18,10 +18,10 @@
     },
     {
       "id": "ASS-3",
-      "title": "filesystem is the source of truth: asset bytes, path, sidecar",
-      "owner": "sweep (per root) plus rescan reconciliation rebuild every derived table and thumbnail from media bytes and sidecar; sidecar copy-before-rename in move paths (assign_album.rs::move_asset_into_album) and atomic tree renames (move_album_into_album) keep the sidecar with the asset",
-      "status": "partial",
-      "status_note": "The system converges based on the filesystem as the primary truth; the redb tables and the thumbnail store are secondary and exist for speed and caching only. Loss, orphaning or tearing of derived state is not a goal violation because rescan rebuilds it from media bytes and sidecar. DB-only non-derived state (share_list, album access state) is the enumerated exception and must be individually guarded; user-authored metadata lives in sidecars and survives any pipeline interruption window."
+      "title": "filesystem first: external FS modifications are authoritative and adopted by convergence",
+      "owner": "operationalized by watcher events (tasks/batcher/start_watcher.rs), rescan on the watcher flag, snapshot comparison and the sweep (process_file, album_index.rs); model encodes adoption via External* actions and fs-wins convergence",
+      "status": "held",
+      "status_note": "Design axiom, not falsifiable by a test: any external or user FS modification \u2014 edits, renames, deletions, restores from backup, crash residue \u2014 is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; see goal G5 for the primary/secondary contract this grounds."
     },
     {
       "id": "ASS-4",
