@@ -65,7 +65,7 @@ Environment contract (on top of the launcher's):
   STORM_CLIENTS   concurrent storm clients (default 8)
   STORM_OPS       ops per storm client (default 10)
   STORM_MARGIN_S  storm must finish this long before the scan ends
-                  (default 5); on violation the run fails naming the
+                  (default 0.5); on violation the run fails naming the
                   scantime increase factor
   HYPERFINE_BIN   hyperfine binary; empty disables hyperfine
 
@@ -106,7 +106,7 @@ DEFAULT_SCAN_REPEATS = 3
 DEFAULT_FETCHES = 10
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
-DEFAULT_STORM_MARGIN_S = 5.0
+DEFAULT_STORM_MARGIN_S = 0.5
 WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle")
 DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
@@ -556,8 +556,28 @@ def _result_name(result: dict) -> str:
 
 
 def _wall_clock(result: dict) -> dict:
-    return result.get("summary", {}).get("time_wall_clock", {})
-
+    # hyperfine >=1.19 exports timings flat on each result; older versions
+    # nested them under summary.time_wall_clock. Accept both.
+    if isinstance(result, dict) and ("mean" in result or "median" in result):
+        times = result.get("times")
+        count = len(times) if isinstance(times, list) else result.get("count")
+        if count is None:
+            exit_codes = result.get("exit_codes")
+            if isinstance(exit_codes, list):
+                count = len(exit_codes)
+        return {
+            "mean": result.get("mean"),
+            "median": result.get("median"),
+            "stddev": result.get("stddev"),
+            "count": count,
+        }
+    if isinstance(result, dict):
+        nested = result.get("summary", {})
+        if isinstance(nested, dict):
+            nested = nested.get("time_wall_clock", {})
+        if isinstance(nested, dict):
+            return nested
+    return {}
 
 def run_hyperfine(
     cfg: dict,

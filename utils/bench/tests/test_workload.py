@@ -745,7 +745,7 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg["workload"], "control")
             self.assertEqual(cfg["storm_clients"], 8)
             self.assertEqual(cfg["storm_ops"], 10)
-            self.assertEqual(cfg["storm_margin_s"], 5.0)
+            self.assertEqual(cfg["storm_margin_s"], 0.5)
             for bad in ("storm-everything", "CONTROL", ""):
                 with self.subTest(workload=bad):
                     with self.assertRaises(workload.ConfigError):
