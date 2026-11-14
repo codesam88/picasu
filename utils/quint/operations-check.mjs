@@ -13,6 +13,16 @@
 //   - model `@operation` tags in asset-aspects.qnt must name known OPs, and
 //     guarded OPs without a model tag are reported (not failing).
 //
+// Rung 2b upgrades the coverage report:
+//   - `properties` entries are objects `{model, test?}` instead of bare
+//     model names; `model` must name a declaration in pipeline/*.qnt and the
+//     optional `test` must point at an existing test function;
+//   - test refs use `<repo-relative .rs path>::<test_fn_name>`, and the
+//     referenced file must contain `fn <test_fn_name>` (a plain text check,
+//     so a comment mention also satisfies it — accepted limitation);
+//   - the report prints a per-OP property matrix with `NO TEST` gaps and a
+//     `properties with test: X/Y` summary.
+//
 // Usage: operations-check.mjs [root-or-pipeline-dir]
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
@@ -78,7 +88,47 @@ if (existsSync(base)) {
   }
 }
 
+// Validate a `<repo-relative .rs path>::<test_fn>` reference. The function
+// name is looked up as text so generated bounds/wrappers stay out of scope;
+// a comment that mentions the name also satisfies it (accepted limitation,
+// lower stakes than marker ownership).
+function validateTestRef(ref, label) {
+  const sep = ref.lastIndexOf('::')
+  if (sep <= 0 || sep + 2 >= ref.length) {
+    fail(`${label}: test ref '${ref}' must be '<path>::<test_fn>'`)
+    return
+  }
+  const relPath = ref.slice(0, sep)
+  const fnName = ref.slice(sep + 2)
+  if (relPath.startsWith('/') || relPath.split('/').includes('..')) {
+    fail(`${label}: test ref path '${relPath}' must be repo-relative without '..'`)
+    return
+  }
+  if (!relPath.endsWith('.rs')) {
+    fail(`${label}: test ref '${ref}' must reference a .rs file`)
+    return
+  }
+  if (!/^[A-Za-z_]\w*$/.test(fnName)) {
+    fail(`${label}: test ref '${ref}' has an invalid test function name`)
+    return
+  }
+  const full = join(repoRoot, relPath)
+  if (!existsSync(full)) {
+    fail(`${label}: test ref file '${relPath}' does not exist`)
+    return
+  }
+  let text = ''
+  try { text = readFileSync(full, 'utf8') } catch (e) {
+    fail(`${label}: cannot read test ref file '${relPath}': ${e.message}`)
+    return
+  }
+  if (!new RegExp(`\\bfn\\s+${fnName}\\b`).test(text)) {
+    fail(`${label}: '${relPath}' does not define fn ${fnName}`)
+  }
+}
+
 const seenIds = new Set()
+const coverageRows = []
 
 // Validate operations.json entries.
 for (let i = 0; i < entries.length; i++) {
@@ -114,14 +164,38 @@ for (let i = 0; i < entries.length; i++) {
     if (typeof g !== 'string') fail(`${label}: guard must be string`)
   }
 
-  // `properties` is optional (new in rung 2a): model declaration names
-  // (val/def/action/run from utils/quint/pipeline/*.qnt) that pin the OP's
-  // guarded behavior. Shape mirrors guards validation.
+  // `properties` is optional: objects `{model, test?}`. `model` names a
+  // declaration (val/def/action/run from utils/quint/pipeline/*.qnt) that
+  // pins the OP's guarded behavior; the optional `test` is a
+  // `<repo-relative .rs path>::<test_fn>` ref whose function must exist.
+  // An absent `test` is a visible coverage gap, not an error.
   if (op.properties !== undefined) {
     if (!Array.isArray(op.properties)) fail(`${label}: properties must be an array`)
     else for (const p of op.properties) {
-      if (typeof p !== 'string' || p.trim() === '') fail(`${label}: property entry must be non-empty string`)
-      else if (!modelDecls.has(p)) fail(`operation '${op.id}' references unknown model declaration '${p}'`)
+      if (p === null || typeof p !== 'object' || Array.isArray(p)) {
+        fail(`${label}: property entry must be an object {model, test?}`)
+        continue
+      }
+      for (const key of Object.keys(p)) {
+        if (key !== 'model' && key !== 'test') {
+          fail(`${label}: property entry has unknown key '${key}'`)
+        }
+      }
+      if (typeof p.model !== 'string' || p.model.trim() === '') {
+        fail(`${label}: property 'model' must be a non-empty string`)
+      } else if (!modelDecls.has(p.model)) {
+        fail(`operation '${op.id}' references unknown model declaration '${p.model}'`)
+      }
+      let testRef
+      if (p.test !== undefined) {
+        if (typeof p.test !== 'string' || p.test.trim() === '') {
+          fail(`${label}: property '${p.model}' test ref must be a non-empty string`)
+        } else {
+          testRef = p.test
+          validateTestRef(p.test, `operation '${op.id}' property '${p.model}'`)
+        }
+      }
+      coverageRows.push({ op: op.id, model: p.model, test: testRef })
     }
   }
 
@@ -278,4 +352,17 @@ const countSummary = [...EXPECTED_OPS].map((id) => `${id}=${markerOpCounts.get(i
 console.log(`operations-check: OK (${seenIds.size} operations, ${markerOps.size} marked, ${rsFiles.length} rs files scanned)`)
 console.log(`  marker counts: ${countSummary}`)
 console.log(`  model tags: ${modelTaggedOps.size} OPs tagged; guarded untagged: ${guardedUntagged.length}`)
+
+console.log('  coverage matrix:')
+for (const id of EXPECTED_OPS) {
+  const rows = coverageRows.filter((row) => row.op === id)
+  if (rows.length === 0) {
+    console.log(`    ${id}: (no properties)`)
+    continue
+  }
+  const cells = rows.map((row) => `${row.model} -> ${row.test ?? 'NO TEST'}`)
+  console.log(`    ${id}: ${cells.join('; ')}`)
+}
+const tested = coverageRows.filter((row) => row.test !== undefined).length
+console.log(`  properties with test: ${tested}/${coverageRows.length}`)
 process.exit(0)

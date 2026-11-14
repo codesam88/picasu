@@ -29,9 +29,17 @@
         "path_epoch per-path lease"
       ],
       "properties": [
-        "PathMapIdentityCoherence",
-        "DupeIndexBijective",
-        "aspectsScanSupersedesEditTest"
+        {
+          "model": "PathMapIdentityCoherence",
+          "test": "backend/src/storage/asset_store.rs::insert_asset_creates_all_mappings"
+        },
+        {
+          "model": "DupeIndexBijective",
+          "test": "backend/src/tasks/batcher/flush_tree.rs::flush_changed_hash_moves_dupe_group"
+        },
+        {
+          "model": "aspectsScanSupersedesEditTest"
+        }
       ],
       "status": "guarded",
       "nodes": [
@@ -53,9 +61,16 @@
         "none \u2014 fire-and-forget intake enqueue"
       ],
       "properties": [
-        "UploadDoesNotMintRow",
-        "UploadingIsNotCorrupt",
-        "aspectsUploadVsSweepPruneTest"
+        {
+          "model": "UploadDoesNotMintRow"
+        },
+        {
+          "model": "UploadingIsNotCorrupt"
+        },
+        {
+          "model": "aspectsUploadVsSweepPruneTest",
+          "test": "backend/src/tests/user_writes.rs::viewer_upload_assign_and_create_dir"
+        }
       ],
       "status": "open",
       "nodes": [
@@ -85,8 +100,12 @@
         "dupe-group thumbnail reap (get_dupe_ids)"
       ],
       "properties": [
-        "aspectsDupeGroupDeleteTest",
-        "aspectsRemoveTornWindowTest"
+        {
+          "model": "aspectsDupeGroupDeleteTest"
+        },
+        {
+          "model": "aspectsRemoveTornWindowTest"
+        }
       ],
       "status": "guarded",
       "nodes": [
@@ -116,8 +135,13 @@
         "resolve-then-validate (record.path re-read under lease)"
       ],
       "properties": [
-        "aspectsN5SplitWindowTest",
-        "PathMapIdentityCoherence"
+        {
+          "model": "aspectsN5SplitWindowTest"
+        },
+        {
+          "model": "PathMapIdentityCoherence",
+          "test": "backend/src/storage/asset_store.rs::insert_asset_creates_all_mappings"
+        }
       ],
       "status": "open",
       "nodes": [
@@ -150,7 +174,10 @@
         "apply_dir_move_plans single write txn"
       ],
       "properties": [
-        "aspectsDirMoveCrashHealsTest"
+        {
+          "model": "aspectsDirMoveCrashHealsTest",
+          "test": "backend/src/tasks/batcher/start_watcher.rs::unpaired_to_walks_directory_and_indexes_files"
+        }
       ],
       "status": "open",
       "nodes": [
@@ -180,8 +207,13 @@
         "path_epoch::lease_paths"
       ],
       "properties": [
-        "aspectsRotateVsScanTest",
-        "aspectsRotateTest"
+        {
+          "model": "aspectsRotateVsScanTest"
+        },
+        {
+          "model": "aspectsRotateTest",
+          "test": "backend/src/tests/rotation.rs::rotate_persists_to_xmp_and_reindex_preserves_display"
+        }
       ],
       "status": "guarded",
       "nodes": [
@@ -211,8 +243,13 @@
         "best-effort rollback on failure"
       ],
       "properties": [
-        "aspectsSidecarPartialEditTest",
-        "AlbumStatsNoPhantom"
+        {
+          "model": "aspectsSidecarPartialEditTest",
+          "test": "backend/src/process/sidecar_edit.rs::a_failed_write_restores_the_bytes_a_previous_sidecar_had"
+        },
+        {
+          "model": "AlbumStatsNoPhantom"
+        }
       ],
       "status": "open",
       "nodes": [
@@ -236,9 +273,16 @@
         "member writes re-mark pending via mark_album_for_update"
       ],
       "properties": [
-        "AlbumStatsConsistentWhenDrained",
-        "AlbumStatsNoPhantom",
-        "aspectsAlbumCascadeRaceAbsorbedTest"
+        {
+          "model": "AlbumStatsConsistentWhenDrained",
+          "test": "backend/src/model/album.rs::self_update_with_computes_counts_sizes_and_cover"
+        },
+        {
+          "model": "AlbumStatsNoPhantom"
+        },
+        {
+          "model": "aspectsAlbumCascadeRaceAbsorbedTest"
+        }
       ],
       "status": "guarded",
       "nodes": [
@@ -267,10 +311,21 @@
         "path_epoch::is_busy"
       ],
       "properties": [
-        "SweepRecheckBatchClean",
-        "SweepRemoveBatchSkipsPresentFile",
-        "aspectsAbsorbedSweepTest",
-        "aspectsCleanSweepTest"
+        {
+          "model": "SweepRecheckBatchClean",
+          "test": "backend/src/tasks/actor/album_index.rs::index_scan_respects_path_lease_before_pruning"
+        },
+        {
+          "model": "SweepRemoveBatchSkipsPresentFile",
+          "test": "backend/src/tasks/batcher/flush_tree.rs::sweep_remove_batch_existing_path_is_noop_and_missing_path_removes_row"
+        },
+        {
+          "model": "aspectsAbsorbedSweepTest"
+        },
+        {
+          "model": "aspectsCleanSweepTest",
+          "test": "backend/src/tests/eventual_consistency_stateful.rs::delete_rescan_prunes"
+        }
       ],
       "status": "guarded",
       "nodes": [
@@ -293,7 +348,10 @@
         "generate_thumbnail_for_image writes via temp sibling and atomic rename"
       ],
       "properties": [
-        "aspectsThumbLossTest"
+        {
+          "model": "aspectsThumbLossTest",
+          "test": "backend/src/tests/torn_thumbnail.rs::compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated"
+        }
       ],
       "status": "open",
       "nodes": [
@@ -339,8 +397,13 @@
         "handle_removed_file restores the exact path for sweep_remove_batch resolution"
       ],
       "properties": [
-        "aspectsWatcherRemoveTest",
-        "SweepRemoveBatchSkipsPresentFile"
+        {
+          "model": "aspectsWatcherRemoveTest"
+        },
+        {
+          "model": "SweepRemoveBatchSkipsPresentFile",
+          "test": "backend/src/tasks/batcher/flush_tree.rs::sweep_remove_batch_existing_path_is_noop_and_missing_path_removes_row"
+        }
       ],
       "status": "open",
       "nodes": [
