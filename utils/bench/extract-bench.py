@@ -302,10 +302,12 @@ def parse_log(outdir: Path) -> dict:
         m = re.search(r"reused images copied from (\S+)", log)
     if m:
         row["image_repo"] = m.group(1)
-    _drains = parse_drain_tables(log)
+    server_log = outdir / "server.log"
+    drain_source = server_log if server_log.exists() else log
+    _drains = parse_drain_tables(drain_source)
     row["drain_tables"] = _drains
     row["drains"] = _drains
-    row["drain_stages"] = parse_drain_rows(log)
+    row["drain_stages"] = parse_drain_rows(drain_source)
     row["stages"] = row["drain_stages"]
     row["stage_rows"] = row["drain_stages"]
     row["observer_drain_tables"] = _drains
