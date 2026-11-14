@@ -26,6 +26,124 @@ import statistics
 import sys
 from pathlib import Path
 
+STAGE_NAMES = [
+    "filter_snapshot_clone",
+    "filter_par_iter",
+    "compute_locate",
+    "tree_refresh_total",
+    "tree_refresh_build",
+    "tree_refresh_sort",
+    "tree_refresh_write_wait",
+    "cpu_permit_wait",
+    "cpu_exec",
+    "prefetch_total",
+    "blocking_queue_wait",
+    "interactive_exec",
+]
+
+
+def _drain_scan_index(context: str, ordinal: int) -> int:
+    for pattern in (r"scan job=(\d+)", r"\bjob=(\d+)", r"scan=(\d+)", r"run=(\d+)"):
+        m = re.search(pattern, context)
+        if m:
+            return int(m.group(1))
+    return ordinal
+
+
+def parse_drain_tables(log) -> list:
+    """Parse ``observe drain:`` tables from a server log.
+
+    Accepts either log text or a path-like object. Returns a list of
+    per-scan tables: ``{"scan": int, "context": str, "stages": [row, ...]}``.
+    Each stage row carries ``stage, n, p50_us, p95_us, max_us``.
+    """
+    if isinstance(log, (str, bytes)):
+        text = log.decode() if isinstance(log, bytes) else log
+    else:
+        try:
+            text = Path(log).read_text()
+        except OSError, TypeError:
+            text = str(log)
+    tables: list = []
+    lines = text.splitlines()
+    i = 0
+    ordinal = 0
+    while i < len(lines):
+        if "observe drain:" not in lines[i]:
+            i += 1
+            continue
+        context = lines[i].split("observe drain:", 1)[1].strip()
+        ordinal += 1
+        scan = _drain_scan_index(context, ordinal)
+        stages: list = []
+        j = i + 1
+        while j < len(lines):
+            stripped = lines[j].strip()
+            if not stripped:
+                break
+            if stripped.startswith("stage"):
+                j += 1
+                continue
+            m = re.match(r"^\s*(\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$", lines[j])
+            if not m:
+                break
+            stage_name = m.group(1)
+            if stage_name == "stage":
+                j += 1
+                continue
+            stages.append(
+                {
+                    "stage": stage_name,
+                    "n": int(m.group(2)),
+                    "p50_us": int(m.group(3)),
+                    "p95_us": int(m.group(4)),
+                    "max_us": int(m.group(5)),
+                }
+            )
+            j += 1
+        if stages:
+            tables.append({"scan": scan, "context": context, "stages": stages})
+        i = j if j > i else i + 1
+    return tables
+
+
+def parse_drain_rows(log) -> list:
+    """Flatten :func:`parse_drain_tables` into per-stage rows.
+
+    Each row carries ``scan, scan_index, run, run_index, stage, n, p50_us,
+    p95_us, max_us, context``.
+    """
+    rows: list = []
+    for table in parse_drain_tables(log):
+        scan = table["scan"]
+        for stage in table["stages"]:
+            rows.append(
+                {
+                    "scan": scan,
+                    "scan_index": scan,
+                    "run": scan,
+                    "run_index": scan - 1,
+                    "stage": stage["stage"],
+                    "n": stage["n"],
+                    "p50_us": stage["p50_us"],
+                    "p95_us": stage["p95_us"],
+                    "max_us": stage["max_us"],
+                    "context": table["context"],
+                }
+            )
+    return rows
+
+
+parse_drain_table = parse_drain_tables
+parse_drains = parse_drain_tables
+parse_observer_drain = parse_drain_tables
+parse_observer_drains = parse_drain_tables
+extract_drain_tables = parse_drain_tables
+parse_drain = parse_drain_rows
+parse_drain_table_rows = parse_drain_rows
+parse_stage_rows = parse_drain_rows
+parse_drain_stages = parse_drain_rows
+
 
 def parse_log(outdir: Path) -> dict:
     log = (outdir / "harness-a.log").read_text()
@@ -184,6 +302,13 @@ def parse_log(outdir: Path) -> dict:
         m = re.search(r"reused images copied from (\S+)", log)
     if m:
         row["image_repo"] = m.group(1)
+    _drains = parse_drain_tables(log)
+    row["drain_tables"] = _drains
+    row["drains"] = _drains
+    row["drain_stages"] = parse_drain_rows(log)
+    row["stages"] = row["drain_stages"]
+    row["stage_rows"] = row["drain_stages"]
+    row["observer_drain_tables"] = _drains
     return row
 
 
@@ -256,6 +381,38 @@ def _cell(row: dict, status: dict, storm_keys: list) -> dict:
         cell["storm_verify"] = "; ".join(f"{m}/{t}" for m, t in row["storm_verify"])
     else:
         cell["storm_verify"] = "n/a"
+    # Observer drain summary columns (per scan).
+    drains = row.get("drain_tables", row.get("drains", []))
+
+    def _stage_values(stage_name: str, field: str) -> str:
+        values = []
+        for table in drains:
+            for stage in table.get("stages", []):
+                if stage.get("stage") == stage_name:
+                    values.append(stage.get(field))
+        if not values:
+            return "n/a"
+        return ",".join(str(v) for v in values)
+
+    for stage_name in ("tree_refresh_build", "filter_snapshot_clone"):
+        for field in ("p50_us", "max_us"):
+            key_us = f"{stage_name}_{field}"
+            cell[key_us] = _stage_values(stage_name, field)
+            cell[f"{stage_name}_{field}_us"] = cell[key_us]
+            # millisecond mirror for latency-style columns
+            vals = [v for v in (_stage_values(stage_name, field),) if v != "n/a"]
+            if vals and vals[0] != "n/a":
+                try:
+                    ms_vals = ",".join(
+                        str(round(int(x) / 1000.0, 1)) for x in cell[key_us].split(",")
+                    )
+                    cell[f"{stage_name}_{field}_ms"] = ms_vals
+                except ValueError, AttributeError:
+                    cell[f"{stage_name}_{field}_ms"] = "n/a"
+            else:
+                cell[f"{stage_name}_{field}_ms"] = "n/a"
+            # alias without unit suffix
+            cell[f"{stage_name}_{field.replace('_us', '')}"] = cell[key_us]
     return cell
 
 
@@ -286,7 +443,15 @@ def main() -> None:
         if not (outdir / "harness-a.log").exists():
             print(f"error: {outdir}: no harness-a.log", file=sys.stderr)
             sys.exit(1)
-        parsed.append((parse_log(outdir), parse_status(outdir)))
+        row = parse_log(outdir)
+        # Emit per-scan stage rows as machine-readable JSON in the outdir.
+        try:
+            (outdir / "stages.json").write_text(
+                json.dumps(row.get("drain_stages", []), indent=2) + "\n"
+            )
+        except OSError as exc:
+            print(f"warn: {outdir}: cannot write stages.json: {exc}", file=sys.stderr)
+        parsed.append((row, parse_status(outdir)))
 
     storm_union: list = []
     for row, _ in parsed:
@@ -313,6 +478,10 @@ def main() -> None:
         "idle_thumb_ms",
         "idle_fetch_ms",
         "idle_edit_ms",
+        "tree_refresh_build_p50_us",
+        "tree_refresh_build_max_us",
+        "filter_snapshot_clone_p50_us",
+        "filter_snapshot_clone_max_us",
         "storm_verify",
     ] + [f"{p}_{c}" for p in profiles for c in ("ops", "med_ms", "p95_ms", "max_ms", "fail")]
     width = max([len(label) for label in labels] + [8])
