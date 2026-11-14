@@ -61,6 +61,29 @@ seed-images image_repo images="100" template="" jobs="4": _venv
 extract *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/extract-bench.py" {{ args }}
 
+# Run a pinned battery (gate|scale) and write its report.
+battery level="gate" out="": _venv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "{{ out }}" ]; then
+        out="/tmp/picasu-battery-{{ level }}-$(date +%Y%m%d-%H%M%S)"
+    else
+        out="{{ out }}"
+    fi
+    mkdir -p "$out"
+    "{{ venv_python }}" "{{ source_directory() }}/battery.py" run "{{ level }}" --out "$out"
+
+# Compare a battery report against the checked-in baseline bands.
+battery-check report baselines="": _venv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{ baselines }}" ]; then
+        "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}" \
+            --baselines "{{ baselines }}"
+    else
+        "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}"
+    fi
+
 # Remove the on-demand venv.
 clean:
     rm -rf "{{ venv_dir }}"
