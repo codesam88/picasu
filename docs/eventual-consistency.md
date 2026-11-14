@@ -21,8 +21,8 @@ Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistenc
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
 - Proof: 33 convergence runs + 27 asset-aspect runs (60 executed including imported runs; `just quint-check`); simulator traces are advisory.
-- Goals: 3 committed, 1 queued, 1 dropped.
-- Requirements: 12 verified, 2 open (REQ-1, REQ-8).
+- Goals: 4 committed, 1 queued, 1 dropped.
+- Requirements: 12 verified, 3 open (REQ-1, REQ-8, REQ-15).
 - Assumptions: 3 held, 1 partial, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
@@ -85,6 +85,18 @@ Anchors: none — unanchored.
 
 Notes: Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision.
 
+### G5: FS-first metadata durability (decision: committed)
+
+User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file (copy-before-rename on asset moves, atomic tree renames on dir moves). DB tables and thumbnails are derived caches; their loss or tearing is not a violation because rescan rebuilds them. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.
+
+Anchors:
+
+- code: `backend/src/router/put/assign_album.rs::move_asset_into_album (sidecar copy-before-rename)`
+
+Holds under: ASS-3.
+
+Notes: Designates the state-role hierarchy: authoritative = media bytes + sidecar bytes; derived = redb tables + thumbnails; exception = DB-only non-derived state. N10 (share edit racing scan flush) is the first designated exception to guard.
+
 ## Assumptions
 
 World-given premises the model relies on, with owner, status, and a status note. They are not implementation obligations.
@@ -103,9 +115,11 @@ Owner: hash function plus skip comparison.
 
 Status note: Imposed and tested; finite model bounds allow collisions the real hash function must not produce.
 
-### ASS-3: filesystem wins (converged direction, sweep, rescan heals) (status: partial)
+### ASS-3: filesystem is the source of truth: asset bytes, path, sidecar (status: partial)
 
-Owner: sweep (per root) plus rescan reconciliation (sidecar identity in the snapshot - model prescribes, code lacks).
+Owner: sweep (per root) plus rescan reconciliation rebuild every derived table and thumbnail from media bytes and sidecar; sidecar copy-before-rename in move paths (assign_album.rs::move_asset_into_album) and atomic tree renames (move_album_into_album) keep the sidecar with the asset.
+
+Status note: The system converges based on the filesystem as the primary truth; the redb tables and the thumbnail store are secondary and exist for speed and caching only. Loss, orphaning or tearing of derived state is not a goal violation because rescan rebuilds it from media bytes and sidecar. DB-only non-derived state (share_list, album access state) is the enumerated exception and must be individually guarded; user-authored metadata lives in sidecars and survives any pipeline interruption window.
 
 ### ASS-4: derived store is pipeline-private (walk roots disjoint) (status: unverified)
 
@@ -368,6 +382,14 @@ Derived from: G2. Owner: scheduler and lifecycle (tasks/looper/backstop.rs, task
 
 Gate: Scheduler test: a cycle slower than the interval does not overlap itself and leaves exactly one coalesced follow-up; cycle completion is defined by the queue draining.
 
+### REQ-15: FS-first sidecar preservation across moves (status: open)
+
+A sidecar that exists is preserved and moved together with the asset file on every move path: copy-before-rename for asset moves, atomic tree rename for dir moves. A crash in the move window never leaves user-authored metadata unreachable: the destination sidecar is present before the file rename, and the crash-heal re-index rebuilds the metadata payload from the destination sidecar. The three move DB writes are additionally performed in one transaction to avoid stale-mapping residue and dupe-group churn (secondary; hygiene).
+
+Derived from: G5. Owner: assign_album.rs::move_asset_into_album / move_album_into_album; asset_store move helper.
+
+Gate: Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.
+
 ## Implementation
 
 How each requirement was satisfied, its gate tests, and known limits.
@@ -537,6 +559,12 @@ Tests:
 - `shutdown::sigterm_exits_while_backstop_scan_is_running`
 
 Limits: No slow-cycle gate-hold test; completion is observed through the job's terminal state rather than a queue-depth probe.
+
+### REQ-15: FS-first sidecar preservation across moves (status: open)
+
+Implementation: assign_album.rs::move_asset_into_album already copies the destination sidecar (atomic temp-write) before the file rename and removes the old sidecar after; dir moves ride the atomic tree rename. Remaining: the destination-sidecar pinning test, the model run for the crash-heal rebuild, and the single-txn move write (asset_store helper, apply_dir_move_plans precedent).
+
+Tests: none yet.
 
 ## Events
 

@@ -178,4 +178,7 @@ Model/catalog names map to code entities per
 `utils/quint/README.md` ("Model-to-code terminology"): direct stable
 mappings take the code name; conceptual names carry doc-comment anchors;
 renames are separate small commits; unqualified role words ("the
-writer") are not used.
+writer") are not used. State vars additionally carry their role
+(authoritative / derived / DB-only exception) per the README
+"Source of truth" section — a "loss" claim on derived state is not a
+violation; only authoritative or DB-only-exception loss is.

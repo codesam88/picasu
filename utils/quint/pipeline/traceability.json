@@ -27,7 +27,7 @@
     {
       "id": "ASS-3",
       "kind": "ASS",
-      "title": "filesystem wins (converged direction, sweep, rescan heals)",
+      "title": "filesystem is the source of truth: asset bytes, path, sidecar",
       "refs": [
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",

@@ -255,7 +255,13 @@ check` or the individual recipes.
     claim predates the rework); return REQ-8 or document.
     c. N7/N9/N10: resolve or document each (N7 delayed-metadata is
     rescan-healed; N9 reset should clear the derived store; N10
-    share/cover read-modify-write racing scan flush).
+    share/cover read-modify-write racing scan flush). N10 reframe
+    (2026-11-14): with the state-role hierarchy designated (G5, ASS-3,
+    README "Source of truth"), share_list is the enumerated DB-only
+    non-derived exception — a lost share edit is a real goal violation,
+    not derived-cache noise. Direction: serialize album metadata field
+    edits through the serial writer queue (writer::submit) so they order
+    with flushes; survey album_task's record rewrite first.
     d. events.json: fill the 12 TODO code_refs with file::fn anchors
     (terminology rule).
     Then cleanup/debt: prune superseded branches (feat/quint-asset-aspects,

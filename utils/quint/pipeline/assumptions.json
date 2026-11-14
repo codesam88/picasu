@@ -18,9 +18,10 @@
     },
     {
       "id": "ASS-3",
-      "title": "filesystem wins (converged direction, sweep, rescan heals)",
-      "owner": "sweep (per root) plus rescan reconciliation (sidecar identity in the snapshot - model prescribes, code lacks)",
-      "status": "partial"
+      "title": "filesystem is the source of truth: asset bytes, path, sidecar",
+      "owner": "sweep (per root) plus rescan reconciliation rebuild every derived table and thumbnail from media bytes and sidecar; sidecar copy-before-rename in move paths (assign_album.rs::move_asset_into_album) and atomic tree renames (move_album_into_album) keep the sidecar with the asset",
+      "status": "partial",
+      "status_note": "The system converges based on the filesystem as the primary truth; the redb tables and the thumbnail store are secondary and exist for speed and caching only. Loss, orphaning or tearing of derived state is not a goal violation because rescan rebuilds it from media bytes and sidecar. DB-only non-derived state (share_list, album access state) is the enumerated exception and must be individually guarded; user-authored metadata lives in sidecars and survives any pipeline interruption window."
     },
     {
       "id": "ASS-4",
