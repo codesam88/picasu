@@ -277,7 +277,10 @@ survey claim contradicts a done item — re-check the tree first.
   dir-move loop) are separate txns; crash splits them. [open,
   re-verified 2026-11-13: move_asset_into_album writes ASSET_BY_ID and
   ASSET_BY_PATH in separate txns; apply_dir_move_plans is a single txn
-  (dir-move only).] (touches M3 wording).
+  (dir-move only).] Batch-2 (2026-11-14) narrowed residual: the scan/sweep
+  heal (aspectsN5SplitWindowTest) restores cross-table coherence but allocates
+  a NEW asset id for the moved file, so identity preservation across a
+  mid-move crash remains an open hazard; N5 stays [open]. (touches M3 wording).
 - N6 derived corruption undetected; regen frame can orphan on unknown
   id. [open, re-verified 2026-11-13: generate_thumbnail_for_image uses
   atomic temp-file rename only; no content validation; regen frame can

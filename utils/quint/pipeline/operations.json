@@ -255,7 +255,8 @@
           "test": "backend/src/process/sidecar_edit.rs::a_failed_write_restores_the_bytes_a_previous_sidecar_had"
         },
         {
-          "model": "AlbumStatsNoPhantom"
+          "model": "AlbumStatsNoPhantom",
+          "test": "backend/src/tasks/queue/writer.rs::album_cascade_race_absorbed"
         }
       ],
       "status": "open",
@@ -285,10 +286,12 @@
           "test": "backend/src/model/album.rs::self_update_with_computes_counts_sizes_and_cover"
         },
         {
-          "model": "AlbumStatsNoPhantom"
+          "model": "AlbumStatsNoPhantom",
+          "test": "backend/src/tasks/queue/writer.rs::album_cascade_race_absorbed"
         },
         {
-          "model": "aspectsAlbumCascadeRaceAbsorbedTest"
+          "model": "aspectsAlbumCascadeRaceAbsorbedTest",
+          "test": "backend/src/tasks/queue/writer.rs::album_cascade_race_absorbed"
         }
       ],
       "status": "guarded",
@@ -327,7 +330,8 @@
           "test": "backend/src/tasks/batcher/flush_tree.rs::sweep_remove_batch_existing_path_is_noop_and_missing_path_removes_row"
         },
         {
-          "model": "aspectsAbsorbedSweepTest"
+          "model": "aspectsAbsorbedSweepTest",
+          "test": "backend/src/tasks/batcher/flush_tree.rs::absorbed_sweep_prune_does_not_break_move"
         },
         {
           "model": "aspectsCleanSweepTest",
@@ -339,7 +343,7 @@
         "N2",
         "N12"
       ],
-      "notes": "sweep_stale_asset_paths plus sweep_remove_batch; missing paths only."
+      "notes": "sweep_stale_asset_paths plus sweep_remove_batch; missing paths only. sweep_remove_batch also drops a dangling path mapping when its id record is already gone (torn remove residue), so the next sweep converges."
     },
     {
       "id": "OP-10",
