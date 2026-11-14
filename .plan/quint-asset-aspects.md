@@ -221,9 +221,14 @@ check` or the individual recipes.
     then annotation rung 1 (registry + static coverage gate) for
     bidirectional OP↔action↔event coverage; rung 2 (runtime trace
     reconciliation) as the accuracy validator against observed behavior.
-13. [open] Decide the read-model freshness lane: model bounded staleness
-    for `mark_tree_dirty_background` (~1 s leading-edge throttle) or
-    document it as a standing assumption; closes G3.
+13. [dropped 2026-11-14] Read-model freshness lane (tree epoch /
+    invalidation lag): not a good fit for the model — it would largely
+    re-assert the ~1 s bound already given as a limit in the code
+    (mark_tree_dirty_background leading-edge throttle, tree_view.rs)
+    rather than name a mutation window. G3 stays reframed around the
+    freshness contract (step 7) with docs-eventual-consistency-check as
+    enforcement; the tree-epoch/expire aspects stay out of the model by
+    decision. Focus moves to coverage (step 12 / annotation rungs).
 
 ## Interaction nodes (survey 2026-11-12, claims need tree-verification)
 
