@@ -440,6 +440,9 @@ def write_manifest(cfg: dict, environ: dict) -> None:
 
 
 def write_launcher_info(cfg: dict, pid: int) -> None:
+    image_home = cfg.get("image_home")
+    if image_home is None:
+        image_home = cfg["out"] / "images"
     (cfg["out"] / "launcher-info.json").write_text(
         json.dumps(
             {
@@ -448,6 +451,7 @@ def write_launcher_info(cfg: dict, pid: int) -> None:
                 "pid": pid,
                 "out": str(cfg["out"]),
                 "mode": cfg["mode"],
+                "image_home": str(image_home),
             },
             indent=2,
         )

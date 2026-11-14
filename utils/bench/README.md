@@ -81,11 +81,17 @@ factor by which to increase scantime.
 ## Image repos (seeded a priori)
 
 Cells never generate images. Seed a repo once, reuse it for any cell size
-(the workload copies the first `IMAGES` entries in sorted order):
+(the workload copies the first `IMAGES` entries in sorted order). Materialisation
+uses a hardlink when source and destination share a filesystem, falling back to
+a copy (and logs which path was taken per cell):
 
 ```sh
 just bench seed-images /tmp/sets/set-100 100        # 100 × 4000x3000 jpg
 just bench seed-images /tmp/sets/set-500 500        # same shape, 500 images
+just bench seed-images /tmp/sets/set-large 10 --large  # ~5MB large-file class
 ```
 
-Set `OVERWRITE=1` to reseed a non-empty repo.
+Set `OVERWRITE=1` to reseed a non-empty repo. A prepared root can be reused
+without copying by setting `MATERIALISE=0` (the workload reuses `IMAGE_PATH`
+as-is and logs the dataset identity). The launcher's `IMAGE_HOME_SRC` points
+`PICASU_IMAGE_HOME` at such a root.

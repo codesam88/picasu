@@ -29,21 +29,29 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
 
-def synth_entries(count: int) -> list:
+DEFAULT_WIDTH = 4000
+DEFAULT_HEIGHT = 3000
+LARGE_WIDTH = 6000
+LARGE_HEIGHT = 4000
+DEFAULT_LARGE_BYTES = 5_000_000
+
+
+def synth_entries(count: int, large: bool = False) -> list:
+    width = LARGE_WIDTH if large else DEFAULT_WIDTH
+    height = LARGE_HEIGHT if large else DEFAULT_HEIGHT
     entries = []
     for i in range(1, count + 1):
         day = (i % 28) + 1
         hour = (i - 1) % 24
-        entries.append(
-            {
-                "output": f"img_{i:05d}.jpg",
-                "format": "jpeg",
-                "width": 4000,
-                "height": 3000,
-                "exif_date": f"2024:06:{day:02d} {hour:02d}:15:00",
-                "tags": ["bench", "seed"],
-            }
-        )
+        entry = {
+            "output": f"img_{i:05d}.jpg",
+            "format": "jpeg",
+            "width": width,
+            "height": height,
+            "exif_date": f"2024:06:{day:02d} {hour:02d}:15:00",
+            "tags": ["bench", "seed"],
+        }
+        entries.append(entry)
     return entries
 
 
@@ -60,7 +68,9 @@ def load_template(path: Path, count: int) -> list:
     return entries[:count]
 
 
-def run_batch(snapfab: Path, repo: Path, entries: list, jobs: int, logf) -> None:
+def run_batch(
+    snapfab: Path, repo: Path, entries: list, jobs: int, logf, generators: str = ""
+) -> None:
     jobs = max(1, min(jobs, len(entries)))
     chunk_dir = repo / "manifest-chunks"
     if chunk_dir.exists():
@@ -74,11 +84,14 @@ def run_batch(snapfab: Path, repo: Path, entries: list, jobs: int, logf) -> None
         log_path = repo / f"gen-chunk-{shard}.log"
         handle = open(log_path, "w", encoding="utf-8")  # noqa: PTH123
         logf(f"seed: shard {shard + 1}/{jobs} ({len(chunk)} images)")
+        command = [str(snapfab), "batch", str(chunk_path)]
+        if generators:
+            command = [str(snapfab), "batch", str(chunk_path), "-g", generators]
         processes.append(
             (
                 handle,
                 subprocess.Popen(
-                    [str(snapfab), "batch", str(chunk_path)],
+                    command,
                     cwd=str(repo),
                     stdout=handle,
                     stderr=subprocess.STDOUT,
@@ -108,10 +121,15 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--profile", default="release", help="build profile for the default binary path"
     )
+    parser.add_argument("--large", action="store_true", help="synthesize large (~5MB) images")
+    parser.add_argument("--bytes", type=int, default=0, help="pad each image to at least N bytes")
     args = parser.parse_args(argv)
 
     if args.count < 1:
         raise SystemExit("error: --count must be >= 1")
+    target_bytes = args.bytes
+    if args.large and target_bytes == 0:
+        target_bytes = DEFAULT_LARGE_BYTES
     repo = Path(args.repo)
     repo.mkdir(parents=True, exist_ok=True)
     stale = sorted(repo.glob("*.jpg"))
@@ -126,7 +144,7 @@ def main(argv=None) -> int:
     entries = (
         load_template(Path(args.template), args.count)
         if args.template
-        else synth_entries(args.count)
+        else synth_entries(args.count, large=args.large)
     )
     (repo / "manifest.json").write_text(
         "[" + ",".join(json.dumps(e, separators=(",", ":")) for e in entries) + "]\n"
@@ -145,10 +163,18 @@ def main(argv=None) -> int:
 
     jobs = args.jobs or min(4, os.cpu_count() or 1)
     start = time.perf_counter()
-    run_batch(snapfab, repo, entries, jobs, print)
+    generators = "julia" if args.large else ""
+    run_batch(snapfab, repo, entries, jobs, print, generators=generators)
     jpgs = sorted(repo.glob("*.jpg"))
     if len(jpgs) != args.count:
         raise SystemExit(f"error: expected {args.count} images, found {len(jpgs)}")
+    if target_bytes:
+        for path in jpgs:
+            size = path.stat().st_size
+            if size < target_bytes:
+                with open(path, "ab") as handle:  # noqa: PTH123
+                    handle.write(b"\x00" * (target_bytes - size))
+    jpgs = sorted(repo.glob("*.jpg"))
     wall_s = time.perf_counter() - start
     total = sum(path.stat().st_size for path in jpgs)
     print(f"seeded {len(jpgs)} images ({total} bytes) in {wall_s:.1f}s -> {repo}")
