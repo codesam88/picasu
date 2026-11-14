@@ -40,6 +40,7 @@
         "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDupeGroupDeleteTest",
+        "asset-aspects.qnt:aspectsMoveCrashHealsFromSidecarTest",
         "asset-aspects.qnt:aspectsMoveVsSweepTest",
         "asset-aspects.qnt:aspectsN5SplitWindowTest",
         "asset-aspects.qnt:aspectsRemoveTornWindowTest",
@@ -133,6 +134,7 @@
         "asset-aspects.qnt:aspectsDroppedSidecarTest",
         "asset-aspects.qnt:aspectsDupeGroupDeleteTest",
         "asset-aspects.qnt:aspectsMemberWriteAlbumCascadeTest",
+        "asset-aspects.qnt:aspectsMoveCrashHealsFromSidecarTest",
         "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest",
         "asset-aspects.qnt:aspectsMoveVsSweepTest",
         "asset-aspects.qnt:aspectsN5SplitWindowTest",
@@ -245,6 +247,7 @@
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDupeGroupDeleteTest",
         "asset-aspects.qnt:aspectsMemberWriteAlbumCascadeTest",
+        "asset-aspects.qnt:aspectsMoveCrashHealsFromSidecarTest",
         "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest",
         "asset-aspects.qnt:aspectsN5SplitWindowTest",
         "asset-aspects.qnt:aspectsRemoveTornWindowTest",
@@ -328,6 +331,7 @@
         "asset-aspects.qnt:MoveLeaseAcquire",
         "asset-aspects.qnt:MoveRowRewrite",
         "asset-aspects.qnt:aspectsAbsorbedSweepTest",
+        "asset-aspects.qnt:aspectsMoveCrashHealsFromSidecarTest",
         "asset-aspects.qnt:aspectsMoveInFlightThenRewriteSweepTest"
       ]
     },

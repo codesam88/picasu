@@ -284,6 +284,25 @@ module asset_aspects {
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  // @scope SCOPE-10
+  run aspectsMoveCrashHealsFromSidecarTest = init
+    .then(ExternalSidecarModify("p1"))
+    .then(WorkerApplySuccess)
+    .then(ExternalDelete("p3"))
+    .then(SubmitWatcherRemove("p3"))
+    .then(WorkerRemoveApply)
+    .then(ApiMoveFsOnly("p1", "p3"))
+    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(ScanRoot("r1"))
+    .then(SweepRoot("r1"))
+    .then(WorkerApplySuccess)
+    .then(WorkerApplySuccess)
+    .then(WorkerApplySuccess)
+    .then(all { assert(AspectsAligned and assetByPath.keys().contains("p3") and metadataPayload.get(assetByPath.get("p3")).sidecar == files.get("p3").sidecar and files.get("p3").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
   // @operation OP-7
   // @scope SCOPE-5
   // @assumes ASS-6

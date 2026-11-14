@@ -20,9 +20,9 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 33 convergence runs + 27 asset-aspect runs (60 executed including imported runs; `just quint-check`); simulator traces are advisory.
+- Proof: 33 convergence runs + 28 asset-aspect runs (61 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
-- Requirements: 12 verified, 3 open (REQ-1, REQ-8, REQ-15).
+- Requirements: 13 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
@@ -382,13 +382,13 @@ Derived from: G2. Owner: scheduler and lifecycle (tasks/looper/backstop.rs, task
 
 Gate: Scheduler test: a cycle slower than the interval does not overlap itself and leaves exactly one coalesced follow-up; cycle completion is defined by the queue draining.
 
-### REQ-15: FS-first sidecar preservation across moves (status: open)
+### REQ-15: FS-first sidecar preservation across moves (status: verified)
 
 A sidecar that exists is preserved and moved together with the asset file on every move path: copy-before-rename for asset moves, atomic tree rename for dir moves. A crash in the move window never leaves user-authored metadata unreachable: the destination sidecar is present before the file rename, and the crash-heal re-index rebuilds the metadata payload from the destination sidecar. The three move DB writes are additionally performed in one transaction to avoid stale-mapping residue and dupe-group churn (secondary; hygiene).
 
 Derived from: G5. Owner: assign_album.rs::move_asset_into_album / move_album_into_album; asset_store move helper.
 
-Gate: Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.
+Gate: Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run aspectsMoveCrashHealsFromSidecarTest asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.
 
 ## Implementation
 
@@ -560,11 +560,15 @@ Tests:
 
 Limits: No slow-cycle gate-hold test; completion is observed through the job's terminal state rather than a queue-depth probe.
 
-### REQ-15: FS-first sidecar preservation across moves (status: open)
+### REQ-15: FS-first sidecar preservation across moves (status: verified)
 
-Implementation: assign_album.rs::move_asset_into_album already copies the destination sidecar (atomic temp-write) before the file rename and removes the old sidecar after; dir moves ride the atomic tree rename. Remaining: the destination-sidecar pinning test, the model run for the crash-heal rebuild, and the single-txn move write (asset_store helper, apply_dir_move_plans precedent).
+Implementation: assign_album.rs::move_asset_into_album copies the destination sidecar (atomic temp-write) before the file rename and removes the old sidecar after; dir moves ride the atomic tree rename. The three move DB writes (ASSET_BY_ID + ASSET_BY_PATH remove/insert) now run in one transaction via asset_store::move_asset_mapping (mirroring apply_dir_move_plans), avoiding stale-mapping residue. Crash-heal rebuilds metadata from the destination sidecar.
 
-Tests: none yet.
+Tests:
+
+- `router::put::assign_album::tests::move_preserves_destination_sidecar_and_removes_source_sidecar`
+- `router::put::assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar`
+- `storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn`
 
 ## Events
 
