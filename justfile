@@ -112,7 +112,7 @@ frontend-build: frontend-ci-maybe
 
 [private]
 frontend-build-maybe:
-	test -d frontend/dist/assets || just frontend-build
+    test -d frontend/dist/assets || just frontend-build
 
 # npm audit
 [group('frontend')]
@@ -309,20 +309,21 @@ auth-matrix-check:
     fi
     echo "auth-matrix artifacts match the generated output"
 
-# Install 'plan' and 'gloss' tools (pinned)
+# Install 'plan' tool (pinned)
 [group('deps')]
 install-plan:
-    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
+    ./scripts/deps-install.sh --tool plan
 
 # Auto-format .plan task frontmatter and body
 [group('utils')]
 plan-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
+    plan format
 
 # check .plan task frontmatter correctness
 [group('utils')]
-plan-lint:
-    node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
+plan-check:
+    plan lint
+    plan format --check
 
 # Validate the eventual-consistency event catalog
 [group('utils')]
@@ -395,22 +396,22 @@ docs-serve:
 # format markdown (README, docs, .plan, utils)
 [group('docs')]
 docs-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
+    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../utils/**/*.md'
 
 # check markdown (docs, .plan, utils)
 [group('docs')]
 docs-check:
-    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
+    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../utils/**/*.md'
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
 # Format everything
 [group('global')]
-format: backend-format utils-format frontend-format docs-format
+format: backend-format utils-format frontend-format docs-format plan-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
+check: backend-check utils-check frontend-check docs-check plan-check events-check catalog-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check branches-prune-test
 
 # run full test suite
 [group('global')]
@@ -546,7 +547,7 @@ precommit:
         just utils-test
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
-        just plan-lint
+        just plan-check
         just docs-check
     fi
     if echo "$changed" | grep -q '^frontend/'; then

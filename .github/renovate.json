@@ -58,6 +58,14 @@
     {
       "customType": "regex",
       "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["PLAN_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "codesam88/tablethat",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
       "matchStrings": ["MDBOOK_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "rust-lang/mdBook",
       "datasourceTemplate": "github-releases",
