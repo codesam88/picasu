@@ -91,6 +91,14 @@
       "matchStrings": ["QUINT_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "@informalsystems/quint",
       "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["^scripts/deps/versions\\.env$"],
+      "matchStrings": ["HYPERFINE_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "sharkdp/hyperfine",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     }
   ]
 }

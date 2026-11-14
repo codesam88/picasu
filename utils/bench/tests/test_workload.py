@@ -22,6 +22,7 @@ import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
 BENCH = Path(__file__).resolve().parent.parent
@@ -745,11 +746,73 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg["workload"], "control")
             self.assertEqual(cfg["storm_clients"], 8)
             self.assertEqual(cfg["storm_ops"], 10)
-            self.assertEqual(cfg["storm_margin_s"], 5.0)
+            self.assertEqual(cfg["storm_margin_s"], 0.5)
             for bad in ("storm-everything", "CONTROL", ""):
                 with self.subTest(workload=bad):
                     with self.assertRaises(workload.ConfigError):
                         workload.config_from_env(dict(base, WORKLOAD=bad))
+
+    def test_missing_hyperfine_fails_fast(self):
+        workload = load_workload()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cell = tmp_path / "cell"
+            cell.mkdir()
+            make_cookie_jar(cell / "cookies.txt")
+            info = cell / "launcher-info.json"
+            info.write_text(
+                json.dumps(
+                    {
+                        "base_url": "http://127.0.0.1:9999",
+                        "cookie_jar": str(cell / "cookies.txt"),
+                        "pid": 1,
+                        "out": str(cell),
+                        "mode": "bench",
+                    }
+                )
+            )
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            env = {
+                "LAUNCHER_INFO": str(info),
+                "IMAGE_REPO": str(repo),
+            }
+            with mock.patch.object(workload.shutil, "which", return_value=None):
+                with self.assertRaises(workload.ConfigError) as ctx:
+                    workload.config_from_env(env)
+                self.assertIn(
+                    "hyperfine is required — run: just install hyperfine", str(ctx.exception)
+                )
+
+    def test_empty_hyperfine_bin_fails_fast(self):
+        workload = load_workload()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cell = tmp_path / "cell"
+            cell.mkdir()
+            make_cookie_jar(cell / "cookies.txt")
+            info = cell / "launcher-info.json"
+            info.write_text(
+                json.dumps(
+                    {
+                        "base_url": "http://127.0.0.1:9999",
+                        "cookie_jar": str(cell / "cookies.txt"),
+                        "pid": 1,
+                        "out": str(cell),
+                        "mode": "bench",
+                    }
+                )
+            )
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            env = {
+                "LAUNCHER_INFO": str(info),
+                "IMAGE_REPO": str(repo),
+                "HYPERFINE_BIN": "",
+            }
+            with self.assertRaises(workload.ConfigError) as ctx:
+                workload.config_from_env(env)
+            self.assertIn("hyperfine is required — run: just install hyperfine", str(ctx.exception))
 
     def test_no_snapfab_needed_without_generation(self):
         workload = load_workload()
