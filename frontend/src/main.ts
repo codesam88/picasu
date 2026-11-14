@@ -21,9 +21,9 @@ import * as directives from 'vuetify/directives'
 import { useConstStore } from '@/store/constStore'
 import { registerVuetifyTheme } from '@/script/utils/vuetifyTheme'
 import { setupMainAxiosInterceptor } from '@/axiosInterceptor'
-
+import { installErrorLog } from '@/script/utils/errorLog'
 setupMainAxiosInterceptor()
-
+installErrorLog()
 // Create Vue application instance
 const app = createApp(App)
 

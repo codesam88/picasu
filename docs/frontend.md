@@ -244,6 +244,12 @@ The config page at `ConfigPage.vue` contains:
 
 ---
 
+## Report Issue Dialog
+
+An in-app "Report issue..." dialog is launched from the logged-in user dropdown in `GalleryBar.vue` (`data-testid="user-menu-report-issue"`). It posts the user's message plus optional diagnostics — app version, route, user agent, timestamp, viewport, and recent client error messages — directly from the browser to a Web3Forms inbox (third-party transit). The Web3Forms access key is read from `VITE_WEB3FORMS_KEY`, falling back to a built-in project default; set the env var to override the destination inbox.
+
+---
+
 ## API Calls (frontend → backend)
 
 | Endpoint              | Used by                             | Returns                        |
