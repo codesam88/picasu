@@ -7,10 +7,12 @@ area: backend
 
 ## Goal
 
-Replace the no-op marker attributes with a real annotation crate whose
-macros validate operation/event ids at compile time, so a typo'd or
-renamed OP id fails `cargo check -p picasu` instead of surfacing only in
-`just check`.
+The implementation-tracking layer — backend markers, the
+`pipeline/operations.json` + `events.json` catalogs, and the model
+`@operation` tags — is checked against the implementation and the Quint
+model, so semantic drift between them fails a gate. Coverage is the
+focus; the read-model freshness lane was dropped (quint-asset-aspects
+step 13) as not a modeling fit.
 
 ## Decisions
 
@@ -19,130 +21,147 @@ renamed OP id fails `cargo check -p picasu` instead of surfacing only in
   ignores non-Rust files, so the `.qnt` specs, `.mjs` scripts and
   `pipeline/*.json` catalogs stay where they are and the macros read the
   catalogs they validate from their own crate dir
-  (`CARGO_MANIFEST_DIR/pipeline`). Attribute path becomes
-  `#[quint::operation("OP-N")]`. Known constraint: a proc-macro crate
-  cannot export ordinary Rust items; later trace hooks must be
-  macro-generated code, and a runtime library facet would need a second
-  crate.
-- 2026-11-13: rung 0 is compile-time id validation, not a registry. The
+  (`CARGO_MANIFEST_DIR/pipeline`). Attribute path is
+  `#[quint::operation("OP-N")]` / `#[quint::event("NAME")]`. Known
+  constraint: a proc-macro crate cannot export ordinary Rust items; a
+  runtime library facet would need a second crate.
+- 2026-11-13 (rung 0): compile-time id validation, not a registry. The
   macro parses the attribute argument, checks it against the catalog
-  (serde_json), and emits `compile_error!` on an unknown id;
-  `build.rs` sets `rerun-if-changed` on the catalog JSONs so catalog
-  edits re-expand backend markers. Registry mechanisms
-  (`inventory`/`linkme`/build-script registry) stay rung-1 material.
-- 2026-11-13 (rung 1): rung 1 chose smarter attribute-aware text parsing
-  in `operations-check.mjs` over a macro-emitted registry. A marker is
+  (serde_json), and emits `compile_error!` on an unknown id; `build.rs`
+  sets `rerun-if-changed` on the catalog JSONs so catalog edits re-expand
+  backend markers.
+- 2026-11-13 (rung 1): the gate is smarter attribute-aware text parsing
+  in `operations-check.mjs`, not a macro-emitted registry. A marker is
   counted only on a real attribute line (`^\s*#\[[...]`), so comment,
-  doc-comment, string and `#[cfg(test)]`-gated mentions no longer
-  satisfy the scan; the comment hole closes structurally enough for the
-  gate without new dependencies. No `inventory`/`linkme` added; the
-  workspace carries neither. Registry remains available for rung 2+ if
-  needed but is not used now.
-- `operations-check.mjs` remains the catalog-side backstop and is now the
-  rung 1 gate (marker coverage + event ownership + report-only model
-  coverage). Aspect read/write set and order drift stay rung 2+ because
-  markers carry only ids.
+  doc-comment, string and `#[cfg(test)]`-gated mentions no longer satisfy
+  the scan. No new dependencies (workspace carries neither `inventory`
+  nor `linkme`); a macro-emitted registry remains available if a later
+  rung needs one.
+- 2026-11-13 (rung 1): event ownership rule — an event is owned iff it
+  appears in at least one operation's `events` array; ownerless events
+  must be read-only boundary events (`API_READ_*`) or recovery events
+  (`PROCESS_CRASH`, `DERIVED_STORE_LOSS`, `DB_LOSS`), enumerated in
+  `EVENT_OWNER_EXEMPT` in `operations-check.mjs`.
+- 2026-11-13 (rung 1): CI placement — the gate stays in the `just check`
+  aggregate; no separate CI job without user sign-off.
+- 2026-11-14 (rung 2 reframe): runtime trace reconciliation is replaced
+  by property-anchored test coverage (rungs 2–5 below). Rationale: a
+  model↔code trace comparator needs a manual action↔function mapping
+  layer and becomes a second drift surface in exactly the dimension it
+  exists to detect; the interesting scenarios are the nondeterministic
+  ones (per-scenario harness cost, cf. the writer contract test); and
+  aspect-access tracing would need a second annotation surface on the
+  `asset_store` helpers. The model's named invariants and deterministic
+  runs, chained through `traceability.json` (REQ → model evidence → code
+  test), give the same detection power for the properties that matter at
+  far lower cost. The old rung-4 coverage report is subsumed by the
+  rung-3 matrix; dylint stays parked.
 
-## Current state
+## Current state (2026-11-14)
 
-- `utils/quint` is now a proc-macro crate (`quint`) that validates
-  operation/event ids at expansion time; `utils/quint-annotations` is gone.
-- Review findings 2026-11-13 that rung 0 must close:
-  - The text scan accepts a comment, doc-comment, string or
-    `#[cfg(test)]` mention as a marker, so the README claim
-    ("every tracked operation has at least one implementation site",
-    README.md:110-113) is not actually enforced. The plan file
-    documents the limitation; README oversells it.
-  - A marker naming the wrong-but-existing OP id compiles and passes
-    (re-mapping the implementation site silently).
-  - `quint-annotations` is missing from the `-p` lists in `justfile`
-    `utils-format`/`utils-check`/`utils-test`; CI runs `just
-utils-check`, so the crate is never fmt/lint/tested.
-- `pipeline/operations.json` maps OP-1..OP-12 to events, four-aspect
-  reads/writes, guards, status and N nodes; `events.json` carries the
-  event names.
-- `asset-aspects.qnt` tags new actions with `@operation`; existing
-  actions are mostly untagged.
+- Rung 0 done: `utils/quint` is a validating proc-macro crate; markers on
+  12 cataloged OPs; `-p quint` wired into the justfile utils recipes;
+  README states what is and is not enforced; `utils/quint-annotations`
+  never landed on main (spec-only carry-over history).
+- Rung 1 landed in `operations-check.mjs`: attribute-aware marker
+  parsing; bidirectional OP↔marker coverage with per-OP marker counts
+  printed; event ownership enforced; guarded OPs without a model
+  `@operation` tag are report-only (1 remains after step-11 tagging of
+  MemberWrite/AlbumTaskApply).
+- Model: `asset-aspects.qnt` carries per-asset aspect state
+  (assetById/assetByPath/dupeIndex/metadataPayload/thumbPresent/
+  albumPending) and named invariants per guard (e.g.
+  `SweepRemoveBatchSkipsPresentFile`, `AlbumStatsConsistentWhenDrained`);
+  `Converged` is cross-table alignment.
+- Catalogs: `operations.json` guards were re-verified against the merged
+  pipeline (quint-asset-aspects step 8) but remain free text — not yet
+  linked to named model vals.
+- `traceability.json` links REQs → model evidence (vals, runs); no
+  code-test refs yet.
+- Runtime: the aspect suite is ~4 min at 10k samples/run; `just check`
+  exceeds 10 min. CI placement and sample counts are open (below).
 
 ## Steps
 
-0. **[done] Migrate to `utils/quint` with expansion-time validation** —
-   crate at `utils/quint`, expansion-time validation, backstop unchanged.
-   add `Cargo.toml` (`proc-macro = true`, serde_json dep) and `src/lib.rs`
-   to `utils/quint`; implement `operation`/`event` macros that validate
-   the id against `pipeline/operations.json` / `events.json`; drop
-   `utils/quint-annotations`; rename the backend dep and all markers;
-   add `-p quint` to the three justfile utils recipes; fix README's
-   oversold guarantee to state what is and is not enforced.
-   Exit: a typo'd OP id in a backend marker fails `cargo check`;
-   `just check` green; `utils/quint-annotations` gone.
+0. **[done] Rung 0 — migrate to `utils/quint` with expansion-time
+   validation.** Crate + macros + `build.rs` rerun-if-changed; drop of
+   the never-on-main no-op crate; justfile `-p quint` wiring; README
+   guarantee corrected. Exit met: a typo'd OP id in a backend marker
+   fails `cargo check` (demoed with `OP-99`).
 
-1. **[partial] Static coverage gate** — rung 1 subset landed in
-   `operations-check.mjs`: marker-on-real-item via attribute-aware
-   parsing (comment/doc-comment/string/`#[cfg(test)]` mentions do not
-   count); reverse coverage (every cataloged OP needs a marker, unknown
-   marker id fails); event-to-operation ownership (every event owned by
+1. **[partial] Rung 1 — static coverage gate.** Landed: marker-on-real-
+   item (attribute-aware parsing), reverse coverage (cataloged OP without
+   marker fails; unknown marker id fails), event ownership (rule above),
+   report-only model coverage. Exit met for: missing/extra OP, event
+   ownership, comment-satisfies-scan hole (demoed by commenting out a
+   real marker and by removing an event from its owner). Not met:
+   aspect read/write set matching and wrong-but-valid id correctness —
+   markers carry only ids; see rungs 2/5.
 
-   > =1 operation or explicitly exempt read/recovery event, with reasons
-   > recorded in the gate); report-only (non-failing) guarded OPs without
-   > a model `@operation` tag. Deferred to rung 2+: aspect read/write set
-   > matching between catalog and implementation (markers carry only ids,
-   > so this needs runtime trace or a richer annotation), wrong-but-valid
-   > id correctness against the function, and order drift. CI placement:
-   > stays in the `just check` aggregate (no separate CI job) per user
-   > sign-off; recorded here. Event ownership rule: an event is owned iff
-   > it appears in at least one operation's `events` array; events with no
-   > owner must be read-only boundary events (`API_READ_*`) or recovery
-   > events (`PROCESS_CRASH`, `DERIVED_STORE_LOSS`, `DB_LOSS`), enumerated
-   > in `EVENT_OWNER_EXEMPT` in `operations-check.mjs`.
-   > Exit met for: missing/extra OP, event ownership, comment-satisfies-scan
-   > hole. Not met for: aspect read/write set matching (deferred).
+2. **[open] Rung 2a — property linkage.** `operations.json` guard
+   strings reference named model vals (e.g.
+   `SweepRemoveBatchSkipsPresentFile`), and the gate validates that each
+   referenced val exists in the `.qnt` (specs-check already catalogs
+   declarations, so this is a cheap cross-check). Tag the last guarded
+   untagged OP; once the untagged count is 0, flip reverse coverage from
+   report-only to failing.
+   Exit: a guard naming a nonexistent model val fails the gate; no
+   report-only warnings remain.
 
-2. **[ ] Runtime trace reconciliation** — feature-gate operation
-   entry/exit and aspect access traces; drive each boundary event
-   scenario and compare the observed operation/aspect sequence with the
-   expected sequence from `operations.json`/the model.
-   Explore first: instrumentation overhead and cfg surface, async and
-   closure coverage, which aspect accessors need instrumentation, trace
-   format, and how much of the model can produce expected sequences.
-   Exit: covered event scenarios fail when operations or aspect access
-   order drift.
+3. **[open] Rung 2b — coverage matrix.** `traceability.json` gains
+   code-test refs per property; a report shows property → model evidence
+   → code test in one place, with properties lacking a backend test
+   visible as gaps (report-only first). The gate validates that test refs
+   point at existing test functions, mirroring the model-symbol check.
+   Exit: the matrix is generated, reviewable, and drift between the
+   three layers is visible in one report.
 
-3. **[ ] Dylint local rules** — enforce type-resolved local invariants
-   such as lease/resolve before mutation, aspect mutators confined to
-   annotated operations, and annotated operations reachable from an
-   event handler.
-   Explore first: HIR/typeck vs MIR dataflow, false-positive rate,
-   nightly/dylint maintenance cost, and which rules are worth a lint
-   versus runtime trace or typestate.
-   Exit: agreed local rules fail at lint time without blocking valid
-   interleavings.
+4. **[open] Rung 2c — close the gaps.** Add the missing backend tests,
+   TDD, one at a time, highest-value first. Backlog seeded by the
+   review sketches: upload-gets-indexed (delete the
+   `submit_uploaded_path` call while every catalog check stays green —
+   a code test must catch it), sweep never prunes a row whose file is
+   present, dupe-group-conditioned thumbnail reap, N5 split-window heal,
+   album-stats bounded staleness with late member write.
+   Exit: every linked property has a code test or an explicit exemption
+   with a recorded reason.
 
-4. **[ ] Model guidance and coverage report** — generate an
-   operation/aspect/event matrix and a model coverage report that shows
-   modeled versus unmodeled operations, model actions without code
-   anchors, and deferred nodes.
-   Explore first: direction of source of truth (code annotations vs
-   model), report schema, generated doc integration, and how the matrix
-   guides model edits without letting code silently define the model.
-   Exit: the report is reviewable and a drift between model and
-   implementation is visible in one place.
+5. **[open, optional] Rung 2d — test-only operation ledger.** Only if
+   sequencing gaps remain after 2c: the macros emit
+   `quint_log(op)`/`quint_log(event)` at fn entry under `cfg(test)`, and
+   a few hand-picked interleaving tests assert the expected sequence
+   (sweep-vs-move, upload-vs-scan). Explicitly NOT a generic tracing
+   layer and no aspect-access instrumentation. Exit: the picked
+   scenarios fail on order drift; nothing else changes.
 
-5. **Not relevant: taint/flow analysis** — MIRAI/Flowistry/Charon are
+6. **[parked] Dylint local rules.** Lease/resolve-before-mutation,
+   mutators confined to annotated operations, annotated operations
+   reachable from an event handler. Revisit only when a specific rule
+   justifies the HIR/lint maintenance cost against the test-based
+   coverage above.
+
+7. **Not relevant: taint/flow analysis.** MIRAI/Flowistry/Charon are
    data-flow tools; revisit only if a specific provenance property
    (for example sidecar bytes reaching a row) cannot be checked by the
    layers above.
 
 ## Open questions
 
-- Whether the docs layer (`docs/quint-modeling.md`, justfile
-  `quint-check` comment) is updated as part of rung 0 or the separate
-  spec-alignment pass in `quint-asset-aspects`.
-- Registry mechanism for rung 1: decided — not needed; smarter
-  attribute-aware text parsing in `operations-check.mjs` suffices. Macro-
-  emitted registry remains available for rung 2+ if needed.
-- Whether trace instrumentation (rung 2) is test-only or a dedicated
-  harness.
-- Dylint budget and which local rules justify it.
-- CI placement: decided (rung 1) — stays in the `just check` aggregate;
-  no separate CI job without user sign-off. Recorded in step 1.
+- Wrong-but-valid id correctness (a marker naming OP-1 where OP-9 was
+  intended): detectable only by rung-2d sequences or human review;
+  decide whether any gate is worth it or it stays a review concern.
+- Suite runtime: reduce per-run sample counts in the aggregate lane
+  (keep 10k for deep runs), split recipes, or a dedicated drift job —
+  `just check` exceeds 10 min and grows with every modeled node.
+- `EVENT_OWNER_EXEMPT` maintenance: who may add entries and with what
+  evidence, so the ownership rule does not erode.
+- Guard-string rewrite in rung 2a touches every `operations.json`
+  guard: one pass, or batched with the next catalog edit.
+
+## Terminology rule
+
+Model/catalog names map to code entities per
+`utils/quint/README.md` ("Model-to-code terminology"): direct stable
+mappings take the code name; conceptual names carry doc-comment anchors;
+renames are separate small commits; unqualified role words ("the
+writer") are not used.
