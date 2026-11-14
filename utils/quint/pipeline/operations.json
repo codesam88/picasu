@@ -28,6 +28,11 @@
         "process_file try-and-abort (path_epoch::superseded over baseline/current generation and is_busy)",
         "path_epoch per-path lease"
       ],
+      "properties": [
+        "PathMapIdentityCoherence",
+        "DupeIndexBijective",
+        "aspectsScanSupersedesEditTest"
+      ],
       "status": "guarded",
       "nodes": [
         "N1"
@@ -46,6 +51,11 @@
       ],
       "guards": [
         "none \u2014 fire-and-forget intake enqueue"
+      ],
+      "properties": [
+        "UploadDoesNotMintRow",
+        "UploadingIsNotCorrupt",
+        "aspectsUploadVsSweepPruneTest"
       ],
       "status": "open",
       "nodes": [
@@ -74,6 +84,10 @@
         "validate_paths_unchanged",
         "dupe-group thumbnail reap (get_dupe_ids)"
       ],
+      "properties": [
+        "aspectsDupeGroupDeleteTest",
+        "aspectsRemoveTornWindowTest"
+      ],
       "status": "guarded",
       "nodes": [
         "N2",
@@ -100,6 +114,10 @@
       "guards": [
         "move_asset_into_album path lease (lease_paths source/dest)",
         "resolve-then-validate (record.path re-read under lease)"
+      ],
+      "properties": [
+        "aspectsN5SplitWindowTest",
+        "PathMapIdentityCoherence"
       ],
       "status": "open",
       "nodes": [
@@ -131,6 +149,9 @@
         "expired-pending drain (drain_expired_pending_from)",
         "apply_dir_move_plans single write txn"
       ],
+      "properties": [
+        "aspectsDirMoveCrashHealsTest"
+      ],
       "status": "open",
       "nodes": [
         "N3",
@@ -157,6 +178,10 @@
       "guards": [
         "rotate persists sidecar before thumbnail/DB",
         "path_epoch::lease_paths"
+      ],
+      "properties": [
+        "aspectsRotateVsScanTest",
+        "aspectsRotateTest"
       ],
       "status": "guarded",
       "nodes": [
@@ -185,6 +210,10 @@
         "write sidecar then store",
         "best-effort rollback on failure"
       ],
+      "properties": [
+        "aspectsSidecarPartialEditTest",
+        "AlbumStatsNoPhantom"
+      ],
       "status": "open",
       "nodes": [
         "N4"
@@ -205,6 +234,11 @@
         "album_task computes stats outside the txn from a ref_data per-entry snapshot",
         "write-txn album liveness re-check with re-mark pending on race",
         "member writes re-mark pending via mark_album_for_update"
+      ],
+      "properties": [
+        "AlbumStatsConsistentWhenDrained",
+        "AlbumStatsNoPhantom",
+        "aspectsAlbumCascadeRaceAbsorbedTest"
       ],
       "status": "guarded",
       "nodes": [
@@ -232,6 +266,12 @@
         "sweep_remove_batch exact-path resolution with path.exists skip",
         "path_epoch::is_busy"
       ],
+      "properties": [
+        "SweepRecheckBatchClean",
+        "SweepRemoveBatchSkipsPresentFile",
+        "aspectsAbsorbedSweepTest",
+        "aspectsCleanSweepTest"
+      ],
       "status": "guarded",
       "nodes": [
         "N2",
@@ -252,6 +292,9 @@
       "guards": [
         "generate_thumbnail_for_image writes via temp sibling and atomic rename"
       ],
+      "properties": [
+        "aspectsThumbLossTest"
+      ],
       "status": "open",
       "nodes": [
         "N6"
@@ -267,6 +310,7 @@
         "db_row"
       ],
       "guards": [],
+      "properties": [],
       "status": "open",
       "nodes": [
         "N9"
@@ -293,6 +337,10 @@
         "submit_watcher_remove bumps the path generation",
         "process_watcher_remove checks is_superseded and path_epoch::is_busy",
         "handle_removed_file restores the exact path for sweep_remove_batch resolution"
+      ],
+      "properties": [
+        "aspectsWatcherRemoveTest",
+        "SweepRemoveBatchSkipsPresentFile"
       ],
       "status": "open",
       "nodes": [

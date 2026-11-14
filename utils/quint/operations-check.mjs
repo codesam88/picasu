@@ -63,6 +63,21 @@ const eventNames = new Set(
 const entries = Array.isArray(opsDoc.operations) ? opsDoc.operations : []
 if (!Array.isArray(opsDoc.operations)) fail('operations.json: operations must be an array')
 
+// Collect model declarations (val/def/action/run) from utils/quint/pipeline/*.qnt,
+// mirroring specs-check.mjs, so `properties` entries can be validated.
+const modelDecls = new Set()
+if (existsSync(base)) {
+  for (const name of readdirSync(base)) {
+    if (!name.endsWith('.qnt')) continue
+    let text = ''
+    try { text = readFileSync(join(base, name), 'utf8') } catch { continue }
+    for (const line of text.split('\n')) {
+      const m = line.match(/^\s*(?:pure\s+)?(action|val|def|run)\s+([A-Za-z_]\w*)/)
+      if (m) modelDecls.add(m[2])
+    }
+  }
+}
+
 const seenIds = new Set()
 
 // Validate operations.json entries.
@@ -97,6 +112,17 @@ for (let i = 0; i < entries.length; i++) {
   if (!Array.isArray(op.guards)) fail(`${label}: guards must be an array`)
   else for (const g of op.guards) {
     if (typeof g !== 'string') fail(`${label}: guard must be string`)
+  }
+
+  // `properties` is optional (new in rung 2a): model declaration names
+  // (val/def/action/run from utils/quint/pipeline/*.qnt) that pin the OP's
+  // guarded behavior. Shape mirrors guards validation.
+  if (op.properties !== undefined) {
+    if (!Array.isArray(op.properties)) fail(`${label}: properties must be an array`)
+    else for (const p of op.properties) {
+      if (typeof p !== 'string' || p.trim() === '') fail(`${label}: property entry must be non-empty string`)
+      else if (!modelDecls.has(p)) fail(`operation '${op.id}' references unknown model declaration '${p}'`)
+    }
   }
 
   if (!STATUSES.has(op.status)) fail(`${label}: status '${op.status}' not in guarded/open/deferred`)
@@ -218,25 +244,27 @@ if (eventsDoc && Array.isArray(eventsDoc.events)) {
   }
 }
 
-// Validate @operation OP-N tags in asset-aspects.qnt.
-const qntPath = join(repoRoot, 'utils', 'quint', 'pipeline', 'asset-aspects.qnt')
+// Validate @operation OP-N tags across utils/quint/pipeline/*.qnt.
 const modelTaggedOps = new Set()
-if (existsSync(qntPath)) {
-  const text = readFileSync(qntPath, 'utf8')
-  const re = /@operation\s+(OP-\d+)/g
-  let m
-  while ((m = re.exec(text)) !== null) {
-    const id = m[1]
-    if (!EXPECTED_OPS.has(id)) fail(`@operation tag in asset-aspects.qnt: unknown '${id}'`)
-    else modelTaggedOps.add(id)
+if (existsSync(base)) {
+  for (const name of readdirSync(base)) {
+    if (!name.endsWith('.qnt')) continue
+    const text = readFileSync(join(base, name), 'utf8')
+    const re = /@operation\s+(OP-\d+)/g
+    let m
+    while ((m = re.exec(text)) !== null) {
+      const id = m[1]
+      if (!EXPECTED_OPS.has(id)) fail(`@operation tag in ${name}: unknown '${id}'`)
+      else modelTaggedOps.add(id)
+    }
   }
 }
 
-// Report-only: guarded OPs without a model @operation tag.
+// Guarded OPs must carry a model @operation tag (failing since rung 2a).
 const guardedOps = entries.filter((o) => o?.status === 'guarded').map((o) => o.id)
 const guardedUntagged = guardedOps.filter((id) => !modelTaggedOps.has(id))
 if (guardedUntagged.length > 0) {
-  warn(`report-only: guarded OPs without a model @operation tag: ${guardedUntagged.join(', ')}`)
+  for (const id of guardedUntagged) fail(`guarded OP '${id}' has no model @operation tag`)
 } else {
   console.log('report: all guarded OPs have a model @operation tag')
 }

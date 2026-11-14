@@ -320,6 +320,7 @@ module eventual_consistency {
     leasedPaths' = leasedPaths,
   }
 
+  // @operation OP-6
   // @scope SCOPE-5
   action RotateWriteSidecar(p: str): bool = all {
     p.in(PATHS),
@@ -336,6 +337,7 @@ module eventual_consistency {
     leasedPaths' = leasedPaths.union(Set(p)),
   }
 
+  // @operation OP-6
   // @scope SCOPE-5
   action RotateFinish(p: str): bool = all {
     p.in(PATHS),
