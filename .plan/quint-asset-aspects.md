@@ -310,14 +310,21 @@ survey claim contradicts a done item — re-check the tree first.
   rollback leaves sidecar ahead of cache. [open, re-verified
   2026-11-13: commit_metadata_edits still leases edited paths and
   best-effort rolls back; no new guard; LWW remains.]
-- N5 assign cross-table writes (`put`/`remove` path maps, per-record
-  dir-move loop) are separate txns; crash splits them. [open,
-  re-verified 2026-11-13: move_asset_into_album writes ASSET_BY_ID and
-  ASSET_BY_PATH in separate txns; apply_dir_move_plans is a single txn
-  (dir-move only).] Batch-2 (2026-11-14) narrowed residual: the scan/sweep
-  heal (aspectsN5SplitWindowTest) restores cross-table coherence but allocates
-  a NEW asset id for the moved file, so identity preservation across a
-  mid-move crash remains an open hazard; N5 stays [open]. (touches M3 wording).
+- N5 assign/move crash window. [reframed 2026-11-14 (FS-first, REQ-15):
+  assetIds are indices — the goal is sidecar preservation, and the code
+  already implements it (destination sidecar copied before the file
+  rename, assign_album.rs:251-261; atomic tree renames carry sidecars on
+  dir moves). A crash mid-move heals by fs-wins adoption: rescan
+  indexes the file from the destination sidecar and mints a fresh asset
+  id — a new id is NOT a hazard; the DB/thumbnail residue is derived
+  state that convergence rebuilds. Remaining (REQ-15): pin the
+  invariant (test: destination sidecar exists after a move, old sidecar
+  removed; model run: crash-heal rebuilds a non-empty metadata payload
+  from the destination sidecar) and, secondarily, fold the three move
+  DB writes into one txn (asset_store helper, apply_dir_move_plans
+  precedent) to avoid stale-mapping residue and dupe-group churn —
+  hygiene, not the goal. Batch-2 test aspectsN5SplitWindowTest covers
+  the residue-heal half under the old framing.]
 - N6 derived corruption undetected; regen frame can orphan on unknown
   id. [open, re-verified 2026-11-13: generate_thumbnail_for_image uses
   atomic temp-file rename only; no content validation; regen frame can

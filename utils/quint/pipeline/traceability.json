@@ -27,7 +27,7 @@
     {
       "id": "ASS-3",
       "kind": "ASS",
-      "title": "filesystem is the source of truth: asset bytes, path, sidecar",
+      "title": "filesystem first: external FS modifications are authoritative and adopted by convergence",
       "refs": [
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
