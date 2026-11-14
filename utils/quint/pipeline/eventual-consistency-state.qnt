@@ -134,15 +134,38 @@ module eventual_consistency_state {
     hasShareList: false
   }
 
+  // @scope SCOPE-1
+  pure def initialAlbumAssetRecord: AssetRecord = {
+    assetId: 0,
+    kind: "album",
+    path: "",
+    contentHash: -1,
+    albumId: -1,
+    isTrashed: false
+  }
+
+  // @scope SCOPE-1
+  pure def initialAlbumMetadataRecord: MetadataRecord = {
+    kind: "album",
+    assetHash: 0,
+    modified: 0,
+    fileSize: 0,
+    sidecar: 0,
+    converged: true,
+    itemCount: 0,
+    itemSize: 0,
+    hasShareList: false
+  }
+
   // @scope SCOPE-1: initial converged state; runs diverge from here.
   action init: bool = all {
     files' = PATHS.mapBy(p => initialFile(p)),
     generations' = PATHS.mapBy(_ => 0),
     intake' = Set(),
-    assetById' = Map(1 -> initialAssetRecord("p1"), 2 -> initialAssetRecord("p2"), 3 -> initialAssetRecord("p3"), 4 -> initialAssetRecord("p4"), 5 -> initialAssetRecord("p5")),
+    assetById' = Map(0 -> initialAlbumAssetRecord, 1 -> initialAssetRecord("p1"), 2 -> initialAssetRecord("p2"), 3 -> initialAssetRecord("p3"), 4 -> initialAssetRecord("p4"), 5 -> initialAssetRecord("p5")),
     assetByPath' = Map("p1" -> 1, "p2" -> 2, "p3" -> 3, "p4" -> 4, "p5" -> 5),
     dupeIndex' = Map(0 -> Set(1, 2, 3, 4, 5), 1 -> Set(), 2 -> Set()),
-    metadataPayload' = Map(1 -> initialMetadataRecord("p1"), 2 -> initialMetadataRecord("p2"), 3 -> initialMetadataRecord("p3"), 4 -> initialMetadataRecord("p4"), 5 -> initialMetadataRecord("p5")),
+    metadataPayload' = Map(0 -> initialAlbumMetadataRecord, 1 -> initialMetadataRecord("p1"), 2 -> initialMetadataRecord("p2"), 3 -> initialMetadataRecord("p3"), 4 -> initialMetadataRecord("p4"), 5 -> initialMetadataRecord("p5")),
     thumbPresent' = Map(0 -> true, 1 -> false, 2 -> false),
     albumPending' = Set(),
     sweepPending' = ROOTS.mapBy(_ => false),

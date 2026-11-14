@@ -639,12 +639,17 @@ module asset_aspects {
     unprocessable' = unprocessable,
   }
 
+  // @operation OP-7
+  // @scope SCOPE-5
   // @exempt environment
   // @assumes ASS-6
+  // MemberWrite maps to a metadata/flag write to a media asset that calls
+  // mark_album_for_update for the asset's containing album (flush_tree.rs /
+  // assign_album.rs / create_dir_album.rs).
   action MemberWrite(p: str): bool = all {
     p.in(PATHS),
     assetByPath.keys().contains(p),
-    albumPending' = albumPending.union(Set(assetByPath.get(p))),
+    albumPending' = if (assetById.keys().contains(assetById.get(assetByPath.get(p)).albumId) and assetById.get(assetById.get(assetByPath.get(p)).albumId).kind == "album") { albumPending.union(Set(assetById.get(assetByPath.get(p)).albumId)) } else { albumPending },
     assetById' = assetById,
     assetByPath' = assetByPath,
     dupeIndex' = dupeIndex,
@@ -660,15 +665,46 @@ module asset_aspects {
     unprocessable' = unprocessable,
   }
 
+  // @operation OP-8
+  // @scope SCOPE-12
   // @exempt environment
   // @assumes ASS-6
-  action AlbumTaskApply: bool = all {
-    albumPending.size() > 0,
-    albumPending' = Set(),
+  // AlbumTaskApply maps to tasks/actor/album.rs::album_task: compute stats
+  // from a per-entry snapshot of the album's members outside the write txn,
+  // write itemCount/itemSize into the album's metadataPayload, and drain
+  // albumPending for that album. Guard: albumId in albumPending and the
+  // album record exists and is live (assetById + metadataPayload kind album).
+  action AlbumTaskApply(albumId: int): bool = {
+    // @assumes ASS-6
+    // @scope SCOPE-12
+    val members = assetById.keys().filter(id => assetById.get(id).albumId == albumId)
+    // @assumes ASS-6
+    // @scope SCOPE-12
+    val memberCount = members.size()
+    // @assumes ASS-6
+    // @scope SCOPE-12
+    val memberSize = members.fold(0, (acc, id) => acc + (if (metadataPayload.keys().contains(id)) metadataPayload.get(id).fileSize else 0))
+    all {
+    albumId.in(albumPending),
+    assetById.keys().contains(albumId),
+    assetById.get(albumId).kind == "album",
+    metadataPayload.keys().contains(albumId),
+    metadataPayload.get(albumId).kind == "album",
+    metadataPayload' = metadataPayload.put(albumId, {
+      kind: metadataPayload.get(albumId).kind,
+      assetHash: metadataPayload.get(albumId).assetHash,
+      modified: metadataPayload.get(albumId).modified,
+      fileSize: metadataPayload.get(albumId).fileSize,
+      sidecar: metadataPayload.get(albumId).sidecar,
+      converged: metadataPayload.get(albumId).converged,
+      itemCount: memberCount,
+      itemSize: memberSize,
+      hasShareList: metadataPayload.get(albumId).hasShareList
+    }),
+    albumPending' = albumPending.exclude(Set(albumId)),
     assetById' = assetById,
     assetByPath' = assetByPath,
     dupeIndex' = dupeIndex,
-    metadataPayload' = metadataPayload,
     thumbPresent' = thumbPresent,
     files' = files,
     generations' = generations,
@@ -678,6 +714,7 @@ module asset_aspects {
     leasedPaths' = leasedPaths,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
+  }
   }
 
   // @assumes ASS-3
@@ -730,10 +767,73 @@ module asset_aspects {
 
   // @assumes ASS-6
   // @scope SCOPE-5
+  // @scope SCOPE-12
   run aspectsMemberWriteAlbumCascadeTest = init
     .then(MemberWrite("p1"))
-    .then(all { assert(albumPending.size() > 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
-    .then(AlbumTaskApply)
-    .then(all { assert(albumPending.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(albumPending.contains(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(AlbumTaskApply(0))
+    .then(all { assert(not(albumPending.contains(0)) and metadataPayload.get(0).itemCount == 5), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  // @scope SCOPE-12
+  // Clean cascade: member write marks pending -> AlbumTaskApply drains ->
+  // stats consistent with members.
+  run aspectsAlbumCascadeCleanTest = init
+    .then(MemberWrite("p1"))
+    .then(AlbumTaskApply(0))
+    .then(all { assert(not(albumPending.contains(0)) and metadataPayload.get(0).itemCount == 5 and AlbumStatsConsistentWhenDrained and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  // @scope SCOPE-12
+  // Race absorbed: a late member write re-marks pending after a cascade;
+  // the next AlbumTaskApply converges (no lost update).
+  run aspectsAlbumCascadeRaceAbsorbedTest = init
+    .then(MemberWrite("p1"))
+    .then(AlbumTaskApply(0))
+    .then(MemberWrite("p2"))
+    .then(all { assert(albumPending.contains(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(AlbumTaskApply(0))
+    .then(all { assert(not(albumPending.contains(0)) and AlbumStatsConsistentWhenDrained and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-6
+  // @scope SCOPE-5
+  // @scope SCOPE-12
+  // Concurrent member writes with one cascade in between: pending remains
+  // until drained; stats never claim membership assetById refutes.
+  run aspectsAlbumCascadeConcurrentMembersTest = init
+    .then(MemberWrite("p1"))
+    .then(AlbumTaskApply(0))
+    .then(MemberWrite("p2"))
+    .then(MemberWrite("p3"))
+    .then(all { assert(albumPending.contains(0) and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(AlbumTaskApply(0))
+    .then(all { assert(not(albumPending.contains(0)) and AlbumStatsConsistentWhenDrained and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, albumPending' = albumPending, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+
+  // @assumes ASS-6
+  // @scope SCOPE-12
+  // Drained => consistent: once an album is not pending, its stats exactly
+  // match its current members in assetById.
+  val AlbumStatsConsistentWhenDrained = assetById.keys().forall(id =>
+    assetById.get(id).kind == "album" implies (
+      not(id.in(albumPending)) implies (
+        metadataPayload.keys().contains(id) and
+        metadataPayload.get(id).itemCount == assetById.keys().filter(m => assetById.get(m).albumId == id).size() and
+        metadataPayload.get(id).itemSize == assetById.keys().filter(m => assetById.get(m).albumId == id).fold(0, (acc, m) => acc + (if (metadataPayload.keys().contains(m)) metadataPayload.get(m).fileSize else 0))
+      )
+    )
+  )
+
+  // @assumes ASS-6
+  // @scope SCOPE-12
+  // Stats never claim membership assetById refutes (no phantom members).
+  val AlbumStatsNoPhantom = assetById.keys().forall(id =>
+    assetById.get(id).kind == "album" implies (
+      metadataPayload.keys().contains(id) and
+      metadataPayload.get(id).itemCount <= assetById.keys().filter(m => assetById.get(m).albumId == id).size() and
+      metadataPayload.get(id).itemSize <= assetById.keys().filter(m => assetById.get(m).albumId == id).fold(0, (acc, m) => acc + (if (metadataPayload.keys().contains(m)) metadataPayload.get(m).fileSize else 0))
+    )
+  )
 
 }

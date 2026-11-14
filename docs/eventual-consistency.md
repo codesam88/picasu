@@ -20,7 +20,7 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 33 convergence runs + 24 asset-aspect runs (57 executed including imported runs; `just quint-check`); simulator traces are advisory.
+- Proof: 33 convergence runs + 27 asset-aspect runs (60 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 3 committed, 1 queued, 1 dropped.
 - Requirements: 12 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 3 held, 1 partial, 2 unverified, 1 open.
@@ -236,6 +236,16 @@ Bound: SweepRemoveBatchApply drains one re-checked batch, pruning a candidate on
 Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
 
 Lifting: Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).
+
+Provisional: the safety argument is weaker than the implementation guarantee.
+
+### SCOPE-12: Album stats cascade micro-stage
+
+Bound: AlbumTaskApply(albumId) is a single step: member snapshot, stats write and albumPending drain happen together; album liveness re-check and re-mark are abstracted into the guard (album record must exist/live) plus MemberWrite's mark_album_for_update effect.
+
+Why safe: Matches album_task: stats are computed outside the write txn from a ref_data snapshot, the write txn re-checks album liveness and re-marks pending when an album appears between txns, and member writes re-mark pending via mark_album_for_update so concurrent writes surface as bounded staleness rather than silent loss.
+
+Lifting: Split into read-album txn + outside-txn compute + write-txn liveness re-check + re-mark; model the ref_data snapshot as a separate action (deferred).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 

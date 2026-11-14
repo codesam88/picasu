@@ -211,7 +211,7 @@ check` or the individual recipes.
     model the superseded-batch case. Makes N2's move-vs-sweep window
     visible; each lifted micro-stage gets a scope entry
     (bound/why-safe/lifting).
-11. [partial] stage A done: per-asset aspect split; stage B (album-level cascade + dir-album pending drain) next. Widen the aspect boundary from 4 to 8 aspects (media bytes,
+11. [done] stage A + stage B done: per-asset aspect split plus album-level cascade and pending drain. Widen the aspect boundary from 4 to 8 aspects (media bytes,
     sidecar bytes, rendition, identity, metadata payload, dupe
     membership, album stats, tree epoch). Rewrites the predicates the
     slice sits on; prerequisite for N13 (stats vs member writes),
@@ -294,9 +294,42 @@ survey claim contradicts a done item — re-check the tree first.
   2026-11-13: sweep_remove_batch is exact-path only with a path.exists
   skip; no hash-group reap.] Model the exact-path rule.
 - N13 cascade album stats vs concurrent member writes (from C11).
-  [guarded, re-verified 2026-11-13: album_task computes from a ref_data
-  per-entry snapshot outside the txn; the write txn re-checks album
-  liveness and re-marks pending on a race.] Bounded staleness, no lost
-  update.
+  [modeled/guarded 2026-11-14: AlbumTaskApply(albumId) (OP-8) computes
+  itemCount/itemSize from a per-entry snapshot of the album's members
+  (assetById albumId linkage + metadataPayload fileSize), writes them into
+  the album's metadataPayload, drains albumPending; MemberWrite(p) (OP-7)
+  marks the containing album pending. Runs:
+  aspectsMemberWriteAlbumCascadeTest, aspectsAlbumCascadeCleanTest,
+  aspectsAlbumCascadeRaceAbsorbedTest, aspectsAlbumCascadeConcurrentMembersTest.
+  Invariants: AlbumStatsConsistentWhenDrained, AlbumStatsNoPhantom.
+  Bounded staleness, no lost update.]
 
 - 2026-11-13: step 11 stage A done — split `rows` into assetById/assetByPath/dupeIndex/metadataPayload/thumbPresent/albumPending; predicates/runs/invariants rewritten; new runs N5 split window, dupe-group delete, remove torn window, member-write album cascade. Code-semantics surprises: Remove paths (asset_store.rs::remove_asset) writes id/path/dupe tables in separate txns as verified; flush_tables writes all four tables in one txn per asset; Move (assign_album.rs::move_asset_into_album) writes ASSET_BY_ID separately from ASSET_BY_PATH (N5). No invariant failures found.
+
+- 2026-11-14: step 11 stage B done — modeled album stats cascade and
+  pending drain. Phase-1 answers: (1) trigger = albumId in albumPending,
+  marked by mark_album_for_update from flush_tree.rs (after media
+  write/remove), assign_album.rs::assign/assign_dir, create_dir_album.rs,
+  init_dir_album_cache; races re-mark by the same entry points. (2) stats
+  computed in album_task phase 2 outside any txn from the ref_data
+  per-entry snapshot (snapshot_tree taken once per cascade in
+  writer.rs::cascade_after_write); written into the album's
+  MetadataRecord (item_count/item_size) in phase 3. (3) write-txn
+  re-check is album liveness only (record+payload still an Album); on
+  appeared-between-txns mismatch (phase1 none, phase3 live) it re-marks
+  pending via mark_album_for_update and drops the txn; member changes are
+  NOT re-checked in the txn. (4) a member write can commit between the
+  ref_data snapshot and the stats write; absorbed because that write's
+  flush marks the album pending again (mark_album_for_update), so the
+  next cascade recomputes — bounded staleness, no lost update; the
+  write-txn re-check does not detect member changes. (5) DIR_ALBUM_CACHE
+  is derivable from ASSET_BY_ID album assets plus the in-memory cache, so
+  no model state beyond albumPending is needed. Model changes: state init
+  seeds album record 0 containing all media (albumId 0); MemberWrite now
+  marks the containing album pending; AlbumTaskApply(albumId) writes
+  stats and drains; SCOPE-12 added; invariants
+  AlbumStatsConsistentWhenDrained and AlbumStatsNoPhantom. Runs:
+  aspectsMemberWriteAlbumCascadeTest, aspectsAlbumCascadeCleanTest,
+  aspectsAlbumCascadeRaceAbsorbedTest, aspectsAlbumCascadeConcurrentMembersTest.
+  No invariant failures. Tree-epoch bump and expire deferred to step 13
+  (read-model lane).
