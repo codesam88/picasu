@@ -512,7 +512,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
         self.assertIn("PICASU_OBSERVER_STATS", m)
 
     def test_observer_flag_recording_on_off(self):
-        for val, expected in ((None, "unset"), ("1", "1"), ("0", "0")):
+        for val, expected in ((None, "1"), ("1", "1"), ("0", "0")):
             out = self.root / f"cell-{val}"
             env = base_env(OUT=str(out))
             if val is not None:
@@ -523,6 +523,19 @@ class ImageHomeAndManifestTest(unittest.TestCase):
             m = json.loads((cfg["out"] / "run-manifest.json").read_text())
             self.assertEqual(m["PICASU_OBSERVER_STATS"], expected)
             self.assertEqual(m["observer_stats"], expected)
+            self.assertEqual(m["effective_observer_stats"], expected)
+
+    def test_observer_flag_recording_debug_passes_through(self):
+        for val, expected in ((None, "unset"), ("1", "1"), ("0", "0")):
+            out = self.root / f"cell-debug-{val}"
+            env = base_env(OUT=str(out), BUILD_PROFILE="debug")
+            if val is not None:
+                env["PICASU_OBSERVER_STATS"] = val
+            cfg = bl.config_from_env(env)
+            bl.prepare_out(cfg)
+            bl.write_manifest(cfg, env)
+            m = json.loads((cfg["out"] / "run-manifest.json").read_text())
+            self.assertEqual(m["PICASU_OBSERVER_STATS"], expected)
 
     def test_local_dataset_recorded_as_out_local(self):
         out = self.root / "cell"
