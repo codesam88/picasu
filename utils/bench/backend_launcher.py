@@ -28,9 +28,15 @@ Environment contract:
   READY_TIMEOUT_S  readiness budget in seconds (default 120)
   LAUNCH_TIMEOUT_S outer supervision budget; 0 disables (default 0)
   GDB           1 (default) capture thread stacks into the diag bundle
+  PICASU_OBSERVER_STATS  observer stats opt-in (exact "1" enables the per-scan
+                   drain table + wrap lines); bench mode defaults to "1"
+                   unless already present in the environment (explicit "0"
+                   wins); debug mode passes through
 
 bench refuses RUST_LOG (log volume perturbs measurements); debug passes env
-through unstripped.
+through unstripped. PICASU_OBSERVER_STATS defaults to "1" in bench mode
+unless already present in the environment (explicit "0" wins); debug mode
+passes it through untouched.
 
 Artifacts in OUT: server.log, launcher.log, run-manifest.json,
 bootstrap.json, login.json, cookies.txt, launcher-info.json, diag/.
@@ -383,7 +389,10 @@ def _dataset_info(cfg: dict, environ: dict) -> dict:
 def write_manifest(cfg: dict, environ: dict) -> None:
     gi = git_info()
     dataset_info, image_home_str = _dataset_info(cfg, environ)
-    observer_stats = environ.get("PICASU_OBSERVER_STATS", "unset")
+    raw_observer = environ.get("PICASU_OBSERVER_STATS")
+    if raw_observer is None and cfg["mode"] == "bench":
+        raw_observer = "1"
+    observer_stats = raw_observer if raw_observer is not None else "unset"
     binary_sha = sha256_file(cfg["binary"])
     machine = machine_info(cfg["out"])
     (cfg["out"] / "run-manifest.json").write_text(
@@ -517,6 +526,9 @@ def server_env(cfg: dict, environ: dict) -> dict:
     if cfg["mode"] == "bench":
         for name in DIAGNOSTIC_ENV:
             env.pop(name, None)
+        # Bench mode defaults observer stats on; explicit user value wins.
+        if "PICASU_OBSERVER_STATS" not in environ:
+            env["PICASU_OBSERVER_STATS"] = "1"
     return env
 
 
