@@ -235,22 +235,7 @@ check` or the individual recipes.
     decision. Focus moves to coverage (step 12 / annotation rungs).
 14. [open] Close the remaining model gaps (agreed order: model gaps →
     cleanup/debt → rebase/push → scaling+CI deferred last):
-    a. N5 reframed (2026-11-14, user correction): assetIds are indices —
-    the FS-first goal is that a sidecar, when one exists, is preserved
-    and moved together with the asset file; DB/thumbnail corruption is
-    secondary (the payload is derived, rebuilt from the sidecar on
-    rescan). The code already implements the primary invariant:
-    move_asset_into_album copies the destination sidecar (atomic
-    temp-write) BEFORE the file rename (assign_album.rs:251-261), and
-    dir moves ride the atomic tree rename (assign_album.rs:305).
-    Remaining work: (i) pin the invariant — a test asserting the
-    destination sidecar exists after a move (crash-window coverage via
-    the copy-before-rename ordering) plus a model run asserting the
-    crash-heal rebuilds metadata FROM the destination sidecar; (ii)
-    still worth doing secondarily: the three DB writes as one txn
-    (asset_store helper, apply_dir_move_plans precedent) to avoid id
-    churn/dupe-group thrash and stale-mapping residue — hygiene, not
-    the goal violation.
+    a. [done 2026-11-14] N5 pinned: sidecar preservation + crash-heal rebuild + single-txn move write (REQ-15 verified; tests move_preserves_destination_sidecar_and_removes_source_sidecar, move_crash_heal_reindexes_from_destination_sidecar, move_asset_mapping_rewrites_all_tables_in_one_txn; model run aspectsMoveCrashHealsFromSidecarTest).
     b. N6: survey the current regenerate flow (the orphan-on-unknown-id
     claim predates the rework); return REQ-8 or document.
     c. N7/N9/N10: resolve or document each (N7 delayed-metadata is
@@ -310,21 +295,7 @@ survey claim contradicts a done item — re-check the tree first.
   rollback leaves sidecar ahead of cache. [open, re-verified
   2026-11-13: commit_metadata_edits still leases edited paths and
   best-effort rolls back; no new guard; LWW remains.]
-- N5 assign/move crash window. [reframed 2026-11-14 (FS-first, REQ-15):
-  assetIds are indices — the goal is sidecar preservation, and the code
-  already implements it (destination sidecar copied before the file
-  rename, assign_album.rs:251-261; atomic tree renames carry sidecars on
-  dir moves). A crash mid-move heals by fs-wins adoption: rescan
-  indexes the file from the destination sidecar and mints a fresh asset
-  id — a new id is NOT a hazard; the DB/thumbnail residue is derived
-  state that convergence rebuilds. Remaining (REQ-15): pin the
-  invariant (test: destination sidecar exists after a move, old sidecar
-  removed; model run: crash-heal rebuilds a non-empty metadata payload
-  from the destination sidecar) and, secondarily, fold the three move
-  DB writes into one txn (asset_store helper, apply_dir_move_plans
-  precedent) to avoid stale-mapping residue and dupe-group churn —
-  hygiene, not the goal. Batch-2 test aspectsN5SplitWindowTest covers
-  the residue-heal half under the old framing.]
+- N5 assign/move crash window. [pinned 2026-11-14 (REQ-15): sidecar preservation pinned by router::put::assign_album::tests::move_preserves_destination_sidecar_and_removes_source_sidecar; crash-heal rebuild pinned by model run aspectsMoveCrashHealsFromSidecarTest and backend/src/router/put/assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar; single-txn move write via storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn. N5 cross-table split resolved.]
 - N6 derived corruption undetected; regen frame can orphan on unknown
   id. [open, re-verified 2026-11-13: generate_thumbnail_for_image uses
   atomic temp-file rename only; no content validation; regen frame can

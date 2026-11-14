@@ -145,16 +145,20 @@
           "test": "backend/src/router/put/assign_album.rs::move_split_window_scan_and_sweep_heal_cross_table"
         },
         {
+          "model": "aspectsMoveCrashHealsFromSidecarTest",
+          "test": "backend/src/router/put/assign_album.rs::move_crash_heal_reindexes_from_destination_sidecar"
+        },
+        {
           "model": "PathMapIdentityCoherence",
           "test": "backend/src/storage/asset_store.rs::insert_asset_creates_all_mappings"
         }
       ],
-      "status": "open",
+      "status": "guarded",
       "nodes": [
         "N2",
         "N5"
       ],
-      "notes": "move_asset_into_album: N2 guarded by path lease + resolve-then-validate; N5 cross-table split remains open (ASSET_BY_ID and ASSET_BY_PATH written in separate txns), so the operation status is open."
+      "notes": "move_asset_into_album: N2 guarded by path lease + resolve-then-validate; N5 cross-table split resolved (single-txn move write via asset_store::move_asset_mapping; residue window no longer produced; heal is fs-wins from the destination sidecar)."
     },
     {
       "id": "OP-5",
