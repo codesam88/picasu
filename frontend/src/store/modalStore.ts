@@ -15,7 +15,8 @@ const dialogKeys = [
   'showDeleteShareModal',
   'showShareLoginModal',
   'showAlbumInfoModal',
-  'showUserSettingsModal'
+  'showUserSettingsModal',
+  'showReportIssueModal'
 ] as const
 
 export const useModalStore = (isolationId: IsolationId) =>
@@ -34,6 +35,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       showShareLoginModal: boolean
       showAlbumInfoModal: boolean
       showUserSettingsModal: boolean
+      showReportIssueModal: boolean
       /// Album the share dialog targets. The dialog boolean is shared, so a
       /// mounted dialog only opens for the album named here.
       shareAlbumId: string | null
@@ -51,6 +53,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       showShareLoginModal: false,
       showAlbumInfoModal: false,
       showUserSettingsModal: false,
+      showReportIssueModal: false,
       shareAlbumId: null
     }),
     getters: {
