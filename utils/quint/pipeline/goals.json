@@ -35,7 +35,10 @@
           "ref": "eventual-consistency-goal.qnt:Converged"
         }
       ],
-      "assumptions": ["ASS-3", "ASS-6"],
+      "assumptions": [
+        "ASS-3",
+        "ASS-6"
+      ],
       "notes": "Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (ASS-7). With the watcher off the backstop is the sole trigger."
     },
     {
@@ -49,7 +52,11 @@
           "ref": "eventual-consistency.qnt:boundedConvergenceTest"
         }
       ],
-      "assumptions": ["ASS-3", "ASS-6", "ASS-7"],
+      "assumptions": [
+        "ASS-3",
+        "ASS-6",
+        "ASS-7"
+      ],
       "notes": "N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (ASS-7); with it disabled there is no periodic bound."
     },
     {
@@ -59,7 +66,8 @@
       "description": "A 200 response implies subsequent reads observe the mutation.",
       "anchors": [],
       "assumptions": [],
-      "notes": "Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. For upload, a 200 implies stored, not visible: visibility follows background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs). Read-model freshness after writer batches is bounded by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation. Assign and delete have no verified equivalent barrier."    },
+      "notes": "Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. For upload, a 200 implies stored, not visible: visibility follows background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs). Read-model freshness after writer batches is bounded by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation. Assign and delete have no verified equivalent barrier."
+    },
     {
       "id": "G4",
       "decision": "dropped",
@@ -68,6 +76,22 @@
       "anchors": [],
       "assumptions": [],
       "notes": "Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision."
+    },
+    {
+      "id": "G5",
+      "decision": "committed",
+      "title": "FS-first metadata durability",
+      "description": "User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file (copy-before-rename on asset moves, atomic tree renames on dir moves). DB tables and thumbnails are derived caches; their loss or tearing is not a violation because rescan rebuilds them. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.",
+      "anchors": [
+        {
+          "kind": "code",
+          "ref": "backend/src/router/put/assign_album.rs::move_asset_into_album (sidecar copy-before-rename)"
+        }
+      ],
+      "assumptions": [
+        "ASS-3"
+      ],
+      "notes": "Designates the state-role hierarchy: authoritative = media bytes + sidecar bytes; derived = redb tables + thumbnails; exception = DB-only non-derived state. N10 (share edit racing scan flush) is the first designated exception to guard."
     }
   ]
 }

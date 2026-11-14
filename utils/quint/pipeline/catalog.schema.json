@@ -46,12 +46,26 @@
           ]
         },
         "status": {
-          "enum": ["established", "proposed"]
+          "enum": [
+            "established",
+            "proposed"
+          ]
         },
-        "description": { "type": "string" },
-        "actor": { "type": "string" },
-        "target": { "type": "string" },
-        "preconditions": { "type": "array", "items": { "type": "string" } },
+        "description": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "affected_state": {
           "type": "array",
           "items": {
@@ -66,74 +80,147 @@
             ]
           }
         },
-        "code_ref": { "type": "string" },
+        "code_ref": {
+          "type": "string"
+        },
         "effects": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "faults": {
           "type": "array",
-          "items": { "$ref": "#/definitions/fault" }
+          "items": {
+            "$ref": "#/definitions/fault"
+          }
         },
-        "notes": { "type": "string" },
+        "notes": {
+          "type": "string"
+        },
         "variants": {
           "type": "array",
-          "items": { "$ref": "#/definitions/variant" }
+          "items": {
+            "$ref": "#/definitions/variant"
+          }
         }
       },
       "additionalProperties": false
     },
     "variant": {
-      "required": ["name", "code_ref", "notes"],
+      "required": [
+        "name",
+        "code_ref",
+        "notes"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "code_ref": { "type": "string" },
-        "notes": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "code_ref": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "fault": {
-      "required": ["fault", "consequence", "status"],
+      "required": [
+        "fault",
+        "consequence",
+        "status"
+      ],
       "properties": {
-        "fault": { "type": "string" },
-        "consequence": { "type": "string" },
-        "status": { "enum": ["covered", "open", "tbd"] }
+        "fault": {
+          "type": "string"
+        },
+        "consequence": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "covered",
+            "open",
+            "tbd"
+          ]
+        }
       },
       "additionalProperties": false
     },
     "goal": {
-      "required": ["id", "decision", "title", "description", "anchors"],
+      "required": [
+        "id",
+        "decision",
+        "title",
+        "description",
+        "anchors"
+      ],
       "properties": {
-        "id": { "enum": ["G0", "G1", "G2", "G3", "G4"] },
+        "id": {
+          "enum": [
+            "G0",
+            "G1",
+            "G2",
+            "G3",
+            "G4",
+            "G5"
+          ]
+        },
         "decision": {
           "description": "proposed: S6 must commit, queue or drop.",
-          "enum": ["proposed", "committed", "queued", "dropped"]
+          "enum": [
+            "proposed",
+            "committed",
+            "queued",
+            "dropped"
+          ]
         },
-        "title": { "type": "string" },
-        "description": { "type": "string" },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
         "anchors": {
           "description": "What grounds the goal; empty means unanchored.",
           "type": "array",
-          "items": { "$ref": "#/definitions/anchor" }
+          "items": {
+            "$ref": "#/definitions/anchor"
+          }
         },
         "assumptions": {
           "description": "Goal holds only under these assumption ids.",
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "notes": { "type": "string" }
+        "notes": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "anchor": {
-      "required": ["kind", "ref"],
+      "required": [
+        "kind",
+        "ref"
+      ],
       "properties": {
         "kind": {
           "description": "predicate: .qnt symbol; code: backend source; test: run name.",
-          "enum": ["predicate", "code", "test"]
+          "enum": [
+            "predicate",
+            "code",
+            "test"
+          ]
         },
-        "ref": { "type": "string" }
+        "ref": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
@@ -165,10 +252,13 @@
             "REQ-11",
             "REQ-12",
             "REQ-13",
-            "REQ-14"
+            "REQ-14",
+            "REQ-15"
           ]
         },
-        "title": { "type": "string" },
+        "title": {
+          "type": "string"
+        },
         "statement": {
           "description": "The obligation the implementation must satisfy.",
           "type": "string"
@@ -177,16 +267,30 @@
           "description": "Committed goals this requirement derives from.",
           "type": "array",
           "minItems": 1,
-          "items": { "enum": ["G0", "G1", "G2", "G3", "G4"] }
+          "items": {
+            "enum": [
+              "G0",
+              "G1",
+              "G2",
+              "G3",
+              "G4"
+            ]
+          }
         },
-        "owner": { "type": "string" },
+        "owner": {
+          "type": "string"
+        },
         "gate": {
           "description": "The test that fails without the behaviour; open until the test exists.",
           "type": "string"
         },
         "status": {
           "description": "open: no gate yet; imposed: gate exists; verified: gate green on the implementation.",
-          "enum": ["open", "imposed", "verified"]
+          "enum": [
+            "open",
+            "imposed",
+            "verified"
+          ]
         },
         "implementation": {
           "description": "What changed and how it satisfies the requirement; concise review text.",
@@ -195,7 +299,9 @@
         "tests": {
           "description": "Gate test names; a verified requirement needs at least one.",
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "limits": {
           "description": "Known scope limit or residual gap, when one exists.",
@@ -205,7 +311,13 @@
       "additionalProperties": false
     },
     "scope": {
-      "required": ["id", "title", "bound", "why_safe", "lifting"],
+      "required": [
+        "id",
+        "title",
+        "bound",
+        "why_safe",
+        "lifting"
+      ],
       "properties": {
         "id": {
           "enum": [
@@ -223,7 +335,9 @@
             "SCOPE-12"
           ]
         },
-        "title": { "type": "string" },
+        "title": {
+          "type": "string"
+        },
         "bound": {
           "description": "The precise statement of what the model does not represent.",
           "type": "string"
@@ -244,7 +358,12 @@
       "additionalProperties": false
     },
     "assumption": {
-      "required": ["id", "title", "owner", "status"],
+      "required": [
+        "id",
+        "title",
+        "owner",
+        "status"
+      ],
       "properties": {
         "id": {
           "enum": [
@@ -257,13 +376,24 @@
             "ASS-7"
           ]
         },
-        "title": { "type": "string" },
-        "owner": { "type": "string" },
+        "title": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
         "status": {
           "description": "held: in place; partial: some mechanisms exist; unverified: nothing checks it; open: nothing provides it.",
-          "enum": ["held", "partial", "unverified", "open"]
+          "enum": [
+            "held",
+            "partial",
+            "unverified",
+            "open"
+          ]
         },
-        "status_note": { "type": "string" }
+        "status_note": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     }
