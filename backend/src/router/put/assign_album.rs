@@ -278,15 +278,10 @@ fn move_asset_into_album(
     updated.path.clone_from(&new_path);
     updated.album_id = Some(album_id);
 
-    // Update ASSET_BY_ID.
-    asset_store::put_asset_by_id(&updated)
-        .or_raise(|| (ErrorKind::Database, "Failed to update asset"))?;
-
-    // Update ASSET_BY_PATH: remove old, add new.
-    asset_store::remove_asset_by_path(&record.path)
-        .or_raise(|| (ErrorKind::Database, "Failed to remove old path mapping"))?;
-    asset_store::put_asset_by_path(&new_path, asset_id)
-        .or_raise(|| (ErrorKind::Database, "Failed to add new path mapping"))?;
+    // Rewrite ASSET_BY_ID + ASSET_BY_PATH in one transaction (see
+    // `asset_store::move_asset_mapping`), mirroring `apply_dir_move_plans`.
+    asset_store::move_asset_mapping(&record.path, &new_path, &updated)
+        .or_raise(|| (ErrorKind::Database, "Failed to update asset mapping"))?;
 
     // The metadata payload holds no path or album fields — composition
     // derives both from the updated AssetRecord — so no METADATA_TABLE
@@ -1009,5 +1004,209 @@ mod tests {
             }
             txn.commit().expect("commit cleanup");
         }
+    }
+
+    fn read_metadata_payload(
+        asset_id: &str,
+    ) -> Option<crate::model::metadata_record::MetadataRecord> {
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_read()
+            .expect("begin read txn for metadata");
+        let table = txn
+            .open_table(crate::storage::db::METADATA_TABLE)
+            .expect("open METADATA_TABLE");
+        table.get(asset_id).ok().flatten().map(|g| g.value())
+    }
+
+    #[test]
+    fn move_preserves_destination_sidecar_and_removes_source_sidecar() {
+        use crate::tests::bootstrap::{build_test_rocket, lock, setup_image_home, test_image_home};
+        use crate::tests::fixtures::auth_cookie;
+        use crate::tests::fixtures::authz::create_album;
+        use rocket::http::{ContentType, Status};
+        use serde_json::json;
+
+        let _guard = lock();
+        let client = setup_image_home();
+        let (source_album_id, asset_id) = create_album(&client, "/writes/photo.jpg");
+
+        let resp = client
+            .post("/post/create_dir_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(json!({ "parentAlbumId": source_album_id, "name": "dest" }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "create dest album: {resp:?}");
+        let target_album_id = resp.into_string().expect("album id").trim().to_string();
+
+        let image_home = test_image_home();
+        let source_dir = image_home.join("writes");
+        let dest_dir = image_home.join("writes/dest");
+        let source_photo = source_dir.join("photo.jpg");
+        let source_sidecar = source_dir.join("photo.xmp");
+        let dest_photo = dest_dir.join("photo.jpg");
+        let dest_sidecar = dest_dir.join("photo.xmp");
+
+        let sidecar_bytes = b"<xmp>tags/rating</xmp>";
+        std::fs::write(&source_sidecar, sidecar_bytes).expect("write source sidecar");
+
+        let before_payload = read_metadata_payload(&asset_id);
+
+        let resp = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(
+                json!({
+                    "assetId": asset_id,
+                    "albumId": target_album_id,
+                    "onConflict": "rename"
+                })
+                .to_string(),
+            )
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "assign: {resp:?}");
+
+        assert!(dest_photo.exists(), "destination asset must exist");
+        assert!(!source_photo.exists(), "source asset must be gone");
+        assert!(dest_sidecar.exists(), "destination sidecar must exist");
+        assert!(!source_sidecar.exists(), "source sidecar must be gone");
+        assert_eq!(
+            std::fs::read(&dest_sidecar).expect("read dest sidecar"),
+            sidecar_bytes,
+            "destination sidecar bytes must match"
+        );
+
+        let after_payload = read_metadata_payload(&asset_id);
+        assert_eq!(
+            before_payload, after_payload,
+            "metadata payload must be undisturbed by a successful move"
+        );
+
+        std::fs::remove_dir_all(image_home.join("writes")).ok();
+        crate::tests::bootstrap::reset_backend_state();
+    }
+
+    #[test]
+    fn move_crash_heal_reindexes_from_destination_sidecar() {
+        // Construct the crash residue directly: file + sidecar present at
+        // destination, DB left in the torn state (id table updated to dest
+        // path, path mapping still stale at source). Then drive a rescan/scan
+        // apply of the destination dir and assert the healed row's metadata
+        // payload carries the sidecar's user metadata.
+        use crate::model::abstract_data::AbstractData;
+        use crate::process::hash::blake3_hasher;
+        use crate::storage::asset_store;
+        use crate::tasks::batcher::flush_tree::{flush_tables, sweep_remove_batch};
+        use crate::tests::bootstrap::{lock, reset_backend_state, test_image_home};
+        use snapfab::{PhotoSpec, generate_batch};
+        use std::fs::File;
+
+        let _guard = lock();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        reset_backend_state();
+
+        let root = test_image_home();
+        let src_dir = root.join("move_crash/a");
+        let dst_dir = root.join("move_crash/b");
+        std::fs::create_dir_all(&src_dir).expect("create source dir");
+        std::fs::create_dir_all(&dst_dir).expect("create destination dir");
+        let source = src_dir.join("photo.jpg");
+        let dest = dst_dir.join("photo.jpg");
+        let source_sidecar = src_dir.join("photo.xmp");
+        let dest_sidecar = dst_dir.join("photo.xmp");
+
+        generate_batch(&[PhotoSpec {
+            output: Some(source.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate photo");
+
+        // Seed a sidecar carrying user metadata (tags/rating) at the destination,
+        // mirroring copy-before-rename. A valid XMP packet so the scanner's
+        // sidecar read yields non-default metadata.
+        let sidecar_bytes = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+<dc:subject><rdf:Bag><rdf:li>heal-tag</rdf:li></rdf:Bag></dc:subject>
+<xmp:Rating>5</xmp:Rating>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#;
+        std::fs::write(&dest_sidecar, sidecar_bytes).expect("write dest sidecar");
+
+        let hash = blake3_hasher(File::open(&source).expect("open source")).expect("hash source");
+        // Index the source first (no sidecar metadata on source).
+        let src_data = AbstractData::new(&source, hash).expect("build source data");
+        std::fs::rename(&source, &dest).expect("move file");
+
+        // Destination AbstractData carries the sidecar's user metadata (as a
+        // scan would read it from the .xmp).
+        let xmp = crate::process::xmp::extract_xmp_data_from_file(&dest);
+        assert!(!xmp.tags.is_empty(), "sidecar must yield tags");
+        let mut dest_data = AbstractData::new(&dest, hash).expect("build dest data");
+        if let AbstractData::Image(img) = &mut dest_data {
+            img.object.tags = xmp.tags.clone();
+            img.object.rating = xmp.rating;
+        }
+
+        // Torn DB state: id table updated to dest path, path mapping still at
+        // source (the N5 split window).
+        flush_tables(&[src_data], &[]);
+        let old_id = asset_store::get_asset_id_by_path(&source.to_string_lossy())
+            .expect("read source path")
+            .expect("source row exists");
+        let mut moved = asset_store::get_asset_by_id(old_id.as_str())
+            .expect("read moved record")
+            .expect("moved record exists");
+        moved.path = dest.to_string_lossy().into_owned();
+        asset_store::put_asset_by_id(&moved).expect("id-table write");
+
+        // Drive a rescan of the destination: flush the destination file, then
+        // sweep the stale source mapping.
+        flush_tables(&[dest_data], &[]);
+        sweep_remove_batch(std::slice::from_ref(&source));
+
+        // Healed row at destination must carry the sidecar's user metadata.
+        let new_id = asset_store::get_asset_id_by_path(&dest.to_string_lossy())
+            .expect("read dest path")
+            .expect("dest row exists after heal");
+        let new_record = asset_store::get_asset_by_id(new_id.as_str())
+            .expect("read dest record")
+            .expect("dest record present");
+        assert_eq!(new_record.path, dest.to_string_lossy());
+
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_read()
+            .expect("begin read");
+        let table = txn
+            .open_table(crate::storage::db::METADATA_TABLE)
+            .expect("open meta");
+        let payload = table
+            .get(new_id.as_str())
+            .expect("read payload")
+            .expect("payload present")
+            .value();
+        match payload {
+            crate::model::metadata_record::MetadataRecord::Image(p) => {
+                assert!(!p.tags.is_empty(), "healed payload tags must be non-empty");
+                assert_eq!(
+                    p.rating,
+                    Some(5),
+                    "healed payload rating must come from sidecar"
+                );
+            }
+            _ => panic!("expected image payload"),
+        }
+
+        std::fs::remove_dir_all(root.join("move_crash")).ok();
+        reset_backend_state();
     }
 }
