@@ -109,14 +109,26 @@ def parse_log(outdir: Path) -> dict:
         row["scan_edit_worst"] = max(float(r[1]) for r in rh)
         row["scan_rounds"] = len(rh)
     else:
-        # Previous format: per-round compressed+prefetch hyperfine means.
-        rh_old = re.findall(
-            r"probe round=\d+ .*?hyperfine: compressed-get mean=([\d.]+) s.*?prefetch mean=([\d.]+) s",
+        # Current no-hyperfine fallback: per-round single-shot timings.
+        rh_single = re.findall(
+            r"probe round=\d+ .*?hyperfine: prefetch single=([\d.]+) s \| edit-rating single=([\d.]+) s",
             log,
         )
-        if rh_old:
-            row["scan_thumb_mean"] = float(rh_old[-1][0])
-            row["scan_pref_mean"] = float(rh_old[-1][1])
+        if rh_single:
+            row["scan_pref_median"] = statistics.median(float(r[0]) for r in rh_single)
+            row["scan_edit_median"] = statistics.median(float(r[1]) for r in rh_single)
+            row["scan_pref_worst"] = max(float(r[0]) for r in rh_single)
+            row["scan_edit_worst"] = max(float(r[1]) for r in rh_single)
+            row["scan_rounds"] = len(rh_single)
+        else:
+            # Previous format: per-round compressed+prefetch hyperfine means.
+            rh_old = re.findall(
+                r"probe round=\d+ .*?hyperfine: compressed-get mean=([\d.]+) s.*?prefetch mean=([\d.]+) s",
+                log,
+            )
+            if rh_old:
+                row["scan_thumb_mean"] = float(rh_old[-1][0])
+                row["scan_pref_mean"] = float(rh_old[-1][1])
     # Post-scan hyperfine medians (idle server: mean ~= median, take median
     # for consistency with the during-scan columns).
     m = re.search(r"hyperfine compressed-get: mean=[\d.]+ s median=([\d.]+) s", log)
