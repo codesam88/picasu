@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -217,16 +217,11 @@ superseded pointers only.
 - Absorbed into C9/C10 RED steps (no separate action): EPOCH-01,
   SWEEP-01, M1, M4. CASCADE-01/M2 closed by C11.
 
-### Merge (open — the only remaining item)
+### Merge (done — PR 185 merged 2026-11-13)
 
-- Branch history was squash-reviewed and rewritten (40 → 34 commits,
-  final tree identical to the pre-rewrite tip). 0 commits behind
-  `origin/main`, so no rebase onto `main` is needed; push requires
-  `--force-with-lease` (remote still holds the pre-rewrite chain).
-  Then retarget PR 185 to `main`, read CI, merge. All implementation
-  and gate work above is GREEN locally (full backend suite +
-  spec/catalog/event/quint gates per step); CI is the last unverified
-  gate.
+- Branch history was squash-reviewed and rewritten (40 → 34 commits).
+  PR 185 (`feat/impose-requirements` → `main`) is MERGED with all
+  checks SUCCESS. No further action.
 
 ## Revised designs (2026-11-12; all implemented)
 

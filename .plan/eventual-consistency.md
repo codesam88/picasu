@@ -119,13 +119,12 @@ These constrain the design; they are not assumptions about the world.
   `docs/briefs/inotify-filesystem-watcher.md`
   (watcher mechanics), `docs/briefs/formal-spec-enforcement.md`
   (enforcement pattern, ISA-worked example).
-- **S3 [OPEN]: Honor the rescan flag** — first conclusion. An `Other`
-  event with `Flag::Rescan` (inotify overflow, `notify-8.2.1`) must
-  trigger a full rescan of the affected root instead of being ignored
-  (`start_watcher.rs:273`). This is the mandatory half of the
-  fairness owner, tracked as REQ-5; the model already expresses
-  recovery as `ScanRoot`, so the work is code plus a forced-overflow
-  test.
+- **S3 [DONE]: Honor the rescan flag** — implemented. `handle_event`
+  in `start_watcher.rs` checks `event.need_rescan()` and submits a
+  full rescan of the affected root (`index_album_with_root("/", false, Some(mode))`);
+  mode selection via `rescan_mode_for`. Covered by
+  `rescan_event_submits_a_scan` and REQ-5 (status `verified` in
+  `requirements.json`).
 - **S4 [OPEN]: Recover from watcher errors** — first conclusion. The
   watcher `Err` arm only logs (`error.rs:254`). Retry plus scheduled
   rescan and watch re-establishment, so a half-watching state cannot

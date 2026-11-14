@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: high
 area: tooling
@@ -8,8 +8,8 @@ area: tooling
 ## Notes
 
 Steps 1–8 are implemented (2026-11-06, branch `chore/deps-cleanup`).
-Remaining: renovate rule, `just` version plumbing in CI, shared fetch
-helper (backlog). Per-step status is recorded under Steps.
+Remaining: shared fetch helper (backlog). Renovate rule and `just`
+version plumbing in CI are done. Per-step status is recorded under Steps.
 
 Landed shape (differs from the step-1 sketch): the manifest is
 `scripts/deps/versions.env`, not `tools-pin.env` at root; the installer
@@ -17,8 +17,11 @@ is a run-parts dispatcher `scripts/deps-install.sh` over 14
 `scripts/deps/*.sh` shims, not a single installer. `just` recipes
 delegate to it; no version vars remain in the justfile. Deviations: no
 shared verify helper (each shim duplicates fetch+sha logic — backlog).
-`.github/renovate.json` covers the GitHub/PyPI/crate pins (ffmpeg +
-exiftool stay manual; sha sidecars refresh by hand on bump PRs).
+`.github/renovate.json` covers the GitHub/PyPI/crate pins (12 rules;
+exiftool stays manual — SourceForge has no Renovate datasource; sha
+sidecars refresh by hand on bump PRs). ffmpeg moved off the manual
+list 2026-11-10: `codesam88/FFmpeg-Builds` static tarballs with a
+renovate github-releases rule.
 
 Re-verified 2026-11-06 (original survey 2026-11-04):
 

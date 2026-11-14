@@ -28,7 +28,7 @@ existing tickets (nothing live lost).
 | FEAT7  | `authz-props`                     | open    | high     | backend  |
 | FEAT7  | `flow-model-conformance`          | open    | high     | testing  |
 | FEAT7  | `error-handling-and-activity-log` | open    | high     | frontend |
-| CLEAN4 | `e2e-duplicate-upload-flake`      | backlog | medium   | testing  |
+| CLEAN4 | `e2e-duplicate-upload-flake`      | done    | medium   | testing  |
 | CLEAN5 | (no single ticket)                | done    | medium   | testing  |
 
 ## Quick cleanups
