@@ -216,13 +216,15 @@ check` or the individual recipes.
     membership, album stats, tree epoch). Rewrites the predicates the
     slice sits on; prerequisite for N13 (stats vs member writes),
     dupe/hash-group delete semantics and metadata torn writes.
-12. [open] Coverage ladder (quint-annotation-crate rungs 2a–2d,
-    reworked 2026-11-14 from runtime trace reconciliation to
-    property-anchored test coverage): link `operations.json` guard
-    strings to named model vals (gate-checked), extend traceability with
-    code-test refs, close the missing-test gaps with the review-sketch
-    backlog, and a test-only operation ledger only if sequencing gaps
-    remain. Rationale for the reframe is in that plan's Decisions.
+12. [done 2026-11-14] Coverage ladder complete at rung 2c: guards
+    linked to named model vals (gate-checked), coverage matrix with
+    25/25 properties linked to backend tests, gaps closed (upload
+    window deterministic via HOLD_INTAKE, scan/rotate supersession,
+    cross-table split/torn-remove heals, dupe reap, album-stats
+    staleness bounds, absorbed sweep). Two code findings along the way:
+    sweep_remove_batch now drops dangling path mappings; N5 narrowed
+    (identity loss across a mid-move crash remains — see step 14).
+    Rung 2d dropped (quint-annotation-crate); CI/scaling deferred.
 13. [dropped 2026-11-14] Read-model freshness lane (tree epoch /
     invalidation lag): not a good fit for the model — it would largely
     re-assert the ~1 s bound already given as a limit in the code
@@ -231,6 +233,23 @@ check` or the individual recipes.
     freshness contract (step 7) with docs-eventual-consistency-check as
     enforcement; the tree-epoch/expire aspects stay out of the model by
     decision. Focus moves to coverage (step 12 / annotation rungs).
+14. [open] Close the remaining model gaps (agreed order: model gaps →
+    cleanup/debt → rebase/push → scaling+CI deferred last):
+    a. N5 residual: make the move's cross-table writes atomic
+    (single-txn store helper for put_asset_by_id +
+    remove_asset_by_path + put_asset_by_path) or accept as
+    requirement; then test + model note.
+    b. N6: survey the current regenerate flow (the orphan-on-unknown-id
+    claim predates the rework); return REQ-8 or document.
+    c. N7/N9/N10: resolve or document each (N7 delayed-metadata is
+    rescan-healed; N9 reset should clear the derived store; N10
+    share/cover read-modify-write racing scan flush).
+    d. events.json: fill the 12 TODO code_refs with file::fn anchors
+    (terminology rule).
+    Then cleanup/debt: prune superseded branches (feat/quint-asset-aspects,
+    feat/impose-requirements, spec/quint-index-pipeline — reconcile or
+    dismiss), review the 3 stashes, specs-check warning disposition;
+    then rebase onto origin and push.
 
 ## Interaction nodes (survey 2026-11-12, claims need tree-verification)
 

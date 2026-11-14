@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: backend
@@ -42,6 +42,14 @@ step 13) as not a modeling fit.
   must be read-only boundary events (`API_READ_*`) or recovery events
   (`PROCESS_CRASH`, `DERIVED_STORE_LOSS`, `DB_LOSS`), enumerated in
   `EVENT_OWNER_EXEMPT` in `operations-check.mjs`.
+- 2026-11-14 (ladder conclusion): the coverage ladder is complete at
+  rung 2c — 25/25 properties linked to backend tests that fail when the
+  guard breaks. Rung 2d (test-only operation ledger) is dropped: no
+  current bug class needs sequence-level assertions; revisit only if an
+  ordering bug appears that the property tests cannot catch. Dylint
+  stays parked under the same rule. CI/runtime scaling is deferred until
+  after the model-gap closure, cleanup/debt, and the rebase/push —
+  agreed focus order with the user.
 - 2026-11-13 (rung 1): CI placement — the gate stays in the `just check`
   aggregate; no separate CI job without user sign-off.
 - 2026-11-14 (rung 2 reframe): runtime trace reconciliation is replaced
@@ -138,13 +146,10 @@ step 13) as not a modeling fit.
    Exit: every linked property has a code test or an explicit exemption
    with a recorded reason.
 
-5. **[open, optional] Rung 2d — test-only operation ledger.** Only if
-   sequencing gaps remain after 2c: the macros emit
-   `quint_log(op)`/`quint_log(event)` at fn entry under `cfg(test)`, and
-   a few hand-picked interleaving tests assert the expected sequence
-   (sweep-vs-move, upload-vs-scan). Explicitly NOT a generic tracing
-   layer and no aspect-access instrumentation. Exit: the picked
-   scenarios fail on order drift; nothing else changes.
+5. **[dropped 2026-11-14] Rung 2d — test-only operation ledger.** No
+   current bug class needs sequence-level assertions once every property
+   has a failing-capable backend test; revisit only if an ordering bug
+   appears that the property tests cannot catch.
 
 6. **[parked] Dylint local rules.** Lease/resolve-before-mutation,
    mutators confined to annotated operations, annotated operations
@@ -160,15 +165,12 @@ step 13) as not a modeling fit.
 ## Open questions
 
 - Wrong-but-valid id correctness (a marker naming OP-1 where OP-9 was
-  intended): detectable only by rung-2d sequences or human review;
-  decide whether any gate is worth it or it stays a review concern.
-- Suite runtime: reduce per-run sample counts in the aggregate lane
-  (keep 10k for deep runs), split recipes, or a dedicated drift job —
-  `just check` exceeds 10 min and grows with every modeled node.
-- `EVENT_OWNER_EXEMPT` maintenance: who may add entries and with what
-  evidence, so the ownership rule does not erode.
-- Guard-string rewrite in rung 2a touches every `operations.json`
-  guard: one pass, or batched with the next catalog edit.
+  intended): detectable only by dropped-rung-2d sequences or human
+  review; closed as a review concern.
+- `EVENT_OWNER_EXEMPT` maintenance: additions require a recorded reason
+  in the gate review; no further mechanism for now.
+- Deferred with the scaling pass: suite runtime / sample counts / CI
+  placement (`just check` exceeds 10 min).
 
 ## Terminology rule
 
