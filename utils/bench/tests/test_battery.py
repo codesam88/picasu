@@ -9,10 +9,12 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
 
@@ -322,6 +324,60 @@ class BaselineCheckTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             rc = self.battery.main(["check", str(self.report), "--baselines", str(self.baselines)])
         self.assertEqual(rc, 0)
+
+
+class BatteryWorkloadTimeoutTest(unittest.TestCase):
+    """`run_battery` pins the per-level workload budget for run-cell.
+
+    `battery run` invokes run-cell in-process, so no outer `timeout(1)`
+    bounds a cell the way the justfile recipe does; the budget rides in
+    as `WORKLOAD_TIMEOUT_S` (env-overridable).
+    """
+
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def cell_envs(self, level, *, preset=None):
+        captured = []
+
+        class FakeOrchestrator:
+            def config_from_env(self, env):
+                return env
+
+            def run_cell(self, cfg, env):
+                captured.append(env)
+                return 0
+
+        row = {column: self.battery.NA for column in self.battery.REPORT_COLUMNS}
+        with (
+            mock.patch.dict(os.environ, {}, clear=False),
+            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            mock.patch.object(self.battery, "build_row", return_value=row),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            os.environ.pop("WORKLOAD_TIMEOUT_S", None)
+            if preset is not None:
+                os.environ["WORKLOAD_TIMEOUT_S"] = preset
+            rc = self.battery.run_battery(level, self.root / level)
+        self.assertEqual(rc, 0)
+        return captured
+
+    def test_gate_cells_get_an_1800s_workload_budget(self):
+        envs = self.cell_envs("gate")
+        self.assertEqual(len(envs), len(self.battery.battery_cells("gate")))
+        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "1800" for env in envs))
+
+    def test_scale_cells_get_a_7200s_workload_budget(self):
+        envs = self.cell_envs("scale")
+        self.assertEqual(len(envs), len(self.battery.battery_cells("scale")))
+        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "7200" for env in envs))
+
+    def test_exported_workload_timeout_wins_over_the_level_default(self):
+        envs = self.cell_envs("gate", preset="999")
+        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "999" for env in envs))
 
 
 if __name__ == "__main__":

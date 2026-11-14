@@ -1,7 +1,7 @@
 # Benchmark harness
 
 Benchmark and debug cells for the Picasu backend. The harness is stdlib-only
-Python plus the shell workload driver; it is not part of the server binary.
+Python; it is not part of the server binary.
 
 | Path                  | Role                                                                             |
 | --------------------- | -------------------------------------------------------------------------------- |
@@ -48,14 +48,23 @@ still parse unchanged; their `stages.json` is an empty list.
 
 ```sh
 cargo build --release --bin picasu
-just bench seed-images /tmp/sets/set-100 100
-just bench workload /tmp/picasu-bench-N8-100-r1 /tmp/sets/set-100 100 8
+just bench seed-images ~/picasu-bench/set-100 100
+just bench workload /tmp/picasu-bench-N8-100-r1 ~/picasu-bench/set-100 100 8
 just bench extract /tmp/picasu-bench-N8-100-r1
 ```
 
-`just bench workload <out> <image_repo> <images> <ncpu> [debug|release]`
-runs the canonical cell (`build` and `port` take `name=value` overrides).
-Binaries and the repo must exist; the stack fails with a build/seed hint
+`just bench workload <out> <image_repo> [images] [ncpu] [build] [port]`
+runs the canonical cell. Recipe parameters are positional — just 1.59
+has no `name=value` overrides — so `build` is the 5th argument
+(`debug`/`release`, default `release`) and `port` the 6th (default 5795):
+
+```sh
+just bench workload /tmp/c-r1 ~/picasu-bench/set-100 100 8 release 5801
+```
+
+`TIMEOUT` bounds the whole cell (default 3600 s), sized for a single
+scale cell (the measured 5650-row control cell needs ~1335 s). Binaries
+and the repo must exist; the stack fails with a build/seed hint
 otherwise. `just bench server` serves a backend without driving any
 workload.
 
@@ -75,13 +84,19 @@ with that cell's exit code.
 Both levels pin `SCAN_REPEATS=2`, hyperfine `REPEATS=3`/`WARMUP=1`,
 `NCPU=8`, release builds, and storm `CLIENTS=8`/`OPS=10`/`MARGIN_S=0.5`.
 Image repos are seeded once (see below) and resolved from
-`BENCH_SETS_ROOT` (default `/tmp/sets`).
+`BENCH_SETS_ROOT` (default `/tmp/sets`; point it at the canonical
+archive root when the repos live there). Each level also pins the
+workload budget `battery run` hands to run-cell as `WORKLOAD_TIMEOUT_S`
+(gate 1800 s, scale 7200 s) — `battery run` invokes run-cell
+in-process, so no outer `timeout` bounds a cell. An exported
+`WORKLOAD_TIMEOUT_S` overrides the level default.
 
 ```sh
-just bench seed-images /tmp/sets/set-100 100
-just bench seed-images /tmp/sets/set-5650 5650
-just bench battery gate                     # -> /tmp/picasu-battery-gate-<stamp>/report.tsv
-just bench battery gate /tmp/my-gate-run    # explicit outdir
+just bench seed-images ~/picasu-bench/set-100 100
+just bench seed-images ~/picasu-bench/set-5650 5650
+export BENCH_SETS_ROOT=$HOME/picasu-bench    # battery repo root (default /tmp/sets)
+just bench battery gate                      # -> /tmp/picasu-battery-gate-<stamp>/report.tsv
+just bench battery gate /tmp/my-gate-run     # explicit outdir
 just bench battery-check /tmp/my-gate-run/report.tsv
 ```
 
@@ -108,9 +123,9 @@ replace the probe rounds with a concurrent burst and check it finished
 with margin before the scan ended:
 
 ```sh
-WORKLOAD=storm-diff STORM_CLIENTS=8 STORM_OPS=10 just bench workload /tmp/c-r1 /tmp/sets/set-100 100 8
-WORKLOAD=storm-read just bench workload /tmp/c-r2 /tmp/sets/set-100 100 8
-WORKLOAD=storm-idle just bench workload /tmp/c-r3 /tmp/sets/set-100 100 8
+WORKLOAD=storm-diff STORM_CLIENTS=8 STORM_OPS=10 just bench workload /tmp/c-r1 ~/picasu-bench/set-100 100 8
+WORKLOAD=storm-read just bench workload /tmp/c-r2 ~/picasu-bench/set-100 100 8
+WORKLOAD=storm-idle just bench workload /tmp/c-r3 ~/picasu-bench/set-100 100 8
 ```
 
 `storm-diff` fires `STORM_CLIENTS × STORM_OPS` edit-rating PUTs at
@@ -119,29 +134,44 @@ compressed-thumbnail GETs of random assets; `storm-idle` runs one
 populate scan then storms the tree at rest (no margin check). Per-op
 latencies land in `rounds-run-N/storm-round-N.tsv`; the extractor prints
 medians/p95/max in the detail line. If the storm does not finish
-`STORM_MARGIN_S` (default 5) before scan end, the cell fails with the
+`STORM_MARGIN_S` (default 0.5) before scan end, the cell fails with the
 factor by which to increase scantime.
+
+Snapshot lookups page instead of reading one window: the probe list,
+upload-visibility polls and the storm canary check walk the row space in
+`PROBE_PAGE`-sized windows (default 1000 rows per request), so cells at
+5650+ rows probe, verify and see uploads beyond index 1000.
 
 `upload` measures the write path end to end: uploads `UPLOAD_FILES`
 (default `IMAGES`) files through `/post/upload`, records per-file
 `submit_ms` and `visible_ms`, then runs the control probe rounds during
-the subsequent scan. Fails (exit 2) if any uploaded file never becomes
-visible. Uses `IMAGE_REPO` for both the base set and the uploaded files.
+the subsequent scan. The stimulus first waits for the library index to
+settle (`INDEX_SETTLE_TIMEOUT_S`, default 600 s) so the write path is
+measured on an idle server, and each upload POST is bounded by
+`UPLOAD_POST_TIMEOUT_S` (default 60 s). Fails (exit 2) if any uploaded
+file never becomes visible. Uses `IMAGE_REPO` for both the base set and
+the uploaded files.
 
 ## Image repos (seeded a priori)
 
 Cells never generate images. Seed a repo once, reuse it for any cell size
-(the workload copies the first `IMAGES` entries in sorted order). Materialisation
-uses a hardlink when source and destination share a filesystem, falling back to
-a copy (and logs which path was taken per cell):
+(the workload copies the first `IMAGES` entries in sorted order). The
+canonical archive root is `$HOME/picasu-bench/set-N` (e.g. `set-100`,
+`set-5650`): outside tmpfs and read-only to cells. Cell staging (OUT,
+image home, server data) belongs on tmpfs — `/dev/shm` preferred, `/tmp`
+otherwise — and `FRESH=1` (the default) may wipe OUT only under a temp
+root (`/tmp`, `/var/tmp`, `/tmp/opencode`, `/dev/shm`). Materialisation
+uses a hardlink when source and destination share a filesystem, falling
+back to a copy (and logs which path was taken per cell):
 
 ```sh
-just bench seed-images /tmp/sets/set-100 100        # 100 × 4000x3000 jpg
-just bench seed-images /tmp/sets/set-500 500        # same shape, 500 images
-just bench seed-images /tmp/sets/set-large 10 --large  # ~5MB large-file class
+just bench seed-images ~/picasu-bench/set-100 100        # 100 × 4000x3000 jpg
+just bench seed-images ~/picasu-bench/set-500 500        # same shape, 500 images
+just bench seed-images ~/picasu-bench/set-large 10 --large  # ~5MB large-file class
 ```
 
 Set `OVERWRITE=1` to reseed a non-empty repo. A prepared root can be reused
 without copying by setting `MATERIALISE=0` (the workload reuses `IMAGE_PATH`
 as-is and logs the dataset identity). The launcher's `IMAGE_HOME_SRC` points
-`PICASU_IMAGE_HOME` at such a root.
+`PICASU_IMAGE_HOME` at such a root, so a sandbox seeded once serves every
+cell of a scale.

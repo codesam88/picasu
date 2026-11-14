@@ -30,10 +30,12 @@ practical, so:
   home, server data) goes on tmpfs (`/dev/shm` preferred, `/tmp`
   otherwise) to avoid disk latency and wear; hardlink materialisation
   falls back to copy across the filesystem boundary.
-- A cell materialises its set from the archive by hardlink (same
-  filesystem), not by copy: materialisation is O(1) disk regardless
-  of set size. Copying is reserved for filesystems where links are
-  unavailable.
+- A cell materialises its set from the archive — by hardlink when the
+  archive and staging share a filesystem (O(1) disk regardless of set
+  size), by copy across the boundary otherwise (once per cell, e.g.
+  tmpfs staging against the disk-resident archive). The sandbox path
+  (`IMAGE_HOME_SRC` + `MATERIALISE=0`) skips materialisation by
+  reusing the prepared image home.
 - The server under test points at a sandbox root (`image_home` /
   `PICASU_IMAGE_HOME`) prepared once per scale. Re-seeding or
   re-copying per run is a protocol violation unless the cell
@@ -93,7 +95,9 @@ describe the same work:
 ## Battery matrix
 
 Profiles × scales × load states, with env pinned per battery
-(`SCAN_REPEATS`, hyperfine repeats, storm clients/ops, margin):
+(`SCAN_REPEATS`, hyperfine repeats, storm clients/ops, margin, and the
+per-level workload budget `WORKLOAD_TIMEOUT_S`: gate 1800 s, scale
+7200 s):
 
 | Profile               | 100 (gate)               | 5650 (scale)      | 50k+ (target)                |
 | --------------------- | ------------------------ | ----------------- | ---------------------------- |

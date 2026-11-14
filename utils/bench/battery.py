@@ -17,6 +17,9 @@ Environment:
     BENCH_SETS_ROOT      image repo root (default /tmp/sets)
     BENCH_PORT           first cell port (default 5795); cells increment
     IMAGE_PATH           passed through to each cell by run-cell.py
+    WORKLOAD_TIMEOUT_S   per-cell workload budget handed to run-cell
+                         (default: gate 1800, scale 7200); an exported
+                         value overrides the level default
 
 Batteries pin every knob that changes a measurement (`SCAN_REPEATS`,
 hyperfine `REPEATS`/`WARMUP`, storm client/op counts and margin) plus the
@@ -44,6 +47,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_SETS_ROOT = Path("/tmp/sets")
 DEFAULT_BASE_PORT = 5795
 NA = "n/a"
+
+# Per-level workload budget passed to run-cell as WORKLOAD_TIMEOUT_S:
+# run_battery invokes run-cell in-process, so no outer timeout(1) bounds a
+# cell the way the justfile recipe does. The scale figure covers the
+# measured ~1335 s single control cell at 5650 rows.
+WORKLOAD_TIMEOUT_S_BY_LEVEL = {"gate": 1800, "scale": 7200}
 
 REPORT_COLUMNS = [
     "cell",
@@ -421,6 +430,8 @@ def run_battery(
         env = dict(os.environ)
         env.update(cell.env)
         env["BUILD_PROFILE"] = build_profile
+        # run-cell's workload budget; an exported WORKLOAD_TIMEOUT_S wins.
+        env.setdefault("WORKLOAD_TIMEOUT_S", str(WORKLOAD_TIMEOUT_S_BY_LEVEL[level]))
         env.update(
             {
                 "OUT": str(cell_out),
