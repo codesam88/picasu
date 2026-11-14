@@ -378,11 +378,25 @@ pub(crate) fn sweep_remove_batch(paths: &[std::path::PathBuf]) {
         let Ok(Some(asset_id)) = asset_store::get_asset_id_by_path(&path_str) else {
             continue;
         };
-        let Ok(Some(record)) = asset_store::get_asset_by_id(asset_id.as_str()) else {
+        let Ok(record) = asset_store::get_asset_by_id(asset_id.as_str()) else {
             continue;
         };
-        let content_hash = record.content_hash.unwrap_or(record.asset_id);
-        remove_asset_record_from_tables(&asset_id, &path_str, content_hash, record.kind);
+        match record {
+            Some(record) => {
+                let content_hash = record.content_hash.unwrap_or(record.asset_id);
+                remove_asset_record_from_tables(&asset_id, &path_str, content_hash, record.kind);
+            }
+            None => {
+                // A remove that tore between the id-table delete and the path
+                // rewrite leaves a mapping whose record is gone. The file is
+                // missing too, so the exact-path mapping is the remaining
+                // residue; drop it so the next sweep converges instead of
+                // re-reading the dangling key forever.
+                if let Err(err) = asset_store::remove_asset_by_path(&path_str) {
+                    log::warn!("sweep: failed to drop dangling path mapping {path_str}: {err:#}");
+                }
+            }
+        }
     }
 }
 
@@ -755,6 +769,60 @@ mod tests {
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).expect("remove flush test dir");
+    }
+
+    /// A remove that committed the `ASSET_BY_ID` delete but not the
+    /// `ASSET_BY_PATH` rewrite (the torn window in `asset_store::remove_asset`,
+    /// whose three table writes are separate transactions) leaves a path
+    /// mapping whose id record is gone. The next sweep sees the file missing
+    /// and must drop the residue rather than leave the dangling mapping.
+    /// Pins OP-3's `aspectsRemoveTornWindowTest` residue-heal half; it does
+    /// not exercise an interruptible remove (none exists) — the residue state
+    /// is constructed directly.
+    #[test]
+    fn remove_torn_window_sweep_removes_dangling_path_mapping() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        let dir = test_image_home().join("remove_torn_window");
+        std::fs::create_dir_all(&dir).expect("create torn-window dir");
+        let path = make_jpeg(&dir, "torn.jpg", 4);
+        let hash = hash_file(&path);
+        let data = AbstractData::new(&path, hash).expect("build torn asset");
+        flush_tables(&[data], &[]);
+        let asset_id = asset_id_at(&path);
+
+        // Torn remove: the id-table delete landed, the path rewrite did not.
+        std::fs::remove_file(&path).expect("remove torn file");
+        asset_store::remove_asset_by_id(asset_id.as_str()).expect("delete id row only");
+        assert!(
+            asset_store::get_asset_by_id(asset_id.as_str())
+                .expect("read id row")
+                .is_none(),
+            "residue premise: the id record is gone"
+        );
+        assert_eq!(
+            asset_store::get_asset_id_by_path(&path.to_string_lossy())
+                .expect("read dangling path mapping"),
+            Some(asset_id),
+            "residue premise: the path mapping still points at the deleted id"
+        );
+
+        // The sweep enumerates the exact path for a missing file.
+        sweep_remove_batch(std::slice::from_ref(&path));
+
+        assert!(
+            asset_store::get_asset_id_by_path(&path.to_string_lossy())
+                .expect("read path mapping after sweep")
+                .is_none(),
+            "the next sweep must clear a dangling path mapping"
+        );
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

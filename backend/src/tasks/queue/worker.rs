@@ -17,12 +17,67 @@ use super::intake::{
 use crate::tasks::path_epoch;
 use log::{debug, warn};
 
+/// Test-only gate that parks every worker between dequeue and dispatch.
+///
+/// Lets a test observe the stored-but-not-indexed window deterministically:
+/// the upload route must return without minting a row regardless of worker
+/// timing, so the test holds intake, asserts the no-row state, and only then
+/// releases the workers. Mirrors the `FORCE_CASCADE_PANIC` test-hook pattern
+/// in `tasks/queue/writer.rs`; nothing here is compiled into release builds.
+#[cfg(test)]
+static HOLD_INTAKE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+static INTAKE_HOLD_ENTERED: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+#[cfg(test)]
+static INTAKE_HOLD_RELEASE: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Hold every worker at the dequeue/dispatch boundary until [`release_intake`].
+#[cfg(test)]
+pub(crate) fn hold_intake() {
+    HOLD_INTAKE.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Release held workers. Idempotent; a later reach of the gate does not park.
+#[cfg(test)]
+pub(crate) fn release_intake() {
+    HOLD_INTAKE.store(false, std::sync::atomic::Ordering::SeqCst);
+    INTAKE_HOLD_RELEASE.notify_waiters();
+}
+
+/// Wait until at least one worker has parked on the hold.
+#[cfg(test)]
+pub(crate) async fn wait_until_intake_held() {
+    INTAKE_HOLD_ENTERED.notified().await;
+}
+
+/// Park a worker after dequeue while the test hold is set.
+#[cfg(test)]
+async fn wait_while_intake_held() {
+    if !HOLD_INTAKE.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    INTAKE_HOLD_ENTERED.notify_one();
+    loop {
+        let notified = INTAKE_HOLD_RELEASE.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if !HOLD_INTAKE.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        notified.await;
+    }
+}
+
 /// Worker main loop: dequeue intake items until every lane closes.
 pub(crate) async fn worker_loop() {
     loop {
         let Some(item) = recv_item().await else {
             return;
         };
+        #[cfg(test)]
+        wait_while_intake_held().await;
         dispatch_item(item).await;
     }
 }

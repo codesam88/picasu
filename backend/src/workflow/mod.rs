@@ -15,6 +15,9 @@ use log::warn;
 use path_clean::PathClean;
 use std::{fs::File, path::Path, path::PathBuf};
 
+#[cfg(test)]
+pub(crate) mod scan_gate;
+
 /// Ensure directory albums exist for every directory level between the
 /// configured image root and the file's parent, returning the deepest one
 /// (i.e. the album for the file's immediate parent directory), or `None` if
@@ -205,6 +208,9 @@ pub async fn process_file(path: PathBuf) -> Result<()> {
 
     let outcome = stage_index(abstract_data).await?;
     let data = outcome.data;
+
+    #[cfg(test)]
+    crate::workflow::scan_gate::pause().await;
 
     if aborted() {
         return Ok(());

@@ -675,6 +675,128 @@ mod tests {
         );
     }
 
+    /// The per-asset move writes `ASSET_BY_ID` and then `ASSET_BY_PATH` in
+    /// separate transactions. This test constructs the torn window directly
+    /// (filesystem move + id-table write, path rewrite not yet landed), then
+    /// runs the next scan's flush and the sweep: the stale source path is
+    /// pruned and every remaining path key resolves to a record naming that
+    /// path. It pins OP-4's `aspectsN5SplitWindowTest` heal half. Honest
+    /// limit: `move_asset_into_album` has no failure-injection seam, so the
+    /// window is built by hand; and the heal allocates a new asset id for the
+    /// moved file (N5 identity loss on a mid-move crash remains open) — only
+    /// cross-table coherence is restored.
+    #[test]
+    fn move_split_window_scan_and_sweep_heal_cross_table() {
+        use crate::model::abstract_data::AbstractData;
+        use crate::process::hash::blake3_hasher;
+        use crate::storage::asset_store;
+        use crate::tasks::batcher::flush_tree::{flush_tables, sweep_remove_batch};
+        use crate::tests::bootstrap;
+        use snapfab::{PhotoSpec, generate_batch};
+        use std::fs::File;
+
+        let _guard = bootstrap::lock();
+        let _ = &*bootstrap::TEST_ENV;
+        bootstrap::reset_backend_state();
+
+        let root = bootstrap::test_image_home();
+        let src_dir = root.join("move_window/a");
+        let dst_dir = root.join("move_window/b");
+        std::fs::create_dir_all(&src_dir).expect("create source dir");
+        std::fs::create_dir_all(&dst_dir).expect("create destination dir");
+        let source = src_dir.join("photo.jpg");
+        let dest = dst_dir.join("photo.jpg");
+        generate_batch(&[PhotoSpec {
+            output: Some(source.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate move-window photo");
+
+        let hash = blake3_hasher(File::open(&source).expect("open source")).expect("hash source");
+        flush_tables(
+            &[AbstractData::new(&source, hash).expect("build source data")],
+            &[],
+        );
+        let old_id = asset_store::get_asset_id_by_path(&source.to_string_lossy())
+            .expect("read source path")
+            .expect("source row exists");
+
+        // The move's filesystem half plus the ASSET_BY_ID write, before the
+        // ASSET_BY_PATH rewrite: the exact N5 split window.
+        std::fs::rename(&source, &dest).expect("move file");
+        let mut moved = asset_store::get_asset_by_id(old_id.as_str())
+            .expect("read moved record")
+            .expect("moved record exists");
+        moved.path = dest.to_string_lossy().into_owned();
+        asset_store::put_asset_by_id(&moved).expect("id-table write");
+        assert_eq!(
+            asset_store::get_asset_id_by_path(&source.to_string_lossy())
+                .expect("read stale source mapping"),
+            Some(old_id),
+            "window premise: the source path mapping still exists"
+        );
+        assert!(
+            asset_store::get_asset_id_by_path(&dest.to_string_lossy())
+                .expect("read destination mapping")
+                .is_none(),
+            "window premise: the destination has no path mapping yet"
+        );
+
+        // The next scan flushes the file at its new path, then the sweep
+        // prunes the stale source entry.
+        flush_tables(
+            &[AbstractData::new(&dest, hash).expect("build destination data")],
+            &[],
+        );
+        sweep_remove_batch(std::slice::from_ref(&source));
+
+        let new_id = asset_store::get_asset_id_by_path(&dest.to_string_lossy())
+            .expect("read destination path")
+            .expect("destination row exists");
+        let new_record = asset_store::get_asset_by_id(new_id.as_str())
+            .expect("read destination record")
+            .expect("destination record exists");
+        assert_eq!(
+            new_record.path,
+            dest.to_string_lossy(),
+            "destination mapping must point at a record naming the destination"
+        );
+        assert!(
+            asset_store::get_asset_id_by_path(&source.to_string_lossy())
+                .expect("read swept source mapping")
+                .is_none(),
+            "the sweep must remove the stale source mapping"
+        );
+        assert!(
+            asset_store::get_asset_by_id(old_id.as_str())
+                .expect("read stale record")
+                .is_none(),
+            "the sweep must remove the split record once its mapping is stale"
+        );
+
+        // No path key may point at a missing record or a record describing
+        // another path.
+        let rows = asset_store::list_asset_paths_under(&root.to_string_lossy())
+            .expect("list path rows under root");
+        for (path, id) in rows {
+            let record = asset_store::get_asset_by_id(id.as_str())
+                .expect("read mapped record")
+                .unwrap_or_else(|| panic!("path mapping {path} points at a missing record"));
+            assert_eq!(
+                record.path, path,
+                "path mapping {path} and record path must agree"
+            );
+        }
+
+        std::fs::remove_dir_all(root.join("move_window")).ok();
+        bootstrap::reset_backend_state();
+    }
+
     #[test]
     fn update_asset_tables_after_dir_move_preserves_asset_id() {
         use crate::model::asset::{AssetKind, AssetRecord};

@@ -38,7 +38,8 @@
           "test": "backend/src/tasks/batcher/flush_tree.rs::flush_changed_hash_moves_dupe_group"
         },
         {
-          "model": "aspectsScanSupersedesEditTest"
+          "model": "aspectsScanSupersedesEditTest",
+          "test": "backend/src/tests/scan_abort.rs::scan_superseded_by_edit_keeps_the_edit"
         }
       ],
       "status": "guarded",
@@ -107,7 +108,8 @@
           "test": "backend/tests/scenarios/dup_delete_preserves_shared_thumbnail.yaml"
         },
         {
-          "model": "aspectsRemoveTornWindowTest"
+          "model": "aspectsRemoveTornWindowTest",
+          "test": "backend/src/tasks/batcher/flush_tree.rs::remove_torn_window_sweep_removes_dangling_path_mapping"
         }
       ],
       "status": "guarded",
@@ -139,7 +141,8 @@
       ],
       "properties": [
         {
-          "model": "aspectsN5SplitWindowTest"
+          "model": "aspectsN5SplitWindowTest",
+          "test": "backend/src/router/put/assign_album.rs::move_split_window_scan_and_sweep_heal_cross_table"
         },
         {
           "model": "PathMapIdentityCoherence",
@@ -211,7 +214,8 @@
       ],
       "properties": [
         {
-          "model": "aspectsRotateVsScanTest"
+          "model": "aspectsRotateVsScanTest",
+          "test": "backend/src/tests/rotation.rs::rotate_supersedes_in_flight_scan"
         },
         {
           "model": "aspectsRotateTest",
