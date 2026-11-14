@@ -1051,6 +1051,85 @@ class ProbeWindowTest(unittest.TestCase):
         self.assertEqual(len(rows), 4)
 
 
+class PagedRowLookupTest(unittest.TestCase):
+    """Upload visibility and storm canaries page past the first 1000 rows."""
+
+    def setUp(self):
+        self.server = StubOrigin(("127.0.0.1", 0))
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._stop_server)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cell = Path(self.tmp.name) / "cell"
+        self.cell.mkdir()
+        make_cookie_jar(self.cell / "cookies.txt")
+        self.workload = load_workload()
+        self.client = self.workload.HttpClient(
+            f"http://127.0.0.1:{self.port}", self.cell / "cookies.txt"
+        )
+        logger = self.workload.Logger(self.cell / "harness-a.log")
+        self.addCleanup(logger.close)
+        self.logger = logger
+        # Every base row is visible from the first poll.
+        self.server.started_at = time.monotonic()
+        self.server.run_duration = 0.0
+        self.stdout = contextlib.redirect_stdout(io.StringIO())
+        self.stdout.__enter__()
+        self.addCleanup(self.stdout.__exit__, None, None, None)
+
+    def _stop_server(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def cfg(self, **overrides):
+        cfg = {"images": 1500, "upload_files": 1, "probe_page": 1000}
+        cfg.update(overrides)
+        return cfg
+
+    def get_data_windows(self):
+        return [
+            (query.get("start", [None])[0], query.get("end", [None])[0])
+            for method, path, query in self.server.requests
+            if method == "GET" and path == "/get/get-data"
+        ]
+
+    def test_uploaded_row_visible_past_the_first_window(self):
+        self.server.total_rows = 1500
+        # Appended after the base rows: index 1500, past a single 0..1000 window.
+        self.server.uploads.append("upload_0001.jpg")
+
+        visible = self.workload._uploaded_row_visible(self.cfg(), self.client, "upload_0001.jpg")
+
+        self.assertTrue(visible)
+        self.assertIn(("1000", "2000"), self.get_data_windows())
+
+    def test_absent_upload_stays_invisible_and_the_walk_stops(self):
+        self.server.total_rows = 1500
+
+        visible = self.workload._uploaded_row_visible(self.cfg(), self.client, "missing.jpg")
+
+        self.assertFalse(visible)
+        windows = self.get_data_windows()
+        self.assertIn(("0", "1000"), windows)
+        self.assertIn(("1000", "2000"), windows)
+        # The short window ends the walk: nothing requests past the row space.
+        self.assertEqual(len(windows), 2)
+
+    def test_storm_canary_spans_rows_past_the_first_window(self):
+        self.server.total_rows = 1500
+
+        self.workload.verify_storm_sample(self.cfg(), self.client, self.logger, self.cell, 1)
+
+        checked = json.loads((self.cell / "verify-storm-run-1.json").read_text())
+        indices = [entry["index"] for entry in checked]
+        self.assertEqual(len(indices), self.workload.CANARY_CHECKS)
+        self.assertTrue(any(index >= 1000 for index in indices), indices)
+        self.assertTrue(all(entry["got"] == entry["expected"] for entry in checked), checked)
+        self.assertIn(("1000", "2000"), self.get_data_windows())
+
+
 class IndexSettleTest(unittest.TestCase):
     """The upload stimulus waits for the library index to settle first."""
 

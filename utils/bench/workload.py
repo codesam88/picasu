@@ -47,9 +47,10 @@ Environment contract (on top of the launcher's):
   SCAN_REPEATS    scan repetitions per cell (default 3)
   FETCHES         random compressed fetches per during-scan round (default 10)
   PROBE_LIMIT     max probe-list rows (default: IMAGES)
-  PROBE_PAGE      get-data rows per request while building the probe list
-                  (default 1000); paging continues until PROBE_LIMIT rows or
-                  the snapshot window is exhausted
+  PROBE_PAGE      get-data rows per request when paging the snapshot
+                  (default 1000): the probe-list build pages until
+                  PROBE_LIMIT rows, the upload-visibility and storm
+                  canary walks page until the row space ends
   SCAN_TIMEOUT_S  scan poll budget; 0 waits for a terminal state (default 0)
   SCAN_STALL_TIMEOUT_S  abort when running counters do not move for this
                   long; 0 disables (default 120)
@@ -565,6 +566,57 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
     return image_count, image_bytes
 
 
+# --- paged snapshot reads ----------------------------------------------------
+# A cell snapshot holds its images plus any uploads; albums and other
+# non-image entries add an unknown on top. The walks also stop at the first
+# short window, so the cap only bounds a server that never short-pages.
+ROW_SPACE_SLACK = 1000
+
+
+def row_space_cap(cfg: dict) -> int:
+    """Upper bound on one cell's snapshot row space for a paged lookup."""
+    images = int(cfg.get("images", DEFAULT_IMAGES))
+    uploads = int(cfg.get("upload_files", 0))
+    return images + uploads + ROW_SPACE_SLACK
+
+
+def page_get_data(
+    client: HttpClient,
+    timestamp,
+    token,
+    *,
+    page_size: int,
+    cap: int,
+    timeout: float = 30.0,
+):
+    """Walk `/get/get-data` over the row space in `page_size` windows.
+
+    get-data serves one window per request, so a single `0..page_size`
+    window only sees the start of a large library. Yield
+    `(start, rows, raw_body)` per served window while the window start
+    stays below `cap` (the last window may overshoot it by up to
+    `page_size - 1` rows). A short window — the row space is exhausted —
+    or a response that is not a row list ends the walk; the latter is
+    yielded once with `rows=None`.
+    """
+    start = 0
+    while start < cap:
+        end = start + page_size
+        code, body, _ = client.get(
+            f"/get/get-data?timestamp={timestamp}&start={start}&end={end}",
+            bearer=token,
+            timeout=timeout,
+        )
+        rows = _body_json(body) if code == 200 else None
+        if not isinstance(rows, list):
+            yield start, None, body
+            return
+        yield start, rows, body
+        if len(rows) < page_size:
+            return  # short window: the row space is exhausted
+        start = end
+
+
 # --- probe list --------------------------------------------------------------
 def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
     """Build `hash<TAB>token` rows from the snapshot, paging the row window.
@@ -590,17 +642,12 @@ def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
 
     page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
     limit = cfg["probe_limit"]
+    cap = max(row_space_cap(cfg), limit)
     lines = []
     collected_rows = []
     raw_pages = []
-    start = 0
-    while len(lines) < limit:
-        end = start + page_size
-        code, body, _ = client.get(
-            f"/get/get-data?timestamp={timestamp}&start={start}&end={end}", bearer=token
-        )
-        rows = _body_json(body) if code == 200 else None
-        if not isinstance(rows, list):
+    for _start, rows, body in page_get_data(client, timestamp, token, page_size=page_size, cap=cap):
+        if rows is None:
             if not raw_pages:
                 (out / "get-data.json").write_bytes(body)
                 return None
@@ -618,9 +665,8 @@ def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
             lines.append(f"{hash_value}\t{row_token}")
             if len(lines) >= limit:
                 break
-        if len(rows) < page_size:
-            break  # short page: the snapshot window is exhausted
-        start = end
+        if len(lines) >= limit:
+            break
     if len(raw_pages) == 1:
         (out / "get-data.json").write_bytes(raw_pages[0])
     else:
@@ -1049,6 +1095,8 @@ def verify_storm_sample(
     spread-out assets, read each back by stable assetId. PUTs commit
     synchronously, so a mismatch means the write did not stick (or hit a
     different asset than addressed) — fail loudly instead of trusting 200s.
+    Canaries are picked across the paged row space, not the first window
+    alone, so a 5650-row library verifies rows past index 1000 too.
     """
     code, body, _ = client.post("/get/prefetch", {}, timeout=30.0)
     if code != 200:
@@ -1057,20 +1105,25 @@ def verify_storm_sample(
     timestamp, token = payload.get("prefetch", {}).get("timestamp"), payload.get("token")
     if timestamp is None or token is None:
         raise WorkloadError("storm verify: no prefetch timestamp/token")
-    code, body, _ = client.get(
-        f"/get/get-data?timestamp={timestamp}&start=0&end=1000", bearer=token, timeout=30.0
-    )
-    rows = _body_json(body) if code == 200 else None
-    if not isinstance(rows, list) or not rows:
+    page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
+    collected = []
+    for start, page, _body in page_get_data(
+        client, timestamp, token, page_size=page_size, cap=row_space_cap(cfg), timeout=30.0
+    ):
+        if page is None:
+            break
+        collected.extend((start + offset, row) for offset, row in enumerate(page))
+    if not collected:
         raise WorkloadError("storm verify: no probe rows")
-    step = max(1, len(rows) // CANARY_CHECKS)
+    step = max(1, len(collected) // CANARY_CHECKS)
     picks = []
-    for position in range(0, len(rows), step):
+    for position in range(0, len(collected), step):
         if len(picks) >= CANARY_CHECKS:
             break
-        asset = rows[position].get("assetId") if isinstance(rows[position], dict) else None
+        index, row = collected[position]
+        asset = row.get("assetId") if isinstance(row, dict) else None
         if asset:
-            picks.append((position, asset))
+            picks.append((index, asset))
     if not picks:
         raise WorkloadError("storm verify: rows carry no assetId")
     checked = []
@@ -1506,7 +1559,13 @@ def _select_upload_sources(cfg: dict) -> list:
     return sources[: cfg["upload_files"]]
 
 
-def _uploaded_row_visible(client: HttpClient, stored_name: str, poll_interval: float) -> bool:
+def _uploaded_row_visible(cfg: dict, client: HttpClient, stored_name: str) -> bool:
+    """True once `stored_name` appears in the snapshot row space.
+
+    The lookup pages the snapshot in PROBE_PAGE windows up to the cell's
+    row-space cap: at scale an upload sorts past the first window, so a
+    single `0..1000` request would never see it.
+    """
     code, body, _ = client.post("/get/prefetch", {})
     if code != 200:
         return False
@@ -1517,26 +1576,24 @@ def _uploaded_row_visible(client: HttpClient, stored_name: str, poll_interval: f
     token = doc.get("token")
     if timestamp is None or token is None:
         return False
-    code, body, _ = client.get(
-        f"/get/get-data?timestamp={timestamp}&start=0&end=1000", bearer=token
-    )
-    if code != 200:
-        return False
-    rows = _body_json(body)
-    if not isinstance(rows, list):
-        return False
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        abstract_data = row.get("abstractData", {})
-        if not isinstance(abstract_data, dict):
-            continue
-        path = abstract_data.get("path", {})
-        file_name = path.get("file") if isinstance(path, dict) else None
-        if isinstance(file_name, str) and stored_name in file_name:
-            return True
-        if stored_name in json.dumps(row):
-            return True
+    page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
+    for _start, rows, _body in page_get_data(
+        client, timestamp, token, page_size=page_size, cap=row_space_cap(cfg)
+    ):
+        if rows is None:
+            return False
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            abstract_data = row.get("abstractData", {})
+            if not isinstance(abstract_data, dict):
+                continue
+            path = abstract_data.get("path", {})
+            file_name = path.get("file") if isinstance(path, dict) else None
+            if isinstance(file_name, str) and stored_name in file_name:
+                return True
+            if stored_name in json.dumps(row):
+                return True
     return False
 
 
@@ -1609,7 +1666,7 @@ def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
         deadline = time.monotonic() + timeout
         visible = False
         while time.monotonic() < deadline:
-            if _uploaded_row_visible(client, stored_name, poll_interval):
+            if _uploaded_row_visible(cfg, client, stored_name):
                 visible = True
                 break
             time.sleep(poll_interval)

@@ -40,7 +40,7 @@ format: _venv
 server: _venv
     "{{ venv_python }}" "{{ source_directory() }}/launch-backend.py"
 
-# Run a benchmark cell.
+# Run a benchmark cell (TIMEOUT bounds the whole cell, default 3600 s).
 workload out image_repo images="100" ncpu="8" build="release" port="5795": _venv
     #!/usr/bin/env bash
     set -euo pipefail
@@ -50,7 +50,7 @@ workload out image_repo images="100" ncpu="8" build="release" port="5795": _venv
     export IMAGE_REPO="{{ image_repo }}"
     if [ -n "${IMAGE_PATH:-}" ]; then export IMAGE_PATH; fi
     export REPEATS="${REPEATS:-1}" SCAN_REPEATS="${SCAN_REPEATS:-2}"
-    timeout 1200 "{{ venv_python }}" "{{ source_directory() }}/run-cell.py"
+    timeout "${TIMEOUT:-3600}" "{{ venv_python }}" "{{ source_directory() }}/run-cell.py"
 
 # Seed an image repo.
 seed-images image_repo images="100" template="" jobs="4": _venv
