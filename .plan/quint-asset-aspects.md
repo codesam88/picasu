@@ -239,14 +239,17 @@ check` or the individual recipes.
     b. [done 2026-11-14] N6 refuted: regenerate route gates the asset
     before writing the frame; temp rename stays atomic; corruption
     detection remains REQ-8. No new requirement opened.
-    c. [partial 2026-11-14] N7 closed as scoped assumption; N9 accepted;
-    N10 reframed and tracked by .plan/share-list-guard.md.
-    d. events.json: fill the 12 TODO code_refs with file::fn anchors
-    (terminology rule).
+    c. [done 2026-11-14] N7 closed as scoped assumption (media gate drops
+    .xmp; rescan heals; DroppedSidecarModify modeled); N9 accepted
+    (derived bytes inert, disk-only; optional GC parked); N10 reframed
+    and tracked by .plan/share-list-guard.md (survey outcome recorded).
+    d. [done 2026-11-14] events.json: filled the 12 TODO code_refs with
+    file::fn anchors (events-check reports 0 TODO).
     Then cleanup/debt: prune superseded branches (feat/quint-asset-aspects,
     feat/impose-requirements, spec/quint-index-pipeline — reconcile or
     dismiss), review the 3 stashes, specs-check warning disposition;
-    then rebase onto origin and push.
+    then rebase onto origin and push. Remaining: N10 implementation task
+    (.plan/share-list-guard.md) + cleanup/rebase items.
 
 ## Interaction nodes (survey 2026-11-12, claims need tree-verification)
 
@@ -286,9 +289,13 @@ survey claim contradicts a done item — re-check the tree first.
   write txn.] Residual for the model: crash between FS move and row
   rewrite still heals only via sweep/backstop.
 - N4 concurrent sidecar edits: read-modify-write LWW, best-effort
-  rollback leaves sidecar ahead of cache. [open, re-verified
-  2026-11-13: commit_metadata_edits still leases edited paths and
-  best-effort rolls back; no new guard; LWW remains.]
+  rollback leaves sidecar ahead of cache. [accepted 2026-11-14 under G5:
+  the sidecar is authoritative — the DB cache lagging the sidecar is
+  bounded staleness that the next apply heals; the best-effort rollback
+  plus path leases (commit_metadata_edits) bound the corruption window
+  (aspectsSidecarPartialEditTest). LWW between two concurrent edits keeps
+  the last sidecar, which is the FS truth. Interaction-node list closed;
+  no further modeling.]
 - N5 assign/move crash window. [pinned 2026-11-14 (REQ-15): sidecar preservation pinned by router::put::assign_album::tests::move_preserves_destination_sidecar_and_removes_source_sidecar; crash-heal rebuild pinned by model run aspectsMoveCrashHealsFromSidecarTest and backend/src/router/put/assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar; single-txn move write via storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn. N5 cross-table split resolved.]
 - N6 derived corruption undetected; regen frame can orphan on unknown
   id. [refuted 2026-11-14: the regenerate route now looks up and gates
@@ -317,8 +324,14 @@ survey claim contradicts a done item — re-check the tree first.
   pass (no requirement opened — N6 was refuted as the window removed); revisit
   if derived-store pressure warrants.] [minor].
 - N10 share/cover edits are DB-only with no lease; can race a scan
-  of the same album. [open, re-verified 2026-11-13: no lease added;
-  still DB-only.] [minor].
+  of the same album. [open, reframed 2026-11-14: album_task writes the full
+  album MetadataRecord from its phase-1 snapshot (album.rs), so a concurrent
+  edit_share/edit_album read-modify-write of share_list/cover can be
+  overwritten; redb serializes the write txns but the stale snapshot still
+  wins. share_list is the designated DB-only non-derived exception (G5), so a
+  lost edit is a real goal violation. Implementation tracked by new task
+  .plan/share-list-guard.md (serialize album metadata field edits through
+  writer::submit).] [minor].
 - N11 rotate thumbnail-before-sidecar window. [refuted 2026-11-12 and
   re-verified 2026-11-13: rotate_image persists the sidecar before
   generating the thumbnail and flushing the DB; lease_paths present. Do
