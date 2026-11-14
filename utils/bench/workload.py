@@ -54,13 +54,17 @@ Environment contract (on top of the launcher's):
   PROBE_INTERVAL_S probe-phase refresh interval (default 0.5)
   IMAGES is required to be present in IMAGE_REPO: repos are seeded
   a priori (see `just bench seed-images`); the workload never generates.
-  WORKLOAD        control (default) | storm-diff | storm-read | storm-thumb | storm-idle:
+  WORKLOAD        control (default) | storm-diff | storm-read | storm-thumb | storm-idle | upload:
                   control runs probe rounds during the scan; storm-diff fires
                   concurrent edit-rating PUTs at distinct assets, storm-read
                   concurrent prefetch POSTs, storm-thumb concurrent
                   compressed-thumbnail GETs of random assets, storm-idle runs
                   one populate scan then storms the tree at rest (no margin
-                  check; the storm kind comes from IDLE_PROFILE)
+                  check; the storm kind comes from IDLE_PROFILE); upload
+                  measures the write path end to end and runs the control
+                  probe rounds during the subsequent scan
+  UPLOAD_FILES    files to upload in the upload profile (default IMAGES)
+  UPLOAD_TIMEOUT_S visibility poll budget for uploaded files (default 5)
   IDLE_PROFILE    storm op kind used by storm-idle: diff | read (default) | thumb
   STORM_CLIENTS   concurrent storm clients (default 8)
   STORM_OPS       ops per storm client (default 10)
@@ -107,7 +111,7 @@ DEFAULT_FETCHES = 10
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
 DEFAULT_STORM_MARGIN_S = 0.5
-WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle")
+WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle", "upload")
 DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
 DEFAULT_BUILD_PROFILE = "debug"
@@ -257,6 +261,8 @@ def config_from_env(environ: dict) -> dict:
     if idle_profile not in ("diff", "read", "thumb"):
         raise ConfigError(f"IDLE_PROFILE must be diff|read|thumb, got '{idle_profile}'")
     scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
+    upload_files = _int_env(environ, "UPLOAD_FILES", images, minimum=1)
+    upload_timeout = _float_env(environ, "UPLOAD_TIMEOUT_S", 5.0, minimum=0.1)
     repeats = _int_env(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
     warmup = _int_env(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
     runs_during = _int_env(environ, "RUNS_DURING", DEFAULT_RUNS_DURING, minimum=1)
@@ -307,6 +313,8 @@ def config_from_env(environ: dict) -> dict:
         "storm_margin_s": storm_margin,
         "idle_profile": idle_profile,
         "scan_repeats": scan_repeats,
+        "upload_files": upload_files,
+        "upload_timeout_s": upload_timeout,
         "repeats": repeats,
         "warmup": warmup,
         "runs_during": runs_during,
@@ -414,6 +422,39 @@ class HttpClient:
 
     def put(self, path, payload, timeout=30.0):
         return self.request("PUT", path, payload=payload, timeout=timeout)
+
+    def upload(self, path, file_path, timeout=60.0):
+        boundary = "----picasu-bench-upload-boundary"
+        file_bytes = Path(file_path).read_bytes()
+        filename = Path(file_path).name
+        body = bytearray()
+        body.extend(b"--" + boundary.encode() + b"\r\n")
+        body.extend(
+            b'Content-Disposition: form-data; name="file"; filename="'
+            + filename.encode()
+            + b'"\r\n'
+        )
+        body.extend(b"Content-Type: image/jpeg\r\n\r\n")
+        body.extend(file_bytes)
+        body.extend(b"\r\n")
+        body.extend(b"--" + boundary.encode() + b"\r\n")
+        body.extend(b'Content-Disposition: form-data; name="lastModified"\r\n\r\n0\r\n')
+        body.extend(b"--" + boundary.encode() + b"--\r\n")
+        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        request = urllib.request.Request(
+            self.base_url + path, data=bytes(body), headers=headers, method="POST"
+        )
+        started = time.perf_counter()
+        try:
+            with self.opener.open(request, timeout=timeout) as response:
+                body_out = response.read()
+                return response.status, body_out, time.perf_counter() - started
+        except urllib.error.HTTPError as err:
+            body_out = err.read()
+            err.close()
+            return err.code, body_out, time.perf_counter() - started
+        except (urllib.error.URLError, OSError) as err:
+            raise WorkloadError(f"POST {path} failed: {err}")
 
 
 def _body_json(body: bytes):
@@ -1100,7 +1141,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             except Exception as err:  # noqa: BLE001 - storm failure must not hang the cell
                 storm_error = err
 
-        if profile == "control":
+        if profile in ("control", "upload"):
             probe_thread = threading.Thread(
                 target=probe_phase,
                 args=(cfg, client, logger, cfg["expected_entries"], round_dir),
@@ -1398,6 +1439,102 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
     logger.log("done")
 
 
+# --- upload profile ----------------------------------------------------------
+def _select_upload_sources(cfg: dict) -> list:
+    available = sorted(cfg["image_repo"].glob("*.jpg"), key=lambda path: path.name)
+    cell_names = set()
+    image_path = cfg.get("image_path")
+    if image_path is not None:
+        try:
+            cell_names = {path.name for path in Path(image_path).glob("*.jpg")}
+        except OSError:
+            cell_names = set()
+    sources = [path for path in available if path.name not in cell_names]
+    if len(sources) < cfg["upload_files"]:
+        for path in available:
+            if len(sources) >= cfg["upload_files"]:
+                break
+            sources.append(path)
+    if not sources:
+        raise WorkloadError("upload: no images available in IMAGE_REPO")
+    return sources[: cfg["upload_files"]]
+
+
+def _uploaded_row_visible(client: HttpClient, stored_name: str, poll_interval: float) -> bool:
+    code, body, _ = client.post("/get/prefetch", {})
+    if code != 200:
+        return False
+    doc = _body_json(body)
+    if not isinstance(doc, dict):
+        return False
+    timestamp = doc.get("prefetch", {}).get("timestamp")
+    token = doc.get("token")
+    if timestamp is None or token is None:
+        return False
+    code, body, _ = client.get(
+        f"/get/get-data?timestamp={timestamp}&start=0&end=1000", bearer=token
+    )
+    if code != 200:
+        return False
+    rows = _body_json(body)
+    if not isinstance(rows, list):
+        return False
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        abstract_data = row.get("abstractData", {})
+        if not isinstance(abstract_data, dict):
+            continue
+        path = abstract_data.get("path", {})
+        file_name = path.get("file") if isinstance(path, dict) else None
+        if isinstance(file_name, str) and stored_name in file_name:
+            return True
+        if stored_name in json.dumps(row):
+            return True
+    return False
+
+
+def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
+    sources = _select_upload_sources(cfg)
+    logger.log(f"=== upload stimulus: {len(sources)} files ===")
+    submit_times = []
+    visible_times = []
+    poll_interval = cfg.get("poll_interval_s", 0.2)
+    timeout = cfg.get("upload_timeout_s", 5.0)
+    for source in sources:
+        started = time.perf_counter()
+        status, body, elapsed = client.upload("/post/upload", source)
+        submit_ms = int(elapsed * 1000)
+        if status != 200:
+            raise WorkloadError(f"upload failed for {source.name}: HTTP {status}")
+        doc = _body_json(body)
+        files = doc.get("files") if isinstance(doc, dict) else None
+        stored_name = (
+            files[0]
+            if isinstance(files, list) and files and isinstance(files[0], str)
+            else source.name
+        )
+        deadline = time.monotonic() + timeout
+        visible = False
+        while time.monotonic() < deadline:
+            if _uploaded_row_visible(client, stored_name, poll_interval):
+                visible = True
+                break
+            time.sleep(poll_interval)
+        if not visible:
+            raise WorkloadError(
+                f"upload verification FAILED: file={stored_name} never became visible"
+            )
+        visible_ms = int((time.perf_counter() - started) * 1000)
+        logger.log(f"upload file={stored_name} submit_ms={submit_ms} visible_ms={visible_ms}")
+        submit_times.append(submit_ms)
+        visible_times.append(visible_ms)
+
+    submit_p50 = int(statistics.median(submit_times)) if submit_times else 0
+    visible_p50 = int(statistics.median(visible_times)) if visible_times else 0
+    logger.log(f"upload submit_p50={submit_p50} visible_p50={visible_p50}")
+
+
 # --- main flow ---------------------------------------------------------------
 def prepare_out(cfg: dict) -> None:
     out = cfg["out"]
@@ -1442,6 +1579,9 @@ def run_workload(cfg: dict) -> int:
         logger.log(f"scan repeats: {cfg['scan_repeats']} (median wall time reported)")
 
         client = HttpClient(cfg["base_url"], cfg["cookie_jar"])
+        if cfg["workload"] == "upload":
+            run_upload_stimulus(cfg, client, logger)
+            cfg["expected_entries"] = cfg["image_count"] + cfg["upload_files"]
         median_ms, run_count = run_scans(cfg, client, logger)
         cfg["scan_wall_ms"] = median_ms
         cfg["scan_runs"] = run_count
