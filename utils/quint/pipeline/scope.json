@@ -90,6 +90,14 @@
       "why_safe": "Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.",
       "lifting": "Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).",
       "provisional": true
+    },
+    {
+      "id": "SCOPE-12",
+      "title": "Album stats cascade micro-stage",
+      "bound": "AlbumTaskApply(albumId) is a single step: member snapshot, stats write and albumPending drain happen together; album liveness re-check and re-mark are abstracted into the guard (album record must exist/live) plus MemberWrite's mark_album_for_update effect.",
+      "why_safe": "Matches album_task: stats are computed outside the write txn from a ref_data snapshot, the write txn re-checks album liveness and re-marks pending when an album appears between txns, and member writes re-mark pending via mark_album_for_update so concurrent writes surface as bounded staleness rather than silent loss.",
+      "lifting": "Split into read-album txn + outside-txn compute + write-txn liveness re-check + re-mark; model the ref_data snapshot as a separate action (deferred).",
+      "provisional": true
     }
   ]
 }

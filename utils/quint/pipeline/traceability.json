@@ -104,6 +104,8 @@
       "kind": "ASS",
       "title": "quiescence (safety invariants asserted at settled state)",
       "refs": [
+        "asset-aspects.qnt:AlbumStatsConsistentWhenDrained",
+        "asset-aspects.qnt:AlbumStatsNoPhantom",
         "asset-aspects.qnt:AlbumTaskApply",
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
@@ -123,6 +125,9 @@
         "asset-aspects.qnt:UploadingWindow",
         "asset-aspects.qnt:WitnessUploadStoredOnly",
         "asset-aspects.qnt:aspectsAbsorbedSweepTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeCleanTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeConcurrentMembersTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeRaceAbsorbedTest",
         "asset-aspects.qnt:aspectsCleanSweepTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDroppedSidecarTest",
@@ -146,6 +151,9 @@
         "asset-aspects.qnt:aspectsUploadVsSweepPruneTest",
         "asset-aspects.qnt:aspectsUploadWatcherRemoveBeforeIndexTest",
         "asset-aspects.qnt:aspectsWatcherRemoveTest",
+        "asset-aspects.qnt:memberCount",
+        "asset-aspects.qnt:memberSize",
+        "asset-aspects.qnt:members",
         "eventual-consistency-assumptions.qnt:NoLostUpload",
         "eventual-consistency-assumptions.qnt:NoPermanentStale",
         "eventual-consistency-goal.qnt:Converged",
@@ -182,6 +190,8 @@
       "title": "Initial converged state",
       "refs": [
         "eventual-consistency-state.qnt:init",
+        "eventual-consistency-state.qnt:initialAlbumAssetRecord",
+        "eventual-consistency-state.qnt:initialAlbumMetadataRecord",
         "eventual-consistency-state.qnt:initialAssetRecord",
         "eventual-consistency-state.qnt:initialFile",
         "eventual-consistency-state.qnt:initialId",
@@ -225,9 +235,13 @@
       "refs": [
         "asset-aspects.qnt:ApiMoveFsOnly",
         "asset-aspects.qnt:DirMoveFsOnly",
+        "asset-aspects.qnt:MemberWrite",
         "asset-aspects.qnt:RemoveIdOnly",
         "asset-aspects.qnt:SidecarEditPartial",
         "asset-aspects.qnt:UploadStoredOnly",
+        "asset-aspects.qnt:aspectsAlbumCascadeCleanTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeConcurrentMembersTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeRaceAbsorbedTest",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsDupeGroupDeleteTest",
         "asset-aspects.qnt:aspectsMemberWriteAlbumCascadeTest",
@@ -328,6 +342,23 @@
         "asset-aspects.qnt:SweepRemoveBatchApply",
         "asset-aspects.qnt:SweepRemoveBatchSkipsPresentFile",
         "asset-aspects.qnt:aspectsAbsorbedSweepTest"
+      ]
+    },
+    {
+      "id": "SCOPE-12",
+      "kind": "SCOPE",
+      "title": "Album stats cascade micro-stage",
+      "refs": [
+        "asset-aspects.qnt:AlbumStatsConsistentWhenDrained",
+        "asset-aspects.qnt:AlbumStatsNoPhantom",
+        "asset-aspects.qnt:AlbumTaskApply",
+        "asset-aspects.qnt:aspectsAlbumCascadeCleanTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeConcurrentMembersTest",
+        "asset-aspects.qnt:aspectsAlbumCascadeRaceAbsorbedTest",
+        "asset-aspects.qnt:aspectsMemberWriteAlbumCascadeTest",
+        "asset-aspects.qnt:memberCount",
+        "asset-aspects.qnt:memberSize",
+        "asset-aspects.qnt:members"
       ]
     }
   ]
