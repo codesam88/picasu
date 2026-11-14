@@ -65,9 +65,9 @@ Environment contract (on top of the launcher's):
   STORM_CLIENTS   concurrent storm clients (default 8)
   STORM_OPS       ops per storm client (default 10)
   STORM_MARGIN_S  storm must finish this long before the scan ends
-                  (default 5); on violation the run fails naming the
+                  (default 0.5); on violation the run fails naming the
                   scantime increase factor
-  HYPERFINE_BIN   hyperfine binary; empty disables hyperfine
+  HYPERFINE_BIN   hyperfine binary (required; managed via `just install hyperfine`)
 
 Exit codes: 0 completed; 1 config/preflight; 2 runtime failure (including a
 scan that did not reach `completed` and a failed write-probe verification).
@@ -106,7 +106,7 @@ DEFAULT_SCAN_REPEATS = 3
 DEFAULT_FETCHES = 10
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
-DEFAULT_STORM_MARGIN_S = 5.0
+DEFAULT_STORM_MARGIN_S = 0.5
 WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle")
 DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
@@ -178,21 +178,21 @@ def _float_env(environ: dict, name: str, default: float, minimum: float = 0.0) -
     return value
 
 
+HYPERFINE_INSTALL_HINT = "hyperfine is required — run: just install hyperfine"
+
+
 def resolve_hyperfine(environ: dict) -> str:
     explicit = environ.get("HYPERFINE_BIN")
     if explicit is not None:
         if explicit == "":
-            return ""
+            raise ConfigError(HYPERFINE_INSTALL_HINT)
         if not (Path(explicit).is_file() and os.access(explicit, os.X_OK)):
             raise ConfigError(f"HYPERFINE_BIN is not executable: {explicit}")
         return explicit
     found = shutil.which("hyperfine")
     if found:
         return found
-    fallback = Path("/tmp/opencode/worker-pool-rework/bin/hyperfine")
-    if fallback.is_file() and os.access(fallback, os.X_OK):
-        return str(fallback)
-    return ""
+    raise ConfigError(HYPERFINE_INSTALL_HINT)
 
 
 def _validate_out(raw: str) -> Path:
@@ -556,7 +556,28 @@ def _result_name(result: dict) -> str:
 
 
 def _wall_clock(result: dict) -> dict:
-    return result.get("summary", {}).get("time_wall_clock", {})
+    # hyperfine >=1.19 exports timings flat on each result; older versions
+    # nested them under summary.time_wall_clock. Accept both.
+    if isinstance(result, dict) and ("mean" in result or "median" in result):
+        times = result.get("times")
+        count = len(times) if isinstance(times, list) else result.get("count")
+        if count is None:
+            exit_codes = result.get("exit_codes")
+            if isinstance(exit_codes, list):
+                count = len(exit_codes)
+        return {
+            "mean": result.get("mean"),
+            "median": result.get("median"),
+            "stddev": result.get("stddev"),
+            "count": count,
+        }
+    if isinstance(result, dict):
+        nested = result.get("summary", {})
+        if isinstance(nested, dict):
+            nested = nested.get("time_wall_clock", {})
+        if isinstance(nested, dict):
+            return nested
+    return {}
 
 
 def run_hyperfine(
@@ -570,7 +591,7 @@ def run_hyperfine(
 ) -> list:
     binary = cfg["hyperfine"]
     if not binary:
-        return []
+        raise WorkloadError(HYPERFINE_INSTALL_HINT)
     command = [binary, "--warmup", str(warmup), "-r", str(runs), "--export-json", str(export_json)]
     for name, shell in benches:
         command.extend(["-n", name, shell])
@@ -651,51 +672,32 @@ def probe_round(
     random_fetch_round(cfg, client, transcript, round_no, rows, state, lines, round_dir)
 
     json_path = round_dir / f"hyperfine-round-{round_no}.json"
-    if cfg["hyperfine"]:
-        benches = [
-            ("prefetch", cmd_prefetch(cfg)),
-            ("edit-rating", cmd_edit_rating(cfg, timestamp)),
-        ]
-        try:
-            results = run_hyperfine(
-                cfg,
-                warmup=0,
-                runs=cfg["runs_during"],
-                export_json=json_path,
-                benches=benches,
-                logger=logger,
-                output_path=round_dir / f"hyperfine-round-{round_no}.out",
-            )
-        except WorkloadError:
-            transcript.log(
-                f"probe round={round_no} rows={rows} state={state} hyperfine FAILED "
-                f"(see {round_dir / f'hyperfine-round-{round_no}.out'})"
-            )
-            return False
-        if len(results) != 2:
-            transcript.log(
-                f"probe round={round_no} rows={rows} state={state} hyperfine json has no results"
-            )
-            return False
-        summary = _summary_line(results)
-    else:
-        prefetch_time = "curl_error"
-        edit_time = "curl_error"
-        try:
-            _, _, prefetch_time = client.post("/get/prefetch", {})
-        except WorkloadError:
-            pass
-        try:
-            _, _, edit_time = client.put(
-                "/put/edit_rating",
-                {"indexArray": [0], "timestamp": timestamp, "rating": 3},
-            )
-        except WorkloadError:
-            pass
-        summary = (
-            f"prefetch single={prefetch_time} s | "
-            f"edit-rating single={edit_time} s (hyperfine MISSING)"
+    benches = [
+        ("prefetch", cmd_prefetch(cfg)),
+        ("edit-rating", cmd_edit_rating(cfg, timestamp)),
+    ]
+    try:
+        results = run_hyperfine(
+            cfg,
+            warmup=0,
+            runs=cfg["runs_during"],
+            export_json=json_path,
+            benches=benches,
+            logger=logger,
+            output_path=round_dir / f"hyperfine-round-{round_no}.out",
         )
+    except WorkloadError:
+        transcript.log(
+            f"probe round={round_no} rows={rows} state={state} hyperfine FAILED "
+            f"(see {round_dir / f'hyperfine-round-{round_no}.out'})"
+        )
+        return False
+    if len(results) != 2:
+        transcript.log(
+            f"probe round={round_no} rows={rows} state={state} hyperfine json has no results"
+        )
+        return False
+    summary = _summary_line(results)
     transcript.log(f"probe round={round_no} rows={rows} state={state} hyperfine: {summary}")
     return True
 
@@ -1270,38 +1272,23 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
     ]
 
     logger.log(f"=== hyperfine (warmup={cfg['warmup']} runs={cfg['repeats']}) ===")
-    if cfg["hyperfine"]:
-        results = run_hyperfine(
-            cfg,
-            warmup=cfg["warmup"],
-            runs=cfg["repeats"],
-            export_json=out / "hyperfine.json",
-            benches=benches,
-            logger=logger,
+    results = run_hyperfine(
+        cfg,
+        warmup=cfg["warmup"],
+        runs=cfg["repeats"],
+        export_json=out / "hyperfine.json",
+        benches=benches,
+        logger=logger,
+    )
+    if len(results) != 3:
+        raise WorkloadError("hyperfine json has no results")
+    for result in results:
+        wall = _wall_clock(result)
+        logger.log(
+            f"hyperfine {_result_name(result)}: mean={wall.get('mean')} s "
+            f"median={wall.get('median')} s stddev={wall.get('stddev')} "
+            f"runs={wall.get('count')} cmd={_redact(str(result.get('command', '')))}"
         )
-        if len(results) != 3:
-            raise WorkloadError("hyperfine json has no results")
-        for result in results:
-            wall = _wall_clock(result)
-            logger.log(
-                f"hyperfine {_result_name(result)}: mean={wall.get('mean')} s "
-                f"median={wall.get('median')} s stddev={wall.get('stddev')} "
-                f"runs={wall.get('count')} cmd={_redact(str(result.get('command', '')))}"
-            )
-    else:
-        fallback = out / "hyperfine-fallback.txt"
-        fallback.write_text("")
-        for run_index in range(1, cfg["repeats"] + 1):
-            try:
-                _, _, elapsed = client.get(_compressed_path(first_hash), bearer=first_token)
-                raw = str(elapsed)
-            except WorkloadError:
-                raw = "curl_error"
-            line = f"run={run_index} compressed_get_s={raw}"
-            logger.log(line)
-            with open(fallback, "a", encoding="utf-8") as handle:  # noqa: PTH123
-                handle.write(line + "\n")
-        logger.log(f"hyperfine MISSING: wrote {fallback}")
 
     logger.log("=== write-probe verification (rating == 3 on snapshot index 0) ===")
     lines = build_probe_list(cfg, client)
