@@ -20,9 +20,9 @@ Environment contract:
   ADMIN_PW      administrator password; generated for FRESH=1, required
                 for FRESH=0
   PICASU_BIN    server binary. When set, it is used as-is and must be
-                executable; when unset, the launcher builds
-                target/<profile>/picasu with cargo (log:
-                OUT/build-picasu.log)
+                executable; when unset, the launcher uses
+                target/<profile>/picasu and raises ConfigError (with a
+                build hint) if it is missing or not executable
   BUILD_PROFILE release (required in bench) | debug
   NCPU          taskset core budget 0-(NCPU-1); 0 disables pinning (default 4)
   READY_TIMEOUT_S  readiness budget in seconds (default 120)
@@ -33,8 +33,7 @@ bench refuses RUST_LOG (log volume perturbs measurements); debug passes env
 through unstripped.
 
 Artifacts in OUT: server.log, launcher.log, run-manifest.json,
-bootstrap.json, login.json, cookies.txt, launcher-info.json, diag/, and
-build-picasu.log when the launcher built the binary.
+bootstrap.json, login.json, cookies.txt, launcher-info.json, diag/.
 `launcher-info.json` is the seam for a future workload wrapper:
 base_url, cookie_jar, pid, out, mode. `run-manifest.json` records the
 resolved build profile and the binary's sha256.
@@ -45,6 +44,7 @@ Exit codes: 0 completed; 1 config/preflight; 2 startup; 3 reserved;
 
 from __future__ import annotations
 
+import hashlib
 import http.cookiejar
 import json
 import os
@@ -183,6 +183,17 @@ def config_from_env(environ: dict) -> dict:
     fresh = fresh_raw == "1"
     out = _validate_out(environ.get("OUT", ""), fresh=fresh)
 
+    if "IMAGE_HOME_SRC" in environ:
+        image_home_src_raw = environ["IMAGE_HOME_SRC"]
+        image_home_path = Path(image_home_src_raw)
+        if not image_home_path.is_dir():
+            raise ConfigError(f"IMAGE_HOME_SRC must be a directory, got '{image_home_src_raw}'")
+        image_home = image_home_path
+        image_home_src = image_home_src_raw
+    else:
+        image_home = None
+        image_home_src = None
+
     build_profile = environ.get("BUILD_PROFILE", "release")
     if build_profile not in ("release", "debug"):
         raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
@@ -246,12 +257,135 @@ def config_from_env(environ: dict) -> dict:
         "admin_pw": admin_pw,
         "base_url": f"http://127.0.0.1:{port}",
         "poll_interval": POLL_INTERVAL_S,
+        "image_home": image_home,
+        "image_home_src": image_home_src,
+    }
+
+
+def count_image_files(path: Path) -> int:
+    """Cheap, non-recursive count of files in an image home.
+
+    Dotfiles/dotdirs are skipped; only direct file entries are counted.
+    """
+    count = 0
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.name.startswith("."):
+                    continue
+                try:
+                    if entry.is_file():
+                        count += 1
+                except OSError:
+                    continue
+    except OSError:
+        return 0
+    return count
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def cpu_model() -> str:
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.lower().startswith("model name"):
+                    if ":" in line:
+                        return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
+
+
+def mem_total() -> str:
+    try:
+        with open("/proc/meminfo", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("MemTotal"):
+                    if ":" in line:
+                        return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
+
+
+def filesystem_type(path: Path) -> str:
+    df = shutil.which("df")
+    if df is None:
+        return "unknown"
+    try:
+        out = subprocess.run(
+            [df, "-T", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except subprocess.SubprocessError, OSError:
+        return "unknown"
+    lines = out.stdout.splitlines()
+    if len(lines) < 2:
+        return "unknown"
+    parts = lines[-1].split()
+    # Filesystem Type 1K-blocks Used Available Use% Mounted-on
+    if len(parts) < 2:
+        return "unknown"
+    return parts[1] or "unknown"
+
+
+def machine_info(out: Path) -> dict:
+    return {
+        "cpu_model": cpu_model(),
+        "cpu": cpu_model(),
+        "model_name": cpu_model(),
+        "mem_total": mem_total(),
+        "MemTotal": mem_total(),
+        "fs_type": filesystem_type(out),
+        "filesystem_type": filesystem_type(out),
     }
 
 
 # --- artifacts ---------------------------------------------------------------
+def _dataset_info(cfg: dict, environ: dict) -> dict:
+    out = cfg["out"]
+    if cfg.get("image_home") is not None:
+        source_path = str(
+            cfg["image_home_src"] if cfg.get("image_home_src") is not None else cfg["image_home"]
+        )
+        image_home = cfg["image_home"]
+        default_id = Path(source_path).name
+    else:
+        source_path = "out-local"
+        image_home = out / "images"
+        default_id = "out-local"
+    dataset_id = environ.get("DATASET_ID", default_id)
+    if dataset_id == "":
+        dataset_id = default_id
+    count = count_image_files(image_home)
+    info = {
+        "source": source_path,
+        "source_path": source_path,
+        "path": source_path,
+        "count": count,
+        "image_count": count,
+        "file_count": count,
+        "id": dataset_id,
+        "dataset_id": dataset_id,
+    }
+    return info, str(image_home)
+
+
 def write_manifest(cfg: dict, environ: dict) -> None:
     gi = git_info()
+    dataset_info, image_home_str = _dataset_info(cfg, environ)
+    observer_stats = environ.get("PICASU_OBSERVER_STATS", "unset")
+    binary_sha = sha256_file(cfg["binary"])
+    machine = machine_info(cfg["out"])
     (cfg["out"] / "run-manifest.json").write_text(
         json.dumps(
             {
@@ -266,6 +400,29 @@ def write_manifest(cfg: dict, environ: dict) -> None:
                 "RUST_LOG": environ.get("RUST_LOG", ""),
                 "git": gi["sha"],
                 "started": datetime.now(timezone.utc).isoformat(),
+                "image_home": image_home_str,
+                "PICASU_IMAGE_HOME": image_home_str,
+                "dataset": dataset_info,
+                "dataset_source": dataset_info["source"],
+                "dataset_path": dataset_info["source"],
+                "dataset_count": dataset_info["count"],
+                "dataset_id": dataset_info["id"],
+                "DATASET_ID": dataset_info["id"],
+                "machine": machine,
+                "machine_info": machine,
+                "cpu_model": machine["cpu_model"],
+                "mem_total": machine["mem_total"],
+                "fs_type": machine["fs_type"],
+                "filesystem_type": machine["filesystem_type"],
+                "dataset_identity": dataset_info,
+                "dataset_info": dataset_info,
+                "binary_sha256": binary_sha,
+                "server_binary_sha256": binary_sha,
+                "binary_sha": binary_sha,
+                "PICASU_OBSERVER_STATS": observer_stats,
+                "observer_stats": observer_stats,
+                "observer_stats_setting": observer_stats,
+                "effective_observer_stats": observer_stats,
             },
             indent=2,
         )
@@ -340,13 +497,17 @@ def server_env(cfg: dict, environ: dict) -> dict:
     out = cfg["out"]
     data = out / "data"
     env = dict(environ)
+    if cfg.get("image_home") is not None:
+        image_home = cfg["image_home"]
+    else:
+        image_home = out / "images"
     env.update(
         {
             "PICASU_ADDRESS": "127.0.0.1",
             "PICASU_PORT": str(cfg["port"]),
             "PICASU_DATA_HOME": str(data),
             "PICASU_CONFIG_HOME": str(out / "config"),
-            "PICASU_IMAGE_HOME": str(out / "images"),
+            "PICASU_IMAGE_HOME": str(image_home),
             "PICASU_USERS_HOME": str(data / "users"),
             "PICASU_BOOTSTRAP_ADMIN": "true" if cfg["fresh"] else "false",
             "PICASU_TRIVIAL_PASSWORDS": "true",
@@ -547,7 +708,10 @@ def prepare_out(cfg: dict) -> None:
         out.mkdir(parents=True)
     else:
         out.mkdir(parents=True, exist_ok=True)
-    for sub in ("data", "data/users", "config", "images"):
+    subs = ["data", "data/users", "config"]
+    if cfg.get("image_home") is None:
+        subs.append("images")
+    for sub in subs:
         (out / sub).mkdir(parents=True, exist_ok=True)
 
 

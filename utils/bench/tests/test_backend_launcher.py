@@ -470,5 +470,74 @@ class StackCaptureTest(unittest.TestCase):
         self.assertIn("#0", stacks)
 
 
+class ImageHomeAndManifestTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_image_home_src_not_directory_raises(self):
+        out = self.root / "cell"
+        with self.assertRaises(bl.ConfigError):
+            bl.config_from_env(base_env(OUT=str(out), IMAGE_HOME_SRC=str(self.root / "nope")))
+        f = self.root / "f.txt"
+        f.write_text("x")
+        with self.assertRaises(bl.ConfigError):
+            bl.config_from_env(base_env(OUT=str(out), IMAGE_HOME_SRC=str(f)))
+
+    def test_image_home_src_override_no_images_dir_and_env(self):
+        src = self.root / "src"
+        src.mkdir()
+        (src / "a.jpg").write_bytes(b"x")
+        (src / "b.jpg").write_bytes(b"x")
+        out = self.root / "cell"
+        env = base_env(OUT=str(out), IMAGE_HOME_SRC=str(src), DATASET_ID="ds-1")
+        cfg = bl.config_from_env(env)
+        self.assertEqual(cfg["image_home"], src)
+        bl.prepare_out(cfg)
+        self.assertFalse((out / "images").exists())
+        self.assertTrue(src.exists())
+        self.assertEqual(sorted(p.name for p in src.iterdir()), ["a.jpg", "b.jpg"])
+        se = bl.server_env(cfg, env)
+        self.assertEqual(se["PICASU_IMAGE_HOME"], str(src))
+        bl.write_manifest(cfg, env)
+        m = json.loads((out / "run-manifest.json").read_text())
+        self.assertEqual(m["dataset"]["count"], 2)
+        self.assertEqual(m["dataset"]["id"], "ds-1")
+        self.assertEqual(m["dataset"]["source"], str(src))
+        self.assertIn("cpu_model", m)
+        self.assertIn("mem_total", m)
+        self.assertIn("fs_type", m)
+        self.assertIn("binary_sha256", m)
+        self.assertIn("PICASU_OBSERVER_STATS", m)
+
+    def test_observer_flag_recording_on_off(self):
+        for val, expected in ((None, "unset"), ("1", "1"), ("0", "0")):
+            out = self.root / f"cell-{val}"
+            env = base_env(OUT=str(out))
+            if val is not None:
+                env["PICASU_OBSERVER_STATS"] = val
+            cfg = bl.config_from_env(env)
+            bl.prepare_out(cfg)
+            bl.write_manifest(cfg, env)
+            m = json.loads((cfg["out"] / "run-manifest.json").read_text())
+            self.assertEqual(m["PICASU_OBSERVER_STATS"], expected)
+            self.assertEqual(m["observer_stats"], expected)
+
+    def test_local_dataset_recorded_as_out_local(self):
+        out = self.root / "cell"
+        (out / "data").mkdir(parents=True)
+        (out / "images").mkdir(parents=True)
+        (out / "images" / "x.jpg").write_bytes(b"x")
+        env = base_env(OUT=str(out), FRESH="0", ADMIN_PW="pw")
+        cfg = bl.config_from_env(env)
+        bl.prepare_out(cfg)
+        bl.write_manifest(cfg, env)
+        m = json.loads((out / "run-manifest.json").read_text())
+        self.assertEqual(m["dataset"]["source"], "out-local")
+        self.assertEqual(m["dataset"]["count"], 1)
+        self.assertEqual(m["dataset"]["id"], "out-local")
+
+
 if __name__ == "__main__":
     unittest.main()
