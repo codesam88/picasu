@@ -207,6 +207,84 @@ fn rotate_persists_to_xmp_and_reindex_preserves_display() {
     );
 }
 
+/// A rotate that races an in-flight scan wins: the scan's pre-rotation
+/// snapshot is dropped by the generation bump, and the sidecar-first rotation
+/// result (sidecar marker, thumbnail, DB dimensions) is what remains. Pins
+/// OP-6's `aspectsRotateVsScanTest`. Without the abort the paused scan would
+/// flush its pre-rotation dimensions over the rotated row.
+#[test]
+fn rotate_supersedes_in_flight_scan() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let photo = generate_photo();
+    seed(
+        "rotation-writer",
+        false,
+        Some(test_password("rotation-writer").as_str()),
+    );
+    let viewer = cookie("rotation-writer", false);
+
+    post_index_album(&client);
+    let asset_id = discover_asset_id(&client, PHOTO_REL);
+
+    // Park a scan after it has read the pre-rotation sidecar and built its
+    // record (dimensions W×H, rotation 0).
+    crate::workflow::scan_gate::arm();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let job_id = 9_001_002;
+    rt.block_on(crate::tasks::queue::submit_scan(photo.clone(), job_id))
+        .expect("submit scan");
+    rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            crate::workflow::scan_gate::reached(),
+        )
+        .await
+    })
+    .expect("scan must reach the post-metadata flush gate");
+
+    // Rotate while the scan is parked: sidecar first, then thumbnail and DB.
+    let resp = client
+        .put("/put/rotate-image")
+        .cookie(viewer)
+        .header(ContentType::JSON)
+        .body(json!({ "assetId": asset_id }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "rotate-image: {resp:?}");
+
+    // Release the parked scan; its stale snapshot must be dropped.
+    crate::workflow::scan_gate::release();
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    rt.block_on(crate::tasks::queue::drain_intake(job_id, &cancel));
+    rt.block_on(crate::tasks::queue::writer::barrier());
+    crate::workflow::scan_gate::disarm();
+
+    let after = record(&asset_id);
+    assert_eq!(
+        (after.width(), after.height()),
+        (PHOTO_HEIGHT, PHOTO_WIDTH),
+        "a superseded scan must not flush pre-rotation dimensions over the rotate"
+    );
+    assert_eq!(
+        compressed_dimensions(&after),
+        (PHOTO_HEIGHT, PHOTO_WIDTH),
+        "the compressed JPEG stays rotated"
+    );
+    assert_eq!(
+        extract_xmp_data_from_file(&photo).rotation,
+        90,
+        "the sidecar remains the rotation source of truth"
+    );
+    assert_eq!(
+        asset_store::get_asset_id_by_path(&photo.to_string_lossy())
+            .expect("read path mapping")
+            .expect("path mapping")
+            .as_str(),
+        asset_id.as_str(),
+        "rotation must not change the asset identity"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged() {

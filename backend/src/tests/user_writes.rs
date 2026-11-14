@@ -949,6 +949,11 @@ fn upload_is_stored_without_row_and_survives_sweep_until_intake_indexes() {
         .expect("read assets before upload")
         .len();
 
+    // Hold intake workers before the upload so the stored-but-not-indexed
+    // window is deterministic: the route must return without minting a row
+    // even if a worker is ready, and only the released intake may index it.
+    crate::tasks::queue::worker::hold_intake();
+
     // Upload a valid file through the real route.
     let file_data =
         std::fs::read(test_image_home().join("writes/photo.jpg")).expect("seeded photo bytes");
@@ -969,24 +974,35 @@ fn upload_is_stored_without_row_and_survives_sweep_until_intake_indexes() {
     let stored_path = std::path::PathBuf::from(&target_dir).join(&stored_name);
     assert!(stored_path.exists(), "uploaded file must be stored on disk");
 
-    // Before intake processing: upload must not have minted an asset row
-    // synchronously. Workers may already have applied the queued intake item
-    // by the time the route returns, in which case the row is present and
-    // this assertion is skipped (the final indexing assertion below still
-    // pins that intake, not upload, is what mints the row).
+    // Wait until a worker has dequeued the intake item and parked on the hold
+    // (proving the no-row state below is not just "not picked up yet").
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime for intake hold");
+    rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            crate::tasks::queue::worker::wait_until_intake_held(),
+        )
+        .await
+    })
+    .expect("a worker must pick up the uploaded path while intake is held");
+
+    // The upload route stores the file only: no row may exist before intake
+    // applies, so a synchronous mint inside the route fails this test even
+    // when a worker is about to index it.
     let row_before_intake =
         crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
             .expect("read ASSET_BY_PATH before intake");
-    if row_before_intake.is_none() {
-        // no asset id consumed: store count unchanged
-        let after_asset_count = crate::storage::asset_store::get_all_assets()
-            .expect("read assets after upload")
-            .len();
-        assert_eq!(
-            after_asset_count, before_asset_count,
-            "upload must not consume an asset id before intake"
-        );
-    }
+    assert!(
+        row_before_intake.is_none(),
+        "upload must not mint an asset row before intake applies"
+    );
+    let after_asset_count = crate::storage::asset_store::get_all_assets()
+        .expect("read assets after upload")
+        .len();
+    assert_eq!(
+        after_asset_count, before_asset_count,
+        "upload must not consume an asset id before intake"
+    );
 
     // An uploaded file that is still present is not corruption: sweep must
     // not prune it (the file is present, so sweep skips it) and must not
@@ -1006,6 +1022,9 @@ fn upload_is_stored_without_row_and_survives_sweep_until_intake_indexes() {
         row_before_sweep, row_after_sweep,
         "sweep must not change row existence for a present file"
     );
+
+    // Release the held intake item; only now may the file be indexed.
+    crate::tasks::queue::worker::release_intake();
 
     // Drain/apply the intake item the way the pipeline does, then assert the
     // row now exists (indexed).
