@@ -299,6 +299,20 @@ class RunCellTest(unittest.TestCase):
         self.assertEqual(cfg["workload_timeout"], 0)
         self.assertFalse(cfg["gdb"])
 
+    def test_missing_hyperfine_fails_fast(self):
+        with (
+            mock.patch.object(oc.shutil, "which", return_value=None),
+            mock.patch.dict(oc.os.environ, {}, clear=False),
+        ):
+            with self.assertRaises(oc.ConfigError) as ctx:
+                oc.config_from_env({"OUT": str(self.out), "PORT": "5800"})
+            self.assertIn("hyperfine is required — run: just install hyperfine", str(ctx.exception))
+
+    def test_empty_hyperfine_bin_fails_fast(self):
+        with self.assertRaises(oc.ConfigError) as ctx:
+            oc.config_from_env({"OUT": str(self.out), "PORT": "5800", "HYPERFINE_BIN": ""})
+        self.assertIn("hyperfine is required — run: just install hyperfine", str(ctx.exception))
+
     def test_config_refuses_repo_out(self):
         for bad in ("/", str(oc.REPO_ROOT), str(oc.REPO_ROOT / "cell")):
             with self.assertRaises(oc.ConfigError, msg=bad):

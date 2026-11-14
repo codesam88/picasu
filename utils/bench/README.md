@@ -17,6 +17,11 @@ The environment contracts live in the module docstrings. Each producer writes
 into `$OUT`; the launcher writes `launcher-info.json`, which the workload
 consumes.
 
+## Prerequisites
+
+`hyperfine` is required for every bench cell. Install the managed build with
+`just install hyperfine`; cells fail fast with an install hint if it is missing.
+
 ## Checks
 
 ```sh

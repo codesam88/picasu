@@ -76,6 +76,8 @@ LAUNCHER_INTERRUPT_RC = 130
 TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
 
 EXIT_CONFIG = 1
+
+HYPERFINE_INSTALL_HINT = "hyperfine is required — run: just install hyperfine"
 EXIT_LAUNCHER_NOT_READY = 10
 EXIT_WORKLOAD_SPAWN = 11
 EXIT_SHUTDOWN_FAILED = 12
@@ -138,6 +140,18 @@ def _nonnegative_float(environ: dict, name: str, default: float) -> float:
     return value
 
 
+def resolve_hyperfine(environ: dict):
+    explicit = environ.get("HYPERFINE_BIN")
+    if explicit is not None:
+        if explicit == "":
+            return None
+        path = Path(explicit)
+        if not (path.is_file() and os.access(path, os.X_OK)):
+            return None
+        return explicit
+    return shutil.which("hyperfine")
+
+
 def config_from_env(environ: dict, out_flag=None, port_flag=None) -> dict:
     """Build cell config. Flags win over environment; mode is derived downstream."""
     out = _validate_out(out_flag if out_flag is not None else environ.get("OUT", ""))
@@ -149,6 +163,9 @@ def config_from_env(environ: dict, out_flag=None, port_flag=None) -> dict:
     build_profile = environ.get("BUILD_PROFILE", "release")
     if build_profile not in ("release", "debug"):
         raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
+
+    if resolve_hyperfine(environ) is None:
+        raise ConfigError(HYPERFINE_INSTALL_HINT)
 
     return {
         "out": out,
