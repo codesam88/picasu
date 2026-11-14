@@ -642,4 +642,157 @@ mod tests {
             version_after - version_before
         );
     }
+
+    /// Album-stats cascade: a late member write after a completed cascade
+    /// re-marks the album pending and the next cascade converges, with no
+    /// phantom members (stats never claim membership `assetById` refutes).
+    /// Covers OP-7/OP-8 `AlbumStatsNoPhantom` and OP-8
+    /// `aspectsAlbumCascadeRaceAbsorbedTest` at the observable contract level:
+    /// the cascade's `ref_data` snapshot is taken once per cascade entry and the
+    /// write-txn re-check is album liveness only, so a member write landing
+    /// between snapshot and stats write is absorbed by the next cascade rather
+    /// than lost.
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn album_cascade_race_absorbed() {
+        use crate::model::abstract_data::AbstractData;
+        use crate::model::metadata_record::MetadataRecord;
+        use crate::process::dir_album;
+        use crate::storage::asset_store;
+        use crate::storage::db::{METADATA_TABLE, TREE};
+        use crate::tasks::batcher::flush_tree::flush_tables;
+        use crate::tests::bootstrap;
+        use arrayvec::ArrayString;
+        use snapfab::{PhotoSpec, generate_batch};
+        use std::fs::File;
+
+        let _guard = bootstrap::lock();
+        let _ = &*bootstrap::TEST_ENV;
+        bootstrap::reset_backend_state();
+
+        let root = bootstrap::test_image_home();
+        let dir = root.join("album_cascade_race");
+        std::fs::create_dir_all(&dir).expect("create album dir");
+
+        let album_id = dir_album::get_or_create_dir_album(dir.clone()).expect("create album");
+
+        let p1 = dir.join("a.jpg");
+        let p2 = dir.join("b.jpg");
+        generate_batch(&[PhotoSpec {
+            output: Some(p1.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate p1");
+        generate_batch(&[PhotoSpec {
+            output: Some(p2.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate p2");
+
+        let hash1 = crate::process::hash::blake3_hasher(File::open(&p1).expect("open p1"))
+            .expect("hash p1");
+        let mut data1 = AbstractData::new(&p1, hash1).expect("build p1 data");
+        if let AbstractData::Image(img) = &mut data1 {
+            img.metadata.album = Some(album_id);
+        }
+        flush_tables(&[data1], &[]);
+
+        assert!(
+            dir_album::PENDING_ALBUM_UPDATES
+                .lock()
+                .expect("lock")
+                .contains(&album_id),
+            "first member write must mark the album pending"
+        );
+
+        cascade_after_write().await;
+
+        assert!(
+            !dir_album::PENDING_ALBUM_UPDATES
+                .lock()
+                .expect("lock")
+                .contains(&album_id),
+            "cascade must drain the pending flag"
+        );
+
+        // Read stats.
+        let read_count = |aid: ArrayString<64>| -> usize {
+            use redb::ReadableDatabase;
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(METADATA_TABLE).expect("open metadata");
+            let guard = table.get(&*aid).expect("get album").expect("album present");
+            match guard.value() {
+                MetadataRecord::Album(p) => p.item_count,
+                _ => panic!("not an album payload"),
+            }
+        };
+        let count_members = |aid: ArrayString<64>| -> usize {
+            asset_store::get_all_assets()
+                .expect("list assets")
+                .iter()
+                .filter(|r| r.album_id == Some(aid))
+                .count()
+        };
+
+        let c1 = read_count(album_id);
+        assert_eq!(c1, 1, "first cascade must include the first member");
+        let actual1 = count_members(album_id);
+        assert!(
+            c1 <= actual1,
+            "AlbumStatsNoPhantom: stats must not exceed real members"
+        );
+
+        // Late member write after the cascade.
+        let hash2 = crate::process::hash::blake3_hasher(File::open(&p2).expect("open p2"))
+            .expect("hash p2");
+        let mut data2 = AbstractData::new(&p2, hash2).expect("build p2 data");
+        if let AbstractData::Image(img) = &mut data2 {
+            img.metadata.album = Some(album_id);
+        }
+        flush_tables(&[data2], &[]);
+
+        assert!(
+            dir_album::PENDING_ALBUM_UPDATES
+                .lock()
+                .expect("lock")
+                .contains(&album_id),
+            "late member write must re-mark the album pending"
+        );
+
+        // Second cascade converges and includes the late member.
+        cascade_after_write().await;
+
+        assert!(
+            !dir_album::PENDING_ALBUM_UPDATES
+                .lock()
+                .expect("lock")
+                .contains(&album_id),
+            "second cascade must drain the pending flag"
+        );
+        let c2 = read_count(album_id);
+        let actual2 = count_members(album_id);
+        assert_eq!(
+            c2, 2,
+            "second cascade must include the late member (no lost update)"
+        );
+        assert!(
+            c2 <= actual2,
+            "AlbumStatsNoPhantom: stats must not exceed real members"
+        );
+        assert_eq!(c2, actual2, "drained stats must equal real member count");
+
+        std::fs::remove_dir_all(&dir).ok();
+        bootstrap::reset_backend_state();
+    }
 }

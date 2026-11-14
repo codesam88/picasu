@@ -888,4 +888,101 @@ mod tests {
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    /// Absorbed sweep pruning: a sweep may prune a row whose path is missing
+    /// even while a move is in flight; the move's own row rewrite then
+    /// re-establishes the destination and both tables stay coherent (no lost
+    /// update, no dangling mapping). Covers OP-9 `aspectsAbsorbedSweepTest` at
+    /// the observable contract level (the exact lease/generation interleave is
+    /// not parked here; convergence of the end state is what is asserted).
+    #[test]
+    fn absorbed_sweep_prune_does_not_break_move() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        let dir = test_image_home().join("absorbed_sweep");
+        std::fs::create_dir_all(&dir).expect("create absorbed-sweep dir");
+        let src_dir = dir.join("src");
+        let dst_dir = dir.join("dst");
+        std::fs::create_dir_all(&src_dir).expect("create src dir");
+        std::fs::create_dir_all(&dst_dir).expect("create dst dir");
+        let source = make_jpeg(&src_dir, "photo.jpg", 4);
+        let stale_dest = make_jpeg(&dst_dir, "stale.jpg", 4);
+
+        let src_hash = hash_file(&source);
+        let stale_hash = hash_file(&stale_dest);
+        flush_tables(
+            &[
+                AbstractData::new(&source, src_hash).expect("build source data"),
+                AbstractData::new(&stale_dest, stale_hash).expect("build stale dest data"),
+            ],
+            &[],
+        );
+
+        let src_id = asset_id_at(&source);
+        let stale_id = asset_id_at(&stale_dest);
+
+        // The destination file is externally deleted; the sweep prunes its row.
+        std::fs::remove_file(&stale_dest).expect("remove stale dest file");
+        sweep_remove_batch(std::slice::from_ref(&stale_dest));
+        assert!(
+            asset_store::get_asset_id_by_path(&stale_dest.to_string_lossy())
+                .expect("read pruned dest mapping")
+                .is_none(),
+            "sweep must prune the stale destination mapping"
+        );
+        assert!(
+            asset_store::get_asset_by_id(stale_id.as_str())
+                .expect("read pruned dest record")
+                .is_none(),
+            "sweep must prune the stale destination record"
+        );
+
+        // The in-flight move then renames source -> destination and rewrites
+        // the row, re-establishing the destination despite the prior prune.
+        let dest = dst_dir.join("photo.jpg");
+        std::fs::rename(&source, &dest).expect("move file");
+        let mut moved = asset_store::get_asset_by_id(src_id.as_str())
+            .expect("read moved record")
+            .expect("moved record exists");
+        moved.path = dest.to_string_lossy().into_owned();
+        asset_store::put_asset_by_id(&moved).expect("id-table rewrite");
+        asset_store::remove_asset_by_path(&source.to_string_lossy())
+            .expect("remove source mapping");
+        asset_store::put_asset_by_path(&dest.to_string_lossy(), src_id).expect("put dest mapping");
+
+        // End state coherent.
+        let mapped = asset_store::get_asset_id_by_path(&dest.to_string_lossy())
+            .expect("read dest mapping")
+            .expect("dest mapping exists");
+        let record = asset_store::get_asset_by_id(mapped.as_str())
+            .expect("read dest record")
+            .expect("dest record exists");
+        assert_eq!(
+            record.path,
+            dest.to_string_lossy(),
+            "dest mapping must name the dest"
+        );
+        assert!(
+            asset_store::get_asset_id_by_path(&source.to_string_lossy())
+                .expect("read source mapping")
+                .is_none(),
+            "source mapping must be gone"
+        );
+        // No dangling path mappings under the test dir.
+        let rows =
+            asset_store::list_asset_paths_under(&dir.to_string_lossy()).expect("list path rows");
+        for (path, id) in rows {
+            let rec = asset_store::get_asset_by_id(id.as_str())
+                .expect("read mapped record")
+                .unwrap_or_else(|| panic!("dangling mapping {path}"));
+            assert_eq!(rec.path, path, "path mapping and record must agree");
+        }
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
