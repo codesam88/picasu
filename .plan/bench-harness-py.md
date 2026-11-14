@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 area: backend
 priority: high

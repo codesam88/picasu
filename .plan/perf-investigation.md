@@ -42,6 +42,50 @@ before proposing changes.
   reads: p50 27 ms, p95 130 ms, max 171 ms; edit_tag 102 ms.
 - `.plan/quint-asset-aspects.md` — mutation-window modeling, not perf.
 
+## Phase B roadmap (bench/work, added 2026-11-14)
+
+Done before this roadmap: Phase A harness fixes (wall-clock schema,
+margin default, extractor wordings, hyperfine required);
+`IMAGE_HOME_SRC` sandbox override + comparable run manifests;
+observer stats default-on in bench mode (distortion A/B: no signal,
+run variance dominates); `docs/benchmarks.md` protocol.
+
+Standing rule from the A/B: single cells carry no comparison (3x wall
+variance back-to-back on one machine). Batteries repeat cells and
+compare medians across cells, not within one.
+
+- **S1. Cheap materialisation + large-file archive.** `copy2` per cell
+  becomes link-or-copy (hardlink same fs, copy fallback); sandbox mode
+  (`IMAGE_HOME_SRC`) skips materialisation and records reuse. Seed one
+  large-file archive class (few hundred real-camera-sized files).
+  Files: `workload.py`, `seed_images.py`, tests. Acceptance: set-100
+  cell byte-identical results via link path; large-file repo seeds and
+  scans. Enables S5.
+- **S2. Drain-table parsing.** Extractor parses `observe drain:` tables
+  from the cell `server.log` into per-scan stage rows joined by scan
+  index to request latencies. Files: `extract-bench.py`, tests with
+  recorded server.log fixtures. Acceptance: re-parse of the Phase A
+  validation cell yields stage rows matching the manual read. Enables
+  S4/S5 analysis.
+- **S3. Upload profile.** New `WORKLOAD=upload`: submit files, record
+  submit-to-200 plus time-to-visible per file, verify background drain.
+  Files: `workload.py`, tests, README. Acceptance: upload cell at
+  set-100 green with populated upload columns. Independent of S1/S2.
+- **S4. Battery runner + checked-in baselines.** Pinned env per battery
+  (profiles x scales x load), one result row per cell, baselines file
+  with bands; a cell outside its band fails until explained and
+  re-recorded. Files: new `run-battery` recipe/doc, `baselines.tsv`
+  (location decided at build). Needs S2. Acceptance: set-100 gate
+  battery green against fresh baselines from repeated cells.
+- **S5. Large-set rig.** Seed 5650 archive once, run control + storm at
+  scale, record; promote to 50k+ only when 5650 is clean. Needs S1+S4.
+  Acceptance: scale numbers recorded with stage attribution; items 1-4
+  re-examined against them.
+- **S6. Tuning on evidence only.** Items 1-4/6-8 promote to task files
+  only with a triggering cell + metric attached. Stop rule holds.
+
+Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
+
 ## Items (added 2026-11-13)
 
 1. **Tree rebuild is O(rows) and the leading-edge miss pays it in full.**
@@ -77,6 +121,12 @@ before proposing changes.
 8. **REQ-1/REQ-8 skip optimization.** Perf-adjacent (skip rescans of
    unchanged assets); deferred with its own registry entries in
    `utils/quint/pipeline/requirements.json`.
+9. **`temp_db.redb` growth under probe load (added 2026-11-14).**
+   After identical 5650 scans, `temp_db.redb` ended at 2.0 GiB apparent
+   in the control cell (141 hyperfine/prefetch probe rounds plus
+   edit-rating probes) vs 8.4 MB in storm-diff (no probe rounds).
+   Dominates per-cell disk. Worth a look before 50k: what the probe
+   path writes that the storm path does not.
 
 Not perf (kept for separation): main rescan hang — pre-existing
 terminal-transition correctness bug, recorded in
