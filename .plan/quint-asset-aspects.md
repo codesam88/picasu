@@ -235,10 +235,22 @@ check` or the individual recipes.
     decision. Focus moves to coverage (step 12 / annotation rungs).
 14. [open] Close the remaining model gaps (agreed order: model gaps →
     cleanup/debt → rebase/push → scaling+CI deferred last):
-    a. N5 residual: make the move's cross-table writes atomic
-    (single-txn store helper for put_asset_by_id +
-    remove_asset_by_path + put_asset_by_path) or accept as
-    requirement; then test + model note.
+    a. N5 reframed (2026-11-14, user correction): assetIds are indices —
+    the FS-first goal is that a sidecar, when one exists, is preserved
+    and moved together with the asset file; DB/thumbnail corruption is
+    secondary (the payload is derived, rebuilt from the sidecar on
+    rescan). The code already implements the primary invariant:
+    move_asset_into_album copies the destination sidecar (atomic
+    temp-write) BEFORE the file rename (assign_album.rs:251-261), and
+    dir moves ride the atomic tree rename (assign_album.rs:305).
+    Remaining work: (i) pin the invariant — a test asserting the
+    destination sidecar exists after a move (crash-window coverage via
+    the copy-before-rename ordering) plus a model run asserting the
+    crash-heal rebuilds metadata FROM the destination sidecar; (ii)
+    still worth doing secondarily: the three DB writes as one txn
+    (asset_store helper, apply_dir_move_plans precedent) to avoid id
+    churn/dupe-group thrash and stale-mapping residue — hygiene, not
+    the goal violation.
     b. N6: survey the current regenerate flow (the orphan-on-unknown-id
     claim predates the rework); return REQ-8 or document.
     c. N7/N9/N10: resolve or document each (N7 delayed-metadata is
