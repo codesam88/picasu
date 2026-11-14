@@ -78,6 +78,12 @@ medians/p95/max in the detail line. If the storm does not finish
 `STORM_MARGIN_S` (default 5) before scan end, the cell fails with the
 factor by which to increase scantime.
 
+`upload` measures the write path end to end: uploads `UPLOAD_FILES`
+(default `IMAGES`) files through `/post/upload`, records per-file
+`submit_ms` and `visible_ms`, then runs the control probe rounds during
+the subsequent scan. Fails (exit 2) if any uploaded file never becomes
+visible. Uses `IMAGE_REPO` for both the base set and the uploaded files.
+
 ## Image repos (seeded a priori)
 
 Cells never generate images. Seed a repo once, reuse it for any cell size
