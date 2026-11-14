@@ -108,24 +108,34 @@ never silent.
 
 `pipeline/operations.json` tracks the implementation of the four-aspect slice
 (asset file, sidecar, thumbnail/derived, DB asset row) as operations OP-1..OP-12.
-Each operation records its events, aspect reads/writes, guards, status and
+Each operation records its events, aspect reads/writes, guards, optional
+`properties` (named model declarations pinning guarded behavior), status and
 interaction nodes. Backend functions carry attribute markers from the `quint`
 crate (`#[quint::operation("OP-N")]`,
 `#[quint::event("EVENT_NAME")]`). Compile-time validation (rung 0 of the
 annotation crate) rejects unknown or misspelled operation/event ids at
 `cargo check -p picasu`, so a typo'd or renamed OP id fails the build
 instead of surfacing only in `just check`. `operations-check.mjs` remains the
-catalog-side backstop and is now the rung 1 gate: it counts a marker only
+catalog-side backstop and is now the rung 2a gate: it counts a marker only
 when it sits on a real attribute line (comment, doc-comment, string and
 `#[cfg(test)]`-gated mentions do not count), requires every cataloged OP to
 have at least one marker and rejects markers naming an unknown OP, requires
 every event to be owned by at least one operation or to be an explicitly
-exempt read/recovery event, and reports (without failing) guarded OPs that
-have no `@operation` tag in `asset-aspects.qnt`. What is still NOT enforced
-(rung 2+): a marker naming a wrong-but-valid id still compiles (id
-correctness against the function is not checked), and aspect read/write set
-and order drift between model and implementation is not checked. The markers
-carry only ids; aspect read/write set matching is rung 2+ material.
+exempt read/recovery event, validates that each entry of an operation's
+optional `properties` array (model declaration names: `val`/`def`/`action`/
+`run` from `utils/quint/pipeline/*.qnt`) names an existing declaration, and
+fails (no longer report-only) when a guarded OP has no `@operation` tag in
+the model. What is still NOT enforced (rung 2+): a marker naming a
+wrong-but-valid id still compiles (id correctness against the function is
+not checked), aspect read/write set and order drift between model and
+implementation is not checked, and `properties` is not yet tied to backend
+tests (rung 2b). The markers carry only ids; aspect read/write set matching
+is rung 2+ material.
+
+Each operation may carry an optional `properties` array listing the model
+declarations (invariants, vals, runs) that pin its guarded behavior;
+`guards` strings remain code anchors. Empty `properties` is allowed when an
+OP has no model evidence (e.g. OP-11 RESET).
 
 The Quint toolchain installer stays in `scripts/deps/quint.sh` with the
 shared pins in `scripts/deps/versions.env`.
