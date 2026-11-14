@@ -51,6 +51,7 @@ class StubOrigin(ThreadingHTTPServer):
         self.trigger_count = 0
         self.ratings = {}
         self.requests = []
+        self.uploads = []
 
     def reset_run(self):
         self.started_at = time.monotonic()
@@ -86,6 +87,11 @@ class StubOrigin(ThreadingHTTPServer):
             "finishedAt": None,
         }
 
+    def rows(self, start, end):
+        rows = [image_row(i) for i in range(self.visible_rows())]
+        rows.extend(upload_row(index, name) for index, name in enumerate(self.uploads))
+        return rows[start:end]
+
 
 def image_row(index):
     return {
@@ -93,6 +99,15 @@ def image_row(index):
         "timestamp": SNAPSHOT_TS,
         "token": f"tok-{index}",
         "assetId": f"asset-{index}",
+    }
+
+
+def upload_row(index, name):
+    return {
+        "abstractData": {"type": "image", "id": f"up{index:04d}", "path": {"file": name}},
+        "timestamp": SNAPSHOT_TS,
+        "token": f"uptok-{index}",
+        "assetId": f"upasset-{index}",
     }
 
 
@@ -122,10 +137,7 @@ class StubHandler(BaseHTTPRequestHandler):
         elif path == "/get/get-data":
             start = int(query.get("start", ["0"])[0])
             end = int(query.get("end", ["1000"])[0])
-            visible = self.server.visible_rows()
-            end = min(end, visible)
-            rows = [] if start >= end else [image_row(i) for i in range(start, end)]
-            self._send(200, rows)
+            self._send(200, self.server.rows(start, end))
         elif path.startswith("/object/compressed/"):
             name = path.rsplit("/", 1)[-1]
             hash_part = name[:-4] if name.endswith(".jpg") else name
@@ -151,6 +163,10 @@ class StubHandler(BaseHTTPRequestHandler):
         elif path == "/post/index/album":
             self.server.reset_run()
             self._send(202, {})
+        elif path == "/post/upload":
+            name = f"upload_{len(self.server.uploads) + 1:04d}.jpg"
+            self.server.uploads.append(name)
+            self._send(200, {"files": [name]})
         else:
             self._send(404, {})
 
@@ -752,6 +768,56 @@ class ConfigTest(unittest.TestCase):
                     with self.assertRaises(workload.ConfigError):
                         workload.config_from_env(dict(base, WORKLOAD=bad))
 
+    def test_probe_and_upload_env_defaults_and_overrides(self):
+        workload = load_workload()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cell = tmp_path / "cell"
+            cell.mkdir()
+            make_cookie_jar(cell / "cookies.txt")
+            info = cell / "launcher-info.json"
+            info.write_text(
+                json.dumps(
+                    {
+                        "base_url": "http://127.0.0.1:9999",
+                        "cookie_jar": str(cell / "cookies.txt"),
+                        "pid": 1,
+                        "out": str(cell),
+                        "mode": "bench",
+                    }
+                )
+            )
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            base = {"LAUNCHER_INFO": str(info), "IMAGE_REPO": str(repo)}
+
+            cfg = workload.config_from_env(dict(base))
+            self.assertEqual(cfg["probe_page"], 1000)
+            self.assertEqual(cfg["index_settle_timeout_s"], 600.0)
+            self.assertEqual(cfg["upload_post_timeout_s"], 60.0)
+
+            cfg = workload.config_from_env(
+                dict(
+                    base,
+                    PROBE_PAGE="250",
+                    INDEX_SETTLE_TIMEOUT_S="30",
+                    UPLOAD_POST_TIMEOUT_S="12.5",
+                )
+            )
+            self.assertEqual(cfg["probe_page"], 250)
+            self.assertEqual(cfg["index_settle_timeout_s"], 30.0)
+            self.assertEqual(cfg["upload_post_timeout_s"], 12.5)
+
+            for name, value in (
+                ("PROBE_PAGE", "0"),
+                ("PROBE_PAGE", "page"),
+                ("INDEX_SETTLE_TIMEOUT_S", "0"),
+                ("UPLOAD_POST_TIMEOUT_S", "0"),
+            ):
+                with self.subTest(name=name, value=value):
+                    with self.assertRaises(workload.ConfigError):
+                        workload.config_from_env(dict(base, **{name: value}))
+
     def test_missing_hyperfine_fails_fast(self):
         workload = load_workload()
         with tempfile.TemporaryDirectory() as tmp:
@@ -889,6 +955,321 @@ class StatusFinalTest(unittest.TestCase):
         self.assertFalse((self.out / "status-final.json").exists())
         self.assertFalse((self.out / "status-final-run-2.json").exists())
         self.assertTrue((self.out / "status-final-run-1.json").is_file())
+
+
+class ProbeWindowTest(unittest.TestCase):
+    """`build_probe_list` pages the snapshot window instead of one 1000-row page."""
+
+    def setUp(self):
+        self.server = StubOrigin(("127.0.0.1", 0))
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._stop_server)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cell = Path(self.tmp.name) / "cell"
+        self.cell.mkdir()
+        make_cookie_jar(self.cell / "cookies.txt")
+        self.workload = load_workload()
+        self.client = self.workload.HttpClient(
+            f"http://127.0.0.1:{self.port}", self.cell / "cookies.txt"
+        )
+        # Every base row is visible from the first poll.
+        self.server.started_at = time.monotonic()
+        self.server.run_duration = 0.0
+
+    def _stop_server(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def build(self, total_rows, probe_limit, probe_page=None):
+        self.server.total_rows = total_rows
+        cfg = {"out": self.cell, "probe_limit": probe_limit}
+        if probe_page is not None:
+            cfg["probe_page"] = probe_page
+        return self.workload.build_probe_list(cfg, self.client)
+
+    def get_data_windows(self):
+        return [
+            (query.get("start", [None])[0], query.get("end", [None])[0])
+            for method, path, query in self.server.requests
+            if method == "GET" and path == "/get/get-data"
+        ]
+
+    def test_pages_cover_the_row_space_up_to_the_limit(self):
+        lines = self.build(total_rows=2500, probe_limit=2500)
+        self.assertEqual(len(lines), 2500)
+        self.assertEqual(lines[0], "hash0000\ttok-0")
+        self.assertEqual(lines[-1], "hash2499\ttok-2499")
+        self.assertEqual(
+            self.get_data_windows(),
+            [("0", "1000"), ("1000", "2000"), ("2000", "3000")],
+        )
+        tsv = (self.cell / "probe-list.tsv").read_text().splitlines()
+        self.assertEqual(len(tsv), 2500)
+        self.assertEqual(tsv, lines)
+        rows = json.loads((self.cell / "get-data.json").read_text())
+        self.assertEqual(
+            [row["abstractData"]["id"] for row in rows[:3]],
+            [
+                "hash0000",
+                "hash0001",
+                "hash0002",
+            ],
+        )
+        self.assertEqual(len(rows), 2500)
+
+    def test_limit_caps_paging(self):
+        lines = self.build(total_rows=2500, probe_limit=1500)
+        self.assertEqual(len(lines), 1500)
+        self.assertEqual(lines[-1], "hash1499\ttok-1499")
+        self.assertEqual(
+            self.get_data_windows(),
+            [("0", "1000"), ("1000", "2000")],
+        )
+
+    def test_probe_page_overrides_page_size(self):
+        lines = self.build(total_rows=1200, probe_limit=1200, probe_page=500)
+        self.assertEqual(len(lines), 1200)
+        self.assertEqual(
+            self.get_data_windows(),
+            [("0", "500"), ("500", "1000"), ("1000", "1500")],
+        )
+
+    def test_single_page_output_is_unchanged(self):
+        lines = self.build(total_rows=4, probe_limit=4)
+        self.assertEqual(self.get_data_windows(), [("0", "1000")])
+        self.assertEqual(
+            (self.cell / "probe-list.tsv").read_text(),
+            "hash0000\ttok-0\nhash0001\ttok-1\nhash0002\ttok-2\nhash0003\ttok-3\n",
+        )
+        self.assertEqual(
+            lines, ["hash0000\ttok-0", "hash0001\ttok-1", "hash0002\ttok-2", "hash0003\ttok-3"]
+        )
+        rows = json.loads((self.cell / "get-data.json").read_text())
+        self.assertEqual(len(rows), 4)
+
+
+class IndexSettleTest(unittest.TestCase):
+    """The upload stimulus waits for the library index to settle first."""
+
+    def setUp(self):
+        self.server = StubOrigin(("127.0.0.1", 0))
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._stop_server)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cell = Path(self.tmp.name) / "cell"
+        self.cell.mkdir()
+        make_cookie_jar(self.cell / "cookies.txt")
+        self.workload = load_workload()
+        self.client = self.workload.HttpClient(
+            f"http://127.0.0.1:{self.port}", self.cell / "cookies.txt"
+        )
+        logger = self.workload.Logger(self.cell / "harness-a.log")
+        self.addCleanup(logger.close)
+        self.logger = logger
+        self.stdout = contextlib.redirect_stdout(io.StringIO())
+        self.stdout.__enter__()
+        self.addCleanup(self.stdout.__exit__, None, None, None)
+
+    def _stop_server(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def _cfg(self, timeout=5.0):
+        return {"index_settle_timeout_s": timeout, "poll_interval_s": 0.02}
+
+    def status_polls(self):
+        return sum(
+            1
+            for method, path, _ in self.server.requests
+            if method == "GET" and path == "/get/index/status"
+        )
+
+    def test_waits_for_a_running_index_to_finish(self):
+        self.server.run_duration = 0.4
+        self.server.reset_run()
+        started = time.monotonic()
+        state = self.workload.wait_for_index_settled(self._cfg(), self.client, self.logger)
+        self.assertEqual(state, "completed")
+        self.assertGreaterEqual(self.status_polls(), 2)
+        self.assertGreaterEqual(time.monotonic() - started, 0.3)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("index settled: state=completed", log)
+
+    def test_idle_index_is_settled_immediately(self):
+        state = self.workload.wait_for_index_settled(self._cfg(), self.client, self.logger)
+        self.assertEqual(state, "idle")
+        self.assertEqual(self.status_polls(), 1)
+
+    def test_timeout_uses_the_configured_budget(self):
+        self.server.mode = "stuck"
+        self.server.reset_run()
+        started = time.monotonic()
+        with self.assertRaises(self.workload.WorkloadError) as ctx:
+            self.workload.wait_for_index_settled(self._cfg(timeout=0.25), self.client, self.logger)
+        elapsed = time.monotonic() - started
+        self.assertGreaterEqual(elapsed, 0.25)
+        self.assertLess(elapsed, 4.0)
+        message = str(ctx.exception)
+        self.assertIn("did not settle within 0.25s", message)
+        self.assertIn("state=running", message)
+        self.assertIn("INDEX_SETTLE_TIMEOUT_S", message)
+
+
+class RecordingUploadClient:
+    def __init__(self, names):
+        self.names = list(names)
+        self.timeouts = []
+
+    def upload(self, path, file_path, timeout=60.0):
+        self.timeouts.append(timeout)
+        name = self.names[len(self.timeouts) - 1]
+        return 200, json.dumps({"files": [name]}).encode(), 0.01
+
+
+class UploadStimulusTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.cell = root / "cell"
+        self.cell.mkdir()
+        self.repo = root / "repo"
+        self.repo.mkdir()
+        for index in range(1, 4):
+            (self.repo / f"img_{index:04d}.jpg").write_bytes(b"x" * 100)
+        self.image_path = root / "images"
+        self.image_path.mkdir()
+        self.workload = load_workload()
+
+    def _logger(self):
+        logger = self.workload.Logger(self.cell / "harness-a.log")
+        self.addCleanup(logger.close)
+        return logger
+
+    def _cfg(self, **overrides):
+        cfg = {
+            "image_repo": self.repo,
+            "image_path": self.image_path,
+            "upload_files": 2,
+            "upload_timeout_s": 0.1,
+            "poll_interval_s": 0.01,
+            "upload_post_timeout_s": 60.0,
+        }
+        cfg.update(overrides)
+        return cfg
+
+    def test_post_budget_reaches_the_upload_call(self):
+        client = RecordingUploadClient(["u1.jpg", "u2.jpg"])
+        with (
+            mock.patch.object(self.workload, "_uploaded_row_visible", return_value=True),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.workload.run_upload_stimulus(
+                self._cfg(upload_post_timeout_s=0.25), client, self._logger()
+            )
+        self.assertEqual(client.timeouts, [0.25, 0.25])
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertRegex(log, r"upload file=u1\.jpg submit_ms=\d+ visible_ms=\d+")
+        self.assertRegex(log, r"upload file=u2\.jpg submit_ms=\d+ visible_ms=\d+")
+        self.assertRegex(log, r"upload submit_p50=\d+ visible_p50=\d+")
+
+
+class UploadProfileTest(unittest.TestCase):
+    """End-to-end `WORKLOAD=upload` against the stub origin."""
+
+    def setUp(self):
+        self.server = StubOrigin(("127.0.0.1", 0))
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._stop_server)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.tmp_path = Path(self.tmp.name)
+        self.cell = self.tmp_path / "cell"
+        self.cell.mkdir()
+        make_cookie_jar(self.cell / "cookies.txt")
+        self.launcher_info = self.cell / "launcher-info.json"
+        self.launcher_info.write_text(
+            json.dumps(
+                {
+                    "base_url": f"http://127.0.0.1:{self.port}",
+                    "cookie_jar": str(self.cell / "cookies.txt"),
+                    "pid": 1234,
+                    "out": str(self.cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        self.fake_hyperfine = write_fake_hyperfine(self.tmp_path)
+        self.images = make_images(self.tmp_path, 4)
+
+    def _stop_server(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def env(self, **overrides):
+        env = os.environ.copy()
+        env.update(
+            {
+                "LAUNCHER_INFO": str(self.launcher_info),
+                "IMAGES": "4",
+                "WORKLOAD": "upload",
+                "UPLOAD_FILES": "2",
+                "SCAN_REPEATS": "1",
+                "REPEATS": "1",
+                "WARMUP": "0",
+                "RUNS_DURING": "1",
+                "FETCHES": "1",
+                "IMAGE_REPO": str(self.images),
+                "HYPERFINE_BIN": str(self.fake_hyperfine),
+                "SCAN_TIMEOUT_S": "5",
+                "POLL_INTERVAL_S": "0.02",
+                "PROBE_INTERVAL_S": "0.05",
+            }
+        )
+        env.pop("OUT", None)
+        env.update(overrides)
+        return env
+
+    def run_cli(self, env):
+        return subprocess.run(
+            [sys.executable, str(RUN_WORKLOAD)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+    def test_upload_waits_for_settled_index_then_measures(self):
+        proc = self.run_cli(self.env())
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("index settled: state=idle", log)
+        self.assertLess(log.index("index settled:"), log.index("=== upload stimulus:"))
+        self.assertRegex(log, r"upload file=upload_0001\.jpg submit_ms=\d+ visible_ms=\d+")
+        self.assertRegex(log, r"upload file=upload_0002\.jpg submit_ms=\d+ visible_ms=\d+")
+        self.assertRegex(log, r"upload submit_p50=\d+ visible_p50=\d+")
+        uploads = [request for request in self.server.requests if request[1] == "/post/upload"]
+        self.assertEqual(len(uploads), 2)
+
+    def test_upload_fails_when_the_index_never_settles(self):
+        self.server.mode = "stuck"
+        self.server.reset_run()
+        proc = self.run_cli(self.env(UPLOAD_FILES="1", INDEX_SETTLE_TIMEOUT_S="0.4"))
+        self.assertEqual(proc.returncode, 2, proc.stderr + proc.stdout)
+        log = (self.cell / "harness-a.log").read_text()
+        self.assertIn("library index did not settle within 0.4s", log)
+        self.assertIn("state=running", log)
+        self.assertFalse(
+            [request for request in self.server.requests if request[1] == "/post/upload"]
+        )
 
 
 if __name__ == "__main__":
