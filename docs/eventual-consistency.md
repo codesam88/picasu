@@ -626,7 +626,7 @@ Notes: Watcher-debounced modify; the submit step is tracked separately as SUBMIT
 
 Timing case, not a distinct external shape: the file changes while the pipeline is already processing that same path. Named separately because the outcome differs from a plain modify.
 
-Target: file path. Code anchor: `TODO`.
+Target: file path. Code anchor: `backend/src/tasks/queue/worker.rs:process_watcher_index`.
 
 Preconditions: file present on disk; row exists; item for same path being processed.
 
@@ -668,7 +668,7 @@ Notes: Watcher-observed deletion prunes the row directly via the remove lane (re
 
 A single file is renamed or moved within the tree: same content, new path. Watchers report renames differently per platform, so the safe handling is specified as old-path remove plus new-path create, including a separately renamed sidecar.
 
-Target: file path pair. Code anchor: `TODO`.
+Target: file path pair. Code anchor: `backend/src/tasks/batcher/start_watcher.rs:handle_paired_rename`.
 
 Preconditions: source present; destination absent.
 
@@ -689,7 +689,7 @@ Notes: Specified and modeled: treat as old-path remove plus new-path create, inc
 
 A directory is renamed or moved: all contained assets move atomically with it, sidecar association follows by name.
 
-Target: directory. Code anchor: `TODO`.
+Target: directory. Code anchor: `backend/src/router/put/assign_album.rs:update_asset_tables_after_dir_move`.
 
 Preconditions: source directory present; destination absent.
 
@@ -731,7 +731,7 @@ Notes: Handled as modify in both cases (main file and sidecar): resubmit the med
 
 A sidecar (.xmp) newly appears next to an existing asset - for example a background transfer delivers it after the media file.
 
-Target: sidecar path. Code anchor: `TODO`.
+Target: sidecar path. Code anchor: `backend/src/model/media.rs:classify_media_file`.
 
 Preconditions: sidecar newly present on disk.
 
@@ -752,7 +752,7 @@ Notes: A create for just the .xmp of an existing asset resubmits the sibling med
 
 An existing sidecar's contents change on disk, for example when a metadata editor rewrites it.
 
-Target: sidecar path. Code anchor: `TODO`.
+Target: sidecar path. Code anchor: `backend/src/model/media.rs:classify_media_file`.
 
 Preconditions: sidecar present on disk.
 
@@ -772,7 +772,7 @@ Notes: Same handling as create: resubmit the sibling media path; full reprocess 
 
 A sidecar (.xmp) next to an existing asset is removed; the row must drop the metadata derived from it.
 
-Target: sidecar path. Code anchor: `TODO`.
+Target: sidecar path. Code anchor: `backend/src/model/media.rs:classify_media_file`.
 
 Preconditions: sidecar removed on disk.
 
@@ -899,7 +899,7 @@ Notes: Original read; read-only, no state change.
 
 A client requests bytes for an asset whose file on disk is gone (or whose row is absent). Reads queue no watcher remove; nothing is healed by the read itself.
 
-Target: asset bytes. Code anchor: `TODO`.
+Target: asset bytes. Code anchor: `backend/src/router/get/get_img.rs:compressed_file`.
 
 Preconditions: row exists, file absent (or row absent).
 
@@ -917,7 +917,7 @@ Notes: Row exists but file gone (or row absent); no watcher remove queued. Servi
 
 A client requests bytes via the old path after the file was moved underneath (pre-subtree-model state, e.g. an out-of-band rename).
 
-Target: asset bytes. Code anchor: `TODO`.
+Target: asset bytes. Code anchor: `backend/src/router/get/get_img.rs:imported_file`.
 
 Preconditions: row under old path; file under new path.
 
@@ -935,7 +935,7 @@ Notes: Row under old path, file under new path (pre-subtree-model): observed via
 
 Filesystem notifications stop arriving for a stretch - queue overflow, unsupported platform, watcher starting late, watcher disabled. Not tied to a single file; affects a set of paths at once. This is the event the rescan backstop exists for; naming it makes 'who notices' a first-class question.
 
-Target: watch-driven path set. Code anchor: `TODO`.
+Target: watch-driven path set. Code anchor: `backend/src/tasks/actor/album_index.rs:index_album_with_root`.
 
 Preconditions: watcher notifications missing or stopped for a stretch.
 
@@ -955,7 +955,7 @@ Notes: Modeled recovery: ScanRoot over the affected root queues present files an
 
 The backend dies mid-pipeline (mid-apply, mid-write). On restart, the state is whatever was durably written (redb flushes, completed file writes).
 
-Target: backend process. Code anchor: `TODO`.
+Target: backend process. Code anchor: `backend/src/init.rs:initialize`.
 
 Preconditions: backend dies mid-pipeline.
 
@@ -978,7 +978,7 @@ Notes: Modeled as ProcessCrash: volatile intake is lost, durable state kept (SCO
 
 Derived bytes referenced by rows are lost - either wiped (cache clear, disk pressure) or silently corrupted on disk. The scan sees the first case (presence) but not the second (it never checks artifact content).
 
-Target: derived bytes (thumbnails). Code anchor: `TODO`.
+Target: derived bytes (thumbnails). Code anchor: `backend/src/tasks/actor/album_index.rs:index_album_with_root`.
 
 Preconditions: thumbnail files wiped or lost.
 
@@ -1002,7 +1002,7 @@ Notes: Modeled as LoseThumbs: a missing artifact forces reprocess and is restore
 
 The metadata database is lost while the filesystem remains intact: Picasu restarts and fully re-scans, restoring the index from the filesystem-as-truth baseline. The ultimate reindex-from-nothing test.
 
-Target: metadata database. Code anchor: `TODO`.
+Target: metadata database. Code anchor: `backend/src/tasks/actor/album_index.rs:index_album_with_root`.
 
 Preconditions: metadata store lost entirely; filesystem intact.
 
