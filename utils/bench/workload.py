@@ -47,6 +47,9 @@ Environment contract (on top of the launcher's):
   SCAN_REPEATS    scan repetitions per cell (default 3)
   FETCHES         random compressed fetches per during-scan round (default 10)
   PROBE_LIMIT     max probe-list rows (default: IMAGES)
+  PROBE_PAGE      get-data rows per request while building the probe list
+                  (default 1000); paging continues until PROBE_LIMIT rows or
+                  the snapshot window is exhausted
   SCAN_TIMEOUT_S  scan poll budget; 0 waits for a terminal state (default 0)
   SCAN_STALL_TIMEOUT_S  abort when running counters do not move for this
                   long; 0 disables (default 120)
@@ -65,6 +68,10 @@ Environment contract (on top of the launcher's):
                   probe rounds during the subsequent scan
   UPLOAD_FILES    files to upload in the upload profile (default IMAGES)
   UPLOAD_TIMEOUT_S visibility poll budget for uploaded files (default 5)
+  UPLOAD_POST_TIMEOUT_S  budget for one upload POST (default 60)
+  INDEX_SETTLE_TIMEOUT_S  upload profile: budget for the library index to
+                  settle before the upload stimulus, so the write path is
+                  measured on an idle server (default 600)
   IDLE_PROFILE    storm op kind used by storm-idle: diff | read (default) | thumb
   STORM_CLIENTS   concurrent storm clients (default 8)
   STORM_OPS       ops per storm client (default 10)
@@ -108,6 +115,9 @@ DEFAULT_WARMUP = 1
 DEFAULT_RUNS_DURING = 3
 DEFAULT_SCAN_REPEATS = 3
 DEFAULT_FETCHES = 10
+DEFAULT_PROBE_PAGE = 1000
+DEFAULT_INDEX_SETTLE_TIMEOUT_S = 600.0
+DEFAULT_UPLOAD_POST_TIMEOUT_S = 60.0
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
 DEFAULT_STORM_MARGIN_S = 0.5
@@ -117,6 +127,8 @@ DEFAULT_PROBE_INTERVAL_S = 0.5
 DEFAULT_BUILD_PROFILE = "debug"
 DEFAULT_PORT = 5713
 TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
+# `idle` means no album-index job has run, so there is nothing to wait for.
+SETTLED_STATUS_STATES = (*TERMINAL_STATUS_STATES, "idle")
 
 ARTIFACT_FILES = (
     "harness-a.log",
@@ -263,11 +275,18 @@ def config_from_env(environ: dict) -> dict:
     scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
     upload_files = _int_env(environ, "UPLOAD_FILES", images, minimum=1)
     upload_timeout = _float_env(environ, "UPLOAD_TIMEOUT_S", 5.0, minimum=0.1)
+    upload_post_timeout = _float_env(
+        environ, "UPLOAD_POST_TIMEOUT_S", DEFAULT_UPLOAD_POST_TIMEOUT_S, minimum=0.1
+    )
+    index_settle_timeout = _float_env(
+        environ, "INDEX_SETTLE_TIMEOUT_S", DEFAULT_INDEX_SETTLE_TIMEOUT_S, minimum=0.1
+    )
     repeats = _int_env(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
     warmup = _int_env(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
     runs_during = _int_env(environ, "RUNS_DURING", DEFAULT_RUNS_DURING, minimum=1)
     fetches = _int_env(environ, "FETCHES", DEFAULT_FETCHES, minimum=0)
     probe_limit = _int_env(environ, "PROBE_LIMIT", images, minimum=1)
+    probe_page = _int_env(environ, "PROBE_PAGE", DEFAULT_PROBE_PAGE, minimum=1)
     scan_timeout = _float_env(environ, "SCAN_TIMEOUT_S", 0.0, minimum=0.0)
     scan_stall_timeout = _float_env(environ, "SCAN_STALL_TIMEOUT_S", 120.0, minimum=0.0)
     poll_interval = _float_env(environ, "POLL_INTERVAL_S", DEFAULT_POLL_INTERVAL_S, minimum=0.001)
@@ -315,11 +334,14 @@ def config_from_env(environ: dict) -> dict:
         "scan_repeats": scan_repeats,
         "upload_files": upload_files,
         "upload_timeout_s": upload_timeout,
+        "upload_post_timeout_s": upload_post_timeout,
+        "index_settle_timeout_s": index_settle_timeout,
         "repeats": repeats,
         "warmup": warmup,
         "runs_during": runs_during,
         "fetches": fetches,
         "probe_limit": probe_limit,
+        "probe_page": probe_page,
         "scan_timeout_s": scan_timeout,
         "scan_stall_timeout_s": scan_stall_timeout,
         "poll_interval_s": poll_interval,
@@ -545,6 +567,14 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
 
 # --- probe list --------------------------------------------------------------
 def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
+    """Build `hash<TAB>token` rows from the snapshot, paging the row window.
+
+    get-data returns at most one page per request, so a single `0..1000`
+    window would cover only the start of a large library. Page until
+    PROBE_LIMIT rows are collected or a short page marks the end of the
+    snapshot. `get-data.json` keeps the raw body for a single-page window
+    and the concatenated rows when the window spans several pages.
+    """
     out = cfg["out"]
     code, body, _ = client.post("/get/prefetch", {})
     (out / "prefetch.json").write_bytes(body)
@@ -558,27 +588,43 @@ def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
     if timestamp is None or token is None:
         return None
 
-    code, body, _ = client.get(
-        f"/get/get-data?timestamp={timestamp}&start=0&end=1000", bearer=token
-    )
-    (out / "get-data.json").write_bytes(body)
-    if code != 200:
-        return None
-    rows = _body_json(body)
-    if not isinstance(rows, list):
-        return None
+    page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
+    limit = cfg["probe_limit"]
     lines = []
-    for row in rows:
-        abstract = row.get("abstractData", {})
-        if abstract.get("type") != "image":
-            continue
-        hash_value = abstract.get("id")
-        row_token = row.get("token")
-        if hash_value is None or row_token is None:
-            continue
-        lines.append(f"{hash_value}\t{row_token}")
-        if len(lines) >= cfg["probe_limit"]:
-            break
+    collected_rows = []
+    raw_pages = []
+    start = 0
+    while len(lines) < limit:
+        end = start + page_size
+        code, body, _ = client.get(
+            f"/get/get-data?timestamp={timestamp}&start={start}&end={end}", bearer=token
+        )
+        rows = _body_json(body) if code == 200 else None
+        if not isinstance(rows, list):
+            if not raw_pages:
+                (out / "get-data.json").write_bytes(body)
+                return None
+            break  # keep the pages already collected
+        raw_pages.append(body)
+        collected_rows.extend(rows)
+        for row in rows:
+            abstract = row.get("abstractData", {})
+            if abstract.get("type") != "image":
+                continue
+            hash_value = abstract.get("id")
+            row_token = row.get("token")
+            if hash_value is None or row_token is None:
+                continue
+            lines.append(f"{hash_value}\t{row_token}")
+            if len(lines) >= limit:
+                break
+        if len(rows) < page_size:
+            break  # short page: the snapshot window is exhausted
+        start = end
+    if len(raw_pages) == 1:
+        (out / "get-data.json").write_bytes(raw_pages[0])
+    else:
+        (out / "get-data.json").write_text(json.dumps(collected_rows))
     text = "\n".join(lines) + ("\n" if lines else "")
     (out / "probe-list.tsv").write_text(text)
     return lines or None
@@ -1494,6 +1540,51 @@ def _uploaded_row_visible(client: HttpClient, stored_name: str, poll_interval: f
     return False
 
 
+def wait_for_index_settled(cfg: dict, client: HttpClient, logger: Logger) -> str:
+    """Block until no album index is running, then return the observed state.
+
+    A cell that materialises its image set can leave a full-library album
+    index in flight (watcher rescan). Upload timing is only meaningful once
+    that index has settled, so the stimulus waits for a terminal state or
+    `idle` (no job has run) and fails the cell when the budget expires.
+    """
+    budget = cfg["index_settle_timeout_s"]
+    logger.log(f"=== waiting for library index to settle (budget {budget:g}s) ===")
+    started = time.monotonic()
+    deadline = started + budget
+    polls = 0
+    state = "unknown"
+    counters = ()
+    while True:
+        polls += 1
+        try:
+            code, body, _ = client.get("/get/index/status")
+        except WorkloadError:
+            code, body = 0, b""
+        document = _body_json(body) if code == 200 else None
+        if isinstance(document, dict):
+            state = document.get("state", "unknown")
+            counters = tuple(
+                document.get(key) for key in ("scanned", "matched", "processed", "failed")
+            )
+        else:
+            state = "unknown"
+        if state in SETTLED_STATUS_STATES:
+            logger.log(
+                f"index settled: state={state} polls={polls} "
+                f"waited={time.monotonic() - started:.1f}s"
+            )
+            return state
+        if time.monotonic() >= deadline:
+            raise WorkloadError(
+                f"library index did not settle within {budget:g}s (state={state} "
+                f"polls={polls} counters={counters}) — the upload stimulus needs an "
+                "idle server; wait for the initial index to finish or raise "
+                "INDEX_SETTLE_TIMEOUT_S"
+            )
+        time.sleep(cfg["poll_interval_s"])
+
+
 def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
     sources = _select_upload_sources(cfg)
     logger.log(f"=== upload stimulus: {len(sources)} files ===")
@@ -1501,9 +1592,10 @@ def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
     visible_times = []
     poll_interval = cfg.get("poll_interval_s", 0.2)
     timeout = cfg.get("upload_timeout_s", 5.0)
+    post_timeout = cfg.get("upload_post_timeout_s", DEFAULT_UPLOAD_POST_TIMEOUT_S)
     for source in sources:
         started = time.perf_counter()
-        status, body, elapsed = client.upload("/post/upload", source)
+        status, body, elapsed = client.upload("/post/upload", source, timeout=post_timeout)
         submit_ms = int(elapsed * 1000)
         if status != 200:
             raise WorkloadError(f"upload failed for {source.name}: HTTP {status}")
@@ -1580,6 +1672,7 @@ def run_workload(cfg: dict) -> int:
 
         client = HttpClient(cfg["base_url"], cfg["cookie_jar"])
         if cfg["workload"] == "upload":
+            wait_for_index_settled(cfg, client, logger)
             run_upload_stimulus(cfg, client, logger)
             cfg["expected_entries"] = cfg["image_count"] + cfg["upload_files"]
         median_ms, run_count = run_scans(cfg, client, logger)
