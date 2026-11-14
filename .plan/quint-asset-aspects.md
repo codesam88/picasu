@@ -216,11 +216,13 @@ check` or the individual recipes.
     membership, album stats, tree epoch). Rewrites the predicates the
     slice sits on; prerequisite for N13 (stats vs member writes),
     dupe/hash-group delete semantics and metadata torn writes.
-12. [open] Guard linkage + reverse coverage: `@operation` tags on the
-    `eventual-consistency` actions, guard strings linked to REQ/C ids,
-    then annotation rung 1 (registry + static coverage gate) for
-    bidirectional OP↔action↔event coverage; rung 2 (runtime trace
-    reconciliation) as the accuracy validator against observed behavior.
+12. [open] Coverage ladder (quint-annotation-crate rungs 2a–2d,
+    reworked 2026-11-14 from runtime trace reconciliation to
+    property-anchored test coverage): link `operations.json` guard
+    strings to named model vals (gate-checked), extend traceability with
+    code-test refs, close the missing-test gaps with the review-sketch
+    backlog, and a test-only operation ledger only if sequencing gaps
+    remain. Rationale for the reframe is in that plan's Decisions.
 13. [dropped 2026-11-14] Read-model freshness lane (tree epoch /
     invalidation lag): not a good fit for the model — it would largely
     re-assert the ~1 s bound already given as a limit in the code
