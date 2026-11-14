@@ -640,7 +640,7 @@ class ImageSetTest(unittest.TestCase):
         self.assertEqual(got, ["img_0001.jpg", "img_0002.jpg", "img_0003.jpg", "img_0004.jpg"])
         log = (self.tmp_path / "cell" / "prepare.log").read_text()
         self.assertIn("generated=4 bytes=4000", log)
-        self.assertIn("mode=seeded(", log)
+        self.assertIn("mode=linked(", log)
 
     def test_short_repo_fails_with_counts(self):
         with self.assertRaises(self.workload.ConfigError) as ctx:

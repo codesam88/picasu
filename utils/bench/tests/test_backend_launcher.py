@@ -485,6 +485,19 @@ class ImageHomeAndManifestTest(unittest.TestCase):
         with self.assertRaises(bl.ConfigError):
             bl.config_from_env(base_env(OUT=str(out), IMAGE_HOME_SRC=str(f)))
 
+    def test_write_launcher_info_includes_image_home(self):
+        src = self.root / "src"
+        src.mkdir()
+        (src / "a.jpg").write_bytes(b"x")
+        out = self.root / "cell"
+        env = base_env(OUT=str(out), IMAGE_HOME_SRC=str(src))
+        cfg = bl.config_from_env(env)
+        bl.prepare_out(cfg)
+        bl.write_launcher_info(cfg, 4321)
+        info = json.loads((out / "launcher-info.json").read_text())
+        self.assertEqual(info["image_home"], str(src))
+        self.assertEqual(info["pid"], 4321)
+
     def test_image_home_src_override_no_images_dir_and_env(self):
         src = self.root / "src"
         src.mkdir()

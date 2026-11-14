@@ -273,7 +273,25 @@ def config_from_env(environ: dict) -> dict:
     if not repo_path.is_dir():
         raise ConfigError(f"IMAGE_REPO not a directory: {environ['IMAGE_REPO']}")
 
-    image_path = Path(environ.get("IMAGE_PATH", "") or out / "images")
+    materialise_raw = environ.get("MATERIALISE", "1")
+    if materialise_raw not in ("0", "1"):
+        raise ConfigError(f"MATERIALISE must be 0 or 1, got '{materialise_raw}'")
+    materialise = materialise_raw == "1"
+
+    image_home_raw = info.get("image_home")
+    if environ.get("IMAGE_PATH", ""):
+        image_path = Path(environ["IMAGE_PATH"])
+    elif image_home_raw:
+        image_path = Path(image_home_raw)
+    else:
+        image_path = out / "images"
+
+    dataset_id = environ.get("DATASET_ID", "")
+    if not dataset_id:
+        if image_home_raw:
+            dataset_id = Path(image_home_raw).name
+        else:
+            dataset_id = "out-local"
 
     return {
         "launcher_info": info,
@@ -300,6 +318,9 @@ def config_from_env(environ: dict) -> dict:
         "probe_interval_s": probe_interval,
         "image_repo": repo_path,
         "image_path": image_path,
+        "image_home": image_home_raw,
+        "materialise": materialise,
+        "dataset_id": dataset_id,
         "build_profile": build_profile,
         "hyperfine": resolve_hyperfine(environ),
     }
@@ -416,6 +437,19 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
     img_dir = cfg["image_path"]
     img_dir.mkdir(parents=True, exist_ok=True)
 
+    if not cfg.get("materialise", True):
+        jpgs = sorted(img_dir.glob("*.jpg"), key=lambda path: path.name)
+        image_count = len(jpgs)
+        image_bytes = sum(path.stat().st_size for path in jpgs)
+        logger.log(
+            f"=== reusing images (materialise=0) path={img_dir} dataset={cfg.get('dataset_id')} ==="
+        )
+        logger.log(
+            f"reused count={image_count} bytes={image_bytes} wall_ms=0 "
+            f"mode=reuse({cfg.get('dataset_id')})"
+        )
+        return image_count, image_bytes
+
     available = sorted(cfg["image_repo"].glob("*.jpg"), key=lambda path: path.name)
     if len(available) < cfg["images"]:
         raise ConfigError(
@@ -426,20 +460,45 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
 
     logger.log(f"=== seeding images (repo={cfg['image_repo']} path={img_dir}) ===")
     started = time.perf_counter()
-    for stale in img_dir.glob("*.jpg"):
-        stale.unlink()
+    linked_count = 0
+    copied_count = 0
     for source in wanted:
-        shutil.copy2(source, img_dir / source.name)
-    logger.log(f"seeded {len(wanted)} images from {cfg['image_repo']} (source untouched)")
-    mode = f"seeded({cfg['image_repo']})"
+        dest = img_dir / source.name
+        if dest.exists() and dest.resolve() == source.resolve():
+            linked_count += 1
+            continue
+        tmp = img_dir / (source.name + ".materialise-tmp")
+        tmp.unlink(missing_ok=True)
+        took_link = False
+        try:
+            os.link(source, tmp)
+            took_link = True
+        except OSError:
+            shutil.copy2(source, tmp)
+            took_link = False
+        os.replace(tmp, dest)
+        if took_link:
+            linked_count += 1
+        else:
+            copied_count += 1
+    if linked_count == len(wanted):
+        mode = "linked"
+    elif copied_count == len(wanted):
+        mode = "copied"
+    else:
+        mode = f"mixed(linked={linked_count},copied={copied_count})"
     wall_ms = int((time.perf_counter() - started) * 1000)
 
     jpgs = list(img_dir.glob("*.jpg"))
     image_count = len(jpgs)
     image_bytes = sum(path.stat().st_size for path in jpgs)
-    if image_count != cfg["images"]:
-        raise WorkloadError(f"expected {cfg['images']} images, found {image_count}")
-    logger.log(f"generated={image_count} bytes={image_bytes} wall_ms={wall_ms} mode={mode}")
+    if image_count < cfg["images"]:
+        raise WorkloadError(f"expected at least {cfg['images']} images, found {image_count}")
+    logger.log(f"seeded {len(wanted)} images from {cfg['image_repo']} (source untouched)")
+    logger.log(
+        f"generated={image_count} bytes={image_bytes} wall_ms={wall_ms} "
+        f"mode={mode}({cfg['image_repo']})"
+    )
     return image_count, image_bytes
 
 
