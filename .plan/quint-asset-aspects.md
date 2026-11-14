@@ -236,17 +236,11 @@ check` or the individual recipes.
 14. [open] Close the remaining model gaps (agreed order: model gaps →
     cleanup/debt → rebase/push → scaling+CI deferred last):
     a. [done 2026-11-14] N5 pinned: sidecar preservation + crash-heal rebuild + single-txn move write (REQ-15 verified; tests move_preserves_destination_sidecar_and_removes_source_sidecar, move_crash_heal_reindexes_from_destination_sidecar, move_asset_mapping_rewrites_all_tables_in_one_txn; model run aspectsMoveCrashHealsFromSidecarTest).
-    b. N6: survey the current regenerate flow (the orphan-on-unknown-id
-    claim predates the rework); return REQ-8 or document.
-    c. N7/N9/N10: resolve or document each (N7 delayed-metadata is
-    rescan-healed; N9 reset should clear the derived store; N10
-    share/cover read-modify-write racing scan flush). N10 reframe
-    (2026-11-14): with the state-role hierarchy designated (G5, ASS-3,
-    README "Source of truth"), share_list is the enumerated DB-only
-    non-derived exception — a lost share edit is a real goal violation,
-    not derived-cache noise. Direction: serialize album metadata field
-    edits through the serial writer queue (writer::submit) so they order
-    with flushes; survey album_task's record rewrite first.
+    b. [done 2026-11-14] N6 refuted: regenerate route gates the asset
+    before writing the frame; temp rename stays atomic; corruption
+    detection remains REQ-8. No new requirement opened.
+    c. [partial 2026-11-14] N7 closed as scoped assumption; N9 accepted;
+    N10 reframed and tracked by .plan/share-list-guard.md.
     d. events.json: fill the 12 TODO code_refs with file::fn anchors
     (terminology rule).
     Then cleanup/debt: prune superseded branches (feat/quint-asset-aspects,
@@ -297,17 +291,31 @@ survey claim contradicts a done item — re-check the tree first.
   best-effort rolls back; no new guard; LWW remains.]
 - N5 assign/move crash window. [pinned 2026-11-14 (REQ-15): sidecar preservation pinned by router::put::assign_album::tests::move_preserves_destination_sidecar_and_removes_source_sidecar; crash-heal rebuild pinned by model run aspectsMoveCrashHealsFromSidecarTest and backend/src/router/put/assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar; single-txn move write via storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn. N5 cross-table split resolved.]
 - N6 derived corruption undetected; regen frame can orphan on unknown
-  id. [open, re-verified 2026-11-13: generate_thumbnail_for_image uses
-  atomic temp-file rename only; no content validation; regen frame can
-  orphan.] (returns with REQ-8).
+  id. [refuted 2026-11-14: the regenerate route now looks up and gates
+  the asset before writing the frame (regenerate_thumbnail.rs, 404 on
+  unknown id before move_copy_to), so the direct orphan-on-unknown-id window
+  is gone; the temp-rename path in thumbnail.rs::write_atomically remains
+  atomic. Corruption detection itself is not an interleaving hazard and stays
+  tracked by REQ-8 (checksum). Derived bytes are secondary under G5, so a
+  residual race (asset deleted between the two lookups) is not a goal
+  violation; no new requirement opened.]
 - N7 sidecar-only watcher events dropped (`.xmp` filtered) — delayed
-  metadata until media rescan. [open, re-verified 2026-11-13: watcher
-  media gate still filters `.xmp`; scan/backfill remains the repair
-  path.]
+  metadata until media rescan. [scoped assumption 2026-11-14: the media
+  gate (model/media.rs::classify_media_file returns Skip(UnsupportedExtension)
+  for .xmp) drops sidecar-only events by design; delayed metadata heals via
+  rescan (watcher Flag::Rescan + backstop scan, handle_event rescan arm) and
+  the model already carries DroppedSidecarModify with convergence runs.
+  Parked enhancement: a sidecar-only watcher lane that resubmits the sibling
+  media path (specified, not implemented).]
 - N8 upload 200-before-visibility. [modeled 2026-11-13 (step 9): store-and-return + fire-and-forget intake enqueue; UploadStoredOnly/UploadIndexed/IntakePickupFileGone actions + UploadingWindow predicate in asset-aspects.qnt (49 tests, +5 new runs); no unguarded hazard found. By-design eventual window remains.]
-- N9 reset drops tables but leaves derived bytes orphaned. [open,
-  re-verified 2026-11-13: clear_asset_tables_and_caches drops tables and
-  caches; derived bytes orphaned.] [minor].
+- N9 reset drops tables but leaves derived bytes orphaned. [accepted
+  2026-11-14: clear_asset_tables_and_caches (tasks/actor/album_index.rs)
+  drops tables + dir-album cache but not the derived store; derived bytes
+  are content-hash keyed, so they are inert (reused if identical bytes
+  return, ignored otherwise) and cost is disk only. Not a goal violation
+  under G5. Parked enhancement: an optional derived-store GC/consistency
+  pass (no requirement opened — N6 was refuted as the window removed); revisit
+  if derived-store pressure warrants.] [minor].
 - N10 share/cover edits are DB-only with no lease; can race a scan
   of the same album. [open, re-verified 2026-11-13: no lease added;
   still DB-only.] [minor].

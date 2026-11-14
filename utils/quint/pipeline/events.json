@@ -8,8 +8,12 @@
       "description": "A new file appears in the watched tree. This is how new media enters the index: the watcher debounces the notification and the file is submitted for indexing. Also fires for just a sidecar (.xmp) landing next to an existing asset.",
       "actor": "watcher",
       "target": "file path",
-      "preconditions": ["file newly present on disk"],
-      "affected_state": ["files"],
+      "preconditions": [
+        "file newly present on disk"
+      ],
+      "affected_state": [
+        "files"
+      ],
       "code_ref": "backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool",
       "effects": [
         "Row exists matching the file (path, decoded metadata), or the file is rejected with a logged skip reason and no row (undecodable/unsupported).",
@@ -40,8 +44,12 @@
       "description": "An existing file's contents change on disk (same path, new bytes). The watcher debounces and resubmits the path; a snapshot mismatch (mtime+len) forces a full reprocess.",
       "actor": "watcher",
       "target": "file path",
-      "preconditions": ["file present on disk"],
-      "affected_state": ["files"],
+      "preconditions": [
+        "file present on disk"
+      ],
+      "affected_state": [
+        "files"
+      ],
       "code_ref": "backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool",
       "effects": [
         "Row converges to the new bytes' metadata; derived artifacts refreshed."
@@ -81,8 +89,10 @@
         "row exists",
         "item for same path being processed"
       ],
-      "affected_state": ["files"],
-      "code_ref": "TODO",
+      "affected_state": [
+        "files"
+      ],
+      "code_ref": "backend/src/tasks/queue/worker.rs:process_watcher_index",
       "effects": [
         "The in-flight item is dropped, never applied over newer state; the newer content is (re)processed."
       ],
@@ -101,8 +111,13 @@
       "description": "A watched file is removed from disk. Handled directly via the remove lane, not deferred to the sweep; ghosts cover missed events only.",
       "actor": "watcher",
       "target": "file path",
-      "preconditions": ["file removed on disk"],
-      "affected_state": ["files", "sweepPending"],
+      "preconditions": [
+        "file removed on disk"
+      ],
+      "affected_state": [
+        "files",
+        "sweepPending"
+      ],
       "code_ref": "backend/src/tasks/batcher/start_watcher.rs:handle_removed_file",
       "effects": [
         "Row pruned (record kept, minus the path, only if other paths remain).",
@@ -128,9 +143,17 @@
       "description": "A single file is renamed or moved within the tree: same content, new path. Watchers report renames differently per platform, so the safe handling is specified as old-path remove plus new-path create, including a separately renamed sidecar.",
       "actor": "watcher",
       "target": "file path pair",
-      "preconditions": ["source present", "destination absent"],
-      "affected_state": ["files", "generations", "intake", "sweepPending"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "source present",
+        "destination absent"
+      ],
+      "affected_state": [
+        "files",
+        "generations",
+        "intake",
+        "sweepPending"
+      ],
+      "code_ref": "backend/src/tasks/batcher/start_watcher.rs:handle_paired_rename",
       "effects": [
         "Row follows to the new path with no ghost window and no re-decode (specified: remove + create)."
       ],
@@ -154,9 +177,17 @@
       "description": "A directory is renamed or moved: all contained assets move atomically with it, sidecar association follows by name.",
       "actor": "watcher",
       "target": "directory",
-      "preconditions": ["source directory present", "destination absent"],
-      "affected_state": ["files", "rows", "generations", "sweepPending"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "source directory present",
+        "destination absent"
+      ],
+      "affected_state": [
+        "files",
+        "rows",
+        "generations",
+        "sweepPending"
+      ],
+      "code_ref": "backend/src/router/put/assign_album.rs:update_asset_tables_after_dir_move",
       "effects": [
         "Every contained asset's row updated to the renamed path in one step, assetId preserved (ApiMove semantics, no intake); content-keyed derived artifacts untouched."
       ],
@@ -180,8 +211,12 @@
       "description": "A file (main or sidecar) is replaced wholesale by an atomically written new file at the same path - editors and sync tools do this via temp-file plus rename.",
       "actor": "filesystem",
       "target": "file path",
-      "preconditions": ["replacement file written atomically"],
-      "affected_state": ["files"],
+      "preconditions": [
+        "replacement file written atomically"
+      ],
+      "affected_state": [
+        "files"
+      ],
       "code_ref": "backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool",
       "effects": [
         "Handled as modify: media path resubmitted, snapshot mismatch forces full reprocess.",
@@ -202,9 +237,13 @@
       "description": "A sidecar (.xmp) newly appears next to an existing asset - for example a background transfer delivers it after the media file.",
       "actor": "watcher",
       "target": "sidecar path",
-      "preconditions": ["sidecar newly present on disk"],
-      "affected_state": ["files"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "sidecar newly present on disk"
+      ],
+      "affected_state": [
+        "files"
+      ],
+      "code_ref": "backend/src/model/media.rs:classify_media_file",
       "effects": [
         "Row augmented with sidecar metadata (sibling media path resubmitted; a present sidecar forces reprocess)."
       ],
@@ -228,9 +267,13 @@
       "description": "An existing sidecar's contents change on disk, for example when a metadata editor rewrites it.",
       "actor": "watcher",
       "target": "sidecar path",
-      "preconditions": ["sidecar present on disk"],
-      "affected_state": ["files"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "sidecar present on disk"
+      ],
+      "affected_state": [
+        "files"
+      ],
+      "code_ref": "backend/src/model/media.rs:classify_media_file",
       "effects": [
         "Row's sidecar-derived metadata refreshed via full reprocess (sibling media path resubmitted)."
       ],
@@ -249,9 +292,13 @@
       "description": "A sidecar (.xmp) next to an existing asset is removed; the row must drop the metadata derived from it.",
       "actor": "watcher",
       "target": "sidecar path",
-      "preconditions": ["sidecar removed on disk"],
-      "affected_state": ["files"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "sidecar removed on disk"
+      ],
+      "affected_state": [
+        "files"
+      ],
+      "code_ref": "backend/src/model/media.rs:classify_media_file",
       "effects": [
         "Row drops sidecar-derived state (sibling media path resubmitted; reprocess must drop it)."
       ],
@@ -270,8 +317,14 @@
       "description": "A client uploads a new asset over HTTP. The file is placed atomically (tmp written into the target dir, mtime set, then atomic rename to the final name) and then enqueued for background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs); the request returns 200 on storage, not on indexing.",
       "actor": "api",
       "target": "file path",
-      "preconditions": ["file present on disk"],
-      "affected_state": ["files", "generations", "intake"],
+      "preconditions": [
+        "file present on disk"
+      ],
+      "affected_state": [
+        "files",
+        "generations",
+        "intake"
+      ],
       "code_ref": "backend/src/router/post/post_upload.rs:upload",
       "effects": [
         "File stored at its final path; an intake item is queued via submit_uploaded_path -> submit_watcher_index (backend/src/router/post/post_upload.rs:286-294, 534-538) for background indexing.",
@@ -301,15 +354,22 @@
           "status": "covered"
         }
       ],
-      "notes": "Store-and-return: the file is placed with tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), then atomic rename (post_upload.rs save_file); indexing is enqueued fire-and-forget via submit_uploaded_path -> submit_watcher_index (post_upload.rs). No synchronous row write and no FlushTreeTask::insert barrier on this route (the barrier survives only on edit/regenerate/rotate routes). See G3 in utils/quint/pipeline/goals.json for the read-after-write framing and N8 for the unindexed window."    },
+      "notes": "Store-and-return: the file is placed with tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), then atomic rename (post_upload.rs save_file); indexing is enqueued fire-and-forget via submit_uploaded_path -> submit_watcher_index (post_upload.rs). No synchronous row write and no FlushTreeTask::insert barrier on this route (the barrier survives only on edit/regenerate/rotate routes). See G3 in utils/quint/pipeline/goals.json for the read-after-write framing and N8 for the unindexed window."
+    },
     {
       "name": "API_DELETE",
       "status": "established",
       "description": "A client deletes an asset over HTTP: file and sidecar removed, row deleted.",
       "actor": "api",
       "target": "file path",
-      "preconditions": ["file present on disk", "row exists"],
-      "affected_state": ["files", "rows"],
+      "preconditions": [
+        "file present on disk",
+        "row exists"
+      ],
+      "affected_state": [
+        "files",
+        "rows"
+      ],
       "code_ref": "backend/src/router/delete.rs:delete_data",
       "effects": [
         "File removed, then sidecar, then thumbnail only when no other asset shares the content hash, then rows deleted; delete of an already-gone asset is idempotent."
@@ -339,8 +399,15 @@
       "description": "A client moves an album directory over HTTP: files on disk move and rows are updated in place, preserving asset identity.",
       "actor": "api",
       "target": "album directory",
-      "preconditions": ["source present", "destination absent", "row exists"],
-      "affected_state": ["files", "rows"],
+      "preconditions": [
+        "source present",
+        "destination absent",
+        "row exists"
+      ],
+      "affected_state": [
+        "files",
+        "rows"
+      ],
       "code_ref": "backend/src/router/put/assign_album.rs:assign_album",
       "effects": [
         "Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (ASS-1)."
@@ -370,7 +437,9 @@
       "description": "A client requests the compressed (thumbnail-sized) rendition of an asset over HTTP. Read-only; recorded to pin the observable serving guarantees.",
       "actor": "api",
       "target": "asset bytes",
-      "preconditions": ["row exists"],
+      "preconditions": [
+        "row exists"
+      ],
       "affected_state": [],
       "code_ref": "backend/src/router/get/get_img.rs:compressed_file",
       "effects": [
@@ -396,10 +465,14 @@
       "description": "A client requests the original image bytes of an asset over HTTP. Read-only; recorded to pin the observable serving guarantees.",
       "actor": "api",
       "target": "asset bytes",
-      "preconditions": ["row exists"],
+      "preconditions": [
+        "row exists"
+      ],
       "affected_state": [],
       "code_ref": "backend/src/router/get/get_img.rs:imported_file",
-      "effects": ["Complete bytes only; no state change."],
+      "effects": [
+        "Complete bytes only; no state change."
+      ],
       "faults": [
         {
           "fault": "row exists but original file gone",
@@ -415,9 +488,11 @@
       "description": "A client requests bytes for an asset whose file on disk is gone (or whose row is absent). Reads queue no watcher remove; nothing is healed by the read itself.",
       "actor": "api",
       "target": "asset bytes",
-      "preconditions": ["row exists, file absent (or row absent)"],
+      "preconditions": [
+        "row exists, file absent (or row absent)"
+      ],
       "affected_state": [],
-      "code_ref": "TODO",
+      "code_ref": "backend/src/router/get/get_img.rs:compressed_file",
       "effects": [
         "Graceful outcome (not-found or placeholder), no state change, no 500, no torn bytes."
       ],
@@ -436,9 +511,12 @@
       "description": "A client requests bytes via the old path after the file was moved underneath (pre-subtree-model state, e.g. an out-of-band rename).",
       "actor": "api",
       "target": "asset bytes",
-      "preconditions": ["row under old path", "file under new path"],
+      "preconditions": [
+        "row under old path",
+        "file under new path"
+      ],
       "affected_state": [],
-      "code_ref": "TODO",
+      "code_ref": "backend/src/router/get/get_img.rs:imported_file",
       "effects": [
         "Read via the old path behaves as missing; healed by scan; no state change on read."
       ],
@@ -460,8 +538,11 @@
       "preconditions": [
         "watcher notifications missing or stopped for a stretch"
       ],
-      "affected_state": ["files", "sweepPending"],
-      "code_ref": "TODO",
+      "affected_state": [
+        "files",
+        "sweepPending"
+      ],
+      "code_ref": "backend/src/tasks/actor/album_index.rs:index_album_with_root",
       "effects": [
         "Agreed: all changes during the gap are repaired by the next scan or sweep; nothing outside the gap window survives stale."
       ],
@@ -480,9 +561,14 @@
       "description": "The backend dies mid-pipeline (mid-apply, mid-write). On restart, the state is whatever was durably written (redb flushes, completed file writes).",
       "actor": "environment",
       "target": "backend process",
-      "preconditions": ["backend dies mid-pipeline"],
-      "affected_state": ["rows", "derived-bytes"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "backend dies mid-pipeline"
+      ],
+      "affected_state": [
+        "rows",
+        "derived-bytes"
+      ],
+      "code_ref": "backend/src/init.rs:initialize",
       "effects": [
         "Agreed: on restart the index converges again from filesystem plus recovery state; no torn rows are served."
       ],
@@ -516,9 +602,13 @@
       "description": "Derived bytes referenced by rows are lost - either wiped (cache clear, disk pressure) or silently corrupted on disk. The scan sees the first case (presence) but not the second (it never checks artifact content).",
       "actor": "environment",
       "target": "derived bytes (thumbnails)",
-      "preconditions": ["thumbnail files wiped or lost"],
-      "affected_state": ["derived-bytes"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "thumbnail files wiped or lost"
+      ],
+      "affected_state": [
+        "derived-bytes"
+      ],
+      "code_ref": "backend/src/tasks/actor/album_index.rs:index_album_with_root",
       "effects": [
         "Deleted thumbnails are restored by the next scan: a missing artifact forces reprocess.",
         "Corrupted thumbnails are not restored by today's scan: it does not check artifact content.",
@@ -549,9 +639,16 @@
       "description": "The metadata database is lost while the filesystem remains intact: Picasu restarts and fully re-scans, restoring the index from the filesystem-as-truth baseline. The ultimate reindex-from-nothing test.",
       "actor": "environment",
       "target": "metadata database",
-      "preconditions": ["metadata store lost entirely", "filesystem intact"],
-      "affected_state": ["rows", "nextAssetId", "generations"],
-      "code_ref": "TODO",
+      "preconditions": [
+        "metadata store lost entirely",
+        "filesystem intact"
+      ],
+      "affected_state": [
+        "rows",
+        "nextAssetId",
+        "generations"
+      ],
+      "code_ref": "backend/src/tasks/actor/album_index.rs:index_album_with_root",
       "effects": [
         "Agreed: restart plus full re-scan rebuilds the index from the filesystem alone; fresh assetIds; content-keyed derived artifacts survive untouched."
       ],
@@ -575,8 +672,14 @@
       "description": "A client edits metadata (tag, description, flags, rating, share, album membership) for one asset or a batch over HTTP. Sidecars (.xmp per asset, .albuminfo.xmp per album) are rewritten atomically and then the DB payload is stored; a failed sidecar write rolls back already-written sidecars and stores nothing.",
       "actor": "api",
       "target": "sidecar file(s) + DB row(s)",
-      "preconditions": ["row exists", "caller passes write gate"],
-      "affected_state": ["files", "rows"],
+      "preconditions": [
+        "row exists",
+        "caller passes write gate"
+      ],
+      "affected_state": [
+        "files",
+        "rows"
+      ],
       "code_ref": "backend/src/process/sidecar_edit.rs:commit_metadata_edits",
       "effects": [
         "Bytes first: each item's sidecar lands before the store transaction commits the payload.",
@@ -608,7 +711,11 @@
         "asset is an image",
         "caller passes write gate"
       ],
-      "affected_state": ["rows", "derived-bytes", "files"],
+      "affected_state": [
+        "rows",
+        "derived-bytes",
+        "files"
+      ],
       "code_ref": "backend/src/router/put/rotate_image.rs:rotate_image",
       "effects": [
         "Settled state (no crash): thumbnail, sidecar rotation, and DB records all reflect the new rotation.",
