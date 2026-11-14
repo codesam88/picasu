@@ -10,6 +10,8 @@ Python plus the shell workload driver; it is not part of the server binary.
 | `workload.py`         | Image-set materialisation, scans, probes and harness-A-compatible artifacts      |
 | `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                      |
 | `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown             |
+| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check                       |
+| `baselines.tsv`       | Checked-in accepted bands for the gate battery                                   |
 | `extract-bench.py`    | Summarise one or more harness output directories                                 |
 | `manifests/`          | PhotoSpec manifests for fixed image sets                                         |
 
@@ -56,6 +58,48 @@ runs the canonical cell (`build` and `port` take `name=value` overrides).
 Binaries and the repo must exist; the stack fails with a build/seed hint
 otherwise. `just bench server` serves a backend without driving any
 workload.
+
+## Batteries and baselines
+
+A battery is an ordered, pinned matrix of cells for one scale. Env and
+ports are fixed by `battery.py`; cells run sequentially (shared tempdir
+state) and each writes one row to `<out>/report.tsv`. A failing cell
+writes its row when the artifacts still parse, then stops the battery
+with that cell's exit code.
+
+| Level   | Images | Cells                                                                        |
+| ------- | ------ | ---------------------------------------------------------------------------- |
+| `gate`  | 100    | `control`, `storm-read`, `storm-thumb`, `storm-diff`, `storm-idle`, `upload` |
+| `scale` | 5650   | `control`, `storm-diff`, `upload`                                            |
+
+Both levels pin `SCAN_REPEATS=2`, hyperfine `REPEATS=3`/`WARMUP=1`,
+`NCPU=8`, release builds, and storm `CLIENTS=8`/`OPS=10`/`MARGIN_S=0.5`.
+Image repos are seeded once (see below) and resolved from
+`BENCH_SETS_ROOT` (default `/tmp/sets`).
+
+```sh
+just bench seed-images /tmp/sets/set-100 100
+just bench seed-images /tmp/sets/set-5650 5650
+just bench battery gate                     # -> /tmp/picasu-battery-gate-<stamp>/report.tsv
+just bench battery gate /tmp/my-gate-run    # explicit outdir
+just bench battery-check /tmp/my-gate-run/report.tsv
+```
+
+`report.tsv` carries identity (`cell`, profile, level, scale, build,
+git commit from `run-manifest.json`), scan walls, request p50s/worsts
+and idle baselines, upload submit/visible p50s (parsed from the
+`upload ...` log lines), and the extractor's `tree_refresh_build` /
+`filter_snapshot_clone` p50/max columns (`n/a` when the drain table is
+absent). Storm aggregates remain in the cell outdir and extractor table.
+
+`baselines.tsv` is long-format (`cell`, `metric`, `baseline`, `rel_tol`,
+`abs_tol`, `recorded`, `note`). The band is
+`max(abs_tol, abs(baseline) * rel_tol)`. A baselined metric that is
+missing, `n/a`, or outside its band fails the check with the cell and
+metric named; a baselined cell missing from the report also fails.
+Recording is deliberate: run the battery, review the report, edit the
+baseline row, and note why in the commit. `battery-check` never writes
+the file, so an unexplained move keeps failing.
 
 ## Workload profiles (`WORKLOAD`)
 

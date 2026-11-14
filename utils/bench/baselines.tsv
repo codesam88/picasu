@@ -1,0 +1,26 @@
+# Accepted benchmark bands for the gate battery.
+#
+# Long format, one row per cell+metric. `battery-check` fails when a
+# reported value falls outside [baseline - band, baseline + band], where
+# band = max(abs_tol, abs(baseline) * rel_tol). `n/a` counts as outside
+# the band for a recorded metric.
+#
+# Columns:
+#   cell      battery cell id: <level>-<profile> (e.g. gate-control)
+#   metric    run-report column (see battery.py REPORT_COLUMNS)
+#   baseline  accepted value, in the report's unit
+#   rel_tol   relative band as a fraction (0.25 = +/-25%)
+#   abs_tol   absolute band floor, in the report's unit
+#   recorded  date or commit the value was accepted on
+#   note      why the band is what it is
+#
+# Recording is deliberate: run the battery, review report.tsv, then edit
+# the row by hand. A cell outside its band fails until the move is
+# explained and the row re-recorded. `battery-check` never writes here.
+cell	metric	baseline	rel_tol	abs_tol	recorded	note
+# Example rows (commented; replace with recorded gate values):
+# gate-control	scan_fetch_p50_ms	18.0	0.25	1.0	2026-11-14	set-100 release; example only
+# gate-control	scan_wall_s	12.0	0.30	1.0	2026-11-14	set-100 release; example only
+# gate-control	tree_refresh_build_p50_us	1200	0.30	100	2026-11-14	set-100 release; example only
+# gate-upload	upload_submit_p50_ms	12	0.30	2	2026-11-14	set-100 release; example only
+# gate-upload	upload_visible_p50_ms	55	0.30	5	2026-11-14	set-100 release; example only
