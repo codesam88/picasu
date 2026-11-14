@@ -93,6 +93,24 @@ if (existsSync(base)) {
 // a comment that mentions the name also satisfies it (accepted limitation,
 // lower stakes than marker ownership).
 function validateTestRef(ref, label) {
+  // A `.yaml` ref points at a generated backend scenario file: only file
+  // existence is checked here (malformed YAML fails the build via build.rs).
+  if (ref.endsWith('.yaml')) {
+    const relPath = ref
+    if (relPath.startsWith('/') || relPath.split('/').includes('..')) {
+      fail(`${label}: test ref path '${relPath}' must be repo-relative without '..'`)
+      return
+    }
+    if (!relPath.startsWith('backend/tests/scenarios/')) {
+      fail(`${label}: yaml test ref '${relPath}' must live under backend/tests/scenarios/`)
+      return
+    }
+    const full = join(repoRoot, relPath)
+    if (!existsSync(full)) {
+      fail(`${label}: test ref file '${relPath}' does not exist`)
+    }
+    return
+  }
   const sep = ref.lastIndexOf('::')
   if (sep <= 0 || sep + 2 >= ref.length) {
     fail(`${label}: test ref '${ref}' must be '<path>::<test_fn>'`)

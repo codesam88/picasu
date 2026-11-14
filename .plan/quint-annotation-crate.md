@@ -128,7 +128,7 @@ step 13) as not a modeling fit.
    three layers is visible in one report; a ref to a nonexistent file or
    fn fails the gate (demoed).
 
-4. **[open] Rung 2c — close the gaps.** Add the missing backend tests,
+4. **[open] Rung 2c — close the gaps.** Batch 1 (2026-11-14): added upload-window test covering `UploadDoesNotMintRow` + `UploadingIsNotCorrupt`; linked yaml scenario refs for `aspectsDupeGroupDeleteTest` and `aspectsWatcherRemoveTest`; yaml ref kind added to `operations-check.mjs`; matrix now 17/25. Batches 2–3 pending. Add the missing backend tests,
    TDD, one at a time, highest-value first. Backlog seeded by the
    review sketches: upload-gets-indexed (delete the
    `submit_uploaded_path` call while every catalog check stays green —

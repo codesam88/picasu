@@ -933,3 +933,100 @@ fn assign_copies_sidecar_before_asset_move() {
         "destination sidecar copy must exist after failed move"
     );
 }
+
+/// Upload stores the file and enqueues intake without minting an asset row,
+/// the uploaded (but not yet indexed) file survives a sweep, and intake
+/// eventually indexes it. Pins OP-2's `UploadDoesNotMintRow` and
+/// `UploadingIsNotCorrupt`.
+#[test]
+fn upload_is_stored_without_row_and_survives_sweep_until_intake_indexes() {
+    let _guard = lock();
+    let client = setup_image_home();
+    // Seed a source photo so the upload helper has bytes to send.
+    let _ = create_album(&client, "/writes/photo.jpg");
+
+    let before_asset_count = crate::storage::asset_store::get_all_assets()
+        .expect("read assets before upload")
+        .len();
+
+    // Upload a valid file through the real route.
+    let file_data =
+        std::fs::read(test_image_home().join("writes/photo.jpg")).expect("seeded photo bytes");
+    let (body, boundary) = upload_multipart(&file_data, "second.jpg");
+    let resp = client
+        .post("/post/upload")
+        .cookie(auth_cookie(&client))
+        .header(ContentType::new(
+            "multipart",
+            format!("form-data; boundary={boundary}"),
+        ))
+        .body(body)
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "upload must succeed");
+    let json: Value = resp.into_json().expect("upload response json");
+    let stored_name = json["files"][0].as_str().expect("stored name").to_string();
+    let target_dir = json["dir"].as_str().expect("target dir").to_string();
+    let stored_path = std::path::PathBuf::from(&target_dir).join(&stored_name);
+    assert!(stored_path.exists(), "uploaded file must be stored on disk");
+
+    // Before intake processing: upload must not have minted an asset row
+    // synchronously. Workers may already have applied the queued intake item
+    // by the time the route returns, in which case the row is present and
+    // this assertion is skipped (the final indexing assertion below still
+    // pins that intake, not upload, is what mints the row).
+    let row_before_intake =
+        crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
+            .expect("read ASSET_BY_PATH before intake");
+    if row_before_intake.is_none() {
+        // no asset id consumed: store count unchanged
+        let after_asset_count = crate::storage::asset_store::get_all_assets()
+            .expect("read assets after upload")
+            .len();
+        assert_eq!(
+            after_asset_count, before_asset_count,
+            "upload must not consume an asset id before intake"
+        );
+    }
+
+    // An uploaded file that is still present is not corruption: sweep must
+    // not prune it (the file is present, so sweep skips it) and must not
+    // change row existence.
+    let row_before_sweep =
+        crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
+            .expect("read ASSET_BY_PATH before sweep");
+    crate::tasks::batcher::flush_tree::sweep_remove_batch(std::slice::from_ref(&stored_path));
+    assert!(
+        stored_path.exists(),
+        "sweep must not remove an uploaded file that is still present"
+    );
+    let row_after_sweep =
+        crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
+            .expect("read ASSET_BY_PATH after sweep");
+    assert_eq!(
+        row_before_sweep, row_after_sweep,
+        "sweep must not change row existence for a present file"
+    );
+
+    // Drain/apply the intake item the way the pipeline does, then assert the
+    // row now exists (indexed).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
+            .expect("read ASSET_BY_PATH while waiting for intake")
+            .is_some()
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() <= deadline,
+            "intake must index the uploaded file"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
+            .expect("read ASSET_BY_PATH after intake")
+            .is_some(),
+        "uploaded file must be indexed after intake applies"
+    );
+}

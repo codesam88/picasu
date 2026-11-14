@@ -147,8 +147,11 @@ for example
 `backend/tests/*.rs` and `backend/src/tests/*.rs` are both accepted. The gate
 reads the referenced file and requires the text `fn <name>` to appear; a
 comment mention of the name therefore also satisfies it (accepted limitation:
-this is a link check, not compiled-test discovery). Generated scenario tests
-live in `OUT_DIR` and cannot be referenced under this convention.
+this is a link check, not compiled-test discovery). A ref may also point at a
+generated backend scenario by ending in `.yaml`, in which case it must name an
+existing file under `backend/tests/scenarios/` (file-existence check only;
+malformed YAML already fails the build via `build.rs`). Generated scenario
+tests live in `OUT_DIR` and cannot be referenced under the `.rs` convention.
 
 Code-test refs stay in `operations.json`, not in the generated
 `pipeline/traceability.json` map: `specs-check.mjs` rewrites the traceability
