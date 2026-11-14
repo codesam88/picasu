@@ -24,7 +24,12 @@ push that past 250 GB. Generating and copying that per cell is not
 practical, so:
 
 - One canonical archive per file-size class is seeded once and reused
-  by every cell. The archive is read-only; cells never generate images.
+  by every cell. The archive is read-only and lives outside tmpfs
+  (canonical root `$HOME/picasu-bench/set-N`, e.g. `set-100`,
+  `set-5650`); cells never generate images. Cell staging (OUT, image
+  home, server data) goes on tmpfs (`/dev/shm` preferred, `/tmp`
+  otherwise) to avoid disk latency and wear; hardlink materialisation
+  falls back to copy across the filesystem boundary.
 - A cell materialises its set from the archive by hardlink (same
   filesystem), not by copy: materialisation is O(1) disk regardless
   of set size. Copying is reserved for filesystems where links are
