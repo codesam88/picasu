@@ -32,6 +32,16 @@ just bench lint
 Recipes live in `utils/bench/justfile`; the root justfile only
 carries `mod bench`, so there are no `bench-*` root aliases.
 
+## Extractor drain tables
+
+When `PICASU_OBSERVER_STATS=1` (default in bench mode), the backend writes
+an `observe drain:` table per scan into `server.log`. `extract-bench.py`
+parses these into `stages.json` in each cell outdir (one flat row per
+stage per scan: scan index, stage, n, p50_us, p95_us, max_us, context) and
+adds `tree_refresh_build_*` / `filter_snapshot_clone_*` summary columns to
+the printed table. Cells without drain tables (stats off or older logs)
+still parse unchanged; their `stages.json` is an empty list.
+
 ## Canonical cell
 
 ```sh
