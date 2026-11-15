@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import statistics
 import sys
 import tempfile
@@ -18,6 +19,7 @@ from pathlib import Path
 from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def load_battery():
@@ -52,13 +54,10 @@ def write_cell(
         "hyperfine edit-rating: mean=0.040 s median=0.039 s",
     ]
     if drain:
-        log += [
-            "observe drain: scan job=1",
-            "stage n p50_us p95_us max_us",
-            "tree_refresh_build 100 1200 1500 2000",
-            "filter_snapshot_clone 100 800 900 1000",
-            "",
-        ]
+        # Stage costs come from the backend's server.log, never from the
+        # transcript. Copy the recorded drain record so the tests read the
+        # artifact a real cell writes.
+        shutil.copyfile(FIXTURES / "server-drain.log", outdir / "server.log")
     if upload:
         log += [
             "upload file=u1.jpg submit_ms=10 visible_ms=50",
@@ -167,10 +166,11 @@ class BatteryRowTest(unittest.TestCase):
         self.assertEqual(row["idle_edit_ms"], "39.0")
         self.assertEqual(row["upload_submit_p50_ms"], "12")
         self.assertEqual(row["upload_visible_p50_ms"], "55")
-        self.assertEqual(row["tree_refresh_build_p50_us"], "1200")
-        self.assertEqual(row["tree_refresh_build_max_us"], "2000")
-        self.assertEqual(row["filter_snapshot_clone_p50_us"], "800")
-        self.assertEqual(row["filter_snapshot_clone_max_us"], "1000")
+        # Stage columns are the recorded table's two scans, in order.
+        self.assertEqual(row["tree_refresh_build_p50_us"], "542,1002")
+        self.assertEqual(row["tree_refresh_build_max_us"], "1997,6069")
+        self.assertEqual(row["filter_snapshot_clone_p50_us"], "419,1493")
+        self.assertEqual(row["filter_snapshot_clone_max_us"], "1778,5236")
 
     def test_missing_drain_and_upload_columns_are_na(self):
         outdir = self.root / "gate-storm-read"
@@ -775,8 +775,11 @@ class MedianRowTest(unittest.TestCase):
         self.assertEqual(med["cell"], "gate-control:median")
         # Pooled [9, 11, 12, 12, 13, 15] s.
         self.assertEqual(med["scan_walls_s"], "12.0")
-        self.assertEqual(float(med["tree_refresh_build_p50_us"]), 1200.0)
-        self.assertEqual(float(med["filter_snapshot_clone_max_us"]), 1000.0)
+        # The recorded table's two scans repeat across the three reps:
+        # p50s [542, 1002] x3 pool to a 772 median, maxes [1778, 5236]
+        # x3 to 3507.
+        self.assertEqual(float(med["tree_refresh_build_p50_us"]), 772.0)
+        self.assertEqual(float(med["filter_snapshot_clone_max_us"]), 3507.0)
 
 
 class BatteryCheckMedianTest(unittest.TestCase):
@@ -970,7 +973,7 @@ class BatteryResumeTest(unittest.TestCase):
         self.assertEqual(median["cell"], "gate-control:median")
         # Pooled [9, 11, 12, 12, 13, 15] s across the three repeats.
         self.assertEqual(median["scan_walls_s"], "12.0")
-        self.assertEqual(median["tree_refresh_build_p50_us"], "1200.0")
+        self.assertEqual(median["tree_refresh_build_p50_us"], "772.0")
 
     def test_retry_after_failure_resumes_without_duplicate_rows(self):
         failed = f"{self.cell.outdir_suffix}-rep3"
