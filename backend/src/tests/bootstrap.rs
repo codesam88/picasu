@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex, RwLock};
 
+use redb::ReadableDatabase;
 use redb::ReadableTable;
 use tempfile::TempDir;
 
@@ -52,6 +53,8 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
             .expect("create ASSET_BY_PATH");
         txn.open_table(crate::storage::db::ASSET_BY_ID)
             .expect("create ASSET_BY_ID");
+        txn.open_table(crate::storage::db::ASSET_BY_ALBUM)
+            .expect("create ASSET_BY_ALBUM");
         txn.open_table(crate::storage::db::DUPE_INDEX)
             .expect("create DUPE_INDEX");
         txn.open_table(crate::storage::db::REVOCATIONS)
@@ -61,6 +64,97 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
 
     TestEnv { _dir: dir }
 });
+
+/// Read the stored album metadata payload for `album_id`.
+pub fn read_album_payload(album_id: &str) -> crate::model::metadata_record::AlbumPayload {
+    let txn = TREE.in_disk.begin_read().expect("begin read album payload");
+    let table = txn
+        .open_table(METADATA_TABLE)
+        .expect("open METADATA_TABLE for album payload");
+    match table.get(album_id).expect("get album payload") {
+        Some(guard) => match guard.value() {
+            crate::model::metadata_record::MetadataRecord::Album(payload) => payload,
+            other => panic!("album {album_id} does not hold an album payload: {other:?}"),
+        },
+        None => panic!("album {album_id} has no metadata payload"),
+    }
+}
+
+/// Member ids of `album_id` in `ASSET_BY_ALBUM` (key order).
+pub fn album_member_ids(album_id: &str) -> Vec<String> {
+    let txn = TREE.in_disk.begin_write().expect("begin write member scan");
+    let members =
+        crate::storage::asset_store::list_album_members(&txn, album_id).expect("list members");
+    drop(txn);
+    members
+}
+
+/// Assert the album's stored aggregates equal a fresh recompute from the
+/// member table. Uses the same timestamp rule as production
+/// (`DEFAULT_PRIORITY_LIST`) and the record's `file_size`.
+///
+/// For an empty album only the aggregate fields are pinned; its cover follows
+/// the descendant rule and is exercised by the empty-transition test.
+pub fn assert_album_aggregates_exact(album_id: &str) {
+    use crate::model::abstract_data::AbstractData;
+
+    let payload = read_album_payload(album_id);
+    let members = album_member_ids(album_id);
+    assert_eq!(
+        payload.item_count,
+        members.len(),
+        "album {album_id} item_count must equal member rows"
+    );
+
+    let mut expected_size = 0u64;
+    let mut min_ts = i64::MAX;
+    let mut max_ts = i64::MIN;
+    let mut cover: Option<arrayvec::ArrayString<64>> = None;
+    let mut cover_ts = i64::MIN;
+    for member in &members {
+        let record = crate::storage::asset_store::get_asset_by_id(member)
+            .expect("read member record")
+            .unwrap_or_else(|| panic!("member {member} of {album_id} has no record"));
+        let metadata = crate::process::transitor::load_metadata_record(member)
+            .expect("read member metadata payload");
+        let ad = crate::model::metadata_record::compose_abstract_data(&record, metadata.as_ref());
+        let ts = ad.compute_timestamp(crate::constant::DEFAULT_PRIORITY_LIST);
+        min_ts = min_ts.min(ts);
+        max_ts = max_ts.max(ts);
+        expected_size += record.file_size;
+        if ts > cover_ts {
+            cover_ts = ts;
+            cover = Some(record.asset_id);
+        }
+        if let AbstractData::Album(_) = ad {
+            panic!("album members must be media assets");
+        }
+    }
+
+    assert_eq!(
+        payload.item_size, expected_size,
+        "album {album_id} item_size must equal member sizes"
+    );
+    if members.is_empty() {
+        assert_eq!(payload.start_time, None, "empty album start_time");
+        assert_eq!(payload.end_time, None, "empty album end_time");
+    } else {
+        assert_eq!(
+            payload.start_time,
+            Some(min_ts),
+            "album {album_id} start_time must be the oldest member"
+        );
+        assert_eq!(
+            payload.end_time,
+            Some(max_ts),
+            "album {album_id} end_time must be the newest member"
+        );
+        assert_eq!(
+            payload.cover, cover,
+            "album {album_id} cover must be the newest member"
+        );
+    }
+}
 
 /// The image home path used by the test environment.
 /// Derived from the test config that `TEST_ENV` sets up.
@@ -191,7 +285,7 @@ pub fn reset_backend_state() {
             // The query snapshot tables are named by version timestamp.
             // We can't enumerate table names in redb, but clearing the
             // in-memory cache above is sufficient for most cases.
-            let _ = txn.commit();
+            txn.commit().expect("commit query snapshot cleanup");
         }
     }
 
@@ -223,6 +317,7 @@ pub fn reset_backend_state() {
     for table_def in [
         crate::storage::db::ASSET_BY_PATH,
         crate::storage::db::ASSET_BY_ID,
+        crate::storage::db::ASSET_BY_ALBUM,
         crate::storage::db::DUPE_INDEX,
         crate::storage::db::INVITES,
         crate::storage::db::REVOCATIONS,

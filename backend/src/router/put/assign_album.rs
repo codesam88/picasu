@@ -734,7 +734,8 @@ mod tests {
         flush_tables(
             &[AbstractData::new(&source, hash).expect("build source data")],
             &[],
-        );
+        )
+        .expect("flush tables");
         let old_id = asset_store::get_asset_id_by_path(&source.to_string_lossy())
             .expect("read source path")
             .expect("source row exists");
@@ -765,8 +766,9 @@ mod tests {
         flush_tables(
             &[AbstractData::new(&dest, hash).expect("build destination data")],
             &[],
-        );
-        sweep_remove_batch(std::slice::from_ref(&source));
+        )
+        .expect("flush tables");
+        sweep_remove_batch(std::slice::from_ref(&source)).expect("sweep remove batch");
 
         let new_id = asset_store::get_asset_id_by_path(&dest.to_string_lossy())
             .expect("read destination path")
@@ -1175,7 +1177,7 @@ mod tests {
 
         // Torn DB state: id table updated to dest path, path mapping still at
         // source (the N5 split window).
-        flush_tables(&[src_data], &[]);
+        flush_tables(&[src_data], &[]).expect("flush tables");
         let old_id = asset_store::get_asset_id_by_path(&source.to_string_lossy())
             .expect("read source path")
             .expect("source row exists");
@@ -1187,8 +1189,8 @@ mod tests {
 
         // Drive a rescan of the destination: flush the destination file, then
         // sweep the stale source mapping.
-        flush_tables(&[dest_data], &[]);
-        sweep_remove_batch(std::slice::from_ref(&source));
+        flush_tables(&[dest_data], &[]).expect("flush tables");
+        sweep_remove_batch(std::slice::from_ref(&source)).expect("sweep remove batch");
 
         // Healed row at destination must carry the sidecar's user metadata.
         let new_id = asset_store::get_asset_id_by_path(&dest.to_string_lossy())
@@ -1224,6 +1226,79 @@ mod tests {
         }
 
         std::fs::remove_dir_all(root.join("move_crash")).ok();
+        reset_backend_state();
+    }
+
+    /// A directory move rewrites paths only: membership is keyed by `album_id`,
+    /// so the member row and aggregates must be untouched and remain exact.
+    #[test]
+    fn dir_move_preserves_album_membership_and_aggregates() {
+        use crate::model::abstract_data::AbstractData;
+        use crate::process::hash::blake3_hasher;
+        use crate::storage::asset_store;
+        use crate::tests::bootstrap::{
+            TEST_ENV, album_member_ids, assert_album_aggregates_exact, lock, read_album_payload,
+            reset_backend_state, test_image_home,
+        };
+        use std::fs::File;
+
+        let _guard = lock();
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let root = test_image_home().join("dir_move_membership");
+        let src = root.join("album");
+        let dst = root.join("moved");
+        std::fs::create_dir_all(&src).expect("create album dir");
+        let album_id =
+            crate::process::dir_album::get_or_create_dir_album(src.clone()).expect("create album");
+
+        let path = src.join("photo.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(path.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate photo");
+        let hash = blake3_hasher(File::open(&path).expect("open photo")).expect("hash photo");
+        let mut data = AbstractData::new(&path, hash).expect("build photo data");
+        data.set_album(Some(album_id));
+        crate::tasks::batcher::flush_tree::flush_tables(&[data], &[]).expect("flush album member");
+
+        let member_id = asset_store::get_asset_id_by_path(&path.to_string_lossy())
+            .expect("read member path")
+            .expect("member path exists");
+        assert_eq!(
+            album_member_ids(album_id.as_str()),
+            vec![member_id.to_string()]
+        );
+
+        std::fs::rename(&src, &dst).expect("move album directory");
+        let plans = collect_dir_move_plans(&src, &dst).expect("collect dir move plans");
+        apply_dir_move_plans(&plans).expect("apply dir move plans");
+
+        let moved = asset_store::get_asset_by_id(member_id.as_str())
+            .expect("read moved member")
+            .expect("moved member exists");
+        assert!(
+            moved.path.starts_with(dst.to_string_lossy().as_ref()),
+            "record path must live under the destination: {}",
+            moved.path
+        );
+        assert_eq!(
+            album_member_ids(album_id.as_str()),
+            vec![member_id.to_string()],
+            "a path-only move must not re-key the member row"
+        );
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 1);
+        assert_album_aggregates_exact(album_id.as_str());
+
+        std::fs::remove_dir_all(&root).ok();
         reset_backend_state();
     }
 }

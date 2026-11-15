@@ -260,7 +260,7 @@
         },
         {
           "model": "AlbumStatsNoPhantom",
-          "test": "backend/src/tasks/queue/writer.rs::album_cascade_race_absorbed"
+          "test": "backend/src/tasks/queue/writer.rs::album_member_write_keeps_aggregates_exact"
         }
       ],
       "status": "open",
@@ -290,12 +290,15 @@
           "test": "backend/src/model/album.rs::self_update_with_computes_counts_sizes_and_cover"
         },
         {
-          "model": "AlbumStatsNoPhantom",
-          "test": "backend/src/tasks/queue/writer.rs::album_cascade_race_absorbed"
+          "model": "AlbumStatsConsistentWhenDrained",
+          "test": "backend/src/tasks/queue/writer.rs::album_member_write_keeps_aggregates_exact"
         },
         {
-          "model": "aspectsAlbumCascadeRaceAbsorbedTest",
-          "test": "backend/src/tasks/queue/writer.rs::album_cascade_race_absorbed"
+          "model": "AlbumStatsNoPhantom",
+          "test": "backend/src/tasks/queue/writer.rs::album_member_write_keeps_aggregates_exact"
+        },
+        {
+          "model": "aspectsAlbumCascadeRaceAbsorbedTest"
         }
       ],
       "status": "guarded",

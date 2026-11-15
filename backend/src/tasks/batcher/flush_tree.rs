@@ -688,6 +688,7 @@ mod tests {
     fn clear_all_tables() {
         clear_table(ASSET_BY_PATH);
         clear_table(ASSET_BY_ID);
+        clear_table(crate::storage::db::ASSET_BY_ALBUM);
         clear_table(DUPE_INDEX);
         clear_table(METADATA_TABLE);
     }
@@ -805,7 +806,7 @@ mod tests {
         let hash = hash_file(&path);
         let data = AbstractData::new(&path, hash).expect("build AbstractData");
 
-        flush_tables(&[data], &[]);
+        flush_tables(&[data], &[]).expect("flush tables");
 
         let id = asset_id_at(&path);
         let json = stored_metadata_json(&id);
@@ -840,7 +841,7 @@ mod tests {
             },
         });
 
-        flush_tables(&[data], &[]);
+        flush_tables(&[data], &[]).expect("flush tables");
 
         let stored_id = asset_store::get_asset_id_by_path("")
             .expect("lookup ASSET_BY_PATH")
@@ -873,7 +874,7 @@ mod tests {
         let data_a = AbstractData::new(&path_a, hash_a).expect("build AbstractData for a.jpg");
         let data_b = AbstractData::new(&path_b, hash_b).expect("build AbstractData for b.jpg");
 
-        flush_tables(&[data_a, data_b], &[]);
+        flush_tables(&[data_a, data_b], &[]).expect("flush tables");
 
         let id_a = asset_id_at(&path_a);
         let id_b = asset_id_at(&path_b);
@@ -903,10 +904,10 @@ mod tests {
         let hash = hash_file(&path);
         let data = AbstractData::new(&path, hash).expect("build AbstractData");
 
-        flush_tables(std::slice::from_ref(&data), &[]);
+        flush_tables(std::slice::from_ref(&data), &[]).expect("flush tables");
         let id_first = asset_id_at(&path);
 
-        flush_tables(&[data], &[]);
+        flush_tables(&[data], &[]).expect("flush tables");
         let id_second = asset_id_at(&path);
 
         assert_eq!(id_first, id_second, "same path must keep the same asset ID");
@@ -941,11 +942,11 @@ mod tests {
         assert_ne!(hash_a, hash_b, "test needs two distinct hashes");
 
         let data_a = AbstractData::new(&path, hash_a).expect("build AbstractData, hash A");
-        flush_tables(&[data_a], &[]);
+        flush_tables(&[data_a], &[]).expect("flush tables");
         let id_first = asset_id_at(&path);
 
         let data_b = AbstractData::new(&path, hash_b).expect("build AbstractData, hash B");
-        flush_tables(&[data_b], &[]);
+        flush_tables(&[data_b], &[]).expect("flush tables");
         let id_second = asset_id_at(&path);
 
         assert_eq!(id_first, id_second, "same path must keep the same asset ID");
@@ -985,7 +986,7 @@ mod tests {
         let data_a = AbstractData::new(&path_a, hash).expect("build AbstractData for a.jpg");
         let data_b = AbstractData::new(&path_b, hash).expect("build AbstractData for b.jpg");
 
-        flush_tables(&[data_a.clone(), data_b], &[]);
+        flush_tables(&[data_a.clone(), data_b], &[]).expect("flush tables");
         let id_a = asset_id_at(&path_a);
         let id_b = asset_id_at(&path_b);
         assert_ne!(id_a, id_b);
@@ -993,7 +994,7 @@ mod tests {
         // The normal remove branch resolves by path via
         // ASSET_BY_PATH and does not consult the filesystem, so the
         // remove input is the same path AbstractData used for the insert.
-        flush_tables(&[], &[data_a]);
+        flush_tables(&[], &[data_a]).expect("flush tables");
 
         let found_b = asset_store::get_asset_by_id(id_b.as_str())
             .expect("read ASSET_BY_ID")
@@ -1048,7 +1049,7 @@ mod tests {
         let path = make_jpeg(&dir, "torn.jpg", 4);
         let hash = hash_file(&path);
         let data = AbstractData::new(&path, hash).expect("build torn asset");
-        flush_tables(&[data], &[]);
+        flush_tables(&[data], &[]).expect("flush tables");
         let asset_id = asset_id_at(&path);
 
         // Torn remove: the id-table delete landed, the path rewrite did not.
@@ -1068,7 +1069,7 @@ mod tests {
         );
 
         // The sweep enumerates the exact path for a missing file.
-        sweep_remove_batch(std::slice::from_ref(&path));
+        sweep_remove_batch(std::slice::from_ref(&path)).expect("sweep remove batch");
 
         assert!(
             asset_store::get_asset_id_by_path(&path.to_string_lossy())
@@ -1099,13 +1100,13 @@ mod tests {
 
         let data_keep = AbstractData::new(&path_keep, hash_keep).expect("build keep");
         let data_drop = AbstractData::new(&path_drop, hash_drop).expect("build drop");
-        flush_tables(&[data_keep.clone(), data_drop.clone()], &[]);
+        flush_tables(&[data_keep.clone(), data_drop.clone()], &[]).expect("flush tables");
 
         let id_keep = asset_id_at(&path_keep);
         let id_drop = asset_id_at(&path_drop);
 
         // Existing path: sweep must change nothing.
-        sweep_remove_batch(std::slice::from_ref(&path_keep));
+        sweep_remove_batch(std::slice::from_ref(&path_keep)).expect("sweep remove batch");
         assert!(
             asset_store::get_asset_by_id(id_keep.as_str())
                 .expect("read keep")
@@ -1121,7 +1122,7 @@ mod tests {
 
         // Missing path: only that exact row is removed.
         std::fs::remove_file(&path_drop).expect("remove drop file");
-        sweep_remove_batch(std::slice::from_ref(&path_drop));
+        sweep_remove_batch(std::slice::from_ref(&path_drop)).expect("sweep remove batch");
         assert!(
             asset_store::get_asset_by_id(id_drop.as_str())
                 .expect("read drop")
@@ -1176,14 +1177,15 @@ mod tests {
                 AbstractData::new(&stale_dest, stale_hash).expect("build stale dest data"),
             ],
             &[],
-        );
+        )
+        .expect("flush tables");
 
         let src_id = asset_id_at(&source);
         let stale_id = asset_id_at(&stale_dest);
 
         // The destination file is externally deleted; the sweep prunes its row.
         std::fs::remove_file(&stale_dest).expect("remove stale dest file");
-        sweep_remove_batch(std::slice::from_ref(&stale_dest));
+        sweep_remove_batch(std::slice::from_ref(&stale_dest)).expect("sweep remove batch");
         assert!(
             asset_store::get_asset_id_by_path(&stale_dest.to_string_lossy())
                 .expect("read pruned dest mapping")
@@ -1237,6 +1239,156 @@ mod tests {
                 .unwrap_or_else(|| panic!("dangling mapping {path}"));
             assert_eq!(rec.path, path, "path mapping and record must agree");
         }
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── Album deltas applied by flush/sweep ───────────────────────────────
+
+    fn album_member_data(
+        dir: &Path,
+        name: &str,
+        side: u32,
+        album_id: ArrayString<64>,
+    ) -> (PathBuf, AbstractData) {
+        let path = make_jpeg(dir, name, side);
+        let hash = hash_file(&path);
+        let mut data = AbstractData::new(&path, hash).expect("build album member data");
+        data.set_album(Some(album_id));
+        (path, data)
+    }
+
+    fn prepare_album_dir(name: &str) -> (ArrayString<64>, PathBuf) {
+        reset_backend_state();
+        let dir = test_image_home().join("flush_album_delta").join(name);
+        std::fs::create_dir_all(&dir).expect("create album dir");
+        let album_id =
+            crate::process::dir_album::get_or_create_dir_album(dir.clone()).expect("create album");
+        (album_id, dir)
+    }
+
+    #[test]
+    fn flush_album_insert_records_member_and_aggregates() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album_dir("insert");
+        let (path, data) = album_member_data(&dir, "photo.jpg", 4, album_id);
+
+        flush_tables(&[data], &[]).expect("flush album member");
+
+        let asset_id = asset_id_at(&path);
+        assert_eq!(
+            album_member_ids(album_id.as_str()),
+            vec![asset_id.to_string()],
+            "flush must add the member row in the same transaction"
+        );
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 1);
+        assert_eq!(payload.cover, Some(asset_id));
+        assert_album_aggregates_exact(album_id.as_str());
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn flush_album_size_change_updates_aggregate() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album_dir("size");
+        let (path, first) = album_member_data(&dir, "photo.jpg", 4, album_id);
+        flush_tables(&[first], &[]).expect("flush first bytes");
+        let first_size = read_album_payload(album_id.as_str()).item_size;
+        let asset_id = asset_id_at(&path);
+
+        // Re-scan the same path with a larger payload: the flush takes the
+        // size-change delta branch (`is_update`).
+        let hash = {
+            make_jpeg(&dir, "photo.jpg", 16);
+            hash_file(&path)
+        };
+        let mut second = AbstractData::new(&path, hash).expect("build larger data");
+        second.set_album(Some(album_id));
+        flush_tables(&[second], &[]).expect("flush size change");
+
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 1, "a re-flush keeps one member");
+        assert_ne!(payload.item_size, first_size, "size delta must apply");
+        assert_eq!(payload.cover, Some(asset_id));
+        assert_album_aggregates_exact(album_id.as_str());
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn flush_remove_drops_member_and_aggregates() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album_dir("remove");
+        let (path, data) = album_member_data(&dir, "photo.jpg", 4, album_id);
+        flush_tables(std::slice::from_ref(&data), &[]).expect("flush album member");
+        assert_eq!(read_album_payload(album_id.as_str()).item_count, 1);
+
+        flush_tables(&[], &[data]).expect("remove album member");
+
+        assert!(
+            album_member_ids(album_id.as_str()).is_empty(),
+            "remove must drop the member row"
+        );
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 0);
+        assert_eq!(payload.item_size, 0);
+        assert_eq!(payload.cover, None);
+        assert_album_aggregates_exact(album_id.as_str());
+        assert!(
+            asset_store::get_asset_id_by_path(&path.to_string_lossy())
+                .expect("read removed path")
+                .is_none()
+        );
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sweep_remove_batch_drops_member_and_aggregates() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album_dir("sweep");
+        let (path, data) = album_member_data(&dir, "photo.jpg", 4, album_id);
+        flush_tables(&[data], &[]).expect("flush album member");
+        let asset_id = asset_id_at(&path);
+        assert_eq!(
+            album_member_ids(album_id.as_str()),
+            vec![asset_id.to_string()]
+        );
+
+        std::fs::remove_file(&path).expect("remove file before sweep");
+        sweep_remove_batch(std::slice::from_ref(&path)).expect("sweep member");
+
+        assert!(
+            album_member_ids(album_id.as_str()).is_empty(),
+            "sweep must drop the member row"
+        );
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 0);
+        assert_eq!(payload.item_size, 0);
+        assert_album_aggregates_exact(album_id.as_str());
+        assert!(
+            asset_store::get_asset_by_id(asset_id.as_str())
+                .expect("read swept record")
+                .is_none()
+        );
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();

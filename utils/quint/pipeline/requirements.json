@@ -281,9 +281,27 @@
       ],
       "owner": "storage/asset_store.rs::apply_album_delta; flush_tables; assign_album; delete",
       "gate": "Backend tests per delta site; OP-8 marker on apply_album_delta.",
-      "status": "open",
+      "status": "verified",
       "implementation": "ASSET_BY_ALBUM member index plus apply_album_delta patching aggregates in-txn at flush, move, trash, and deletion sites.",
-      "tests": []
+      "tests": [
+        "storage::asset_store::tests::album_member_rows_roundtrip_and_prefix_isolation",
+        "storage::asset_store::tests::apply_album_delta_add_updates_count_size_range_and_cover",
+        "storage::asset_store::tests::apply_album_delta_remove_recomputes_boundary_holders",
+        "storage::asset_store::tests::apply_album_delta_size_update_recomputes_range_and_cover",
+        "storage::asset_store::tests::apply_album_delta_empty_transition_uses_descendant_cover",
+        "storage::asset_store::tests::apply_album_delta_count_never_underflows",
+        "storage::asset_store::tests::album_delta_and_share_list_patches_commute",
+        "storage::asset_store::tests::move_asset_mapping_moves_membership_between_albums",
+        "tasks::batcher::flush_tree::tests::flush_album_insert_records_member_and_aggregates",
+        "tasks::batcher::flush_tree::tests::flush_album_size_change_updates_aggregate",
+        "tasks::batcher::flush_tree::tests::flush_remove_drops_member_and_aggregates",
+        "tasks::batcher::flush_tree::tests::sweep_remove_batch_drops_member_and_aggregates",
+        "router::put::assign_album::tests::dir_move_preserves_album_membership_and_aggregates",
+        "tests::album_delta::trash_toggle_adds_and_removes_member",
+        "tests::album_delta::deleted_album_detach_drops_member_rows",
+        "tests::album_delta::membership_mutations_leave_members_and_aggregates_exact",
+        "tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact"
+      ]
     }
   ]
 }
