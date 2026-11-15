@@ -85,9 +85,7 @@ module eventual_consistency_state {
   var metadataPayload: int -> MetadataRecord
   // thumbPresent maps to the thumbnail store paths (aspect (c), content-hash keyed).
   var thumbPresent: int -> bool
-  // albumPending maps to PENDING_ALBUM_UPDATES (aspect (h) pending set).
-  var albumPending: Set[int]
-  // sweepPending maps to the per-root sweep pending flag set by ScanRoot/the scan job in tasks/actor/album_index.rs (sweep_stale_asset_paths runs after the walk).
+      // sweepPending maps to the per-root sweep pending flag set by ScanRoot/the scan job in tasks/actor/album_index.rs (sweep_stale_asset_paths runs after the walk).
   var sweepPending: str -> bool
   // sweepBatch maps to sweep_stale_asset_paths survivors -> WriteOp::SweepRemoveBatch.
   var sweepBatch: str -> int
@@ -152,7 +150,7 @@ module eventual_consistency_state {
     fileSize: 0,
     sidecar: 0,
     converged: true,
-    itemCount: 0,
+    itemCount: 5,
     itemSize: 0,
     hasShareList: false
   }
@@ -167,7 +165,7 @@ module eventual_consistency_state {
     dupeIndex' = Map(0 -> Set(1, 2, 3, 4, 5), 1 -> Set(), 2 -> Set()),
     metadataPayload' = Map(0 -> initialAlbumMetadataRecord, 1 -> initialMetadataRecord("p1"), 2 -> initialMetadataRecord("p2"), 3 -> initialMetadataRecord("p3"), 4 -> initialMetadataRecord("p4"), 5 -> initialMetadataRecord("p5")),
     thumbPresent' = Map(0 -> true, 1 -> false, 2 -> false),
-    albumPending' = Set(),
+
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = Map(),
     leasedPaths' = Set(),

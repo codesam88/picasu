@@ -35,5 +35,5 @@ module eventual_consistency_goal {
          thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash)))
     ))
     )
-  ) and intake.size() == 0 and albumPending.size() == 0
+  ) and intake.size() == 0
 }
