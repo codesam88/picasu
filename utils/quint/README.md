@@ -44,6 +44,11 @@ Current contents of `pipeline/`:
   thumbnail/derived, DB asset row): alignment predicates and
   conflicting-pair runs over the same state; imports
   `eventual-consistency.qnt`.
+- `asset-aspects-step.qnt` — the proof-lane entry: `stepAspects`
+  enumerates the base step branches, all 16 asset-aspect actions over
+  their parameter ranges, and a stutter branch; `Settled` and
+  `ConvergenceInvariant` restate the goal as settled-state safety. Its
+  sanity runs are simulation-only and are not part of `just quint test`.
 - `operations.json` — internal mutation operations OP-1..OP-12 with
   events, aspect reads/writes, guards, status and interaction nodes;
   validated by `just operations-check` against backend annotations.
