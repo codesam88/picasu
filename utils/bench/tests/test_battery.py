@@ -666,3 +666,163 @@ class BatteryCheckMedianTest(unittest.TestCase):
             self.battery.load_baselines(self.baselines),
         )
         self.assertEqual(len(result.failures), 1)
+
+
+class BatteryResumeTest(unittest.TestCase):
+    """`battery run` resumes completed reps by default; `--fresh` re-runs.
+
+    A rep is complete when its outdir carries `status-final.json` and the
+    artifacts still parse through `build_row`; anything else runs again.
+    The report is rebuilt from scratch on every invocation.
+    """
+
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.outdir = self.root / "gate"
+        self.cell = self.battery.battery_cells("gate")[0]
+        self.report = self.outdir / "report.tsv"
+
+    def complete_rep(self, rep, *, walls=(11000, 13000)):
+        """Write a finished-rep outdir that `build_row` parses."""
+        out = self.outdir / f"{self.cell.outdir_suffix}-rep{rep}"
+        write_cell(out, walls=walls)
+        return out
+
+    def run_battery(self, *, repeats=3, fresh=False, fail=(), write=True):
+        """Run a one-cell battery against a counting fake orchestrator.
+
+        `fail` names rep outdirs whose run_cell exits 7 without writing
+        artifacts (an interrupted/failed rep). Returns (invoked outdirs,
+        stdout, return code).
+        """
+        invoked = []
+        stdout = io.StringIO()
+
+        class FakeOrchestrator:
+            def config_from_env(self, env):
+                return env
+
+            def run_cell(self, cfg, env):
+                out = Path(env["OUT"])
+                invoked.append(out)
+                if out.name in fail:
+                    return 7
+                if write:
+                    write_cell(out)
+                return 0
+
+        with (
+            mock.patch.dict(os.environ, {"BATTERY_REPEATS": str(repeats)}, clear=False),
+            mock.patch.object(self.battery, "battery_cells", return_value=(self.cell,)),
+            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            rc = self.battery.run_battery("gate", self.outdir, fresh=fresh)
+        return invoked, stdout.getvalue(), rc
+
+    def rep_names(self, invoked):
+        return [out.name for out in invoked]
+
+    def test_resume_reuses_completed_rep_and_runs_missing_ones(self):
+        self.complete_rep(1)
+
+        invoked, stdout, rc = self.run_battery(repeats=3)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            self.rep_names(invoked),
+            [f"{self.cell.outdir_suffix}-rep2", f"{self.cell.outdir_suffix}-rep3"],
+        )
+        self.assertIn("rep=1/3 reused", stdout)
+        rows = self.battery.load_report(self.report)
+        self.assertEqual(
+            [row["cell"] for row in rows],
+            ["gate-control", "gate-control", "gate-control", "gate-control:median"],
+        )
+
+    def test_corrupt_status_final_reruns_the_rep(self):
+        rep1 = self.complete_rep(1)
+        (rep1 / "status-final.json").write_text('{"state": ')
+        rep2 = self.complete_rep(2)
+        (rep2 / "harness-a.log").unlink()
+
+        invoked, stdout, rc = self.run_battery(repeats=2)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            self.rep_names(invoked),
+            [f"{self.cell.outdir_suffix}-rep1", f"{self.cell.outdir_suffix}-rep2"],
+        )
+        self.assertNotIn("reused", stdout)
+
+    def test_fresh_flag_reruns_every_rep(self):
+        self.complete_rep(1)
+        self.complete_rep(2)
+
+        invoked, stdout, rc = self.run_battery(repeats=2, fresh=True)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            self.rep_names(invoked),
+            [f"{self.cell.outdir_suffix}-rep1", f"{self.cell.outdir_suffix}-rep2"],
+        )
+        self.assertNotIn("reused", stdout)
+        self.assertEqual(len(self.battery.load_report(self.report)), 3)
+
+    def test_fully_resumed_cell_still_gets_a_median_row(self):
+        self.complete_rep(1, walls=(11000, 13000))
+        self.complete_rep(2, walls=(9000, 15000))
+        self.complete_rep(3, walls=(12000, 12000))
+
+        invoked, stdout, rc = self.run_battery(repeats=3)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(invoked, [])
+        self.assertEqual(stdout.count("reused"), 3)
+        rows = self.battery.load_report(self.report)
+        self.assertEqual(len(rows), 4)
+        median = rows[-1]
+        self.assertEqual(median["cell"], "gate-control:median")
+        # Pooled [9, 11, 12, 12, 13, 15] s across the three repeats.
+        self.assertEqual(median["scan_walls_s"], "12.0")
+        self.assertEqual(median["tree_refresh_build_p50_us"], "1200.0")
+
+    def test_retry_after_failure_resumes_without_duplicate_rows(self):
+        failed = f"{self.cell.outdir_suffix}-rep3"
+
+        invoked, _stdout, rc = self.run_battery(repeats=3, fail=(failed,))
+        self.assertEqual(rc, 7)  # fail-fast keeps the cell's exit code
+        self.assertEqual(len(invoked), 3)
+        self.assertEqual(len(self.battery.load_report(self.report)), 2)
+
+        invoked, stdout, rc = self.run_battery(repeats=3)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.rep_names(invoked), [failed])
+        self.assertEqual(stdout.count("reused"), 2)
+        rows = self.battery.load_report(self.report)
+        self.assertEqual(
+            [row["cell"] for row in rows],
+            ["gate-control"] * 3 + ["gate-control:median"],
+        )
+
+    def test_cli_fresh_flag_reaches_run_battery(self):
+        with (
+            mock.patch.object(self.battery, "run_battery", return_value=0) as run,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            rc = self.battery.main(["run", "gate", "--out", str(self.outdir), "--fresh"])
+        self.assertEqual(rc, 0)
+        self.assertIs(run.call_args.kwargs["fresh"], True)
+
+        with (
+            mock.patch.object(self.battery, "run_battery", return_value=0) as run,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            rc = self.battery.main(["run", "gate", "--out", str(self.outdir)])
+        self.assertEqual(rc, 0)
+        self.assertIs(run.call_args.kwargs["fresh"], False)

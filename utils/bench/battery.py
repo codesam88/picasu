@@ -12,6 +12,11 @@ Usage:
     utils/bench/battery.py check /tmp/picasu-battery-gate/report.tsv
     utils/bench/battery.py list gate
 
+`run` resumes by default: the report is rebuilt from scratch on every
+invocation and each rep whose `status-final.json` parses is reused
+instead of re-run, so an interrupted battery continues where it stopped.
+`--fresh` re-runs every rep.
+
 Environment:
     OUT                  battery directory for `run` when --out is absent
     BENCH_SETS_ROOT      image repo root (default /tmp/sets)
@@ -481,6 +486,23 @@ def _interrupt(signum, frame):
     raise KeyboardInterrupt
 
 
+def _reuse_row(level: str, cell: Cell, cell_out: Path) -> dict | None:
+    """Return the report row of a completed rep, or None when it must run.
+
+    run-cell writes `status-final.json` only for a terminal server state;
+    a rep without that marker, or whose artifacts no longer parse
+    (missing log, corrupt status), is incomplete and runs again.
+    """
+    if not (cell_out / "status-final.json").is_file():
+        return None
+    try:
+        return build_row(level, cell.profile, cell_out)
+    except Exception, SystemExit:
+        # Any parse failure marks the rep incomplete; a fresh run reports
+        # its own row errors. KeyboardInterrupt still aborts the battery.
+        return None
+
+
 def run_battery(
     level: str,
     outdir: Path,
@@ -488,8 +510,14 @@ def run_battery(
     sets_root: Path = DEFAULT_SETS_ROOT,
     base_port: int = DEFAULT_BASE_PORT,
     build_profile: str = "release",
+    fresh: bool = False,
 ) -> int:
-    """Run every cell sequentially, appending one row per cell."""
+    """Run every cell sequentially, appending one row per cell.
+
+    The report is rebuilt from scratch on every invocation. By default a
+    completed rep is reused instead of re-run (`fresh=True` re-runs every
+    rep), so an interrupted battery resumes where it stopped.
+    """
     outdir = Path(outdir).resolve()
     cells = battery_cells(level)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -514,6 +542,16 @@ def run_battery(
         repeat_rows = []
         for rep in range(1, n_repeats + 1):
             cell_out = outdir / f"{cell.outdir_suffix}-rep{rep}"
+            # Default resume: a completed rep is reused; --fresh re-runs it.
+            row = None if fresh else _reuse_row(level, cell, cell_out)
+            if row is not None:
+                print(
+                    f"[battery {level}] {cell.cell_id}: rep={rep}/{n_repeats} reused {cell_out}",
+                    flush=True,
+                )
+                append_row(report, row)
+                repeat_rows.append(row)
+                continue
             env = dict(os.environ)
             env.update(cell.env)
             env["BUILD_PROFILE"] = build_profile
@@ -572,6 +610,11 @@ def main(argv=None) -> int:
         help="first cell port; each cell increments (default: 5795)",
     )
     run.add_argument("--build", default="release", choices=("release", "debug"))
+    run.add_argument(
+        "--fresh",
+        action="store_true",
+        help="re-run every rep instead of resuming completed ones (default: resume)",
+    )
 
     check = subparsers.add_parser("check", help="compare a report against baselines")
     check.add_argument("report", help="battery report TSV")
@@ -601,6 +644,7 @@ def main(argv=None) -> int:
                 sets_root=Path(args.sets_root),
                 base_port=args.port,
                 build_profile=args.build,
+                fresh=args.fresh,
             )
         except KeyboardInterrupt:
             print("[battery] interrupted", file=sys.stderr)

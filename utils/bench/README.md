@@ -86,6 +86,21 @@ With `BATTERY_REPEATS=1` there is a single row per cell and no median row
 (backward compatible). A failing cell writes its row when the artifacts
 still parse, then stops the battery with that cell's exit code.
 
+`battery run` resumes by default: the report is rebuilt from scratch on
+every invocation, and a rep whose `status-final.json` parses (terminal
+server state, artifacts intact) is reused instead of re-run — stdout
+notes `reused`. A rep with a missing or unparseable marker runs fresh,
+so an interrupted battery (worker timeout, Ctrl-C) continues where it
+stopped instead of restarting every cell, and a retry after a failure
+picks up from the reps that never finished. Fail-fast is unchanged: a
+failing cell still stops the battery with its exit code. To redo every
+rep from scratch, pass `--fresh` on the CLI (the `just bench battery`
+recipe does not forward it):
+
+```sh
+python3 utils/bench/battery.py run gate --out /tmp/my-gate-run --fresh
+```
+
 | Level   | Images | Cells                                                                        |
 | ------- | ------ | ---------------------------------------------------------------------------- |
 | `gate`  | 100    | `control`, `storm-read`, `storm-thumb`, `storm-diff`, `storm-idle`, `upload` |
