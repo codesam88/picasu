@@ -175,9 +175,19 @@ I1–I3, I10 are the model-port targets for step 8.
    delta runs (add/remove/boundary/empty-transition); N10 race-absorption
    run replaced by the patch-commutation run; N13 node rewritten (stats
    consistent by construction). Traceability regenerated.
-9. [open] Reset/restore paths: OP-11 clear includes ASSET_BY_ALBUM;
-   verify the restore/backstop flow re-seeds member rows from
-   pipeline-maintained membership.
+9. [done] Reset/restore paths: OP-11 clear (clear_all_asset_tables_drop) already
+   drops+recreates ASSET_BY_ALBUM; the row-by-row reset_backend_state path
+   clears it too; clear_asset_tables_and_caches drives the same drop path.
+   Verified by test
+   tasks::actor::album_index::tests::reset_rescan_reseeds_album_member_rows_and_aggregates:
+   a DbLoss-style clear followed by a filesystem rescan re-seeds asset rows,
+   member rows, and album aggregates exactly (I1 under ASS-3 — FS scan is
+   authoritative and re-derives membership via ensure_dir_albums). Backstop
+   (tasks/looper/backstop.rs) drives the same start_index_job("/", false, None)
+   rescan, so it re-seeds identically. Partial-loss (asset rows without member
+   rows) cannot occur on supported paths: every reset wipes ASSET_BY_ALBUM
+   alongside the asset tables, and every membership mutation writes the member
+   row in the same txn as the asset row.
 
 ## Open questions
 

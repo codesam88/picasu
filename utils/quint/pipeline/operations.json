@@ -386,7 +386,12 @@
         "db_row"
       ],
       "guards": [],
-      "properties": [],
+      "properties": [
+        {
+          "model": "AlbumStatsConsistent",
+          "test": "backend/src/tasks/actor/album_index.rs::reset_rescan_reseeds_album_member_rows_and_aggregates"
+        }
+      ],
       "status": "open",
       "nodes": [
         "N9"

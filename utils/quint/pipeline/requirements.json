@@ -300,7 +300,8 @@
         "tests::album_delta::trash_toggle_adds_and_removes_member",
         "tests::album_delta::deleted_album_detach_drops_member_rows",
         "tests::album_delta::membership_mutations_leave_members_and_aggregates_exact",
-        "tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact"
+        "tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact",
+        "tasks::actor::album_index::tests::reset_rescan_reseeds_album_member_rows_and_aggregates"
       ]
     }
   ]
