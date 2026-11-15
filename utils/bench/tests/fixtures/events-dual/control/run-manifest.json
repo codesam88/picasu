@@ -1,0 +1,9 @@
+{
+  "mode": "bench",
+  "build_profile": "release",
+  "git": "0d9f32655de1d57d604dd92c14e7d56fcfaeaca2",
+  "dataset_id": "set-100",
+  "dataset_count": 0,
+  "observer_stats": "1",
+  "binary_sha": "4ebc393a960d56a662768f6b201d5a66f466c567756909a3c0eadacbff52ae1d"
+}

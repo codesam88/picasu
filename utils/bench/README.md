@@ -139,6 +139,39 @@ just bench lint
 Recipes live in `utils/bench/justfile`; the root justfile only
 carries `mod bench`, so there are no `bench-*` root aliases.
 
+## Events
+
+The workload writes `events.jsonl` in the cell outdir: one JSON object per
+line with schema version `v` (currently 1). Event types: `probe_round`,
+`storm_sample`, `storm_summary`, `upload_file`, `upload_summary`,
+`scan_state`, `verify_result`. Every object carries `v`, `type`, and `t`
+(wall-clock ISO timestamp). Incompatible schema changes bump `v`; readers
+switch on `v`.
+
+`extract-bench.py` reads that stream first: `read_events` returns one typed
+list per event type and `parse_log` takes its measurement fields from it.
+The transcript regexes are the fallback — for cells recorded before the
+stream existed, for a stream cut off mid-write, and for a stream with an
+unknown schema version. Every fallback prints one
+`warn: ...; falling back to log lines` line naming the reason (a version
+error names the version) and never fails the extraction. A stream counts as
+complete only when its per-phase counts match the transcript's lines (probe
+rounds, hyperfine rounds, scan runs, storm summaries, canary
+verifications), so a cell killed mid-run cannot report a partly written
+stream.
+
+The stream carries full-precision floats, while the transcript records each
+value at a fixed precision. The extractor pins every reported value to the
+transcript's precision (fetch-round means at 0.1 ms, storm medians at 1 ms,
+the scan-wall median at `:g`), so a cell with `events.jsonl` reports the
+same numbers as the same run without it and recorded cells stay comparable
+with checked-in baselines.
+
+Coverage: the stream carries during-scan measurements (probe rounds, storm
+summaries and canary checks, scan walls). Cell identity, the post-scan
+hyperfine medians and the upload p50 columns in `report.tsv` are still read
+from the transcript.
+
 ## Extractor drain tables
 
 When `PICASU_OBSERVER_STATS=1` (default in bench mode), the backend writes

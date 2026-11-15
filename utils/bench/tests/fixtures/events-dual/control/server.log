@@ -1,0 +1,55 @@
+           observe drain: scan job=1 state=Completed scanned=200 matched=200 processed=199 failed=0
+             stage                     n   p50_us   p95_us    max_us
+             filter_snapshot_clone   35     2788     2928     4752
+             filter_par_iter         35     6454    12219    13137
+             compute_locate          35        0        0        0
+             tree_refresh_total     102     2474     3031     5525
+             tree_refresh_build     102     1910     2383     4881
+             tree_refresh_sort      102       56       76       93
+             tree_refresh_write_wait 102        0        0        0
+             cpu_permit_wait        256       22   180561   364323
+             cpu_exec               256      385   627278   701553
+             prefetch_total          39     8953    15458    16428
+             blocking_queue_wait     39       45      853      938
+             interactive_exec         0        0        0        0
+2026-11-15T02:41:16Z INFO picasu::tasks::actor::album_index
+           Starting one-time album index: 2 root(s)
+2026-11-15T02:41:16Z WARN picasu::tasks::observe
+           Server overloaded queueing; requests are waiting. cpu_permit_wait took 612ms, normal bound 25ms. stage=cpu_permit_wait tag=server overloaded queueing duration_us=612062 threshold_us=25000 context=0 | n=16 recorded=16 p50_us=0 p95_us=1010 max_us=612062 breaches=1 | in_flight [filter_snapshot_clone=0 filter_par_iter=0 compute_locate=0 tree_refresh_total=0 tree_refresh_build=0 tree_refresh_sort=0 tree_refresh_write_wait=0 cpu_permit_wait=0 cpu_exec=6 prefetch_total=0 blocking_queue_wait=0 interactive_exec=0] | server queue: cpu_permits_available=0 seq[next=502 writer=501 cascade=501]
+2026-11-15T02:41:21Z WARN picasu::tasks::observe
+           Server overloaded queueing; requests are waiting. cpu_permit_wait took 29ms, normal bound 25ms. stage=cpu_permit_wait tag=server overloaded queueing duration_us=29451 threshold_us=25000 context=0 | n=175 recorded=175 p50_us=3526 p95_us=533148 max_us=612062 breaches=2 | in_flight [filter_snapshot_clone=0 filter_par_iter=0 compute_locate=0 tree_refresh_total=0 tree_refresh_build=0 tree_refresh_sort=0 tree_refresh_write_wait=0 cpu_permit_wait=2 cpu_exec=6 prefetch_total=0 blocking_queue_wait=0 interactive_exec=0] | server queue: cpu_permits_available=0 seq[next=561 writer=560 cascade=524]
+2026-11-15T02:41:24Z INFO picasu::tasks::observe
+           High event volume: CPU permit wait (cpu_permit_wait) recorded 257 samples (ring holds 256, 1 overwrote an older sample). stage=cpu_permit_wait wraps=1 | n=256 recorded=257 p50=4ms p95=503ms max=612ms | server queue: cpu_permits_available=0 seq[next=587 writer=586 cascade=537]
+2026-11-15T02:41:26Z WARN picasu::tasks::observe
+           Server overloaded queueing; requests are waiting. cpu_permit_wait took 468ms, normal bound 25ms. stage=cpu_permit_wait tag=server overloaded queueing duration_us=468971 threshold_us=25000 context=0 | n=256 recorded=339 p50_us=5917 p95_us=453518 max_us=578664 breaches=3 | in_flight [filter_snapshot_clone=0 filter_par_iter=0 compute_locate=0 tree_refresh_total=0 tree_refresh_build=0 tree_refresh_sort=0 tree_refresh_write_wait=0 cpu_permit_wait=1 cpu_exec=6 prefetch_total=0 blocking_queue_wait=0 interactive_exec=0] | server queue: cpu_permits_available=0 seq[next=615 writer=613 cascade=550]
+2026-11-15T02:41:29Z INFO picasu::tasks::observe
+           High event volume: CPU permit wait (cpu_permit_wait) recorded 425 samples (ring holds 256, 168 overwrote older samples). stage=cpu_permit_wait wraps=168 | n=256 recorded=425 p50=7ms p95=372ms max=497ms | server queue: cpu_permits_available=0 seq[next=643 writer=642 cascade=560]
+2026-11-15T02:41:31Z WARN picasu::tasks::observe
+           Server overloaded queueing; requests are waiting. cpu_permit_wait took 94ms, normal bound 25ms. stage=cpu_permit_wait tag=server overloaded queueing duration_us=94149 threshold_us=25000 context=0 | n=256 recorded=511 p50_us=10997 p95_us=342008 max_us=468971 breaches=4 | in_flight [filter_snapshot_clone=0 filter_par_iter=0 compute_locate=0 tree_refresh_total=0 tree_refresh_build=0 tree_refresh_sort=0 tree_refresh_write_wait=0 cpu_permit_wait=2 cpu_exec=6 prefetch_total=0 blocking_queue_wait=0 interactive_exec=0] | server queue: cpu_permits_available=0 seq[next=672 writer=671 cascade=569]
+2026-11-15T02:41:34Z INFO picasu::tasks::observe
+           High event volume: CPU permit wait (cpu_permit_wait) recorded 584 samples (ring holds 256, 159 overwrote older samples). stage=cpu_permit_wait wraps=159 | n=256 recorded=584 p50=15ms p95=340ms max=468ms | server queue: cpu_permits_available=0 seq[next=695 writer=694 cascade=578]
+2026-11-15T02:41:34Z WARN picasu::tasks::observe
+           Background indexing work stalled; photo processing is delayed. cpu_exec took 1.0s, normal bound 1.0s. stage=cpu_exec tag=background indexing work duration_us=1040455 threshold_us=1000000 context=0 | n=256 recorded=617 p50_us=452 p95_us=653620 max_us=1040455 breaches=1 | in_flight [filter_snapshot_clone=0 filter_par_iter=0 compute_locate=0 tree_refresh_total=0 tree_refresh_build=0 tree_refresh_sort=0 tree_refresh_write_wait=0 cpu_permit_wait=0 cpu_exec=5 prefetch_total=0 blocking_queue_wait=0 interactive_exec=0] | server queue: cpu_permits_available=0 seq[next=696 writer=695 cascade=613]
+2026-11-15T02:41:34Z INFO picasu::tasks::observe
+           High event volume: background CPU work (cpu_exec) recorded 618 samples (ring holds 256, 362 overwrote older samples). stage=cpu_exec wraps=362 | n=256 recorded=618 p50=450µs p95=653ms max=1.0s | server queue: cpu_permits_available=1 seq[next=697 writer=696 cascade=613]
+2026-11-15T02:41:34Z INFO picasu::tasks::observe
+           observe drain: scan job=2 state=Completed scanned=201 matched=200 processed=200 failed=0
+             stage                     n   p50_us   p95_us    max_us
+             filter_snapshot_clone   34     2830     2916     2970
+             filter_par_iter         34     8225    15190    16943
+             compute_locate          34        0        0        0
+             tree_refresh_total     108     2521     3046     5485
+             tree_refresh_build     108     1939     2226     4868
+             tree_refresh_sort      108       56       64       84
+             tree_refresh_write_wait 108        0        0        0
+             cpu_permit_wait        256        0   182231   398814
+             cpu_exec               256      446   672686  1040455
+             prefetch_total          39     9447    18441    20261
+             blocking_queue_wait     39       69      937     6601
+             interactive_exec         0        0        0        0
+2026-11-15T02:41:35Z INFO picasu
+           SIGTERM received, shutting down Rocket.
+2026-11-15T02:41:35Z WARN rocket::server
+           Received SIGTERM. Shutdown already in progress.
+2026-11-15T02:41:35Z INFO picasu
+           Worker shutting down.
