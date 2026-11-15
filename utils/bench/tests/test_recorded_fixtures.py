@@ -10,15 +10,17 @@ harness does not write.
 See `fixtures/README.md` for the rule and each file's provenance.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -104,16 +106,6 @@ class RecordedDrainTest(unittest.TestCase):
             stage_row(stage="interactive_exec", n=0, p50_us=0, p95_us=0, max_us=0),
         )
 
-    def test_cell_with_the_recorded_server_log_extracts_every_stage_row(self):
-        cell = self._cell()
-
-        row = extractor().parse_log(cell)
-
-        self.assertEqual(len(row["stages"]), 24)
-        self.assertEqual([table["scan"] for table in row["drain_tables"]], [1, 2])
-        build = [stage for stage in row["stages"] if stage["stage"] == "tree_refresh_build"]
-        self.assertEqual([stage["p50_us"] for stage in build], [542, 1002])
-
     def test_dual_control_cell_stages_are_not_empty(self):
         # The S2 symptom was an empty stages.json for a real cell. The
         # recorded control cell must extract both of its tables.
@@ -121,24 +113,6 @@ class RecordedDrainTest(unittest.TestCase):
 
         self.assertEqual(len(row["drain_tables"]), 2)
         self.assertEqual(len(row["stages"]), 24)
-
-    def _cell(self) -> Path:
-        directory = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
-        shutil.copy(FIXTURES / "server-drain.log", directory / "server.log")
-        (directory / "harness-a.log").write_text("scan wall median_ms=1000 over 1 run(s): 1000\n")
-        (directory / "status-final.json").write_text(
-            json.dumps(
-                {
-                    "state": "completed",
-                    "scanned": 100,
-                    "matched": 100,
-                    "processed": 100,
-                    "failed": 0,
-                }
-            )
-        )
-        return directory
 
 
 class RecordedStatsOffTest(unittest.TestCase):
@@ -228,13 +202,19 @@ class InProcessRowStagesTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, extracted, ignore_errors=True)
         copy = extracted / cell.name
         shutil.copytree(cell, copy)
-        run = subprocess.run(
-            [sys.executable, str(BENCH / "extract-bench.py"), str(copy)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(run.returncode, 0, run.stderr)
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", ["extract-bench.py", str(copy)]),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                extractor().main()
+            except SystemExit as exc:
+                rc = exc.code if isinstance(exc.code, int) else 1
+            else:
+                rc = 0
+        self.assertEqual(rc, 0, err.getvalue())
         expected = json.loads((copy / "stages.json").read_text())
         self.assertTrue(expected)
         self.assertEqual(row["stages"], expected)

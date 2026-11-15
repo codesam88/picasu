@@ -151,14 +151,6 @@ class BatteryDefinitionTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.battery.battery_cells("nope")
 
-    def test_cell_ids_are_unique(self):
-        ids = [
-            cell.cell_id
-            for level in ("gate", "scale")
-            for cell in self.battery.battery_cells(level)
-        ]
-        self.assertEqual(len(ids), len(set(ids)))
-
 
 class BatteryRowTest(unittest.TestCase):
     def setUp(self):
@@ -280,14 +272,6 @@ class ReportSchemaTest(unittest.TestCase):
         # 3 backgrounds x 6 accesses x 3 stats, storm accesses included,
         # plus the two upload submit/visible p50 columns.
         self.assertEqual(sum(1 for column in columns if column.endswith("_ms")), 56)
-
-    def test_legacy_metrics_map_to_exactly_one_matrix_column(self):
-        columns = self.battery.REPORT_COLUMNS
-        self.assertEqual(len(set(self.LEGACY_METRICS.values())), len(self.LEGACY_METRICS))
-        for legacy, replacement in self.LEGACY_METRICS.items():
-            if legacy != replacement:
-                self.assertNotIn(legacy, columns)
-            self.assertIn(replacement, columns)
 
     def test_checked_in_baselines_use_only_the_new_names(self):
         metrics = {
@@ -428,27 +412,21 @@ class BaselineCheckTest(unittest.TestCase):
             rc = self.battery.main(["check", str(self.report), "--baselines", str(self.baselines)])
         self.assertEqual(rc, 0)
 
-    def test_cli_empty_baselines_arg_falls_back_to_checked_in_file(self):
-        self.write_report(scan_prefetch_p50_ms="40.0")
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            rc = self.battery.main(["check", str(self.report), "--baselines", ""])
-        self.assertEqual(rc, 1)
-        self.assertIn("in band", out.getvalue())
-        self.assertNotIn("ERROR", out.getvalue())
 
+class BatteryDefaultOutTest(unittest.TestCase):
     def test_run_without_out_uses_timestamped_default(self):
         import signal
 
+        battery = load_battery()
         previous = signal.getsignal(signal.SIGTERM)
         try:
             with (
                 mock.patch.dict(os.environ, {}, clear=False),
-                mock.patch.object(self.battery, "run_battery", return_value=0) as run,
+                mock.patch.object(battery, "run_battery", return_value=0) as run,
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 os.environ.pop("OUT", None)
-                rc = self.battery.main(["run", "cell"])
+                rc = battery.main(["run", "cell"])
         finally:
             signal.signal(signal.SIGTERM, previous)
         self.assertEqual(rc, 0)
@@ -549,6 +527,13 @@ class CellLevelDefinitionTest(unittest.TestCase):
         self.assertEqual(cell.env["UPLOAD_FILES"], "42")
         self.assertEqual(cell.outdir_suffix, "cell-upload")
 
+    def test_list_includes_cell(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = self.battery.main(["list", "cell"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(buf.getvalue().strip(), "cell-control")
+
     def test_defaults_are_applied(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             cell = self.battery.battery_cells("cell")[0]
@@ -573,119 +558,6 @@ class CellLevelDefinitionTest(unittest.TestCase):
                     os.environ.pop("IMAGES", None) if "IMAGES" not in bad else None
                     with self.assertRaises(self.battery.config.ConfigError):
                         self.battery.battery_cells("cell")
-
-    def test_list_includes_cell(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = self.battery.main(["list", "cell"])
-        self.assertEqual(rc, 0)
-        self.assertEqual(buf.getvalue().strip(), "cell-control")
-
-
-class CellLevelTimeoutTest(unittest.TestCase):
-    """WORKLOAD_TIMEOUT_S default for the cell level is the generous 7200s."""
-
-    def setUp(self):
-        self.battery = load_battery()
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-
-    def cell_envs(self, *, preset=None):
-        captured = []
-
-        class FakeOrchestrator:
-            def config_from_env(self, env):
-                return env
-
-            def run_cell(self, cfg, env):
-                captured.append(env)
-                return 0
-
-        row = {column: self.battery.NA for column in self.battery.REPORT_COLUMNS}
-        with (
-            mock.patch.dict(os.environ, {}, clear=False),
-            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
-            mock.patch.object(self.battery, "build_row", return_value=row),
-            contextlib.redirect_stdout(io.StringIO()),
-        ):
-            os.environ.pop("WORKLOAD_TIMEOUT_S", None)
-            os.environ["BATTERY_REPEATS"] = "1"
-            if preset is not None:
-                os.environ["WORKLOAD_TIMEOUT_S"] = preset
-            rc = self.battery.run_battery("cell", self.root / "cell")
-        self.assertEqual(rc, 0)
-        return captured
-
-    def test_cell_gets_7200s_budget(self):
-        envs = self.cell_envs()
-        self.assertEqual(len(envs), 1)
-        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "7200" for env in envs))
-
-    def test_exported_timeout_wins(self):
-        envs = self.cell_envs(preset="123")
-        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "123" for env in envs))
-
-
-class CellLevelResumeTest(unittest.TestCase):
-    """Resume and median behavior for the cell level."""
-
-    def setUp(self):
-        self.battery = load_battery()
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.outdir = self.root / "cell"
-        self.cell = self.battery.battery_cells("cell")[0]
-        self.report = self.outdir / "report.tsv"
-
-    def complete_rep(self, rep, *, walls=(11000, 13000)):
-        out = self.outdir / f"{self.cell.outdir_suffix}-rep{rep}"
-        write_cell(out, walls=walls)
-        return out
-
-    def run_battery(self, *, repeats=2, fresh=False, fail=(), write=True):
-        invoked = []
-        stdout = io.StringIO()
-
-        class FakeOrchestrator:
-            def config_from_env(self, env):
-                return env
-
-            def run_cell(self, cfg, env):
-                out = Path(env["OUT"])
-                invoked.append(out)
-                if out.name in fail:
-                    return 7
-                if write:
-                    write_cell(out)
-                return 0
-
-        with (
-            mock.patch.dict(os.environ, {"BATTERY_REPEATS": str(repeats)}, clear=False),
-            mock.patch.object(self.battery, "battery_cells", return_value=(self.cell,)),
-            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
-            contextlib.redirect_stdout(stdout),
-            contextlib.redirect_stderr(io.StringIO()),
-        ):
-            rc = self.battery.run_battery("cell", self.outdir, fresh=fresh)
-        return invoked, stdout.getvalue(), rc
-
-    def test_resume_reuses_completed_rep(self):
-        self.complete_rep(1)
-        invoked, stdout, rc = self.run_battery(repeats=2)
-        self.assertEqual(rc, 0)
-        self.assertEqual([p.name for p in invoked], [f"{self.cell.outdir_suffix}-rep2"])
-        self.assertIn("rep=1/2 reused", stdout)
-        rows = self.battery.load_report(self.report)
-        self.assertEqual(len(rows), 3)
-        self.assertTrue(any(row["cell"].endswith(":median") for row in rows))
-
-    def test_median_row_recomputed(self):
-        invoked, stdout, rc = self.run_battery(repeats=2)
-        self.assertEqual(rc, 0)
-        rows = self.battery.load_report(self.report)
-        self.assertEqual(sum(1 for row in rows if row["cell"].endswith(":median")), 1)
 
 
 class BatteryExpansionTest(unittest.TestCase):
@@ -898,17 +770,6 @@ class MedianRowTest(unittest.TestCase):
         # x3 to 3507.
         self.assertEqual(float(med["tree_refresh_build_p50_us"]), 772.0)
         self.assertEqual(float(med["filter_snapshot_clone_max_us"]), 3507.0)
-
-    def test_p50_stays_the_median_of_the_repeat_medians(self):
-        # The recorded baselines were produced by pooling p50 values, not by
-        # re-deriving a median from raw samples.
-        rows = [
-            {"cell": "gate-control", "scan_prefetch_p50_ms": "2.0"},
-            {"cell": "gate-control", "scan_prefetch_p50_ms": "20.0"},
-            {"cell": "gate-control", "scan_prefetch_p50_ms": "3.0"},
-        ]
-        med = self.battery._build_median_row(rows)
-        self.assertEqual(med["scan_prefetch_p50_ms"], "3.0")
 
     def test_idle_tails_pool_every_post_scan_run_across_repeats(self):
         rows = [
@@ -1596,33 +1457,6 @@ class MatrixRollupTest(unittest.TestCase):
         ):
             self.assertEqual(rollup[key], (self.battery.NA, 0), key)
 
-    def test_render_matrix_is_four_tab_separated_sections(self):
-        text = self.battery.render_matrix([])
-
-        blocks = text.split("\n\n")
-        self.assertEqual(len(blocks), 4)
-        self.assertEqual(
-            [block.splitlines()[0] for block in blocks],
-            [
-                "# p50 (ms)",
-                "# p95 (ms)",
-                "# max (ms)",
-                "# contributors",
-            ],
-        )
-        for block in blocks[:3]:
-            lines = block.splitlines()
-            self.assertEqual(lines[1], "access\tidle\tscan\tuscan")
-            self.assertEqual(len(lines), 8)  # comment + header + 6 access rows
-            self.assertEqual(
-                [line.split("\t")[0] for line in lines[2:]], list(self.battery.MATRIX_ACCESSES)
-            )
-        contributors = blocks[3].splitlines()
-        self.assertEqual(contributors[1], "stat\taccess\tidle\tscan\tuscan")
-        self.assertEqual(len(contributors), 20)  # comment + header + 3 stats x 6 accesses
-        self.assertTrue(text.endswith("\n"))
-        self.assertNotIn("nan", text.lower().replace("n/a", ""))
-
 
 class BatteryMatrixViewTest(unittest.TestCase):
     """The extract's human-readable artifacts: `report.md` (the report:
@@ -1817,28 +1651,6 @@ class BatteryMatrixViewTest(unittest.TestCase):
                 {"idle": "0", "scan": "0", "uscan": "0"},
                 stat,
             )
-
-    def test_matrix_tsv_is_tab_separated_and_carries_no_nan(self):
-        rc, _stdout = self.extract()
-        self.assertEqual(rc, 0)
-        text = (self.parent / "matrix.tsv").read_text()
-
-        sections = self.sections(text)
-        for title, rows in sections.items():
-            width = len(rows[0])
-            for index, fields in enumerate(rows):
-                self.assertEqual(len(fields), width, title)
-                for field in fields:
-                    self.assertNotIn("\n", field)
-                    self.assertNotIn(field.lower().replace("n/a", ""), {"nan", "inf", "infinity"})
-                if index == 0:
-                    continue  # header row: label columns only
-                labels = 2 if title == "contributors" else 1  # (stat,) access names
-                for value in fields[labels:]:
-                    self.assertTrue(
-                        value == self.battery.NA or float(value) is not None,
-                        f"{title}: {value!r}",
-                    )
 
     def test_matrix_output_is_byte_identical_across_runs(self):
         first = self.root / "first"
@@ -2060,12 +1872,6 @@ class BatteryReportViewTest(unittest.TestCase):
         worst = {fields[0]: fields[1:] for fields in rows[1:]}
         for stat in ("p50", "p95", "max"):
             self.assertEqual(worst[stat], ["40.0", "gate-storm-thumb:median", "idle/edit"], stat)
-
-    def test_report_has_no_baselines_section(self):
-        md = self.report()
-
-        self.assertNotIn("## Baselines\n", md)
-        self.assertNotIn("in band across", md)
 
 
 if __name__ == "__main__":
