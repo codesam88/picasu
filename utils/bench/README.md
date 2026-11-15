@@ -7,7 +7,7 @@ Python; it is not part of the server binary.
 | --------------------- | -------------------------------------------------------------------------------- |
 | `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json` |
 | `launch-backend.py`   | Env-driven CLI wrapper around `backend_launcher.py`                              |
-| `workload.py`         | Image-set materialisation, scans, probes and harness-A-compatible artifacts      |
+| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts          |
 | `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                      |
 | `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown             |
 | `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON extract         |
@@ -248,8 +248,25 @@ just bench seed-images ~/picasu-bench/set-500 500        # same shape, 500 image
 just bench seed-images ~/picasu-bench/set-large 10 --large  # ~5MB large-file class
 ```
 
-Set `OVERWRITE=1` to reseed a non-empty repo. A prepared root can be reused
-without copying by setting `MATERIALISE=0` (the workload reuses `IMAGE_PATH`
-as-is and logs the dataset identity). The launcher's `IMAGE_HOME_SRC` points
-`PICASU_IMAGE_HOME` at such a root, so a sandbox seeded once serves every
-cell of a scale.
+Set `OVERWRITE=1` to reseed a non-empty repo.
+
+## Prepared sandboxes
+
+Cells never materialise images themselves. Build a sandbox once from a
+canonical archive with `bench prepare`, then point the cell at it:
+
+```sh
+just bench prepare --archive ~/picasu-bench/set-100 --sandbox /dev/shm/scratchpad/sb-100 --count 100
+```
+
+`prepare` hardlinks the first `--count` entries (sorted) into the sandbox,
+falling back to a copy across filesystems, and writes
+`sandbox-manifest.json` (archive, count, bytes, linkage, created,
+tool_commit). The sandbox must be empty or nonexistent unless `--force`.
+Large-file class archives are used as-is (`--large` is a passthrough note;
+no synthesis happens here).
+
+The launcher's `IMAGE_HOME_SRC` must point at a prepared sandbox: it fails
+fast if `sandbox-manifest.json` is missing. Manual materialisation
+(`MATERIALISE=0` reuse, the in-workload copy/link path) is deprecated and
+remains only for unprepared legacy outdirs.
