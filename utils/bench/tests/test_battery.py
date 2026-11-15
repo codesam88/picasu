@@ -306,13 +306,13 @@ class BaselineCheckTest(unittest.TestCase):
         self.assertEqual(len(result.failures), 1)
         self.assertIn("n/a", result.failures[0].message)
 
-    def test_checked_in_baselines_parse_and_record_no_rows_yet(self):
-        self.write_report()
+    def test_checked_in_baselines_parse(self):
         baselines = self.battery.load_baselines(BENCH / "baselines.tsv")
-        self.assertEqual(baselines, [])
-        result = self.battery.check_report(self.battery.load_report(self.report), baselines)
-        self.assertEqual(result.failures, [])
-        self.assertEqual(result.checked, 0)
+        self.assertGreater(len(baselines), 0)
+        for baseline in baselines:
+            self.assertTrue(baseline.cell.endswith(":median"))
+            self.assertTrue(baseline.metric)
+            self.assertTrue(0.0 <= baseline.rel_tol <= 1.0)
 
     def test_cli_exit_code_follows_band_result(self):
         self.write_report(scan_fetch_p50_ms="40.0")
@@ -826,3 +826,274 @@ class BatteryResumeTest(unittest.TestCase):
             rc = self.battery.main(["run", "gate", "--out", str(self.outdir)])
         self.assertEqual(rc, 0)
         self.assertIs(run.call_args.kwargs["fresh"], False)
+
+
+class BatteryExtractTest(unittest.TestCase):
+    """`battery extract` dumps one battery parent as a single JSON document.
+
+    A battery keeps one parent directory holding `<level>-<profile>-repN`
+    subdirs plus `report.tsv`; the extract walks the rep subdirs in sorted
+    order and emits per-rep rows, manifest identity, stages, terminal
+    state, pooled medians and the report TSV rows.
+    """
+
+    STAGES = [
+        {
+            "scan": 1,
+            "scan_index": 1,
+            "run": 1,
+            "run_index": 0,
+            "stage": "tree_refresh_build",
+            "n": 100,
+            "p50_us": 1200,
+            "p95_us": 1500,
+            "max_us": 2000,
+            "context": "scan job=1",
+        }
+    ]
+
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.parent = self.root / "gate-run"
+
+    def extract(self, parent=None, out=None):
+        argv = ["extract", str(self.parent if parent is None else parent)]
+        if out is not None:
+            argv += ["--out", str(out)]
+        stdout = io.StringIO()
+        with (
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            rc = self.battery.main(argv)
+        return rc, stdout.getvalue()
+
+    def make_battery(self):
+        """Two parseable reps of one cell, one broken dir, a report.tsv."""
+        rep1 = self.parent / "gate-control-rep1"
+        write_cell(rep1, walls=(11000, 13000))
+        (rep1 / "stages.json").write_text(json.dumps(self.STAGES))
+        (rep1 / "run-manifest.json").write_text(
+            json.dumps(
+                {
+                    "mode": "bench",
+                    "port": 5795,
+                    "build_profile": "release",
+                    "git": "abc1234",
+                    "dataset_id": "set-100",
+                    "dataset_count": 100,
+                    "observer_stats": "1",
+                    "binary_sha": "deadbeef",
+                    "machine": {"cpu_model": "test-cpu"},
+                }
+            )
+        )
+        rep2 = self.parent / "gate-control-rep2"
+        write_cell(rep2, walls=(9000, 15000), drain=False, upload=False)
+        (rep2 / "run-manifest.json").unlink()
+        (rep2 / "status-final.json").write_text(
+            json.dumps(
+                {
+                    "state": "failed",
+                    "scanned": 100,
+                    "matched": 100,
+                    "processed": 100,
+                    "failed": 0,
+                }
+            )
+        )
+        (self.parent / "gate-storm-read-rep1").mkdir(parents=True)
+        rows = [
+            self.battery.build_row("gate", "control", rep1),
+            self.battery.build_row("gate", "control", rep2),
+        ]
+        rows.append(self.battery._build_median_row(rows))
+        self.battery.write_report(self.parent / "report.tsv", rows)
+        return rep1, rep2
+
+    def test_document_shape_lists_cells_sorted_and_counts_errors(self):
+        self.make_battery()
+
+        rc, stdout = self.extract()
+
+        self.assertEqual(rc, 0)  # partial battery: two reps parsed, one broken
+        doc = json.loads(stdout)
+        self.assertEqual(
+            list(doc),
+            ["battery", "level", "cells", "medians", "report", "errors"],
+        )
+        self.assertEqual(doc["battery"], str(self.parent))
+        self.assertEqual(doc["level"], "gate")
+        self.assertEqual(doc["errors"], 1)
+        self.assertEqual(
+            [entry["dir"] for entry in doc["cells"]],
+            ["gate-control-rep1", "gate-control-rep2", "gate-storm-read-rep1"],
+        )
+        ok = doc["cells"][0]
+        self.assertEqual(list(ok), ["dir", "row", "manifest", "stages", "terminal"])
+        self.assertEqual(ok["row"]["cell"], "gate-control")
+        broken = doc["cells"][2]
+        self.assertEqual(list(broken), ["dir", "error"])
+        self.assertTrue(broken["error"])
+        json.dumps(doc, allow_nan=False)  # strict JSON, no NaN/Infinity
+
+    def test_manifest_identity_is_a_subset_and_absent_manifest_is_null(self):
+        self.make_battery()
+
+        _rc, stdout = self.extract()
+
+        doc = json.loads(stdout)
+        self.assertEqual(
+            doc["cells"][0]["manifest"],
+            {
+                "dataset_id": "set-100",
+                "dataset_count": 100,
+                "commit": "abc1234",
+                "build_profile": "release",
+                "observer": "1",
+                "mode": "bench",
+                "binary_sha": "deadbeef",
+            },
+        )
+        self.assertEqual(
+            doc["cells"][1]["manifest"],
+            {key: None for key in doc["cells"][0]["manifest"]},
+        )
+
+    def test_corrupt_manifest_is_never_fatal(self):
+        outdir = self.root / "gate-control-rep1"
+        outdir.mkdir()
+        (outdir / "run-manifest.json").write_text("{")
+
+        identity = self.battery._manifest_identity(outdir)
+
+        self.assertEqual(
+            identity,
+            {
+                "dataset_id": None,
+                "dataset_count": None,
+                "commit": None,
+                "build_profile": None,
+                "observer": None,
+                "mode": None,
+                "binary_sha": None,
+            },
+        )
+
+    def test_stages_and_terminal_state_come_from_rep_artifacts(self):
+        self.make_battery()
+
+        _rc, stdout = self.extract()
+
+        doc = json.loads(stdout)
+        self.assertEqual(doc["cells"][0]["stages"], self.STAGES)
+        self.assertEqual(doc["cells"][1]["stages"], [])
+        self.assertEqual(doc["cells"][0]["terminal"], "completed")
+        self.assertEqual(doc["cells"][1]["terminal"], "failed")
+        empty = self.root / "empty-rep1"
+        empty.mkdir()
+        self.assertEqual(self.battery._terminal_state(empty), "incomplete")
+
+    def test_medians_pool_rep_rows_of_the_same_cell(self):
+        self.make_battery()
+
+        _rc, stdout = self.extract()
+
+        doc = json.loads(stdout)
+        self.assertEqual(len(doc["medians"]), 1)
+        median = doc["medians"][0]
+        self.assertEqual(median["cell"], "gate-control:median")
+        # Pooled [9, 11, 13, 15] s across both reps.
+        self.assertEqual(median["scan_walls_s"], "12.0")
+
+    def test_report_section_carries_report_tsv_rows(self):
+        self.make_battery()
+
+        _rc, stdout = self.extract()
+
+        doc = json.loads(stdout)
+        report = doc["report"]
+        self.assertEqual(
+            [row["cell"] for row in report],
+            ["gate-control", "gate-control", "gate-control:median"],
+        )
+        self.assertEqual(report[0]["scan_walls_s"], "11.0,13.0")
+        self.assertEqual(report[1]["scan_walls_s"], "9.0,15.0")
+        self.assertEqual(report[-1]["scan_walls_s"], "12.0")
+        self.assertEqual(list(report[0]), self.battery.REPORT_COLUMNS)
+
+    def test_missing_report_tsv_is_an_empty_list(self):
+        self.make_battery()
+        (self.parent / "report.tsv").unlink()
+
+        rc, stdout = self.extract()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(stdout)["report"], [])
+
+    def test_out_writes_the_file_and_leaves_stdout_empty(self):
+        self.make_battery()
+        out = self.root / "nested" / "run.json"
+
+        rc, stdout = self.extract(out=out)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout, "")
+        doc = json.loads(out.read_text())
+        self.assertEqual(doc["battery"], str(self.parent))
+        self.assertEqual(doc["errors"], 1)
+
+    def test_exit_codes_for_empty_and_fully_broken_parents(self):
+        empty = self.root / "no-reps"
+        empty.mkdir()
+        (empty / "report.tsv").write_text("stray file, not a rep dir\n")
+        (empty / "notes").mkdir()
+
+        rc, stdout = self.extract(empty)
+        self.assertEqual(rc, 1)
+        self.assertEqual(stdout, "")
+
+        rc, stdout = self.extract(self.root / "missing")
+        self.assertEqual(rc, 1)
+        self.assertEqual(stdout, "")
+
+        broken = self.root / "all-broken"
+        (broken / "gate-control-rep1").mkdir(parents=True)
+
+        rc, stdout = self.extract(broken)
+        self.assertEqual(rc, 2)
+        doc = json.loads(stdout)
+        self.assertEqual(doc["errors"], 1)
+        self.assertIsNone(doc["level"])
+        self.assertEqual(doc["medians"], [])
+        self.assertEqual(doc["report"], [])
+
+    def test_rep_dir_without_cell_name_is_an_error_entry(self):
+        (self.parent / "flat-rep1").mkdir(parents=True)
+
+        rc, stdout = self.extract()
+
+        self.assertEqual(rc, 2)
+        doc = json.loads(stdout)
+        self.assertEqual(doc["errors"], 1)
+        self.assertEqual(doc["cells"][0]["dir"], "flat-rep1")
+        self.assertTrue(doc["cells"][0]["error"])
+
+    def test_nonfinite_stage_values_become_null_and_na_stays_string(self):
+        rep = self.parent / "gate-control-rep1"
+        write_cell(rep, drain=False, upload=False)
+        (rep / "stages.json").write_text(
+            json.dumps([{"stage": "tree_refresh_build", "n": 1, "p50_us": float("inf")}])
+        )
+
+        rc, stdout = self.extract()
+
+        self.assertEqual(rc, 0)
+        self.assertNotIn("Infinity", stdout)
+        doc = json.loads(stdout)
+        self.assertIsNone(doc["cells"][0]["stages"][0]["p50_us"])
+        self.assertEqual(doc["cells"][0]["row"]["upload_submit_p50_ms"], self.battery.NA)
+        json.dumps(doc, allow_nan=False)
