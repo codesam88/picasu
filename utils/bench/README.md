@@ -13,6 +13,8 @@ Python; it is not part of the server binary.
 | `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON extract         |
 | `baselines.tsv`       | Checked-in accepted bands for the gate battery                                   |
 | `extract-bench.py`    | Summarise one or more harness output directories                                 |
+| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest               |
+| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT     |
 | `manifests/`          | PhotoSpec manifests for fixed image sets                                         |
 
 The environment contracts live in the module docstrings. Each producer writes
@@ -23,6 +25,50 @@ consumes.
 
 `hyperfine` is required for every bench cell. Install the managed build with
 `just install hyperfine`; cells fail fast with an install hint if it is missing.
+
+## Preflight checklist
+
+`bench preflight` answers "can this cell start at all?" before any cell
+process is spawned or any state is wiped. Each precondition is one line of
+the form `ok <name>: <detail>` or `FAIL <name>: <detail> (hint)`; `ok`
+lines go to stdout, `FAIL` lines to stderr, and the exit status is `0` only
+when every check passes. A failure means the cell is refused, not run and
+failed later.
+
+```sh
+just bench preflight --archive ~/picasu-bench/set-100 \
+    --sandbox /dev/shm/scratchpad/sb-100 \
+    --out /dev/shm/scratchpad/cell --port 5795
+```
+
+```
+ok binary: /home/me/picasu/target/release/picasu
+ok hyperfine: /home/me/.local/bin/hyperfine
+ok archive: /home/me/picasu-bench/set-100 (100 jpg)
+ok sandbox: /dev/shm/scratchpad/sb-100 (count=100)
+ok out: /dev/shm/scratchpad/cell will be created
+ok port: 5795 free
+```
+
+```sh
+$ PORT=5795 just bench preflight
+ok binary: /home/me/picasu/target/release/picasu
+ok hyperfine: /home/me/.local/bin/hyperfine
+FAIL port: port 5795 already in use: LISTEN 0 4096 127.0.0.1:5795 ... (pick a free PORT or stop the holder)
+```
+
+Flags override the environment: `--out` (`OUT`), `--fresh 0|1` (`FRESH`),
+`--port` (`PORT`), `--sandbox` (`IMAGE_HOME_SRC`), `--binary` (`PICASU_BIN`)
+and `--archive` for the archive a `bench prepare` will consume. The archive
+check runs only when `--archive` is given; the sandbox check only when a
+prepared sandbox is in play; the OUT check only when an OUT is configured.
+
+The same phase runs inside a cell: every launcher start checks its binary,
+sandbox manifest, OUT and port before it touches OUT or spawns the server,
+and the workload config runs the hyperfine check through the same
+implementation. The launcher subset skips hyperfine because a server-only
+run never drives it. There is one implementation of each rule, so the
+standalone checklist and the in-cell guards cannot drift apart.
 
 ## Checks
 

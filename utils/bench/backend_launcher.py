@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Throwaway backend launcher for benchmark and debug runs.
 
-Owns the server-management half of a benchmark cell: state setup, port
-preflight, spawn, readiness, bootstrap/login, supervision, and diagnostics.
-The workload stays with the caller (run-cell.py drives workload.py).
-The module is importable and stdlib-only; the
-CLI in `utils/bench/launch-backend.py` is a thin wrapper.
+Owns the server-management half of a benchmark cell: state setup, the
+preflight checklist, spawn, readiness, bootstrap/login, supervision, and
+diagnostics. The workload stays with the caller (run-cell.py drives
+workload.py). The module is importable and stdlib-only; the
+CLI in `utils/bench/launch-backend.py` is a thin wrapper, and
+`preflight.py` reuses this module's port, OUT, binary and sandbox rules.
 
 Environment contract:
 
@@ -69,6 +70,11 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
+
+# Sibling bench modules are imported by name; keep them resolvable when
+# this file is loaded by path (tests, helpers) rather than as a script.
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 MODES = ("bench", "debug")  # run-manifest/launcher-info labels (derived, not input)
 DIAGNOSTIC_ENV = ("RUST_LOG",)
@@ -150,7 +156,7 @@ def _under(path: Path, root: Path) -> bool:
     return path != root and root in path.parents
 
 
-def _validate_out(raw: str, fresh: bool) -> Path:
+def validate_out(raw: str, fresh: bool) -> Path:
     out = _resolved_out(raw)
     if str(out) == "/":
         raise ConfigError("refusing to use OUT='/'")
@@ -175,49 +181,79 @@ def _positive_float(environ: dict, name: str, default: float) -> float:
     return val
 
 
-def config_from_env(environ: dict) -> dict:
-    """Build and validate launcher config. Reads env; only stats paths."""
+def validate_port(raw) -> int:
+    """Parse and range-check PORT; shared with the preflight checklist."""
     try:
-        port = int(environ.get("PORT", str(DEFAULT_PORT)))
-    except ValueError:
-        raise ConfigError(f"PORT must be an integer, got '{environ.get('PORT')}'")
+        port = int(raw)
+    except TypeError, ValueError:
+        raise ConfigError(f"PORT must be an integer, got '{raw}'")
     if not 1 <= port <= 65535:
         raise ConfigError(f"PORT must be in 1..65535, got {port}")
+    return port
+
+
+def executable_file(path: Path) -> bool:
+    return path.exists() and os.access(path, os.X_OK)
+
+
+def resolve_binary(environ: dict) -> tuple:
+    """Return `(binary, explicit_bin, build_profile)` for this cell.
+
+    An explicit PICASU_BIN is used as-is; otherwise the launcher uses
+    target/<profile>/picasu. Existence is not checked here.
+    """
+    build_profile = environ.get("BUILD_PROFILE", "release")
+    if build_profile not in ("release", "debug"):
+        raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
+    explicit_bin = "PICASU_BIN" in environ
+    if explicit_bin:
+        binary = Path(environ["PICASU_BIN"])
+    else:
+        binary = REPO_ROOT / "target" / build_profile / "picasu"
+    return binary, explicit_bin, build_profile
+
+
+def validate_image_home_src(raw: str) -> Path:
+    """Return the prepared sandbox a cell will read images from.
+
+    A sandbox is only a sandbox when `bench prepare` wrote its manifest;
+    shared with the preflight checklist.
+    """
+    image_home_path = Path(raw)
+    if not image_home_path.is_dir():
+        raise ConfigError(f"IMAGE_HOME_SRC must be a directory, got '{raw}'")
+    if not (image_home_path / "sandbox-manifest.json").is_file():
+        raise ConfigError(
+            f"IMAGE_HOME_SRC has no sandbox-manifest.json: {raw} (prepare it with `bench prepare`)"
+        )
+    return image_home_path
+
+
+def config_from_env(environ: dict) -> dict:
+    """Build and validate launcher config. Reads env; only stats paths."""
+    port = validate_port(environ.get("PORT", str(DEFAULT_PORT)))
 
     fresh_raw = environ.get("FRESH", "1")
     if fresh_raw not in ("0", "1"):
         raise ConfigError(f"FRESH must be 0 or 1, got '{fresh_raw}'")
     fresh = fresh_raw == "1"
-    out = _validate_out(environ.get("OUT", ""), fresh=fresh)
+    out = validate_out(environ.get("OUT", ""), fresh=fresh)
 
     if "IMAGE_HOME_SRC" in environ:
         image_home_src_raw = environ["IMAGE_HOME_SRC"]
-        image_home_path = Path(image_home_src_raw)
-        if not image_home_path.is_dir():
-            raise ConfigError(f"IMAGE_HOME_SRC must be a directory, got '{image_home_src_raw}'")
-        if not (image_home_path / "sandbox-manifest.json").is_file():
-            raise ConfigError(
-                f"IMAGE_HOME_SRC has no sandbox-manifest.json: {image_home_src_raw} "
-                "(prepare it with `bench prepare`)"
-            )
-        image_home = image_home_path
+        image_home = validate_image_home_src(image_home_src_raw)
         image_home_src = image_home_src_raw
     else:
         image_home = None
         image_home_src = None
 
-    build_profile = environ.get("BUILD_PROFILE", "release")
-    if build_profile not in ("release", "debug"):
-        raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
+    binary, explicit_bin, build_profile = resolve_binary(environ)
     # No MODE knob: a cell is canonical ("bench") iff it runs the release
     # binary with default logging; anything else is "debug". The manifest
     # records the verdict, so non-canonical runs cannot masquerade as bench.
     mode = "bench" if (build_profile == "release" and "RUST_LOG" not in environ) else "debug"
 
-    default_bin = REPO_ROOT / "target" / build_profile / "picasu"
-    explicit_bin = "PICASU_BIN" in environ
-    binary = Path(environ["PICASU_BIN"]) if explicit_bin else default_bin
-    if not (binary.exists() and os.access(binary, os.X_OK)):
+    if not executable_file(binary):
         raise ConfigError(
             f"missing executable server binary {binary} "
             f"(build it: cargo build --profile {build_profile} --bin picasu)"
@@ -805,14 +841,22 @@ def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
     spawn = spawn or spawn_server
     out = cfg["out"]
 
-    # Preflight before touching OUT: a busy port must fail fast and leave
-    # whatever state is already there alone.
-    if port_in_use(cfg["port"]):
-        print(
-            f"ERROR: port {cfg['port']} already in use:\n{port_holder(cfg['port'])}\n"
-            "Pick a free PORT or stop the holder above. Not killing anything.",
-            file=sys.stderr,
-        )
+    # Preflight before touching OUT: the checklist refuses the run before
+    # any process spawns and leaves whatever state is already there alone.
+    # The hyperfine check belongs to the workload half; a server-only run
+    # must not require it.
+    import preflight
+
+    checks = preflight.preflight(
+        environ,
+        out=out,
+        fresh=cfg["fresh"],
+        port=cfg["port"],
+        binary=cfg["binary"],
+        sandbox=cfg.get("image_home"),
+        require_hyperfine=False,
+    )
+    if preflight.print_checklist(checks):
         return 1
 
     try:

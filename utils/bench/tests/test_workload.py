@@ -851,7 +851,7 @@ class ConfigTest(unittest.TestCase):
                 with self.assertRaises(workload.ConfigError) as ctx:
                     workload.config_from_env(env)
                 self.assertIn(
-                    "hyperfine is required — run: just install hyperfine", str(ctx.exception)
+                    "hyperfine is required (run: just install hyperfine)", str(ctx.exception)
                 )
 
     def test_empty_hyperfine_bin_fails_fast(self):
@@ -882,7 +882,7 @@ class ConfigTest(unittest.TestCase):
             }
             with self.assertRaises(workload.ConfigError) as ctx:
                 workload.config_from_env(env)
-            self.assertIn("hyperfine is required — run: just install hyperfine", str(ctx.exception))
+            self.assertIn("hyperfine is required (run: just install hyperfine)", str(ctx.exception))
 
     def test_no_snapfab_needed_without_generation(self):
         workload = load_workload()
