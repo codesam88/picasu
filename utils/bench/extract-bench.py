@@ -14,12 +14,10 @@ failed-op counts of every storm kind. See the BACKGROUNDS/ACCESSES/STATS
 block for the column scheme.
 
 Measurements prefer the cell's structured `events.jsonl` stream (see
-:func:`read_events`); the transcript regexes below are the fallback for
-cells recorded before the event stream existed, and for cells whose
-stream is absent, truncated or written by a newer schema. Both paths
-report the numbers the transcript records for a field, so a cell
-extracted from events reports the same values as the same run extracted
-from its log.
+:func:`read_events`); without a usable stream the numbers come from the
+per-round artifacts (hyperfine exports, probe/storm TSVs, scan walls),
+with the transcript's slim status lines saying which rounds ran. Both
+paths report identical values for the same run.
 
 Scan counters come from status-final.json and are validity-checked only:
 a non-completed state, any failure, or a processed/matched mismatch prints
@@ -304,22 +302,170 @@ def parse_events(text: str, *, source: str = EVENTS_FILE) -> Events:
 # Transcript anchors used to decide whether an event stream is complete: a
 # stream that lags its transcript missed a write (a cell killed mid-run, or
 # an extract taken while the workload is still running), so its counts fall
-# short. The transcript is the record of what the run wrote.
-_TRANSCRIPT_FETCH_RE = re.compile(r"probe round=\d+ rows=\d+ state=\w+ fetch: thumb: n=(\d+) mean=")
-_TRANSCRIPT_HYPERFINE_RE = re.compile(
-    r"probe round=\d+ .*?hyperfine: prefetch mean=[\d.]+ s median=([\d.]+) s"
-    r".*?edit-rating mean=[\d.]+ s median=([\d.]+) s"
-)
+# short. Counts come from the slim status lines; the numbers live
+# in the artifacts.
 _TRANSCRIPT_SCAN_RE = re.compile(r"scan run \d+/\d+: state=\w+ polls=\d+ wall_ms=\d+")
 _TRANSCRIPT_SCAN_MEDIAN_RE = re.compile(
     r"scan wall median_ms=([\d.]+) over (\d+) run\(s\): ([\d,]+)"
 )
-_TRANSCRIPT_STORM_RE = re.compile(
-    r"^.*storm: profile=(\S+) ops=(\d+)/(\d+) median=([\d.]+)s "
-    r"p95=([\d.]+)s max=([\d.]+)s failed=(\d+) wall=([\d.]+)s(?: kind=(\S+))?",
+_TRANSCRIPT_VERIFY_RE = re.compile(r"^.*storm verify: matched (\d+)/(\d+) canary writes", re.M)
+
+# The transcript logs what ran (one status line per probe round, one
+# summary line per storm); the numbers live in the per-round artifacts.
+# The readers below parse those artifacts with the same math the workload
+# and event paths use, so every path reports identical values.
+_PROBE_ROUND_RE = re.compile(
+    r"^(?:\d\d:\d\d:\d\d )?probe round=(\d+) rows=(\d+) state=(\w+)\s*$", re.M
+)
+_PROBE_ROUND_FAILED_RE = re.compile(
+    r"^(?:\d\d:\d\d:\d\d )?probe round=(\d+) rows=(\d+) state=(\w+) hyperfine FAILED", re.M
+)
+_STORM_SUMMARY_RE = re.compile(
+    r"^.*storm: profile=(\S+) ops=(\d+)/(\d+) failed=(\d+) wall=([\d.]+)s(?: kind=(\S+))?",
     re.M,
 )
-_TRANSCRIPT_VERIFY_RE = re.compile(r"^.*storm verify: matched (\d+)/(\d+) canary writes", re.M)
+_ROUND_FILE_RE = re.compile(r"rounds-run-(\d+)/\w+-round-(\d+)\.")
+
+
+def _ordered_round_files(outdir: Path, stem: str, suffix: str) -> list:
+    """Per-round artifact paths across runs, ordered by (run, round)."""
+    found = []
+    for path in outdir.glob(f"rounds-run-*/{stem}-*{suffix}"):
+        match = _ROUND_FILE_RE.search(str(path.relative_to(outdir)))
+        if match:
+            found.append((int(match.group(1)), int(match.group(2)), path))
+    return [path for _, _, path in sorted(found)]
+
+
+def _round_hyperfine_meds(outdir: Path) -> list:
+    """(prefetch_median, edit_median) per probe round, oldest run first.
+
+    Reads the same exports the workload and the event stream read, so
+    every path reports the identical float.
+    """
+    rounds = []
+    for path in _ordered_round_files(outdir, "hyperfine-round", ".json"):
+        try:
+            document = json.loads(path.read_text())
+        except OSError, ValueError:
+            continue
+        results = document.get("results") if isinstance(document, dict) else None
+        if not isinstance(results, list):
+            continue
+        by_name = {result.get("name"): result for result in results if isinstance(result, dict)}
+        pre, edit = by_name.get("prefetch"), by_name.get("edit-rating")
+        if pre is None or edit is None:
+            continue
+        pre_med = _reported_median(pre)
+        edit_med = _reported_median(edit)
+        if pre_med is None or edit_med is None:
+            continue
+        rounds.append((pre_med, edit_med))
+    return rounds
+
+
+def _round_fetch_means(outdir: Path) -> list:
+    """(samples, mean) per probe round, oldest run first.
+
+    The mean covers every sampled op including failures, exactly like the
+    workload's own average over the same file.
+    """
+    rounds = []
+    for path in _ordered_round_files(outdir, "probe-round", ".tsv"):
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        times = []
+        for line in text.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            try:
+                times.append(float(parts[2]))
+            except ValueError:
+                continue
+        if times:
+            rounds.append((len(times), sum(times) / len(times)))
+    return rounds
+
+
+def _round_storm_aggs(outdir: Path) -> list:
+    """(median, p95, max, failed) per storm round, oldest run first.
+
+    Same multiset, same order, same functions as the workload summary,
+    so the aggregates match the event stream exactly.
+    """
+    aggs = []
+    for path in _ordered_round_files(outdir, "storm-round", ".tsv"):
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        latencies, failed = [], 0
+        for line in text.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            try:
+                latencies.append(float(parts[2]))
+            except ValueError:
+                continue
+            if parts[3] != "200":
+                failed += 1
+        if not latencies:
+            continue
+        ordered = sorted(latencies)
+        aggs.append(
+            (
+                statistics.median(ordered),
+                percentile(ordered, 95),
+                ordered[-1],
+                failed,
+            )
+        )
+    return aggs
+
+
+def _reported_median(result: dict) -> float | None:
+    """A hyperfine export's own median for one benchmark result.
+
+    Mirrors the workload's wall-clock reading: the flat `median` field,
+    else the nested `summary.time_wall_clock.median`.
+    """
+    if not isinstance(result, dict):
+        return None
+    median = result.get("median")
+    if isinstance(median, (int, float)):
+        return float(median)
+    nested = result.get("summary", {})
+    if isinstance(nested, dict):
+        nested = nested.get("time_wall_clock", {})
+    if isinstance(nested, dict):
+        median = nested.get("median")
+        if isinstance(median, (int, float)):
+            return float(median)
+    return None
+
+
+def _hyperfine_reported_medians(path: Path) -> dict:
+    """{bench name: hyperfine-reported median} from a post-scan export."""
+    try:
+        document = json.loads(Path(path).read_text())
+    except OSError, ValueError:
+        return {}
+    results = document.get("results") if isinstance(document, dict) else None
+    if not isinstance(results, list):
+        return {}
+    medians = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        name = result.get("name")
+        median = _reported_median(result)
+        if isinstance(name, str) and median is not None:
+            medians[name] = median
+    return medians
 
 
 def fetch_rounds(events: Events) -> list:
@@ -350,17 +496,34 @@ def storm_verifies(events: Events) -> list:
     ]
 
 
+def _probe_rounds(log: str, failed: bool = True) -> list:
+    """(round, rows) per probe status line, in log order.
+
+    A hyperfine failure still fetched, so failed rounds count for fetch
+    tails but not for hyperfine medians — mirroring what the event stream
+    records for the same cell.
+    """
+    rounds = [(int(n), int(r)) for n, r, _ in _PROBE_ROUND_RE.findall(log)]
+    if failed:
+        rounds += [(int(n), int(r)) for n, r, _ in _PROBE_ROUND_FAILED_RE.findall(log)]
+    return rounds
+
+
 def events_complete(events: Events, log: str) -> tuple:
     """Check the stream against the transcript; ``(ok, reason)``."""
     checks = (
-        ("probe rounds", len(fetch_rounds(events)), len(_TRANSCRIPT_FETCH_RE.findall(log))),
+        ("probe rounds", len(fetch_rounds(events)), len(_probe_rounds(log))),
         (
             "hyperfine rounds",
             len(hyperfine_rounds(events)),
-            len(_TRANSCRIPT_HYPERFINE_RE.findall(log)),
+            len(_probe_rounds(log, failed=False)),
         ),
         ("scan runs", len(events.scan_states), len(_TRANSCRIPT_SCAN_RE.findall(log))),
-        ("storm summaries", len(events.storm_summaries), len(_TRANSCRIPT_STORM_RE.findall(log))),
+        (
+            "storm summaries",
+            len(events.storm_summaries),
+            len(_STORM_SUMMARY_RE.findall(log)),
+        ),
         ("storm verifies", len(storm_verifies(events)), len(_TRANSCRIPT_VERIFY_RE.findall(log))),
     )
     for name, have, want in checks:
@@ -381,14 +544,17 @@ def read_cell_events(outdir: Path, log: str):
     except FileNotFoundError:
         return None
     except (OSError, UnicodeDecodeError) as exc:
-        print(f"warn: {path}: {exc}; falling back to log lines", file=sys.stderr)
+        print(f"warn: {path}: {exc}; falling back to per-round artifacts", file=sys.stderr)
         return None
     except EventsError as exc:
-        print(f"warn: {exc}; falling back to log lines", file=sys.stderr)
+        print(f"warn: {exc}; falling back to per-round artifacts", file=sys.stderr)
         return None
     complete, reason = events_complete(events, log)
     if not complete:
-        print(f"warn: {path}: incomplete ({reason}); falling back to log lines", file=sys.stderr)
+        print(
+            f"warn: {path}: incomplete ({reason}); falling back to per-round artifacts",
+            file=sys.stderr,
+        )
         return None
     return events
 
@@ -561,13 +727,14 @@ def _apply_setup(row: dict, log: str) -> None:
         row["image_repo"] = m.group(1)
 
 
-def _apply_log_measurements(row: dict, outdir: Path, log: str) -> None:
-    """Measurement fields from transcript lines.
+def _apply_artifact_measurements(row: dict, outdir: Path, log: str) -> None:
+    """Measurement fields from the per-round artifacts.
 
-    Deprecated: this is the pre-event-stream dialect, kept for cells
-    recorded without `events.jsonl` (old runs, and stats-only cells) and
-    for streams that are unusable. Current cells take these fields from
-    :func:`_apply_events`.
+    Runs when the event stream is absent or unusable. The transcript
+    only says which rounds ran (slim status lines); every number comes
+    from the artifacts the workload wrote. Identity, scan walls, upload
+    p50s and verify counts still come from transcript lines, which carry
+    no floating-point stats.
     """
     m = re.search(r"scan state=(\w+) polls=(\d+) wall_ms=(\d+)", log)
     if m:
@@ -595,110 +762,78 @@ def _apply_log_measurements(row: dict, outdir: Path, log: str) -> None:
             row["scan_wall_s"] = statistics.median(walls)
             row["scan_runs"] = len(walls)
             row["scan_runs_ms"] = walls
-    # Pool ALL fetch rounds (every round is an equally representative
-    # random sample; reporting only the last one discards ~90% of the
-    # measurements). Mean of round means + total fetch count.
-    fetches = re.findall(
-        r"probe round=\d+ rows=(\d+) state=\w+ fetch: thumb: n=(\d+) mean=([\d.]+)",
-        log,
-    )
-    if fetches:
-        row["probe_rows"] = max(int(f[0]) for f in fetches)
-        row["probe_rounds"] = len(fetches)
-        total_n = sum(int(f[1]) for f in fetches)
+    # Per-round fetch means come from the probe TSVs; the transcript only
+    # says which rounds ran. Pairing is positional: every run writes one
+    # TSV per round it executes and logs one line per round, in order.
+    slim = _probe_rounds(log)
+    means = _round_fetch_means(outdir)
+    if slim and means:
+        pairs = list(zip(slim, means))
+        total_n = sum(n for _, (n, _) in pairs)
+        thumb = [_recorded(mean, 4) for _, (_, mean) in pairs]
+        row["probe_rows"] = max(rows for _, rows in slim)
+        row["probe_rounds"] = len(slim)
         row["scan_thumb_mean"] = (
-            sum(int(f[1]) * float(f[2]) for f in fetches) / total_n if total_n else 0.0
+            sum(n * m for (_, (n, _)), m in zip(pairs, thumb)) / total_n if total_n else 0.0
         )
         row["scan_thumb_n"] = total_n
-        row["scan_thumb_worst"] = max(float(f[2]) for f in fetches)
-        row["probe_round_thumb"] = [float(f[2]) for f in fetches]
-    else:
-        rounds = re.findall(
-            r"probe round=\d+ rows=(\d+) state=\w+ (?:seq: seq: n=\d+ ok=\d+ mean=([\d.]+).*?conc(?:-P\d+)?: n=\d+ ok=\d+ mean=([\d.]+))",
-            log,
-        )
-        if rounds:
-            last = rounds[-1]
-            row["probe_rows"] = int(last[0]) if last[0] else 0
-            if last[1]:
-                # Legacy curl-sweep format: full-list mean, no per-round
-                # prefetch — prefetch stays absent (n/a), not zero.
-                row["scan_thumb_mean"] = float(last[1])
-    # Pool ALL per-round hyperfine lines the same way: median of round
-    # medians (robust to single stalled runs and single stalled rounds).
-    rh = _TRANSCRIPT_HYPERFINE_RE.findall(log)
-    if rh:
-        row["scan_pref_median"] = statistics.median(float(r[0]) for r in rh)
-        row["scan_edit_median"] = statistics.median(float(r[1]) for r in rh)
-        row["scan_pref_worst"] = max(float(r[0]) for r in rh)
-        row["scan_edit_worst"] = max(float(r[1]) for r in rh)
-        row["scan_rounds"] = len(rh)
-        row["probe_round_prefetch"] = [float(r[0]) for r in rh]
-        row["probe_round_edit"] = [float(r[1]) for r in rh]
-    else:
-        # Legacy no-hyperfine dialect: per-round single-shot timings.
-        rh_single = re.findall(
-            r"probe round=\d+ .*?hyperfine: prefetch single=([\d.]+) s \| edit-rating single=([\d.]+) s",
-            log,
-        )
-        if rh_single:
-            row["scan_pref_median"] = statistics.median(float(r[0]) for r in rh_single)
-            row["scan_edit_median"] = statistics.median(float(r[1]) for r in rh_single)
-            row["scan_pref_worst"] = max(float(r[0]) for r in rh_single)
-            row["scan_edit_worst"] = max(float(r[1]) for r in rh_single)
-            row["scan_rounds"] = len(rh_single)
-            row["probe_round_prefetch"] = [float(r[0]) for r in rh_single]
-            row["probe_round_edit"] = [float(r[1]) for r in rh_single]
-    # Storm summaries (one per scan run for storm-* workloads).
-    storms = _TRANSCRIPT_STORM_RE.findall(log)
-    if storms:
+        row["scan_thumb_worst"] = max(thumb)
+        row["probe_round_thumb"] = thumb
+    elif slim:
+        row["probe_rows"] = max(rows for _, rows in slim)
+        row["probe_rounds"] = len(slim)
+    # Per-round hyperfine medians come from the per-round export JSONs —
+    # the same files the workload wrote and the event stream read.
+    meds = _round_hyperfine_meds(outdir)
+    if meds:
+        prefetch = [pre for pre, _ in meds]
+        edit = [ed for _, ed in meds]
+        row["scan_pref_median"] = statistics.median(prefetch)
+        row["scan_edit_median"] = statistics.median(edit)
+        row["scan_pref_worst"] = max(prefetch)
+        row["scan_edit_worst"] = max(edit)
+        row["scan_rounds"] = len(meds)
+        row["probe_round_prefetch"] = prefetch
+        row["probe_round_edit"] = edit
+    # Storm summaries (one per scan run for storm-* workloads): the slim
+    # log line carries identity (profile, kind, done, total, failed,
+    # wall); the medians come from aggregating the per-round storm TSVs
+    # with the workload's own functions.
+    slim = _STORM_SUMMARY_RE.findall(log)
+    aggs = _round_storm_aggs(outdir)
+    if slim and aggs:
         row["storms"] = []
-        for s in storms:
-            profile, kind = s[0], s[8] or None
-            key = profile if not kind or profile.endswith(kind) else f"{profile}-{kind}"
-            row["storms"].append(
-                {
-                    "key": key,
-                    "profile": profile,
-                    "kind": kind,
-                    "done": int(s[1]),
-                    "total": int(s[2]),
-                    "median": float(s[3]),
-                    "p95": float(s[4]),
-                    "max": float(s[5]),
-                    "failed": int(s[6]),
-                    "wall": float(s[7]),
-                }
-            )
+        for s, (median, p95, mx, failed) in zip(slim, aggs):
+            event = {
+                "profile": s[0],
+                "kind": s[5] or None,
+                "done": int(s[1]),
+                "total": int(s[2]),
+                "median": median,
+                "p95": p95,
+                "max": mx,
+                "failed": int(s[3]),
+                "wall": float(s[4]),
+            }
+            row["storms"].append(_storm_from_event(event))
     verifies = _TRANSCRIPT_VERIFY_RE.findall(log)
     if verifies:
         row["storm_verify"] = [(int(m), int(t)) for m, t in verifies]
 
 
-def _apply_post_scan(row: dict, log: str) -> None:
-    """Post-scan (idle-server) hyperfine medians.
+def _apply_post_scan(row: dict, log: str, outdir: Path | None = None) -> None:
+    """Post-scan (idle-server) hyperfine medians, read from the export.
 
-    v1 carries only during-scan events; these stay transcript fields.
-    Idle server: mean ~= median, take median for consistency with the
-    during-scan columns.
+    The export carries the exact medians the transcript used to log;
+    reading it keeps one source of truth for every cell. Cells without
+    a post-scan export leave these absent.
     """
-    m = re.search(r"hyperfine compressed-get: mean=[\d.]+ s median=([\d.]+) s", log)
-    if m:
-        row["post_compressed"] = float(m.group(1))
-    m = re.search(r"hyperfine prefetch: mean=[\d.]+ s median=([\d.]+) s", log)
-    if m:
-        row["post_prefetch"] = float(m.group(1))
-    else:
-        m = re.search(r"hyperfine prefetch: mean=([\d.]+)", log)
-        if m:
-            row["post_prefetch"] = float(m.group(1))
-    m = re.search(r"hyperfine edit-rating: mean=[\d.]+ s median=([\d.]+) s", log)
-    if m:
-        row["post_edit"] = float(m.group(1))
-    else:
-        m = re.search(r"hyperfine edit-rating: mean=([\d.]+)", log)
-        if m:
-            row["post_edit"] = float(m.group(1))
+    if outdir is None:
+        return
+    medians = _hyperfine_reported_medians(outdir / "hyperfine.json")
+    for access, bench in _POST_SCAN_BENCH.items():
+        if bench in medians:
+            row[_POST_SCAN_FIELDS[access]] = medians[bench]
 
 
 def _apply_stage_rows(row: dict, outdir: Path, log: str) -> None:
@@ -781,10 +916,10 @@ def parse_log(outdir: Path, profile=None) -> dict:
     _apply_setup(row, log)
     events = read_cell_events(outdir, log)
     if events is None:
-        _apply_log_measurements(row, outdir, log)
+        _apply_artifact_measurements(row, outdir, log)
     else:
         _apply_events(row, events, log)
-    _apply_post_scan(row, log)
+    _apply_post_scan(row, log, outdir)
     _apply_matrix_samples(row, outdir, profile)
     _apply_stage_rows(row, outdir, log)
     return row

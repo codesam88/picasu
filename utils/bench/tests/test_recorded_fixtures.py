@@ -270,16 +270,14 @@ class DerivedEventStreamTest(unittest.TestCase):
             [(int(run), state, int(wall)) for run, state, wall in scans],
         )
         fetches = re.findall(
-            r"probe round=\d+ rows=(\d+) state=\w+ fetch: thumb: n=(\d+) mean=([\d.]+)", text
+            r"^(?:\d\d:\d\d:\d\d )?probe round=(\d+) rows=(\d+) state=\w+\s*$", text, re.M
         )
         self.assertEqual(
-            [
-                (e["rows"], e["fetch_n"], round(e["fetch_mean"], 4))
-                for e in events.probe_rounds
-                if "fetch_n" in e
-            ],
-            [(int(rows), int(n), float(mean)) for rows, n, mean in fetches],
+            [(e["rows"], e["fetch_n"]) for e in events.probe_rounds if "fetch_n" in e],
+            [(int(rows), 10) for _, rows in fetches],
         )
+        # The transcript carries no per-round stats; the numbers live in
+        # the probe TSVs, which the events replay verbatim.
         # Full precision comes from the per-round probe TSVs, not the
         # transcript's 4-decimal mean.
         means = []

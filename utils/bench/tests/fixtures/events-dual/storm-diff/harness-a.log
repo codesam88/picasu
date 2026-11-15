@@ -14,7 +14,7 @@
 02:36:42 === polling /get/index/status ===
 02:36:42 scan poll budget: none — waiting for a terminal state (completed/failed/canceled)
 02:36:43 === storm storm-diff (run 1): 8 clients x 10 ops on 7 rows ===
-02:36:43 storm: profile=storm-diff ops=80/80 median=0.006s p95=0.012s max=0.020s failed=68 wall=0.1s kind=diff
+02:36:43 storm: profile=storm-diff ops=80/80 failed=68 wall=0.1s kind=diff
 02:36:52 scan run 1/2: state=completed polls=51 wall_ms=10084
 02:36:52 status excerpt: {"state":"completed","scanned":100,"matched":100,"processed":15,"failed":0,"startedAt":1794710202794,"finishedAt":1794710212860}
 02:36:52 storm margin ok: storm ended 9.2s before scan end (margin 0.5s)
@@ -24,7 +24,7 @@
 02:36:52 === polling /get/index/status ===
 02:36:52 scan poll budget: none — waiting for a terminal state (completed/failed/canceled)
 02:36:52 === storm storm-diff (run 2): 8 clients x 10 ops on 99 rows ===
-02:36:52 storm: profile=storm-diff ops=80/80 median=0.005s p95=0.013s max=0.027s failed=0 wall=0.1s kind=diff
+02:36:52 storm: profile=storm-diff ops=80/80 failed=0 wall=0.1s kind=diff
 02:36:55 scan run 2/2: state=completed polls=16 wall_ms=3029
 02:36:55 status excerpt: {"state":"completed","scanned":109,"matched":100,"processed":24,"failed":0,"startedAt":1794710212910,"finishedAt":1794710215796}
 02:36:55 storm margin ok: storm ended 2.9s before scan end (margin 0.5s)
@@ -50,9 +50,6 @@ Benchmark 3: edit-rating (3 runs)
   Wall Time      7.2 ms  ±     0.1 ms       7.2 ms  …     7.3 ms            -1.4%
   Memory        12.9 MiB ±     0.0 MiB     12.8 MiB …    12.9 MiB           +0.9%
  
-02:36:56 hyperfine compressed-get: mean=0.007330207666666667 s median=0.0073826130000000005 s stddev=0.00012114349451098643 runs=3 cmd=curl -s -o /dev/null -b /dev/shm/picasu-bench-gate2/gate-storm-diff-rep1/cookies.txt -H 'Authorization: Bearer <redacted>' -w '%{http_code} %{time_total}\n' http://127.0.0.1:5798/object/compressed/42/42ef688baf497a3bceb3f36c537cba6c6c1902729aafb7823bfb516295eb5a85.jpg
-02:36:56 hyperfine prefetch: mean=0.006816405333333333 s median=0.006780321000000001 s stddev=7.616092767511018e-05 runs=3 cmd=curl -s -o /dev/null -b /dev/shm/picasu-bench-gate2/gate-storm-diff-rep1/cookies.txt -X POST -H 'Content-Type: application/json' -d '{}' -w '%{http_code} %{time_total}\n' http://127.0.0.1:5798/get/prefetch
-02:36:56 hyperfine edit-rating: mean=0.007231240666666666 s median=0.00719118 s stddev=7.080080708814951e-05 runs=3 cmd=curl -s -o /dev/null -b /dev/shm/picasu-bench-gate2/gate-storm-diff-rep1/cookies.txt -X PUT -H 'Content-Type: application/json' -d '{"indexArray":[0],"timestamp":1794710215965,"rating":3}' -w '%{http_code} %{time_total}\n' http://127.0.0.1:5798/put/edit_rating
 02:36:56 === write-probe verification (rating == 3 on snapshot index 0) ===
 02:36:56 write-probe verification: asset ti2hpukjoqgjx7enrd6qp71zwbfdosqkui72nwulobubt40n32x4ivx6maqodvks rating=3 (expected 3)
 02:36:56 === summary ===
