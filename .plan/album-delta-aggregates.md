@@ -92,6 +92,35 @@ keeps the exception safe while derived fields change around it.
   the txn; a 500 beats silent drift. Dead interactive path + doc cleanup
   (F8). Steps 7-9 progress.
 
+## Functional invariants (derived 2026-11-15; test + model anchors)
+
+- I1 aggregate exactness: `item_count == |members|`, `item_size == Σ
+sizes`, always (not quiescence). Tests:
+  `membership_mutations_leave_members_and_aggregates_exact`,
+  `album_member_write_keeps_aggregates_exact`. Model: the strengthened
+  `AlbumStatsConsistentWhenDrained` → unconditional.
+- I2 delta atomicity: member row + delta commit atomically; an aborted
+  delta leaves both unchanged. Model: same-step discipline.
+- I3 patch commutation: delta patches and edit_share RMWs compose in any
+  interleaving. Test: `album_delta_and_share_list_patches_commute`.
+  Model: replaces the N10 race-absorption run.
+- I4 range/cover under the unified rule (min/max timestamps, newest-member
+  cover) after any member mutation, incl. boundary-holder removal.
+- I5 re-application idempotence: re-flush of an unchanged asset never
+  double-counts.
+- I6 exclusions: unalbummed (root-level) and trashed assets contribute
+  nothing; trash toggle moves aggregates exactly.
+- I7 empty transition: descendant-cover rule on last member leaving;
+  re-establish on rejoin.
+- I8 heal composition: legacy torn residue is cleaned and the healing
+  deltas converge (no double-count on re-encounter).
+- I9 batch prefix-consistency: per-path atomic batch removals — a crash
+  mid-batch leaves completed paths fully applied, aggregates exact.
+- I10 error atomicity: a failed delta aborts the operation txn
+  (propagation policy, 2026-11-15).
+
+I1–I3, I10 are the model-port targets for step 8.
+
 ## Steps
 
 1. [done] Surveys: album_task phases (album.rs:46-110),
