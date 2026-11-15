@@ -139,9 +139,16 @@ utils-test:
     python3 {{justfile_directory()}}/utils/schemathesis/test_auth_rules.py
 
 # Benchmark tooling submodule (utils/bench/justfile); `just bench <recipe>`
-# works from any directory. Old flat names kept as aliases.
+# works from any directory.
 [group('utils')]
 mod bench "utils/bench/justfile"
+
+# Quint/spec tooling submodule (utils/quint/justfile); `just quint <recipe>`
+# works from any directory. lint/typecheck = static self-checks, check =
+# the fast spec gates (any code change), test = the model runs, fulltest =
+# the elevated-sample deep lane, selftest = checker self-tests.
+[group('utils')]
+mod quint "utils/quint/justfile"
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -244,14 +251,6 @@ zizmor-check: (install "zizmor")
     ./scripts/deps-install.sh --tool zizmor --check
     ./scripts/zizmor-run.sh --offline --no-progress .
 
-# Typecheck + test the pipeline specs (Node-only, no JDK)
-[group('utils')]
-quint-check: (install "quint")
-    quint typecheck utils/quint/pipeline/eventual-consistency.qnt
-    quint typecheck utils/quint/pipeline/asset-aspects.qnt
-    quint test utils/quint/pipeline/eventual-consistency.qnt
-    quint test utils/quint/pipeline/asset-aspects.qnt
-
 # Non-blocking by design: MSRV floor check (nightly lane).
 [group('utils')]
 msrv-check:
@@ -326,53 +325,6 @@ plan-format:
 plan-lint:
     node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
-# Validate the eventual-consistency event catalog
-[group('utils')]
-events-check:
-    node {{justfile_directory()}}/utils/quint/events-check.mjs {{justfile_directory()}}/utils/quint/pipeline
-
-# Validate the implementation-tracking operation catalog and its backend annotations
-[group('utils')]
-operations-check:
-    node {{justfile_directory()}}/utils/quint/operations-check.mjs {{justfile_directory()}}
-
-# Validate the goals, requirements, assumptions and scope catalogs + cross-catalog references
-[group('utils')]
-catalog-check:
-    node {{justfile_directory()}}/utils/quint/catalog-check.mjs {{justfile_directory()}}/utils/quint/pipeline
-
-# Regenerate docs/eventual-consistency.md from the JSON catalogs
-[group('utils')]
-docs-eventual-consistency:
-    node {{justfile_directory()}}/utils/quint/gen-eventual-consistency-doc.mjs {{justfile_directory()}}/utils/quint/pipeline {{justfile_directory()}}
-    cd {{justfile_directory()}}/frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../docs/eventual-consistency.md'
-
-# Ensure docs/eventual-consistency.md matches the generator (drift gate)
-[group('utils')]
-docs-eventual-consistency-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' EXIT
-    mkdir -p "$tmpdir/docs"
-    node "{{justfile_directory()}}/utils/quint/gen-eventual-consistency-doc.mjs" "{{justfile_directory()}}/utils/quint/pipeline" "$tmpdir"
-    cd "{{justfile_directory()}}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "$tmpdir/docs/eventual-consistency.md" >/dev/null
-    if ! diff -u "{{justfile_directory()}}/docs/eventual-consistency.md" "$tmpdir/docs/eventual-consistency.md"; then
-        echo ""
-        echo "docs/eventual-consistency.md is out of date with the generator."
-        echo "Run 'just docs-eventual-consistency' and commit the result."
-        exit 1
-    fi
-    echo "docs/eventual-consistency.md matches the generated output"
-
-# Closed-world audit over utils/quint/pipeline/*.qnt: every definition
-# carries a resolving tag, every registry ID is cited. Regenerate the
-# traceability map (utils/quint/pipeline/traceability.json) with:
-# node utils/quint/specs-check.mjs utils/quint/pipeline --generate
-[group('utils')]
-spec-check:
-    node {{justfile_directory()}}/utils/quint/specs-check.mjs {{justfile_directory()}}/utils/quint/pipeline
-
 # ensure all test/check rules are called from CI and global rules
 [group('utils')]
 gates-check:
@@ -399,7 +351,7 @@ gates-docs:
 
 # Build mdBook site at target/docs/
 [group('docs')]
-docs-build: docs-openapi (install "mdbook")
+docs-build: docs-openapi quint::docs (install "mdbook")
     #!/usr/bin/env bash
     set -e
     mkdir -p target/mdbook/src
@@ -435,11 +387,11 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint events-check catalog-check operations-check spec-check openapi-check env-var-check zizmor-check gates-check quint-check docs-eventual-consistency-check branches-prune-test
+check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check gates-check branches-prune-test quint::lint quint::check
 
 # run full test suite
 [group('global')]
-test: backend-test utils-test frontend-test fuzz-matrix
+test: backend-test utils-test frontend-test fuzz-matrix quint::test
 
 # verify installed tool versions
 [group('deps')]
@@ -566,6 +518,13 @@ precommit:
     fi
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check
+    fi
+    if echo "$changed" | grep -q '^utils/quint/'; then
+        just quint lint
+        just quint check
+    fi
+    if echo "$changed" | grep -q '^utils/quint/.*\.qnt$'; then
+        just quint test
     fi
     if echo "$changed" | grep -qE '^(backend|utils)/'; then
         just utils-test

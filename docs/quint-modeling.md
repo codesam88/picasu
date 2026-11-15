@@ -48,7 +48,7 @@ premises. Classifying a new element:
 3. Is it a proof-scope delimiter? Yes → scope, with bound and
    reason. No → hidden assumption: classify before merge.
 
-Implemented as `just spec-check` over committed files (the
+Implemented as `just quint check` over committed files (the
 `utils/quint/events-check.mjs` pattern): machine-readable `@assumes` /
 `@requires` / `@scope` tags on every spec definition, registries in
 `utils/quint/pipeline/assumptions.json`, `utils/quint/pipeline/requirements.json` and
@@ -69,12 +69,12 @@ review of each classification.
   with `quint run`.
 - `scripts/deps/quint.sh` + `QUINT_VERSION`: pinned toolchain,
   installed via `just install quint`, no JDK required.
-- `just quint-check`: typecheck plus `quint test` over both pipeline specs
+- `just quint test`: typecheck (via `lint`) plus model runs over both pipeline specs
   (`utils/quint/pipeline/eventual-consistency.qnt` and
   `utils/quint/pipeline/asset-aspects.qnt`), wired into the `check`
   aggregate so every precommit runs it. The operations layer
   (`pipeline/operations.json` and backend markers) is validated by
-  `just operations-check`.
+  `just quint check`.
 - Requirement registry: `utils/quint/pipeline/requirements.json` carries each derived
   obligation with owner, gate and status; the generated
   `utils/quint/pipeline/traceability.json` maps model definitions to their assumption
