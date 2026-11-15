@@ -7,9 +7,11 @@ Usage:
 Reads events.jsonl, harness-a.log, status-final.json and hyperfine.json
 from each OUT dir (as produced by the bench workload) and prints one
 metric per line, one column per cell: image count/bytes, scan wall time +
-sec/MB, during-scan latency medians and worst rounds, post-scan hyperfine
-medians, and per-storm-profile aggregates (median of run medians, worst
-of run maxes).
+sec/MB, server stage costs, and the full request-latency matrix — every
+background (idle, scan, uscan) x access condition (prefetch, thumb, edit,
+storm_read, storm_thumb, storm_edit) x statistic (p50, p95, max), plus the
+failed-op counts of every storm kind. See the BACKGROUNDS/ACCESSES/STATS
+block for the column scheme.
 
 Measurements prefer the cell's structured `events.jsonl` stream (see
 :func:`read_events`); the transcript regexes below are the fallback for
@@ -29,10 +31,40 @@ Exit non-zero if a dir is missing expected artifacts.
 import argparse
 import dataclasses
 import json
+import math
 import re
 import statistics
 import sys
 from pathlib import Path
+
+# --- report matrix -----------------------------------------------------------
+# One latency column per background x access condition x statistic. A row
+# carries every column; a condition the cell does not measure is `n/a`.
+#
+#   bg      idle    post-scan baselines (server at rest)
+#           scan    during-scan probes and bursts on control/storm cells
+#           uscan   during-scan probes on the upload profile (the upload
+#                   stimulus runs its own populate scan)
+#   access  prefetch, thumb, edit          request-path probes
+#           storm_read, storm_thumb, storm_edit   concurrent bursts
+#   stat    p50, p95, max
+BACKGROUNDS = ("idle", "scan", "uscan")
+ACCESSES = ("prefetch", "thumb", "edit", "storm_read", "storm_thumb", "storm_edit")
+STATS = ("p50", "p95", "max")
+STORM_KINDS = ("read", "thumb", "edit")
+# Only these backgrounds run storm bursts; upload never does.
+STORM_BACKGROUNDS = ("idle", "scan")
+
+LATENCY_COLUMNS = tuple(
+    f"{bg}_{access}_{stat}_ms" for bg in BACKGROUNDS for access in ACCESSES for stat in STATS
+)
+STORM_FAILED_COLUMNS = tuple(
+    f"{bg}_storm_{kind}_failed" for bg in STORM_BACKGROUNDS for kind in STORM_KINDS
+)
+
+# Report access name -> storm op kind the workload records (`diff` is the
+# edit-rating storm; its report columns are named `storm_edit`).
+STORM_OP_KIND = {"read": "read", "thumb": "thumb", "edit": "diff"}
 
 STAGE_NAMES = [
     "filter_snapshot_clone",
@@ -376,12 +408,85 @@ def _recorded_median(value: float) -> float:
     return float(f"{value:g}")
 
 
+def percentile(values: list, pct: float) -> float:
+    """Linear-interpolated percentile of already-collected samples.
+
+    Same interpolation the workload uses for its storm p95, so a tail
+    computed here over raw samples matches the tail the workload prints for
+    the same values.
+    """
+    ordered = sorted(values)
+    if not ordered:
+        raise ValueError("percentile of an empty sample")
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (len(ordered) - 1) * pct / 100.0
+    low = math.floor(rank)
+    high = math.ceil(rank)
+    if low == high:
+        return ordered[low]
+    return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
+def hyperfine_runs(path) -> dict:
+    """Per-run wall-clock seconds per benchmark in a hyperfine export.
+
+    Returns ``{benchmark name: [seconds, ...]}``; an absent or unreadable
+    export yields ``{}``. Reads the flat `times` list hyperfine < 2 writes
+    and the `measurements[].time_wall_clock.value` list hyperfine 2 writes.
+    """
+    try:
+        document = json.loads(Path(path).read_text())
+    except OSError, json.JSONDecodeError:
+        return {}
+    results = document.get("results") if isinstance(document, dict) else None
+    if not isinstance(results, list):
+        return {}
+    runs: dict = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        name = result.get("name")
+        if not isinstance(name, str):
+            continue
+        values = []
+        times = result.get("times")
+        if isinstance(times, list):
+            values = [float(value) for value in times if isinstance(value, (int, float))]
+        else:
+            for measurement in result.get("measurements") or []:
+                wall = (measurement.get("time_wall_clock") or {}) if measurement else {}
+                value = wall.get("value")
+                if isinstance(value, (int, float)):
+                    values.append(float(value))
+        runs[name] = values
+    return runs
+
+
+def storm_kind(storm: dict) -> str:
+    """Storm op kind; a storm-idle run defaults to the read kind."""
+    kind = storm.get("kind")
+    if kind:
+        return str(kind)
+    profile = str(storm.get("profile", ""))
+    if profile == "storm-idle":
+        return "read"
+    return profile.removeprefix("storm-")
+
+
+def storm_background(storm: dict) -> str:
+    """`idle` for a tree-at-rest burst, `scan` for a concurrent one."""
+    return "idle" if storm.get("profile") == "storm-idle" else "scan"
+
+
 def _storm_from_event(event: dict) -> dict:
     profile = event["profile"]
     kind = event.get("kind") or None
     key = profile if not kind or profile.endswith(kind) else f"{profile}-{kind}"
     return {
         "key": key,
+        "profile": profile,
+        "kind": kind,
         "done": int(event["done"]),
         "total": int(event["total"]),
         "median": _recorded(event["median"], 3),
@@ -405,6 +510,7 @@ def _apply_events(row: dict, events: Events, log: str) -> None:
         )
         row["scan_thumb_n"] = total_n
         row["scan_thumb_worst"] = max(thumb)
+        row["probe_round_thumb"] = thumb
     rounds = hyperfine_rounds(events)
     if rounds:
         prefetch = [event["prefetch_median"] for event in rounds]
@@ -414,6 +520,8 @@ def _apply_events(row: dict, events: Events, log: str) -> None:
         row["scan_pref_worst"] = max(prefetch)
         row["scan_edit_worst"] = max(edit)
         row["scan_rounds"] = len(rounds)
+        row["probe_round_prefetch"] = prefetch
+        row["probe_round_edit"] = edit
     if events.scan_states:
         walls = [int(event["wall_ms"]) for event in events.scan_states]
         median = statistics.median(walls)
@@ -503,6 +611,7 @@ def _apply_log_measurements(row: dict, outdir: Path, log: str) -> None:
         )
         row["scan_thumb_n"] = total_n
         row["scan_thumb_worst"] = max(float(f[2]) for f in fetches)
+        row["probe_round_thumb"] = [float(f[2]) for f in fetches]
     else:
         rounds = re.findall(
             r"probe round=\d+ rows=(\d+) state=\w+ (?:seq: seq: n=\d+ ok=\d+ mean=([\d.]+).*?conc(?:-P\d+)?: n=\d+ ok=\d+ mean=([\d.]+))",
@@ -524,6 +633,8 @@ def _apply_log_measurements(row: dict, outdir: Path, log: str) -> None:
         row["scan_pref_worst"] = max(float(r[0]) for r in rh)
         row["scan_edit_worst"] = max(float(r[1]) for r in rh)
         row["scan_rounds"] = len(rh)
+        row["probe_round_prefetch"] = [float(r[0]) for r in rh]
+        row["probe_round_edit"] = [float(r[1]) for r in rh]
     else:
         # Legacy no-hyperfine dialect: per-round single-shot timings.
         rh_single = re.findall(
@@ -536,6 +647,8 @@ def _apply_log_measurements(row: dict, outdir: Path, log: str) -> None:
             row["scan_pref_worst"] = max(float(r[0]) for r in rh_single)
             row["scan_edit_worst"] = max(float(r[1]) for r in rh_single)
             row["scan_rounds"] = len(rh_single)
+            row["probe_round_prefetch"] = [float(r[0]) for r in rh_single]
+            row["probe_round_edit"] = [float(r[1]) for r in rh_single]
     # Storm summaries (one per scan run for storm-* workloads).
     storms = _TRANSCRIPT_STORM_RE.findall(log)
     if storms:
@@ -546,6 +659,8 @@ def _apply_log_measurements(row: dict, outdir: Path, log: str) -> None:
             row["storms"].append(
                 {
                     "key": key,
+                    "profile": profile,
+                    "kind": kind,
                     "done": int(s[1]),
                     "total": int(s[2]),
                     "median": float(s[3]),
@@ -599,8 +714,68 @@ def _apply_stage_rows(row: dict, outdir: Path, log: str) -> None:
     row["observer_drain_tables"] = _drains
 
 
-def parse_log(outdir: Path) -> dict:
-    """Read one cell dir into a row, preferring its `events.jsonl` stream."""
+_POST_SCAN_BENCH = {"prefetch": "prefetch", "thumb": "compressed-get", "edit": "edit-rating"}
+_POST_SCAN_FIELDS = {"prefetch": "post_prefetch", "thumb": "post_compressed", "edit": "post_edit"}
+_PROBE_P50_FIELDS = {
+    "prefetch": ("scan_pref_median", "scan_pref_mean"),
+    "thumb": ("scan_thumb_mean",),
+    "edit": ("scan_edit_median", "scan_edit_mean"),
+}
+_PROBE_ROUND_FIELDS = {
+    "prefetch": "probe_round_prefetch",
+    "thumb": "probe_round_thumb",
+    "edit": "probe_round_edit",
+}
+
+
+def _apply_matrix_samples(row: dict, outdir: Path, profile) -> None:
+    """Collect the per-round and per-run values behind the matrix tails.
+
+    These feed the `p95`/`max` cells only; the `p50` columns keep the
+    pooling the report has always used, so the recorded values stay
+    comparable with the checked-in baselines.
+
+    - ``idle_*``: every timed run of the post-scan ``hyperfine.json``
+      export — the same export whose medians the transcript logs. It
+      carries the `compressed-get` (thumb), `prefetch` and `edit-rating`
+      (edit) repetitions, so p95/max describe every run of the cell and
+      the report's ``:median`` row pools those runs across repeats. A cell
+      that predates the export falls back to its recorded post-scan median
+      as a single sample.
+    - ``scan_*`` / ``uscan_*``: the per-round probe summaries — one
+      prefetch hyperfine median, one edit-rating hyperfine median and one
+      thumbnail fetch mean per probe round. Those are the values the cell
+      records for each round, so the tails are percentiles across rounds.
+      The bucket comes from the cell profile, never from parsing: ``upload``
+      rows carry ``uscan_*`` and every other profile ``scan_*``.
+    """
+    samples: dict = {}
+    post = hyperfine_runs(outdir / "hyperfine.json")
+    for access, bench in _POST_SCAN_BENCH.items():
+        values = post.get(bench, [])
+        if not values:
+            median = row.get(_POST_SCAN_FIELDS[access])
+            values = [median] if median is not None else []
+        if values:
+            samples[f"idle_{access}"] = [value * 1000.0 for value in values]
+
+    bucket = "uscan" if profile == "upload" else "scan"
+    row["probe_bucket"] = bucket
+    for access, field in _PROBE_ROUND_FIELDS.items():
+        values = row.get(field) or []
+        if values:
+            samples[f"{bucket}_{access}"] = [value * 1000.0 for value in values]
+    row["samples"] = samples
+
+
+def parse_log(outdir: Path, profile=None) -> dict:
+    """Read one cell dir into a row, preferring its `events.jsonl` stream.
+
+    ``profile`` is the cell's WORKLOAD profile. It decides whether the
+    during-scan probes belong to the `scan` or the `uscan` background; it is
+    the battery's label for the cell, not something the artifacts are
+    searched for.
+    """
     log = (outdir / "harness-a.log").read_text()
     row: dict = {"benchmark": outdir.name}
     _apply_setup(row, log)
@@ -610,6 +785,7 @@ def parse_log(outdir: Path) -> dict:
     else:
         _apply_events(row, events, log)
     _apply_post_scan(row, log)
+    _apply_matrix_samples(row, outdir, profile)
     _apply_stage_rows(row, outdir, log)
     return row
 
@@ -622,9 +798,18 @@ def parse_status(outdir: Path) -> dict:
         sys.exit(1)
 
 
-def _storm_summary(storms: list, key: str) -> dict | None:
-    """Aggregate per-run storm summaries: median of medians, worst of max."""
-    runs = [s for s in storms if s["key"] == key]
+def _storm_summary(storms: list, background: str, kind: str) -> dict | None:
+    """Aggregate a background's storm runs for one op kind.
+
+    A storm cell records one summary per run, so the aggregate keeps the
+    established convention: median of run medians, worst of run p95s, worst
+    of run maxes, failures summed over runs.
+    """
+    runs = [
+        storm
+        for storm in storms
+        if storm_background(storm) == background and storm_kind(storm) == kind
+    ]
     if not runs:
         return None
     return {
@@ -636,7 +821,44 @@ def _storm_summary(storms: list, key: str) -> dict | None:
     }
 
 
-def _cell(row: dict, status: dict, storm_keys: list) -> dict:
+_STAT_FIELDS = {"p50": "med", "p95": "p95", "max": "max"}
+
+
+def _matrix_latency(row: dict, background: str, access: str, stat: str):
+    """One matrix latency cell: seconds from a summary, or pooled samples."""
+    if access.startswith("storm_"):
+        kind = STORM_OP_KIND[access.removeprefix("storm_")]
+        summary = _storm_summary(row.get("storms", []), background, kind)
+        if summary is None:
+            return "n/a"
+        return _ms(summary[_STAT_FIELDS[stat]])
+    if background in ("scan", "uscan") and row.get("probe_bucket") != background:
+        # During-scan probes belong to exactly one background: the cell's
+        # profile decides, so an upload row leaves `scan_*` empty and vice
+        # versa.
+        return "n/a"
+    if stat == "p50":
+        fields = (_POST_SCAN_FIELDS[access],) if background == "idle" else _PROBE_P50_FIELDS[access]
+        value = next(
+            (row[field] for field in fields if row.get(field) is not None),
+            None,
+        )
+        return _ms(value)
+    samples = (row.get("samples") or {}).get(f"{background}_{access}")
+    if not samples:
+        return "n/a"
+    if stat == "max":
+        return round(max(samples), 1)
+    return round(percentile(samples, 95), 1)
+
+
+def _matrix_failed(row: dict, background: str, kind: str):
+    """Failures a storm kind recorded in one background; n/a when it did not run."""
+    summary = _storm_summary(row.get("storms", []), background, STORM_OP_KIND[kind])
+    return "n/a" if summary is None else summary["fail"]
+
+
+def _cell(row: dict, status: dict) -> dict:
     """Flatten one parsed cell into label-agnostic string/number fields.
 
     The row comes from :func:`parse_log`, so it already carries event-stream
@@ -659,30 +881,16 @@ def _cell(row: dict, status: dict, storm_keys: list) -> dict:
         "processed": status.get("processed", "?"),
         "failed": status.get("failed", "?"),
         "scan_runs_s": ",".join(f"{w:.0f}" for w in row.get("scan_runs_ms", [])) or "n/a",
-        "scan_fetch_ms": _ms(row.get("scan_pref_median", row.get("scan_pref_mean"))),
-        "fetch_worst_ms": _ms(row.get("scan_pref_worst")),
-        "scan_thumb_ms": _ms(row.get("scan_thumb_mean")),
-        "thumb_worst_ms": _ms(row.get("scan_thumb_worst")),
-        "scan_edit_ms": _ms(row.get("scan_edit_median", row.get("scan_edit_mean"))),
-        "edit_worst_ms": _ms(row.get("scan_edit_worst")),
-        "idle_thumb_ms": _ms(row.get("post_compressed")),
-        "idle_fetch_ms": _ms(row.get("post_prefetch")),
-        "idle_edit_ms": _ms(row.get("post_edit")),
     }
-    for key in storm_keys:
-        summary = _storm_summary(row.get("storms", []), key)
-        if summary is None:
-            cell[f"{key}_ops"] = "n/a"
-            cell[f"{key}_med_ms"] = "n/a"
-            cell[f"{key}_p95_ms"] = "n/a"
-            cell[f"{key}_max_ms"] = "n/a"
-            cell[f"{key}_fail"] = "n/a"
-        else:
-            cell[f"{key}_ops"] = summary["ops"]
-            cell[f"{key}_med_ms"] = round(summary["med"] * 1000, 1)
-            cell[f"{key}_p95_ms"] = round(summary["p95"] * 1000, 1)
-            cell[f"{key}_max_ms"] = round(summary["max"] * 1000, 1)
-            cell[f"{key}_fail"] = summary["fail"]
+    for background in BACKGROUNDS:
+        for access in ACCESSES:
+            for stat in STATS:
+                cell[f"{background}_{access}_{stat}_ms"] = _matrix_latency(
+                    row, background, access, stat
+                )
+    for background in STORM_BACKGROUNDS:
+        for kind in STORM_KINDS:
+            cell[f"{background}_storm_{kind}_failed"] = _matrix_failed(row, background, kind)
     if row.get("storm_verify"):
         cell["storm_verify"] = "; ".join(f"{m}/{t}" for m, t in row["storm_verify"])
     else:
@@ -722,18 +930,6 @@ def _cell(row: dict, status: dict, storm_keys: list) -> dict:
     return cell
 
 
-def _storm_keys(storms: list) -> list:
-    """Ordered distinct storm keys in one cell, base profiles first."""
-    present = []
-    for storm in storms:
-        if storm["key"] not in present:
-            present.append(storm["key"])
-    order = ["storm-diff", "storm-read", "storm-thumb", "storm-idle"]
-    base = [key for key in order if key in present]
-    rest = sorted(key for key in present if key not in base)
-    return base + rest
-
-
 def _ms(value) -> object:
     return round(value * 1000, 1) if value is not None else "n/a"
 
@@ -741,6 +937,10 @@ def _ms(value) -> object:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("outdirs", nargs="+", help="bench OUT dirs")
+    parser.add_argument(
+        "--profile",
+        help="WORKLOAD profile of the cell(s); decides scan vs uscan probe bucket (default: scan)",
+    )
     args = parser.parse_args()
 
     parsed = []
@@ -749,7 +949,7 @@ def main() -> None:
         if not (outdir / "harness-a.log").exists():
             print(f"error: {outdir}: no harness-a.log", file=sys.stderr)
             sys.exit(1)
-        row = parse_log(outdir)
+        row = parse_log(outdir, profile=args.profile)
         # Emit per-scan stage rows as machine-readable JSON in the outdir.
         try:
             (outdir / "stages.json").write_text(
@@ -759,14 +959,8 @@ def main() -> None:
             print(f"warn: {outdir}: cannot write stages.json: {exc}", file=sys.stderr)
         parsed.append((row, parse_status(outdir)))
 
-    storm_union: list = []
-    for row, _ in parsed:
-        for key in _storm_keys(row.get("storms", [])):
-            if key not in storm_union:
-                storm_union.append(key)
-    cells = [_cell(row, status, storm_union) for row, status in parsed]
+    cells = [_cell(row, status) for row, status in parsed]
 
-    profiles = storm_union
     for i, cell in enumerate(cells, 1):
         print(f"[{i}] name: {cell['name']}")
         print(f"    {cell['setup']}")
@@ -775,21 +969,14 @@ def main() -> None:
         "s/MB",
         "MB",
         "scan_runs_s",
-        "scan_fetch_ms",
-        "fetch_worst_ms",
-        "scan_thumb_ms",
-        "thumb_worst_ms",
-        "scan_edit_ms",
-        "edit_worst_ms",
-        "idle_thumb_ms",
-        "idle_fetch_ms",
-        "idle_edit_ms",
+        *LATENCY_COLUMNS,
+        *STORM_FAILED_COLUMNS,
         "tree_refresh_build_p50_us",
         "tree_refresh_build_max_us",
         "filter_snapshot_clone_p50_us",
         "filter_snapshot_clone_max_us",
         "storm_verify",
-    ] + [f"{p}_{c}" for p in profiles for c in ("ops", "med_ms", "p95_ms", "max_ms", "fail")]
+    ]
     width = max([len(label) for label in labels] + [8])
     col_widths = []
     for i in range(len(cells)):
@@ -822,7 +1009,10 @@ def main() -> None:
                 file=sys.stderr,
             )
     print("units: scan_time s; s/MB s per MB; all latency columns ms.")
-    print("median/worst latency: pre[fetch], [thumb]nail, metadata[edit], scan and idle")
+    print(
+        "matrix: {idle,scan,uscan} x {prefetch,thumb,edit,storm_read,storm_thumb,storm_edit}"
+        " x {p50,p95,max}; failed counts per storm kind"
+    )
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -200,6 +201,43 @@ class BatteryStageSourceTest(unittest.TestCase):
         self.assertEqual(row["tree_refresh_build_max_us"], "1997,6069")
         self.assertEqual(row["filter_snapshot_clone_p50_us"], "419,1493")
         self.assertEqual(row["filter_snapshot_clone_max_us"], "1778,5236")
+
+
+class InProcessRowStagesTest(unittest.TestCase):
+    """A row built in-process carries the stages a standalone extract writes.
+
+    The battery never runs `extract-bench.py`, so `battery extract` cannot
+    depend on the `stages.json` only that script writes: the row sources
+    its stages from the same `server.log` parse, without writing anything
+    into the cell.
+    """
+
+    def test_in_process_stages_match_the_standalone_extract_output(self):
+        cell = Path(tempfile.mkdtemp()) / "gate-control-rep1"
+        self.addCleanup(shutil.rmtree, cell.parent, ignore_errors=True)
+        _write_cell(cell)  # copies the recorded `server-drain.log` into it
+        self.assertFalse((cell / "stages.json").exists())
+
+        row = battery().build_row("gate", "control", cell)
+
+        self.assertTrue(row["stages"])
+        # Building a row is read-only w.r.t. the cell's artifacts.
+        self.assertFalse((cell / "stages.json").exists())
+
+        extracted = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, extracted, ignore_errors=True)
+        copy = extracted / cell.name
+        shutil.copytree(cell, copy)
+        run = subprocess.run(
+            [sys.executable, str(BENCH / "extract-bench.py"), str(copy)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(run.returncode, 0, run.stderr)
+        expected = json.loads((copy / "stages.json").read_text())
+        self.assertTrue(expected)
+        self.assertEqual(row["stages"], expected)
 
 
 class DerivedEventStreamTest(unittest.TestCase):

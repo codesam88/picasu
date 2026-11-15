@@ -3,20 +3,20 @@
 Benchmark and debug cells for the Picasu backend. The harness is stdlib-only
 Python; it is not part of the server binary.
 
-| Path                  | Role                                                                             |
-| --------------------- | -------------------------------------------------------------------------------- |
-| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json` |
-| `launch-backend.py`   | Env-driven CLI wrapper around `backend_launcher.py`                              |
-| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts          |
-| `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                      |
-| `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown             |
-| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON extract         |
-| `baselines.tsv`       | Checked-in accepted bands for the gate battery                                   |
-| `extract-bench.py`    | Summarise one or more harness output directories                                 |
-| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest               |
-| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT     |
-| `config.py`           | Typed, validated per-layer configuration shared by every module                  |
-| `manifests/`          | PhotoSpec manifests for fixed image sets                                         |
+| Path                  | Role                                                                              |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`  |
+| `launch-backend.py`   | Env-driven CLI wrapper around `backend_launcher.py`                               |
+| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts           |
+| `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                       |
+| `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown              |
+| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON + report extract |
+| `baselines.tsv`       | Checked-in accepted bands for the gate battery                                    |
+| `extract-bench.py`    | Summarise one or more harness output directories                                  |
+| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                |
+| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT      |
+| `config.py`           | Typed, validated per-layer configuration shared by every module                   |
+| `manifests/`          | PhotoSpec manifests for fixed image sets                                          |
 
 The environment contracts live in the module docstrings. Each producer writes
 into `$OUT`; the launcher writes `launcher-info.json`, which the workload
@@ -124,6 +124,7 @@ bench status <parent>     # per-cell state (queued/running/finished/failed)
 Examples:
 
 ```sh
+just bench status /tmp/picasu-battery-gate    # recipe alias
 just bench cli status /tmp/picasu-battery-gate
 just bench cli battery extract /tmp/picasu-battery-gate --out run.json
 just bench cli preflight --out /dev/shm/scratchpad/cell --port 5795
@@ -185,8 +186,12 @@ with checked-in baselines.
 
 Coverage: the stream carries during-scan measurements (probe rounds, storm
 summaries and canary checks, scan walls). Cell identity, the post-scan
-hyperfine medians and the upload p50 columns in `report.tsv` are still read
-from the transcript.
+hyperfine runs and the upload p50 columns in `report.tsv` are still read
+from the cell's artifacts and transcript. The p95/max cells of the report
+matrix pool raw samples the stream does not carry — the post-scan
+`hyperfine.json` runs, the per-round `hyperfine-round-*.json` exports and
+the per-fetch `probe-round-*.tsv` files — so those values come from the
+same artifacts for a cell with or without an event stream.
 
 ## Extractor drain tables
 
@@ -198,13 +203,23 @@ adds `tree_refresh_build_*` / `filter_snapshot_clone_*` summary columns to
 the printed table. Cells without drain tables (stats off or older logs)
 still parse unchanged; their `stages.json` is an empty list.
 
+The battery parses the same tables in process: `build_row` runs the
+extractor's functions over `server.log`, so the report's stage columns and
+`battery extract`'s per-rep `stages` come from one parse. A separate
+`extract-bench.py` run is not required, and building a row writes nothing
+into the cell outdir.
+
+`extract-bench.py --profile upload <out>` labels a cell's during-scan
+probes as the `uscan` background; without `--profile` they land in `scan`.
+The battery passes the profile of the cell it rebuilds.
+
 ## Canonical cell
 
 ```sh
 cargo build --release --bin picasu
 just bench seed-images ~/picasu-bench/set-100 100
 just bench workload /tmp/picasu-bench-N8-100-r1 ~/picasu-bench/set-100 100 8
-just bench extract /tmp/picasu-bench-N8-100-r1
+python3 utils/bench/extract-bench.py /tmp/picasu-bench-N8-100-r1
 ```
 
 `just bench workload <out> <image_repo> [images] [ncpu] [build] [port]`
@@ -222,6 +237,18 @@ and the repo must exist; the stack fails with a build/seed hint
 otherwise. `just bench server` serves a backend without driving any
 workload.
 
+An exported `IMAGE_HOME_SRC` selects a prepared sandbox: the recipe
+forwards it into the cell environment and runs the preflight
+sandbox-manifest check first, so an unprepared sandbox stops the recipe
+before any cell process starts:
+
+```
+FAIL sandbox: IMAGE_HOME_SRC has no sandbox-manifest.json: /dev/shm/scratchpad/sb (prepare it with `bench prepare`)
+```
+
+Without `IMAGE_HOME_SRC` the check is skipped and the recipe behaves
+exactly as before.
+
 ## Batteries and baselines
 
 A battery is an ordered, pinned matrix of cells for one scale. Env and
@@ -230,7 +257,9 @@ state). Each cell runs `BATTERY_REPEATS` times (default 3, minimum 1;
 an exported `BATTERY_REPEATS` wins) into outdirs `<out>-rep1..N`, and
 each run writes one row to `<out>/report.tsv`. After the N runs an extra
 row named `<cell>:median` is appended. Numeric metrics are pooled across
-the N repeat rows and reduced to their median; comma-separated lists
+the N repeat rows and reduced to their median, except the matrix's
+`p95`/`max` columns (pooled percentile/worst) and the storm failed counts
+(sum); comma-separated lists
 (the per-scan `scan_walls_s` and per-scan stage p50/max values) are
 pooled value by value before the median, so a two-scan repeat contributes
 two samples. `n/a` and empty entries contribute nothing and a column
@@ -284,11 +313,30 @@ just bench battery-check /tmp/my-gate-run/report.tsv
 ```
 
 `report.tsv` carries identity (`cell`, profile, level, scale, build,
-git commit from `run-manifest.json`), scan walls, request p50s/worsts
-and idle baselines, upload submit/visible p50s (parsed from the
-`upload ...` log lines), and the extractor's `tree_refresh_build` /
+git commit from `run-manifest.json`), scan walls, the full request-latency
+matrix, and the extractor's `tree_refresh_build` /
 `filter_snapshot_clone` p50/max columns (`n/a` when the drain table is
-absent). Storm aggregates remain in the cell outdir and extractor table.
+absent). Upload submit/visible p50s come from the `upload ...` log lines.
+
+The matrix is one column per background × access condition × statistic:
+
+| Column                               | Source                                                                            |
+| ------------------------------------ | --------------------------------------------------------------------------------- |
+| `idle_{access}_{stat}_ms`            | post-scan hyperfine runs (`hyperfine.json`), server at rest                       |
+| `scan_{access}_{stat}_ms`            | during-scan probe rounds of a control/storm cell                                  |
+| `uscan_{access}_{stat}_ms`           | during-scan probe rounds of the `upload` cell (bucket by profile, not by parsing) |
+| `{idle,scan}_storm_{kind}_{stat}_ms` | concurrent (`scan`) or tree-at-rest (`idle`) storm bursts                         |
+
+`access` is `prefetch`, `thumb`, `edit`, `storm_read`, `storm_thumb` or
+`storm_edit`; `stat` is `p50`, `p95` or `max`. `idle_storm_*` columns are
+filled only by the `storm-idle` profile, whose burst kind comes from
+`IDLE_PROFILE` (default read). A column whose condition the cell did not
+measure is `n/a`; `uscan_storm_*` is always `n/a` because upload never
+runs a storm.
+
+`{idle,scan}_storm_{kind}_failed` counts the ops of one storm kind that
+did not return 200. It is a sum: within a cell over its runs, and across
+repeats on the `:median` row.
 
 Wall and stage columns hold one comma-separated value per scan or per
 run in repeat rows (`scan_walls_s`, `tree_refresh_build_p50_us`,
@@ -296,6 +344,14 @@ run in repeat rows (`scan_walls_s`, `tree_refresh_build_p50_us`,
 with no samples arrives as an explicit `0`, not `n/a`. The `:median`
 row pools those values, so its figures are medians over all scans of all
 repeats.
+
+Matrix `p50` columns keep that median-over-repeats pooling, matching the
+recorded baselines. The tails differ by source: `idle_*` `p95`/`max`
+columns pool every timed post-scan run across all repeats and take the
+percentile or worst; `scan_*`/`uscan_*` tails are the percentile or
+extreme of the per-round probe summaries, then pooled like every other
+per-rep metric; storm tails are the worst per-run summary. A tail
+therefore describes the rounds or runs the cell actually recorded.
 
 `baselines.tsv` is long-format (`cell`, `metric`, `baseline`, `rel_tol`,
 `abs_tol`, `recorded`, `note`). The band is
@@ -314,7 +370,8 @@ recorded under its `<cell>:median` name (e.g. `gate-control:median`).
 
 The runner owns the battery parent: `battery run` creates it and refuses to
 run into a directory holding entries it did not create (anything other than
-`*-repN` subdirs, `report.tsv`, `report.json` and `orchestrator.log`).
+`*-repN` subdirs, `report.tsv`, `report.json`, `orchestrator.log` and the
+extract's `report.md`/`matrix.tsv`).
 `--fresh` wipes the parent first and is the only way past that guard. Manual
 loose cells are therefore impossible.
 
@@ -331,22 +388,54 @@ second battery elsewhere.
 document, on stdout by default or into a file with `--out`:
 
 ```sh
-just bench battery-extract /tmp/my-gate-run
-just bench battery-extract /tmp/my-gate-run /tmp/my-gate-run.json
+just bench extract /tmp/my-gate-run
+just bench extract /tmp/my-gate-run /tmp/my-gate-run.json
 python3 utils/bench/battery.py extract /tmp/my-gate-run --out run.json
+python3 utils/bench/battery.py extract /tmp/my-gate-run --matrix-only
+python3 utils/bench/battery.py extract /tmp/my-gate-run --format tsv --matrix-only
 ```
+
+One extract produces three artifacts. The JSON document (stdout, or the
+`--out` file) is the machine-readable record; `report.md` is the
+human-readable report; `matrix.tsv` carries the same view matrices as a
+spreadsheet-readable TSV. Both human files are written next to the
+JSON — into `--out`'s directory, or into the battery parent when the
+JSON goes to stdout — and `--format md|tsv|both` (default `both`)
+selects which. `--matrix-only` prints the human view on stdout (the
+Markdown report, or the TSV with `--format tsv`) instead of the JSON
+document, for quick reading.
+
+The views roll up in three steps: rep rows pool into one
+`<cell>:median` row per cell (the rows `battery check` compares), each
+of the three stat matrices (p50, p95, max; rows = the six accesses,
+columns = the three backgrounds) takes the median across the profile
+medians that measured each background × access cell, and the
+contributor counts record how many profiles contributed to every cell.
+A lone contributor passes through unchanged; a cell no profile
+measured is `n/a`. Both human artifacts are derived, never stored: the
+JSON document keeps its shape and carries the medians they recompute
+from.
+
+`report.md` sections — all generated from the extract's rows, ranked
+facts only, deterministic for one input:
+
+| Section           | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| header            | battery path, level, scale, build, commit, date, cell outcomes (`completed=…, failed=…, incomplete=…, errors=…`) and a `failures:` line naming every rep dir that did not complete (failed, incomplete, or unparseable `error (…)`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `p50`/`p95`/`max` | one Markdown table per stat: rows = the six accesses, columns = the three backgrounds, values rolled up as above; then the contributor-count table — the same values `matrix.tsv` carries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| anomalies         | `worst values`: per stat the highest single median-row value with its cell and condition; `expected data missing`: every `n/a` in a column the profile was expected to fill (its probe/storm conditions and the idle baselines, the upload p50s, the observer drain stages, the storm failed counts); `contributor counts below 2`: only the shared `idle_*` probe/baseline columns (idle prefetch/thumb/edit) that every profile fills, when their rollup rests on fewer than two profile medians — a count of 1 there means profiles stopped reporting. Structurally single-contributor columns (`scan_*`, `uscan_*`, and the storm kinds) are by design and never flagged. Conformance stays available via `battery check` (`bench battery-check`), which is not part of the report. |
 
 Document shape (one JSON object, strict — non-finite numbers become
 `null`, `n/a` stays the string `"n/a"`):
 
-| Key       | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `battery` | the parent directory                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `level`   | battery level taken from the parsed rows; `null` when no rep parsed                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `cells`   | one entry per rep subdir in sorted order: `dir`, `row` (the report row via `build_row`), `manifest` (`run-manifest.json` identity subset: `dataset_id`, `dataset_count`, `commit`, `build_profile`, `observer`, `mode`, `binary_sha`; `null` for a missing or unreadable manifest), `stages` (parsed `stages.json`, else `[]`), `terminal` (`state` from `status-final.json`, else `"incomplete"`). A rep whose artifacts no longer parse becomes `{"dir", "error"}` and the walk continues |
-| `medians` | one `<cell>:median` row per cell that contributed two or more rep rows, pooled exactly like the report's median rows                                                                                                                                                                                                                                                                                                                                                                        |
-| `report`  | the parent's `report.tsv` rows verbatim (empty list when the file is absent)                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `errors`  | number of error entries among `cells`                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Key       | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `battery` | the parent directory                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `level`   | battery level taken from the parsed rows; `null` when no rep parsed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `cells`   | one entry per rep subdir in sorted order: `dir`, `row` (the report row via `build_row`), `manifest` (`run-manifest.json` identity subset: `dataset_id`, `dataset_count`, `commit`, `build_profile`, `observer`, `mode`, `binary_sha`; `null` for a missing or unreadable manifest), `stages` (the rep's stage rows as `build_row` parsed them from `server.log`, else a parsed `stages.json` when the cell carries no drain tables, else `[]`), `terminal` (`state` from `status-final.json`, else `"incomplete"`). A rep whose artifacts no longer parse becomes `{"dir", "error"}` and the walk continues |
+| `medians` | one `<cell>:median` row per cell that contributed two or more rep rows, pooled exactly like the report's median rows; the rollup inputs `report.md` and `matrix.tsv` render from                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `report`  | the parent's `report.tsv` rows verbatim (empty list when the file is absent; a report written under an older column scheme is omitted with a warning)                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `errors`  | number of error entries among `cells`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Exit status: `0` when at least one rep parsed (a partial battery still
 emits the document), `1` when the parent holds no rep subdirs or is not a
