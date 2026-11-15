@@ -18,10 +18,10 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::queue::submit_interactive_album;
+
 use anyhow::Result;
 use arrayvec::ArrayString;
-use futures::future::try_join_all;
+
 use log::warn;
 use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
@@ -46,8 +46,8 @@ type DeleteResult = (
 /// Delete the listed assets: files, sidecars and metadata rows are removed.
 ///
 /// `assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar
-/// are removed from disk and its metadata row is dropped. Every album the
-/// deletion touched is refreshed before the response returns.
+/// are removed from disk and its metadata row is dropped. Album aggregates are
+/// maintained by deltas.
 ///
 /// Corner cases: An empty `assetIds` is a 400. IDs are processed in order, so
 /// a malformed or unresolvable ID aborts the request part-way and files
@@ -119,7 +119,8 @@ pub async fn delete_data(
         move || cleanup_album_descendants(&to_remove)
     })
     .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?;
+    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
+    .or_raise(|| (ErrorKind::Internal, "Failed to clean up album descendants"))?;
 
     if !abstract_data_to_remove.is_empty() {
         BATCH_COORDINATOR
@@ -130,26 +131,70 @@ pub async fn delete_data(
 
     crate::storage::tree_view::tree_changed();
 
-    try_join_all(
-        all_affected_album_ids
-            .into_iter()
-            .map(|album_id| async move {
-                submit_interactive_album(album_id).await.map_err(|e| {
-                    AppError::new(
-                        ErrorKind::Internal,
-                        format!("Failed to update affected album: {e:#}"),
-                    )
-                })
-            }),
-    )
-    .await?;
+    let _ = all_affected_album_ids;
     Ok(())
 }
 
 /// Recursively clean up descendant assets for any albums in the removal list.
 /// Removes files, sidecars, asset table entries, and directories from disk.
 #[quint::operation("OP-3")]
-fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
+#[allow(warnings)]
+pub(crate) fn cleanup_album_descendants(
+    abstract_data_to_remove: &[AbstractData],
+) -> Result<(), AppError> {
+    // Drop membership rows for any album being deleted, and detach any remaining
+    // members, all in one write transaction.
+    {
+        use crate::storage::db::{ASSET_BY_ID, TREE};
+        let deleted_album_ids: Vec<ArrayString<64>> = abstract_data_to_remove
+            .iter()
+            .filter_map(|d| match d {
+                AbstractData::Album(a) => Some(a.object.id),
+                _ => None,
+            })
+            .collect();
+        if !deleted_album_ids.is_empty() {
+            let assets = crate::storage::asset_store::get_all_assets().or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    "Failed to list assets for album detach",
+                )
+            })?;
+            let txn = TREE.in_disk.begin_write().or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    "Failed to begin album detach transaction",
+                )
+            })?;
+            for alb_id in &deleted_album_ids {
+                crate::storage::asset_store::drop_album_members(&txn, alb_id.as_str())
+                    .or_raise(|| (ErrorKind::Database, "Failed to drop album member rows"))?;
+            }
+            let mut id_table = txn
+                .open_table(ASSET_BY_ID)
+                .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
+            for asset in &assets {
+                if let Some(aid) = asset.album_id
+                    && deleted_album_ids.contains(&aid)
+                {
+                    let mut updated = asset.clone();
+                    updated.album_id = None;
+                    let json = serde_json::to_string(&updated).or_raise(|| {
+                        (
+                            ErrorKind::Serialization,
+                            "Failed to serialize detached asset",
+                        )
+                    })?;
+                    id_table
+                        .insert(&*updated.asset_id, json.as_str())
+                        .or_raise(|| (ErrorKind::Database, "Failed to detach asset record"))?;
+                }
+            }
+            drop(id_table);
+            txn.commit()
+                .or_raise(|| (ErrorKind::Database, "Failed to commit album detach"))?;
+        }
+    }
     for abstract_data in abstract_data_to_remove {
         if let AbstractData::Album(alb) = abstract_data {
             if alb.metadata.dir_path.is_empty() {
@@ -158,54 +203,58 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
             let dir_path = Path::new(&alb.metadata.dir_path);
 
             // Find and remove all descendant assets.
-            if let Ok(descendants) =
+            let descendants =
                 crate::storage::asset_store::get_assets_under_path(&alb.metadata.dir_path)
-            {
-                for desc in &descendants {
-                    // Delete file + sidecar from disk.
-                    let file_path = Path::new(&desc.path);
-                    if let Err(e) = std::fs::remove_file(file_path)
-                        && e.kind() != std::io::ErrorKind::NotFound
-                    {
-                        warn!("Failed to delete descendant {}: {e}", file_path.display());
-                    }
-                    let sidecar = file_path.with_extension("xmp");
-                    if sidecar.exists()
-                        && let Err(e) = std::fs::remove_file(&sidecar)
-                    {
-                        warn!(
-                            "Failed to delete descendant sidecar {}: {e}",
-                            sidecar.display()
-                        );
-                    }
-
-                    // Clean up asset tables.
-                    let _ = crate::storage::asset_store::remove_asset(desc);
-
-                    // Evict child album caches.
-                    if desc.kind == crate::model::asset::AssetKind::Album {
-                        evict_dir_album(Path::new(&desc.path));
-                    }
+                    .or_raise(|| {
+                        (
+                            ErrorKind::Database,
+                            "Failed to list descendant assets for album",
+                        )
+                    })?;
+            for desc in &descendants {
+                // Delete file + sidecar from disk.
+                let file_path = Path::new(&desc.path);
+                if let Err(e) = std::fs::remove_file(file_path)
+                    && e.kind() != std::io::ErrorKind::NotFound
+                {
+                    warn!("Failed to delete descendant {}: {e}", file_path.display());
                 }
-
-                // Flush descendant records from METADATA_TABLE.
-                let desc_abstract: Vec<AbstractData> = descendants
-                    .iter()
-                    .map(crate::process::transitor::asset_record_to_abstract_data)
-                    .collect();
-                if !desc_abstract.is_empty() {
-                    // Use blocking wait to ensure METADATA_TABLE is updated before we proceed.
-                    let _ = futures::executor::block_on(
-                        BATCH_COORDINATOR
-                            .execute_batch_waiting(FlushTreeTask::remove(desc_abstract)),
+                let sidecar = file_path.with_extension("xmp");
+                if sidecar.exists()
+                    && let Err(e) = std::fs::remove_file(&sidecar)
+                {
+                    warn!(
+                        "Failed to delete descendant sidecar {}: {e}",
+                        sidecar.display()
                     );
                 }
+
+                // Clean up asset tables.
+                let _ = crate::storage::asset_store::remove_asset(desc);
+
+                // Evict child album caches.
+                if desc.kind == crate::model::asset::AssetKind::Album {
+                    evict_dir_album(Path::new(&desc.path));
+                }
+            }
+
+            // Flush descendant records from METADATA_TABLE.
+            let desc_abstract: Vec<AbstractData> = descendants
+                .iter()
+                .map(crate::process::transitor::asset_record_to_abstract_data)
+                .collect();
+            if !desc_abstract.is_empty() {
+                // Use blocking wait to ensure METADATA_TABLE is updated before we proceed.
+                let _ = futures::executor::block_on(
+                    BATCH_COORDINATOR.execute_batch_waiting(FlushTreeTask::remove(desc_abstract)),
+                );
             }
 
             // Remove the directory tree itself.
             let _ = std::fs::remove_dir_all(dir_path);
         }
     }
+    Ok(())
 }
 
 /// Bump and lease every path this delete request touches. Media records take

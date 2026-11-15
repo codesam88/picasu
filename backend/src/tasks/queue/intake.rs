@@ -52,6 +52,7 @@ pub enum IntakeKind {
     ExpireCheck,
     /// Request-path album self-update. `reply` carries the outcome back to
     /// the request; `None` means fire-and-forget (errors are logged).
+    #[allow(dead_code)]
     InteractiveAlbum {
         album_id: ArrayString<64>,
         reply: Option<oneshot::Sender<Result<()>>>,
@@ -344,23 +345,6 @@ pub async fn submit_interactive_album(album_id: ArrayString<64>) -> Result<()> {
     .await?;
     rx.await
         .map_err(|_| anyhow::anyhow!("interactive worker dropped the album result"))?
-}
-
-/// Enqueue a fire-and-forget album self-update on the Interactive lane.
-/// Worker errors are logged, never propagated.
-pub async fn submit_interactive_album_detached(album_id: ArrayString<64>) -> Result<()> {
-    enqueue(IntakeItem {
-        path: PathBuf::new(),
-        priority: Priority::Interactive,
-        kind: IntakeKind::InteractiveAlbum {
-            album_id,
-            reply: None,
-        },
-        generation: 0,
-        mtime: None,
-        len: None,
-    })
-    .await
 }
 
 /// Take the next queued item in lane order. `None` means every lane closed,

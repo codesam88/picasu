@@ -1,8 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::openapi_components::Unauthorized;
-use crate::process::dir_album::{
-    get_dir_path_for_album, get_or_create_dir_album, mark_album_for_update,
-};
+use crate::process::dir_album::{get_dir_path_for_album, get_or_create_dir_album};
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
@@ -99,8 +97,6 @@ pub async fn create_dir_album(
                 format!("Failed to register album: {e}"),
             )
         })?;
-
-        mark_album_for_update(parent_album_id);
 
         Ok(album_id)
     })

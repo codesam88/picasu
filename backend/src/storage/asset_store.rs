@@ -145,6 +145,7 @@ pub fn remove_asset_by_path(path: &str) -> Result<()> {
 /// `apply_dir_move_plans`' single-transaction pattern. The `DUPE_INDEX` is not
 /// touched: the content hash is unchanged by a move.
 pub fn move_asset_mapping(old_path: &str, new_path: &str, updated: &AssetRecord) -> Result<()> {
+    use redb::ReadableTable;
     let txn = TREE
         .in_disk
         .begin_write()
@@ -157,6 +158,17 @@ pub fn move_asset_mapping(old_path: &str, new_path: &str, updated: &AssetRecord)
             .open_table(ASSET_BY_PATH)
             .context("Failed to open ASSET_BY_PATH for write")?;
 
+        // Capture the previous album assignment before overwriting the record.
+        let old_album = id_table
+            .get(&*updated.asset_id)
+            .context("Failed to read ASSET_BY_ID during move")?
+            .map(|g| {
+                serde_json::from_str::<AssetRecord>(g.value())
+                    .context("Failed to deserialize AssetRecord during move")
+            })
+            .transpose()?
+            .and_then(|r| r.album_id);
+
         let json = serde_json::to_string(updated).context("Failed to serialize AssetRecord")?;
         id_table
             .insert(&*updated.asset_id, json.as_str())
@@ -168,6 +180,53 @@ pub fn move_asset_mapping(old_path: &str, new_path: &str, updated: &AssetRecord)
         path_table
             .insert(new_path, &*updated.asset_id)
             .context("Failed to add new path mapping")?;
+
+        drop(id_table);
+        drop(path_table);
+
+        let new_album = updated.album_id;
+        let size = updated.file_size;
+        let is_trashed = updated.is_trashed;
+
+        // Member-row re-key + album aggregate deltas, all in this same txn.
+        if old_album != new_album {
+            if let Some(old_alb) = old_album
+                && !is_trashed
+            {
+                apply_album_delta(
+                    &txn,
+                    old_alb.as_str(),
+                    AlbumDelta {
+                        count_delta: -1,
+                        size_delta: -size.cast_signed(),
+                        member: Some(updated.asset_id),
+                        is_add: false,
+                        member_timestamp: None,
+                        member_size_override: Some(size),
+                        is_update: false,
+                    },
+                )
+                .with_context(|| format!("Failed to remove member from album {old_alb}"))?;
+            }
+            if let Some(new_alb) = new_album
+                && !is_trashed
+            {
+                apply_album_delta(
+                    &txn,
+                    new_alb.as_str(),
+                    AlbumDelta {
+                        count_delta: 1,
+                        size_delta: 0,
+                        member: Some(updated.asset_id),
+                        is_add: true,
+                        member_timestamp: None,
+                        member_size_override: Some(size),
+                        is_update: false,
+                    },
+                )
+                .with_context(|| format!("Failed to add member to album {new_alb}"))?;
+            }
+        }
     }
     txn.commit().context("Failed to commit asset move mapping")
 }
@@ -388,6 +447,478 @@ pub fn remove_asset(record: &AssetRecord) -> Result<()> {
     remove_asset_by_path(&record.path)?;
     if let Some(hash) = &record.content_hash {
         remove_from_dupe_group(hash, record.asset_id)?;
+    }
+    Ok(())
+}
+
+// ── Album membership index (txn-scoped) ──────────────────────────────────────
+
+use crate::storage::db::ASSET_BY_ALBUM;
+
+/// Add one member row to `ASSET_BY_ALBUM` (idempotent).
+pub fn add_album_member(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<()> {
+    debug_assert!(
+        !album_id.contains('/') && !asset_id.contains('/'),
+        "album/asset ids must not contain the key separator"
+    );
+    let mut table = txn
+        .open_table(ASSET_BY_ALBUM)
+        .context("Failed to open ASSET_BY_ALBUM for write")?;
+    let key = format!("{album_id}/{asset_id}");
+    table
+        .insert(key.as_str(), asset_id)
+        .context("Failed to insert ASSET_BY_ALBUM row")?;
+    Ok(())
+}
+
+/// Remove one member row from `ASSET_BY_ALBUM`.
+pub fn remove_album_member(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<()> {
+    debug_assert!(
+        !album_id.contains('/') && !asset_id.contains('/'),
+        "album/asset ids must not contain the key separator"
+    );
+    let mut table = txn
+        .open_table(ASSET_BY_ALBUM)
+        .context("Failed to open ASSET_BY_ALBUM for write")?;
+    let key = format!("{album_id}/{asset_id}");
+    let _ = table.remove(key.as_str());
+    Ok(())
+}
+
+/// List the asset IDs that are members of `album_id` (prefix range scan).
+pub fn list_album_members(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+) -> anyhow::Result<Vec<String>> {
+    use redb::ReadableTable;
+    let table = txn
+        .open_table(ASSET_BY_ALBUM)
+        .context("Failed to open ASSET_BY_ALBUM for read")?;
+    let prefix = format!("{album_id}/");
+    let mut out = Vec::new();
+    for row in table
+        .range(prefix.as_str()..)
+        .context("Failed to range scan ASSET_BY_ALBUM")?
+    {
+        let (key_guard, value_guard) = row.context("Failed to read ASSET_BY_ALBUM row")?;
+        let key = key_guard.value();
+        if !key.starts_with(&prefix) {
+            break;
+        }
+        out.push(value_guard.value().to_string());
+    }
+    Ok(out)
+}
+
+/// Drop every member row for `album_id`.
+pub fn drop_album_members(txn: &redb::WriteTransaction, album_id: &str) -> anyhow::Result<()> {
+    let members = list_album_members(txn, album_id)?;
+    let mut table = txn
+        .open_table(ASSET_BY_ALBUM)
+        .context("Failed to open ASSET_BY_ALBUM for write")?;
+    for asset_id in members {
+        let key = format!("{album_id}/{asset_id}");
+        let _ = table.remove(key.as_str());
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Default)]
+#[allow(warnings)]
+pub struct AlbumDelta {
+    pub count_delta: i64,
+    pub size_delta: i64,
+    pub member: Option<ArrayString<64>>,
+    pub is_add: bool,
+    /// Override for the member's timestamp (used on removal when the record
+    /// has already been overwritten/deleted). Falls back to reading the
+    /// member's current record.
+    pub member_timestamp: Option<i64>,
+    /// Override for the member's size (used on removal). Falls back to
+    /// reading the member's current record.
+    pub member_size_override: Option<u64>,
+    /// When true, the member row is left in place (no add/remove) but the
+    /// album's size delta is applied and its time range + cover are recomputed
+    /// from the member table (uniform rule for any size/timestamp change).
+    pub is_update: bool,
+}
+
+const ALBUM_PRIORITY_LIST: &[&str] = &["DateTimeOriginal", "filename", "modified", "scan_time"];
+
+/// Read one member's sort timestamp, size, and thumbhash. A missing record
+/// is a legitimate zero fact (the removal paths delete the record before
+/// applying the delta); a table or decode failure is not.
+#[allow(warnings)]
+fn member_info(
+    txn: &redb::WriteTransaction,
+    asset_id: &str,
+) -> anyhow::Result<(i64, u64, Option<Vec<u8>>)> {
+    use crate::model::metadata_record::compose_abstract_data;
+    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
+    use redb::ReadableTable;
+    let id_table = txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID for member read")?;
+    let meta_table = txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE for member read")?;
+    let Some(record_json) = id_table
+        .get(asset_id)
+        .with_context(|| format!("Failed to read ASSET_BY_ID row for {asset_id}"))?
+    else {
+        return Ok((0, 0, None));
+    };
+    let record: crate::model::asset::AssetRecord = serde_json::from_str(record_json.value())
+        .with_context(|| format!("Failed to deserialize AssetRecord for {asset_id}"))?;
+    let payload = meta_table
+        .get(asset_id)
+        .with_context(|| format!("Failed to read METADATA_TABLE row for {asset_id}"))?
+        .map(|g| g.value());
+    let ad = compose_abstract_data(&record, payload.as_ref());
+    let ts = ad.compute_timestamp(ALBUM_PRIORITY_LIST);
+    let size = match &ad {
+        crate::model::abstract_data::AbstractData::Image(img) => img.metadata.size,
+        crate::model::abstract_data::AbstractData::Video(vid) => vid.metadata.size,
+        _ => 0,
+    };
+    let thumb = ad.thumbhash().cloned();
+    Ok((ts, size, thumb))
+}
+
+#[allow(warnings)]
+fn recompute_time_range(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+) -> anyhow::Result<(Option<i64>, Option<i64>)> {
+    let members = list_album_members(txn, album_id)?;
+    if members.is_empty() {
+        return Ok((None, None));
+    }
+    let mut min = i64::MAX;
+    let mut max = i64::MIN;
+    for mid in members {
+        let (ts, _, _) = member_info(txn, &mid)?;
+        min = min.min(ts);
+        max = max.max(ts);
+    }
+    Ok((Some(min), Some(max)))
+}
+
+#[allow(warnings)]
+fn recompute_cover_from_members(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+) -> anyhow::Result<(Option<ArrayString<64>>, Option<Vec<u8>>)> {
+    let members = list_album_members(txn, album_id)?;
+    if members.is_empty() {
+        return Ok((None, None));
+    }
+    let mut best: Option<(i64, ArrayString<64>, Option<Vec<u8>>)> = None;
+    for mid in members {
+        let (ts, _, th) = member_info(txn, &mid)?;
+        let id: ArrayString<64> = mid
+            .parse()
+            .map_err(|_| anyhow::anyhow!("album member id exceeds 64 bytes: {mid}"))?;
+        match &best {
+            None => best = Some((ts, id, th)),
+            Some((best_ts, _, _)) if ts > *best_ts => best = Some((ts, id, th)),
+            _ => {}
+        }
+    }
+    Ok(best
+        .map(|(_, id, th)| (Some(id), th))
+        .unwrap_or((None, None)))
+}
+
+#[allow(warnings)]
+fn descendant_cover(
+    txn: &redb::WriteTransaction,
+    dir_path: &str,
+) -> anyhow::Result<(Option<ArrayString<64>>, Option<Vec<u8>>)> {
+    use crate::model::metadata_record::compose_abstract_data;
+    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
+    use redb::ReadableTable;
+    let id_table = txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID for descendant cover")?;
+    let meta_table = txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE for descendant cover")?;
+    let mut best: Option<(i64, ArrayString<64>, Option<Vec<u8>>)> = None;
+    for row in id_table.iter().context("Failed to scan ASSET_BY_ID")? {
+        let (_, value) = row.context("Failed to read ASSET_BY_ID row")?;
+        let record: crate::model::asset::AssetRecord = serde_json::from_str(value.value())
+            .context("Failed to deserialize AssetRecord during descendant cover")?;
+        if record.kind == crate::model::asset::AssetKind::Album {
+            continue;
+        }
+        if record.is_trashed {
+            continue;
+        }
+        if std::path::Path::new(&record.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            == Some(".__picasu_ph__.jpg")
+        {
+            continue;
+        }
+        if !std::path::Path::new(&record.path).starts_with(dir_path) {
+            continue;
+        }
+        let payload = meta_table
+            .get(&*record.asset_id)
+            .context("Failed to read descendant metadata row")?
+            .map(|g| g.value());
+        let ad = compose_abstract_data(&record, payload.as_ref());
+        let ts = ad.compute_timestamp(ALBUM_PRIORITY_LIST);
+        match &best {
+            None => best = Some((ts, record.asset_id, ad.thumbhash().cloned())),
+            Some((best_ts, _, _)) if ts > *best_ts => {
+                best = Some((ts, record.asset_id, ad.thumbhash().cloned()))
+            }
+            _ => {}
+        }
+    }
+    Ok(best
+        .map(|(_, id, th)| (Some(id), th))
+        .unwrap_or((None, None)))
+}
+
+#[allow(warnings)]
+#[quint::operation("OP-8")]
+pub fn apply_album_delta(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+    delta: AlbumDelta,
+) -> anyhow::Result<()> {
+    use crate::model::abstract_data::AbstractData;
+    use crate::model::metadata_record::{
+        MetadataRecord, compose_abstract_data, to_metadata_record,
+    };
+    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
+    use redb::ReadableTable;
+
+    if let Some(member) = &delta.member {
+        if delta.is_update {
+            // Member row stays in place; nothing to re-key.
+        } else if delta.is_add {
+            add_album_member(txn, album_id, member.as_str())?;
+        } else {
+            remove_album_member(txn, album_id, member.as_str())?;
+        }
+    }
+
+    let id_table = txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID")?;
+    let mut meta_table = txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE")?;
+
+    let record_json = id_table
+        .get(album_id)
+        .with_context(|| format!("Failed to read album record for {album_id}"))?;
+    let record: Option<crate::model::asset::AssetRecord> = record_json
+        .map(|g| {
+            serde_json::from_str(g.value())
+                .with_context(|| format!("Failed to deserialize album record for {album_id}"))
+        })
+        .transpose()?;
+    let payload = meta_table
+        .get(album_id)
+        .with_context(|| format!("Failed to read album metadata for {album_id}"))?
+        .map(|g| g.value());
+
+    // Release the read handles before the helper functions reopen these tables
+    // in the same transaction (redb allows one open handle per table per txn).
+    drop(id_table);
+    drop(meta_table);
+
+    let (record, mut album) = match (record, payload.clone()) {
+        (Some(r), Some(MetadataRecord::Album(_))) => {
+            let ad = compose_abstract_data(&r, payload.as_ref());
+            match ad {
+                AbstractData::Album(a) => (r, a),
+                _ => return Ok(()),
+            }
+        }
+        _ => return Ok(()),
+    };
+    let _ = record;
+
+    let mut size_delta = delta.size_delta;
+    let member_ts = match delta.member_timestamp {
+        Some(ts) => ts,
+        None => match &delta.member {
+            Some(member) => member_info(txn, member.as_str())?.0,
+            None => 0,
+        },
+    };
+    let member_size = match delta.member_size_override {
+        Some(size) => size,
+        None => match &delta.member {
+            Some(member) => member_info(txn, member.as_str())?.1,
+            None => 0,
+        },
+    };
+    if size_delta == 0 && delta.member.is_some() {
+        size_delta = if delta.is_add {
+            member_size as i64
+        } else {
+            -(member_size as i64)
+        };
+    }
+
+    if delta.count_delta != 0 {
+        let new_count = (album.metadata.item_count as i64 + delta.count_delta).max(0) as usize;
+        album.metadata.item_count = new_count;
+    }
+    if size_delta != 0 {
+        if size_delta >= 0 {
+            album.metadata.item_size = album.metadata.item_size.saturating_add(size_delta as u64);
+        } else {
+            album.metadata.item_size = album
+                .metadata
+                .item_size
+                .saturating_sub((-size_delta) as u64);
+        }
+    }
+
+    album.metadata.last_modified_time = chrono::Utc::now().timestamp_millis();
+
+    if delta.is_update && delta.member.is_some() {
+        // Uniform rule: any size/timestamp change recomputes time range + cover
+        // from the member table (O(M)).
+        let (s, e) = recompute_time_range(txn, album_id)?;
+        album.metadata.start_time = s;
+        album.metadata.end_time = e;
+        let (cover, th) = recompute_cover_from_members(txn, album_id)?;
+        album.metadata.cover = cover;
+        album.object.thumbhash = th;
+    } else if delta.is_add && delta.member.is_some() {
+        match album.metadata.start_time {
+            None => album.metadata.start_time = Some(member_ts),
+            Some(s) if member_ts < s => album.metadata.start_time = Some(member_ts),
+            _ => {}
+        }
+        match album.metadata.end_time {
+            None => album.metadata.end_time = Some(member_ts),
+            Some(e) if member_ts > e => album.metadata.end_time = Some(member_ts),
+            _ => {}
+        }
+        // Cover = newest member by timestamp (unified rule).
+        let m = delta.member.as_ref().unwrap();
+        let current_cover_ts = match album.metadata.cover.as_ref() {
+            Some(cover) => member_info(txn, cover.as_str())?.0,
+            None => i64::MIN,
+        };
+        if album.metadata.cover.is_none() || member_ts > current_cover_ts {
+            album.metadata.cover = Some(m.clone());
+            let (_, _, th) = member_info(txn, m.as_str())?;
+            album.object.thumbhash = th;
+        }
+    } else if !delta.is_add && delta.member.is_some() {
+        let m = delta.member.as_ref().unwrap();
+        let _ = member_ts;
+        let _ = m;
+
+        if album.metadata.item_count == 0 {
+            album.metadata.start_time = None;
+            album.metadata.end_time = None;
+            album.metadata.item_size = 0;
+            let (cover, th) = descendant_cover(txn, &album.metadata.dir_path)?;
+            album.metadata.cover = cover;
+            album.object.thumbhash = th;
+        } else {
+            let (s, e) = recompute_time_range(txn, album_id)?;
+            album.metadata.start_time = s;
+            album.metadata.end_time = e;
+            let (cover, th) = recompute_cover_from_members(txn, album_id)?;
+            album.metadata.cover = cover;
+            album.object.thumbhash = th;
+        }
+    }
+
+    let new_payload = to_metadata_record(&AbstractData::Album(album));
+    let mut meta_table = txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to reopen METADATA_TABLE for album write")?;
+    meta_table
+        .insert(album_id, new_payload)
+        .context("Failed to write album metadata")?;
+
+    Ok(())
+}
+
+/// Refresh an empty album's cover from its descendants (no-op when the album
+/// has direct members). Used for ancestor albums after a membership change.
+#[allow(warnings)]
+pub fn refresh_empty_album_cover(
+    txn: &redb::WriteTransaction,
+    album_id: &str,
+) -> anyhow::Result<()> {
+    use crate::model::abstract_data::AbstractData;
+    use crate::model::metadata_record::{
+        MetadataRecord, compose_abstract_data, to_metadata_record,
+    };
+    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
+    use redb::ReadableTable;
+
+    let id_table = txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID")?;
+    let meta_table = txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE")?;
+
+    let record_json = id_table
+        .get(album_id)
+        .with_context(|| format!("Failed to read album record for {album_id}"))?;
+    let record: Option<crate::model::asset::AssetRecord> = record_json
+        .map(|g| {
+            serde_json::from_str(g.value())
+                .with_context(|| format!("Failed to deserialize album record for {album_id}"))
+        })
+        .transpose()?;
+    let payload = meta_table
+        .get(album_id)
+        .with_context(|| format!("Failed to read album metadata for {album_id}"))?
+        .map(|g| g.value());
+    let (record, mut album) = match (record, payload.clone()) {
+        (Some(r), Some(MetadataRecord::Album(_))) => {
+            let ad = compose_abstract_data(&r, payload.as_ref());
+            match ad {
+                AbstractData::Album(a) => (r, a),
+                _ => return Ok(()),
+            }
+        }
+        _ => return Ok(()),
+    };
+    let _ = record;
+    if album.metadata.item_count != 0 {
+        return Ok(());
+    }
+    drop(id_table);
+    drop(meta_table);
+    let (cover, th) = descendant_cover(txn, &album.metadata.dir_path)?;
+    if cover != album.metadata.cover {
+        album.metadata.cover = cover;
+        album.object.thumbhash = th;
+        let mut meta_table = txn
+            .open_table(METADATA_TABLE)
+            .context("Failed to reopen METADATA_TABLE")?;
+        let new_payload = to_metadata_record(&AbstractData::Album(album));
+        meta_table
+            .insert(album_id, new_payload)
+            .context("Failed to write album metadata")?;
     }
     Ok(())
 }

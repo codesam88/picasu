@@ -69,26 +69,6 @@ where
         .map_err(|_| anyhow::anyhow!("background cpu task dropped its result"))?
 }
 
-/// Run interactive-lane CPU work `f` on the dedicated interactive pool
-/// (FIFO order). No admittance permit: interactive jobs are short and the
-/// pool is sized for them, so they never queue behind bulk work — the OS
-/// scheduler preempts the niced-down bulk pool instead.
-pub async fn run_interactive<F, T>(f: F) -> anyhow::Result<T>
-where
-    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
-    T: Send + 'static,
-{
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    crate::tasks::runtime::INTERACTIVE_POOL.spawn_fifo(move || {
-        let exec_timer = observe::Timer::start(Stage::InteractiveExec);
-        let result = f();
-        exec_timer.finish(0);
-        let _ = tx.send(result);
-    });
-    rx.await
-        .map_err(|_| anyhow::anyhow!("interactive cpu task dropped its result"))?
-}
-
 /// Run short blocking I/O `f` on the Tokio blocking pool. For reads, writes,
 /// and other brief blocking sections only — never CPU work, which would
 /// evade the N-1 budget the [`run_cpu`] semaphore enforces.

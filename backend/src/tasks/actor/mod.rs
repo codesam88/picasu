@@ -1,4 +1,3 @@
-pub mod album;
 pub mod album_index;
 pub mod deduplicate;
 pub mod hash;

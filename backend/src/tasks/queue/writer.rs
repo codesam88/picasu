@@ -94,9 +94,7 @@ use tokio::sync::{Mutex, Notify, mpsc};
 
 use super::bridge::run_cpu;
 use crate::model::abstract_data::AbstractData;
-use crate::process::dir_album::drain_pending_album_updates;
 use crate::storage::tree_view::mark_tree_dirty_background;
-use crate::tasks::actor::album::album_task;
 use crate::tasks::batcher::expire_check::expire_check_task;
 use crate::tasks::batcher::flush_tree::flush_tables;
 use crate::tasks::batcher::update_expire::update_expire_task;
@@ -367,7 +365,9 @@ async fn writer_loop(
             merged += 1;
         }
         if merged > 0 {
-            flush_tables(&inserts, &removes);
+            if let Err(err) = flush_tables(&inserts, &removes) {
+                log::error!("writer flush failed: {err:#}");
+            }
             mark_tree_dirty_background();
             enqueue_cascade(&cascade_tx, flush_seq, CascadeOp::AfterWrite).await;
             complete_seq(flush_seq);
@@ -399,23 +399,31 @@ async fn enqueue_cascade(cascade_tx: &mpsc::Sender<(u64, CascadeOp)>, seq: u64, 
 fn handle_op(op: WriteOp) -> CascadeOp {
     match op {
         WriteOp::Flush { inserts, removes } => {
-            flush_tables(&inserts, &removes);
+            if let Err(err) = flush_tables(&inserts, &removes) {
+                log::error!("writer flush failed: {err:#}");
+            }
             mark_tree_dirty_background();
             CascadeOp::AfterWrite
         }
         WriteOp::ExpireCheck => CascadeOp::ExpireRound,
         WriteOp::SweepDirAlbums(entries) => {
-            handle_sweep_dir_albums(entries);
+            if let Err(err) = handle_sweep_dir_albums(entries) {
+                log::error!("sweep dir albums failed: {err:#}");
+            }
             mark_tree_dirty_background();
             CascadeOp::Noop
         }
         WriteOp::PruneUsersRoot(users_root) => {
-            handle_prune_users_root(&users_root);
+            if let Err(err) = handle_prune_users_root(&users_root) {
+                log::error!("prune users root failed: {err:#}");
+            }
             mark_tree_dirty_background();
             CascadeOp::Noop
         }
         WriteOp::SweepRemoveBatch { paths } => {
-            crate::tasks::batcher::flush_tree::sweep_remove_batch(&paths);
+            if let Err(err) = crate::tasks::batcher::flush_tree::sweep_remove_batch(&paths) {
+                log::error!("sweep remove batch failed: {err:#}");
+            }
             mark_tree_dirty_background();
             CascadeOp::Noop
         }
@@ -467,17 +475,6 @@ async fn handle_cascade(op: CascadeOp) {
 /// Asset rows are already durable; the in-memory view refreshes lazily from
 /// its epoch, so this stage never rebuilds it.
 async fn cascade_after_write() {
-    let pending = drain_pending_album_updates();
-    // Snapshot the tree once per cascade entry; album tasks share it through
-    // an `Arc` and never rebuild (or touch snapshot_tree) themselves.
-    let ref_data: std::sync::Arc<[crate::model::response::DatabaseTimestamp]> =
-        crate::storage::db::snapshot_tree().into();
-    for album_id in pending {
-        let ref_data = std::sync::Arc::clone(&ref_data);
-        if let Err(err) = run_cpu(move || album_task(album_id, &ref_data)).await {
-            log::warn!("cascade album self-update failed for {album_id}: {err:#}");
-        }
-    }
     cascade_update_expire().await;
 }
 
@@ -507,67 +504,64 @@ async fn cascade_expire_round() {
 /// Asset-table and metadata writes run here, inside the writer; the caller
 /// evicts nothing — cache eviction is part of this op so DB and cache stay
 /// ordered.
-fn handle_sweep_dir_albums(entries: Vec<(PathBuf, ArrayString<64>)>) {
+fn handle_sweep_dir_albums(entries: Vec<(PathBuf, ArrayString<64>)>) -> anyhow::Result<()> {
     use crate::storage::db::{METADATA_TABLE, TREE};
+    use anyhow::Context;
 
     for (dir_path, album_id) in entries {
-        let _ = crate::storage::asset_store::remove_asset_by_id(album_id.as_str());
-        let _ =
-            crate::storage::asset_store::remove_asset_by_path(dir_path.to_string_lossy().as_ref());
-        if let Ok(txn) = TREE.in_disk.begin_write() {
-            if let Ok(mut table) = txn.open_table(METADATA_TABLE) {
-                let _ = table.remove(&*album_id);
-            }
-            let _ = txn.commit();
-        }
+        crate::storage::asset_store::remove_asset_by_id(album_id.as_str())?;
+        crate::storage::asset_store::remove_asset_by_path(dir_path.to_string_lossy().as_ref())?;
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .context("Failed to begin write txn for dir-album sweep")?;
+        // Drop member rows for this deleted album (legacy residue heal).
+        crate::storage::asset_store::drop_album_members(&txn, album_id.as_str())?;
+        let mut table = txn
+            .open_table(METADATA_TABLE)
+            .context("Failed to open METADATA_TABLE for dir-album sweep")?;
+        table
+            .remove(&*album_id)
+            .context("Failed to remove dir-album metadata")?;
+        drop(table);
+        txn.commit().context("Failed to commit dir-album sweep")?;
         crate::process::dir_album::evict_dir_album(&dir_path);
     }
+    Ok(())
 }
 
 /// Removal of the album record on the `users_home` root itself, which must
 /// never carry one.
-fn handle_prune_users_root(users_root: &std::path::Path) {
+fn handle_prune_users_root(users_root: &std::path::Path) -> anyhow::Result<()> {
     use crate::storage::db::{METADATA_TABLE, TREE};
+    use anyhow::Context;
 
     let users_root_str = users_root.to_string_lossy().to_string();
-    let Ok(Some(album_id)) = crate::storage::asset_store::get_asset_id_by_path(&users_root_str)
-    else {
-        return;
+    let Some(album_id) = crate::storage::asset_store::get_asset_id_by_path(&users_root_str)? else {
+        return Ok(());
     };
-    let _ = crate::storage::asset_store::remove_asset_by_id(album_id.as_str());
-    let _ = crate::storage::asset_store::remove_asset_by_path(&users_root_str);
-    if let Ok(txn) = TREE.in_disk.begin_write() {
-        if let Ok(mut table) = txn.open_table(METADATA_TABLE) {
-            let _ = table.remove(&*album_id);
-        }
-        let _ = txn.commit();
-    }
+    crate::storage::asset_store::remove_asset_by_id(album_id.as_str())?;
+    crate::storage::asset_store::remove_asset_by_path(&users_root_str)?;
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .context("Failed to begin write txn for users-root prune")?;
+    crate::storage::asset_store::drop_album_members(&txn, album_id.as_str())?;
+    let mut table = txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE for users-root prune")?;
+    table
+        .remove(&*album_id)
+        .context("Failed to remove users-root album metadata")?;
+    drop(table);
+    txn.commit().context("Failed to commit users-root prune")?;
     crate::process::dir_album::evict_dir_album(users_root);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn cascade_two_pending_albums_rebuilds_at_most_once() {
-        let _ = &*crate::tests::bootstrap::TEST_ENV;
-        crate::tasks::observe::reset();
-        crate::process::dir_album::mark_album_for_update(
-            arrayvec::ArrayString::from("album-a").expect("fits"),
-        );
-        crate::process::dir_album::mark_album_for_update(
-            arrayvec::ArrayString::from("album-b").expect("fits"),
-        );
-        cascade_after_write().await;
-        let recorded = crate::tasks::observe::snapshot()
-            .stage(crate::tasks::observe::Stage::TreeRefreshBuild)
-            .recorded;
-        assert!(
-            recorded <= 1,
-            "expected at most one TreeRefreshBuild, got {recorded}"
-        );
-    }
 
     #[test]
     fn completed_watermarks_never_regress() {
@@ -708,23 +702,7 @@ mod tests {
         }
         flush_tables(&[data1], &[]);
 
-        assert!(
-            dir_album::PENDING_ALBUM_UPDATES
-                .lock()
-                .expect("lock")
-                .contains(&album_id),
-            "first member write must mark the album pending"
-        );
-
         cascade_after_write().await;
-
-        assert!(
-            !dir_album::PENDING_ALBUM_UPDATES
-                .lock()
-                .expect("lock")
-                .contains(&album_id),
-            "cascade must drain the pending flag"
-        );
 
         // Read stats.
         let read_count = |aid: ArrayString<64>| -> usize {
@@ -762,24 +740,8 @@ mod tests {
         }
         flush_tables(&[data2], &[]);
 
-        assert!(
-            dir_album::PENDING_ALBUM_UPDATES
-                .lock()
-                .expect("lock")
-                .contains(&album_id),
-            "late member write must re-mark the album pending"
-        );
-
         // Second cascade converges and includes the late member.
         cascade_after_write().await;
-
-        assert!(
-            !dir_album::PENDING_ALBUM_UPDATES
-                .lock()
-                .expect("lock")
-                .contains(&album_id),
-            "second cascade must drain the pending flag"
-        );
         let c2 = read_count(album_id);
         let actual2 = count_members(album_id);
         assert_eq!(

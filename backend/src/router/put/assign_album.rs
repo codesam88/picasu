@@ -3,14 +3,13 @@ use crate::openapi_components::Unauthorized;
 
 use crate::model::asset::AssetRecord;
 use crate::process::dir_album::{
-    get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
-    rewrite_dir_album_cache_prefix,
+    get_dir_path_for_album, get_parent_album_id, rewrite_dir_album_cache_prefix,
 };
 use crate::process::sanitize::find_unique_path;
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::queue::submit_interactive_album;
+
 use arrayvec::ArrayString;
 use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
@@ -72,9 +71,9 @@ pub enum AssignOutcome {
 /// the asset's own path moves, never hash-matched duplicates: the stored path
 /// and album membership are rewritten to match, an album moves as its whole
 /// directory tree with every descendant record's path rewritten, and a `.xmp`
-/// sidecar rides along with the file. The destination album's stats are
-/// refreshed and the query-cache version bumped before the response returns, so
-/// the next prefetch already reflects the move.
+/// sidecar rides along with the file. Album aggregates are maintained by deltas;
+/// the query-cache version is bumped before the response returns, so the next
+/// prefetch already reflects the move.
 ///
 /// Corner cases: `onConflict` is required and has no default — `skip` leaves an
 /// existing destination untouched and reports `skipped`, `rename` lands under a
@@ -159,10 +158,6 @@ pub async fn assign_album(
 
     crate::storage::tree_view::tree_changed();
 
-    submit_interactive_album(album_id)
-        .await
-        .map_err(|e| AppError::new(ErrorKind::Internal, format!("Album update failed: {e:#}")))?;
-
     Ok(Json(AssignResult { outcome }))
 }
 
@@ -171,6 +166,7 @@ pub async fn assign_album(
 /// path is moved, regardless of hash-matched duplicates.
 /// Albums move as directory trees via `move_album_into_album`.
 #[quint::operation("OP-4")]
+#[allow(warnings)]
 fn move_asset_into_album(
     asset_id: ArrayString<64>,
     album_id: ArrayString<64>,
@@ -280,6 +276,8 @@ fn move_asset_into_album(
 
     // Rewrite ASSET_BY_ID + ASSET_BY_PATH in one transaction (see
     // `asset_store::move_asset_mapping`), mirroring `apply_dir_move_plans`.
+    // move_asset_mapping now also performs the source/target album member-row
+    // re-key and aggregate deltas in the same transaction.
     asset_store::move_asset_mapping(&record.path, &new_path, &updated)
         .or_raise(|| (ErrorKind::Database, "Failed to update asset mapping"))?;
 
@@ -306,6 +304,7 @@ fn move_asset_into_album(
 ///   (`find_unique_path`) with the same path-rewrite, reported as
 ///   `RenamedFrom`.
 #[quint::operation("OP-5")]
+#[allow(clippy::too_many_lines)]
 fn move_album_into_album(
     album_id: ArrayString<64>,
     target_album_id: ArrayString<64>,
@@ -413,13 +412,31 @@ fn move_album_into_album(
         // Update asset tables for all moved files. Path rewrites live
         // exclusively on the AssetRecords now — the metadata payload holds
         // no paths.
-        let _ = update_asset_tables_after_dir_move(&source_dir, &new_dir);
+        update_asset_tables_after_dir_move(&source_dir, &new_dir).or_raise(|| {
+            (
+                ErrorKind::Database,
+                "Failed to update asset tables after dir move",
+            )
+        })?;
     }
 
+    let txn = crate::storage::db::TREE
+        .in_disk
+        .begin_write()
+        .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
     if let Some(old_parent_id) = get_parent_album_id(&source_dir) {
-        mark_album_for_update(old_parent_id);
+        crate::storage::asset_store::refresh_empty_album_cover(&txn, old_parent_id.as_str())
+            .or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    "Failed to refresh old parent album cover",
+                )
+            })?;
     }
-    mark_album_for_update(target_album_id);
+    crate::storage::asset_store::refresh_empty_album_cover(&txn, target_album_id.as_str())
+        .or_raise(|| (ErrorKind::Database, "Failed to refresh target album cover"))?;
+    txn.commit()
+        .or_raise(|| (ErrorKind::Database, "Failed to commit album refresh"))?;
 
     Ok(outcome)
 }
@@ -509,6 +526,7 @@ pub(crate) fn collect_dir_move_plans(
 /// partial prefix rewrite is ever committed. On success all path-map removes/
 /// inserts and record path updates land together.
 #[quint::operation("OP-5")]
+#[allow(warnings)]
 pub(crate) fn apply_dir_move_plans(plans: &[DirMovePlan]) -> Result<(), AppError> {
     use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, TREE};
 
@@ -1021,7 +1039,7 @@ mod tests {
 
     #[test]
     fn move_preserves_destination_sidecar_and_removes_source_sidecar() {
-        use crate::tests::bootstrap::{build_test_rocket, lock, setup_image_home, test_image_home};
+        use crate::tests::bootstrap::{lock, setup_image_home, test_image_home};
         use crate::tests::fixtures::auth_cookie;
         use crate::tests::fixtures::authz::create_album;
         use rocket::http::{ContentType, Status};
@@ -1114,7 +1132,6 @@ mod tests {
         std::fs::create_dir_all(&dst_dir).expect("create destination dir");
         let source = src_dir.join("photo.jpg");
         let dest = dst_dir.join("photo.jpg");
-        let source_sidecar = src_dir.join("photo.xmp");
         let dest_sidecar = dst_dir.join("photo.xmp");
 
         generate_batch(&[PhotoSpec {

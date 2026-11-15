@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: backend
@@ -45,11 +45,15 @@ keeps the exception safe while derived fields change around it.
   derivable from the album's AssetRecord and would force re-keying on
   every dir move.
 - Delta fields: `item_count` ±1, `item_size` ±size, `last_modified_time`
-  touch. Time-range (start_time/end_time) and cover: pure delta on
-  additions; on removal of a boundary holder (the member that WAS the
-  min/max timestamp or the cover pick), recompute that field from the
-  member table in the same txn — O(M), rare, exact. No per-album ordered
-  structure needed.
+  touch. Time-range (start_time/end_time) and cover unified rule: any
+  delta that changes a member's size or timestamp recomputes time-range
+  and cover from the member table in the same txn (O(M)); additions
+  adjust min/max by the new member's timestamp and set the cover to the
+  newest member by timestamp; removal of a boundary holder recomputes
+  from the member table. Cover rule: cover = newest member by timestamp
+  (matching `recompute_cover_from_members`); a delta-add compares the new
+  member's timestamp against the current cover member's timestamp and
+  replaces the cover when newer. No per-album ordered structure needed.
 - Empty-album transition (direct members hit zero): keep the current
   product behavior — cover from a descendant's members if any
   (O(descendant members) on that transition only).
@@ -76,6 +80,13 @@ keeps the exception safe while derived fields change around it.
   in album_task phase 3) is superseded by this task before it was ever
   implemented; the survey facts that led there (album_task phases,
   edit_share RMW, membership consumers) carry over.
+- 2026-11-15 (review): single-txn discipline fixes (F1-F5): removal,
+  sweep, move, trash toggle, detach/sweep-dir-albums all perform record
+  deletes, member-row changes, and album aggregate deltas in one txn.
+  Unified range/cover rule (F6): any size/timestamp change recomputes
+  time-range + cover from the member table. Cover rule unified to
+  newest-by-timestamp. Error discipline (F7) and dead interactive path +
+  doc cleanup (F8). Steps 7-9 progress.
 
 ## Steps
 
@@ -83,31 +94,23 @@ keeps the exception safe while derived fields change around it.
    edit_share RMW (edit_share.rs:137-155), membership consumers (tree
    view filter, list_album_assets_under table scan, sweep prefix scan
    asset_store.rs:38-56).
-2. [open] Schema + store: `ASSET_BY_ALBUM` table; member-table helpers
-   (add/remove/list/drop-album) in asset_store.rs; clear in reset
-   (OP-11's clear_all_asset_tables_drop gains the new table).
-3. [open] Delta sites (same-txn, field-level patch discipline — read the
-   album record in-txn, patch aggregate fields, keep share_list/cover
-   unless computed):
-   - flush_tables (scan apply): member add; size change on re-index
-     (read the old row in-txn for the delta); is_trashed changes
-     membership (trash toggle site — verify where edit_flags commits).
-   - sweep_remove_batch: per removed member, delta + member-row delete.
-   - assign/move (OP-4/OP-5): delta on source album (−) and target
-     album (+); dir moves (apply_dir_move_plans) re-key member rows for
-     renamed/rewritten albums in the same txn.
-   - deleted-album detach: member-row delete + deltas.
-4. [open] Boundary strategy: exact time-range/cover on addition; on
-   boundary-holder removal, recompute from the member table in-txn;
-   empty-album descendant-cover transition.
-5. [open] Delete the cascade album stage; verify no remaining callers of
-   album_task / mark_album_for_update / drain_pending_album_updates.
+2. [done] Schema + store: `ASSET_BY_ALBUM` table; txn-scoped member
+   helpers and `apply_album_delta` in asset_store.rs; clear_all_asset_tables_drop
+   gains the table.
+3. [done] Delta sites: flush_tables (insert+remove), sweep_remove_batch,
+   assign move (source - / target +), deleted-album detach (drop member rows +
+   detach remaining members), empty-ancestor cover refresh.
+4. [done] Boundary strategy: pure delta on addition; removal recomputes
+   time range/cover from member table; empty-album descendant-cover transition.
+5. [done] Cascade album stage deleted (album_task, run_cpu album call,
+   drain_pending_album_updates, mark_album_for_update call sites removed).
+
 6. [open] Catalogs: OP-8 (ALBUM_STATS) rewritten — the marker moves to
    the delta application in flush_tables (or a named helper); operations
    properties re-linked; REQ-16 (delta-maintained album aggregates)
    derived from G5/G1; the old N10/REQ-15-era album_task framing
    updated. Model-to-code terminology table updated.
-7. [open] Backend tests: per-site delta tests (add/remove/size
+7. [in-progress] Backend tests: per-site delta tests (add/remove/size
    change/trash/move both sides/dir-move re-key/batch remove), boundary
    recompute, empty transition, patch commutation (delta txn + edit_share
    txn interleave → both survive), drift guard (a membership mutation

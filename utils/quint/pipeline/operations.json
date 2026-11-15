@@ -280,9 +280,9 @@
         "db_row"
       ],
       "guards": [
-        "album_task computes stats outside the txn from a ref_data per-entry snapshot",
-        "write-txn album liveness re-check with re-mark pending on race",
-        "member writes re-mark pending via mark_album_for_update"
+        "apply_album_delta patches album aggregates in-txn alongside the member row",
+        "boundary-holder removal recomputes the affected field from ASSET_BY_ALBUM",
+        "empty-album transition keeps descendant-cover behavior"
       ],
       "properties": [
         {
@@ -302,7 +302,7 @@
       "nodes": [
         "N13"
       ],
-      "notes": "album_task: album stats cascade; bounded staleness, no lost update."
+      "notes": "apply_album_delta: delta-maintained album aggregates; no cascade."
     },
     {
       "id": "OP-9",

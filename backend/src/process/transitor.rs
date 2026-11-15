@@ -3,7 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::model::metadata_record::MetadataRecord;
 use crate::model::response::DataBaseTimestampReturn;
 use crate::storage::cache::MyCow;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 
 pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
@@ -59,6 +59,8 @@ pub fn store_metadata_record(
     use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
     use redb::ReadableTable;
 
+    use crate::storage::asset_store;
+
     let payload = to_metadata_record(data);
     let txn = TREE.in_disk.begin_write()?;
     {
@@ -72,9 +74,65 @@ pub fn store_metadata_record(
                 .map(|guard| guard.value().to_string());
             if let Some(json) = existing {
                 let mut record: AssetRecord = serde_json::from_str(&json)?;
+                let old_trashed = record.is_trashed;
+                let album_id = record.album_id;
+                let file_size = record.file_size;
+                let path = record.path.clone();
                 record.is_trashed = is_trashed;
                 let updated = serde_json::to_string(&record)?;
                 id_table.insert(asset_id, updated.as_str())?;
+
+                // Release both handles before the delta helpers reopen these
+                // tables in the same transaction (redb allows one open handle
+                // per table per txn).
+                drop(id_table);
+                drop(metadata_table);
+
+                // Membership change → album aggregate delta + member row in the
+                // same transaction. No-op when the asset is unalbummed.
+                if old_trashed != is_trashed
+                    && let Some(alb) = album_id
+                {
+                    let member: ArrayString<64> = asset_id.parse().map_err(|_| {
+                        anyhow::anyhow!("asset id exceeds 64 bytes for album delta: {asset_id}")
+                    })?;
+                    let delta = if is_trashed {
+                        // Trashed: member leaves.
+                        asset_store::AlbumDelta {
+                            count_delta: -1,
+                            size_delta: -file_size.cast_signed(),
+                            member: Some(member),
+                            is_add: false,
+                            member_timestamp: None,
+                            member_size_override: Some(file_size),
+                            is_update: false,
+                        }
+                    } else {
+                        // Untrashed: member joins.
+                        asset_store::AlbumDelta {
+                            count_delta: 1,
+                            size_delta: 0,
+                            member: Some(member),
+                            is_add: true,
+                            member_timestamp: None,
+                            member_size_override: Some(file_size),
+                            is_update: false,
+                        }
+                    };
+                    asset_store::apply_album_delta(&txn, alb.as_str(), delta).with_context(
+                        || format!("Failed to apply album delta for album {alb} asset {asset_id}"),
+                    )?;
+                    for anc in crate::process::dir_album::ancestor_album_ids_for_path(
+                        std::path::Path::new(&path),
+                    ) {
+                        if anc != alb {
+                            asset_store::refresh_empty_album_cover(&txn, anc.as_str())
+                                .with_context(|| {
+                                    format!("Failed to refresh ancestor album cover {anc}")
+                                })?;
+                        }
+                    }
+                }
             }
         }
     }

@@ -271,6 +271,19 @@
         "router::put::assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar",
         "storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn"
       ]
+    },
+    {
+      "id": "REQ-16",
+      "title": "Delta-maintained album aggregates",
+      "statement": "Album aggregates (item_count, item_size, last_modified_time, start/end time, cover) are maintained by field-level deltas applied in the same transaction as each membership-mutating write, rather than recomputed by a deferred cascade. Membership truth is ASSET_BY_ALBUM, keyed by album_id.",
+      "derived_from": [
+        "G5"
+      ],
+      "owner": "storage/asset_store.rs::apply_album_delta; flush_tables; assign_album; delete",
+      "gate": "Backend tests per delta site; OP-8 marker on apply_album_delta.",
+      "status": "open",
+      "implementation": "ASSET_BY_ALBUM member index plus apply_album_delta patching aggregates in-txn at flush, move, trash, and deletion sites.",
+      "tests": []
     }
   ]
 }
