@@ -239,10 +239,11 @@ recipe does not forward it):
 python3 utils/bench/battery.py run gate --out /tmp/my-gate-run --fresh
 ```
 
-| Level   | Images | Cells                                                                        |
-| ------- | ------ | ---------------------------------------------------------------------------- |
-| `gate`  | 100    | `control`, `storm-read`, `storm-thumb`, `storm-diff`, `storm-idle`, `upload` |
-| `scale` | 5650   | `control`, `storm-diff`, `upload`                                            |
+| Level   | Images | Cells                                                                              |
+| ------- | ------ | ---------------------------------------------------------------------------------- |
+| `cell`  | env    | one cell, fully parameterized by env (WORKLOAD, IMAGES, NCPU, PORT, BUILD_PROFILE) |
+| `gate`  | 100    | `control`, `storm-read`, `storm-thumb`, `storm-diff`, `storm-idle`, `upload`       |
+| `scale` | 5650   | `control`, `storm-diff`, `upload`                                                  |
 
 Both levels pin `SCAN_REPEATS=2`, hyperfine `REPEATS=3`/`WARMUP=1`,
 `NCPU=8`, release builds, and storm `CLIENTS=8`/`OPS=10`/`MARGIN_S=0.5`.
@@ -294,6 +295,12 @@ repeat rows are recorded but never checked, so a baselined metric must be
 recorded under its `<cell>:median` name (e.g. `gate-control:median`).
 
 ## Battery JSON extract
+
+The runner owns the battery parent: `battery run` creates it and refuses to
+run into a directory holding entries it did not create (anything other than
+`*-repN` subdirs, `report.tsv`, `report.json` and `orchestrator.log`).
+`--fresh` wipes the parent first and is the only way past that guard. Manual
+loose cells are therefore impossible.
 
 A battery keeps a single overarching parent directory: the `--out`
 argument of `battery run` (the `just bench battery` recipe) is that

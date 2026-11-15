@@ -91,20 +91,20 @@ class BenchStatusTests(unittest.TestCase):
         return d
 
     def test_states(self):
-        self._cell("queued-cell")
-        r = self._cell("running-cell")
+        self._cell("queued-cell-rep1")
+        r = self._cell("running-cell-rep1")
         (r / "status-last.json").write_text("{}")
         (r / "status-final.json").write_text("{}")
         now = time.time()
         os.utime(r / "status-last.json", (now + 5, now + 5))
         os.utime(r / "status-final.json", (now, now))
 
-        f = self._cell("finished-cell")
+        f = self._cell("finished-cell-rep1")
         (f / "status-final.json").write_text(
             __import__("json").dumps({"state": "completed", "rc": 3})
         )
 
-        x = self._cell("failed-cell")
+        x = self._cell("failed-cell-rep1")
         (x / "diag-orchestrator").mkdir()
 
         rc = self.bench.main(["status", str(self.tmp)])
@@ -116,10 +116,10 @@ class BenchStatusTests(unittest.TestCase):
         with redirect_stdout(buf):
             self.bench._status([str(self.tmp)])
         out = buf.getvalue()
-        self.assertIn("queued-cell: queued", out)
-        self.assertIn("running-cell: running", out)
-        self.assertIn("finished-cell: finished rc=3", out)
-        self.assertIn("failed-cell: failed", out)
+        self.assertIn("queued-cell-rep1: queued", out)
+        self.assertIn("running-cell-rep1: running", out)
+        self.assertIn("finished-cell-rep1: finished rc=3", out)
+        self.assertIn("failed-cell-rep1: failed", out)
 
     def test_unreadable_parent_returns_1(self):
         f = self.tmp / "notadir"
@@ -127,12 +127,31 @@ class BenchStatusTests(unittest.TestCase):
         rc = self.bench.main(["status", str(f)])
         self.assertEqual(rc, 1)
 
-    def test_empty_parent_returns_1(self):
+    def test_empty_parent_returns_0(self):
         empty = self.tmp / "empty"
         empty.mkdir()
         rc = self.bench.main(["status", str(empty)])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 0)
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.bench._status([str(empty)])
+        self.assertIn("no cells yet", buf.getvalue())
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BenchRunRoutingTest(unittest.TestCase):
+    def setUp(self):
+        self.bench = load_bench()
+
+    def test_run_routes_to_battery_run(self):
+        fake = mock.Mock(return_value=0)
+        self.bench.battery.main = fake
+        rc = self.bench.main(["run", "cell", "--out", "/tmp/x"])
+        self.assertEqual(rc, 0)
+        fake.assert_called_once_with(["run", "cell", "--out", "/tmp/x"])
