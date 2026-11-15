@@ -73,9 +73,12 @@ One recipe taxonomy, applied uniformly:
   nightly campaign).
 - Quint proof jobs: fulltest (elevated samples) as the nightly proof
   lane; decide explicitly whether model checking (`quint verify`) has a
-  place in CI — the modeling workflow deliberately keeps verify out of
-  the standard loop (minutes-to-hours), so a proof lane would be an
-  opt-in scheduled job, not a gate.
+  slot (modeled in .plan/quint-proof-lane.md) and where the
+  quint-connect MBT driver runs (.plan/quint-mbt-driver.md); the
+  schemathesis items (OpenAPI links, G3 read-contract checks) belong in
+  the fuzz-job slot above. A proof lane is an opt-in scheduled job, not
+  a gate — the modeling workflow deliberately keeps verify out of the
+  standard loop (minutes-to-hours).
 
 ## Steps
 
