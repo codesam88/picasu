@@ -113,3 +113,9 @@ One recipe taxonomy, applied uniformly:
 
 Reference: utils/quint/justfile (the module pattern), utils/bench/justfile,
 .plan/quint-annotation-crate.md (gate layering), AGENTS.md (workflow).
+
+Done pattern (2026-11-15): utils/quint now carries two subfolders —
+`quint-annotate/` (proc-macro crate, package name `quint`) and
+`coverage/` (TS validation tool, dispatcher `coverage/bin/check.ts`) —
+alongside `pipeline/` and `tests/`, validating the utils-tool-as-submodule
+layout.

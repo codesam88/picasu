@@ -94,16 +94,25 @@ and record every derived contract where its enforcement lives (see
 counterexamples become regression tests or documented transients —
 never silent.
 
+## Structure
+
+- `quint-annotate/` — the validating proc-macro crate (package name stays
+  `quint`; attribute path `#[quint::operation(...)]` / `#[quint::event(...)]`).
+- `coverage/` — the TypeScript validation tool (dispatcher
+  `coverage/bin/check.ts`).
+- `pipeline/` — `.qnt` specs and JSON catalogs.
+- `tests/` — checker self-tests.
+
 ## Tooling
 
-- `specs-check.mjs` — closed-world tag audit and the generated
+- `coverage/bin/check.ts specs` — closed-world tag audit and the generated
   `pipeline/traceability.json` map.
-- `events-check.mjs`, `catalog-check.mjs` — catalog validation against
-  `pipeline/catalog.schema.json`.
-- `operations-check.mjs` — validates `pipeline/operations.json` and the
+- `coverage/bin/check.ts events`, `coverage/bin/check.ts catalog` — catalog
+  validation against `pipeline/catalog.schema.json`.
+- `coverage/bin/check.ts ops` — validates `pipeline/operations.json` and the
   `#[quint::operation(...)]` / `#[quint::event(...)]`
   markers in `backend/src/**/*.rs`.
-- `gen-eventual-consistency-doc.mjs` — writes `docs/eventual-consistency.md`.
+- `coverage/bin/check.ts docs` — writes `docs/eventual-consistency.md`.
 
 ## Operations and annotations
 

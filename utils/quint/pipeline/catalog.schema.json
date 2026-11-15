@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Index pipeline catalog schemas",
-  "description": "Shapes for utils/quint/pipeline/events.json, utils/quint/pipeline/goals.json, utils/quint/pipeline/requirements.json, utils/quint/pipeline/assumptions.json and utils/quint/pipeline/scope.json. Every catalog file carries a top-level version and description; the generated review doc renders that description as the section introduction. Enforcement is by the manual field walk in utils/quint/events-check.mjs and utils/quint/catalog-check.mjs (no JSON-schema runtime); the enums below are the single source those validators read.",
+  "description": "Shapes for utils/quint/pipeline/events.json, utils/quint/pipeline/goals.json, utils/quint/pipeline/requirements.json, utils/quint/pipeline/assumptions.json and utils/quint/pipeline/scope.json. Every catalog file carries a top-level version and description; the generated review doc renders that description as the section introduction. Enforcement is by the manual field walk in utils/quint/coverage/bin/check.ts (events/catalog subcommands) (no JSON-schema runtime); the enums below are the single source those validators read.",
   "definitions": {
     "event": {
       "required": [
@@ -274,7 +274,8 @@
               "G1",
               "G2",
               "G3",
-              "G4"
+              "G4",
+              "G5"
             ]
           }
         },
