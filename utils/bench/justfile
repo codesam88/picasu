@@ -49,6 +49,25 @@ workload out image_repo images="100" ncpu="8" build="release" port="5795": _venv
     export NCPU="{{ ncpu }}" IMAGES="{{ images }}"
     export IMAGE_REPO="{{ image_repo }}"
     if [ -n "${IMAGE_PATH:-}" ]; then export IMAGE_PATH; fi
+    # A prepared sandbox is an explicit opt-in: forward it into the cell and
+    # refuse an unprepared one here, before any cell process starts.
+    if [ -n "${IMAGE_HOME_SRC:-}" ]; then
+        export IMAGE_HOME_SRC
+        # just strips the recipe's indentation, so the heredoc body sits at
+        # recipe level and reaches python at column 0.
+        "{{ venv_python }}" - <<'PY'
+    import os
+    import sys
+
+    sys.path.insert(0, "{{ source_directory() }}")
+    import preflight
+
+    check = preflight.check_sandbox_manifest(os.environ["IMAGE_HOME_SRC"])
+    if not check.ok:
+        print(check.line(), file=sys.stderr)
+        sys.exit(1)
+    PY
+    fi
     export REPEATS="${REPEATS:-1}" SCAN_REPEATS="${SCAN_REPEATS:-2}"
     export WORKLOAD_TIMEOUT_S="${WORKLOAD_TIMEOUT_S:-${TIMEOUT:-7200}}"
     "{{ venv_python }}" "{{ source_directory() }}/battery.py" run cell --out "{{ out }}"
@@ -66,43 +85,21 @@ seed-images image_repo images="100" template="" jobs="4": _venv
     "{{ venv_python }}" "{{ source_directory() }}/seed_images.py" --repo "{{ image_repo }}" \
         --count "{{ images }}" --template "{{ template }}" --jobs "{{ jobs }}"
 
-# Extract cell metrics.
-extract *args: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/extract-bench.py" {{ args }}
+# Extract a battery parent as one JSON document (writes report.md + matrix.tsv beside it).
+extract parent out="": _venv
+    "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}" --out "{{ out }}"
 
 # Run a pinned battery (gate|scale) and write its report.
 battery level="gate" out="": _venv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "{{ out }}" ]; then
-        out="/tmp/picasu-battery-{{ level }}-$(date +%Y%m%d-%H%M%S)"
-    else
-        out="{{ out }}"
-    fi
-    mkdir -p "$out"
-    "{{ venv_python }}" "{{ source_directory() }}/battery.py" run "{{ level }}" --out "$out"
+    "{{ venv_python }}" "{{ source_directory() }}/battery.py" run "{{ level }}" --out "{{ out }}"
 
 # Compare a battery report against the checked-in baseline bands.
 battery-check report baselines="": _venv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -n "{{ baselines }}" ]; then
-        "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}" \
-            --baselines "{{ baselines }}"
-    else
-        "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}"
-    fi
+    "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}" --baselines "{{ baselines }}"
 
-# Dump a battery parent directory as one JSON document (stdout or [out] file).
-battery-extract parent out="": _venv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -n "{{ out }}" ]; then
-        "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}" \
-            --out "{{ out }}"
-    else
-        "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}"
-    fi
+# Report per-cell state under a battery parent (queued/running/finished/failed).
+status *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" status {{ args }}
 
 
 # Unified CLI shell (bench.py). Prefer this for new flows.

@@ -11,7 +11,7 @@ Usage:
     utils/bench/battery.py run gate --out /tmp/picasu-battery-gate
     utils/bench/battery.py check /tmp/picasu-battery-gate/report.tsv
     utils/bench/battery.py list gate
-    utils/bench/battery.py extract /tmp/picasu-battery-gate [--out run.json]
+    utils/bench/battery.py extract /tmp/picasu-battery-gate [--out run.json] [--matrix-only]
 
 `run` resumes by default: the report is rebuilt from scratch on every
 invocation and each rep whose `status-final.json` parses is reused
@@ -21,6 +21,11 @@ instead of re-run, so an interrupted battery continues where it stopped.
 `extract` dumps one battery parent (its `*-repN` subdirs plus
 `report.tsv`) as a single JSON document: per-rep report rows, manifest
 identity, stages, terminal state, pooled medians and the report rows.
+The same run renders the pooled medians into the human artifacts beside
+the JSON: `report.md` (header, p50/p95/max matrices, anomalies, baseline
+conformance) and `matrix.tsv` (the matrices as a spreadsheet-readable
+TSV); `--format md|tsv|both` selects which, and `--matrix-only` prints
+the human view on stdout instead of the JSON document.
 
 Environment:
     OUT                  battery directory for `run` when --out is absent
@@ -58,6 +63,7 @@ import signal
 import statistics
 import sys
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -69,31 +75,19 @@ from config import DEFAULT_SETS_ROOT, ConfigError  # noqa: E402
 DEFAULT_BASE_PORT = config.BATTERY_BASE_PORT
 NA = "n/a"
 
-REPORT_COLUMNS = [
-    "cell",
-    "profile",
-    "level",
-    "scale",
-    "build",
-    "commit",
-    "scan_wall_s",
-    "scan_walls_s",
-    "scan_fetch_p50_ms",
-    "fetch_worst_ms",
-    "scan_thumb_p50_ms",
-    "thumb_worst_ms",
-    "scan_edit_p50_ms",
-    "edit_worst_ms",
-    "idle_thumb_ms",
-    "idle_fetch_ms",
-    "idle_edit_ms",
-    "upload_submit_p50_ms",
-    "upload_visible_p50_ms",
+# One row per cell in the report. Latency columns come from the extractor's
+# report matrix (`BACKGROUNDS` x `ACCESSES` x `STATS`): every background the
+# battery exercises carries its own median/p95/worst pair, so no cell's row
+# is comparable only through a column another profile fills. The failed
+# columns count ops a storm kind could not complete, pooled across reps.
+IDENTITY_COLUMNS = ["cell", "profile", "level", "scale", "build", "commit"]
+STAGE_COLUMNS = [
     "tree_refresh_build_p50_us",
     "tree_refresh_build_max_us",
     "filter_snapshot_clone_p50_us",
     "filter_snapshot_clone_max_us",
 ]
+UPLOAD_COLUMNS = ["upload_submit_p50_ms", "upload_visible_p50_ms"]
 
 BASELINE_COLUMNS = ["cell", "metric", "baseline", "rel_tol", "abs_tol", "recorded", "note"]
 BASELINE_HEADER = "\t".join(BASELINE_COLUMNS)
@@ -119,6 +113,21 @@ def _extractor():
 
 def _run_cell():
     return _load_module("run_cell", SCRIPT_DIR / "run-cell.py")
+
+
+# The extractor owns the matrix column names; the report is that scheme plus
+# the scan walls and the server-side stage cost columns.
+_EXTRACTOR = _extractor()
+LATENCY_COLUMNS = list(_EXTRACTOR.LATENCY_COLUMNS)
+STORM_FAILED_COLUMNS = list(_EXTRACTOR.STORM_FAILED_COLUMNS)
+REPORT_COLUMNS = (
+    IDENTITY_COLUMNS
+    + ["scan_wall_s", "scan_walls_s"]
+    + LATENCY_COLUMNS
+    + STORM_FAILED_COLUMNS
+    + UPLOAD_COLUMNS
+    + STAGE_COLUMNS
+)
 
 
 # --- battery definition ------------------------------------------------------
@@ -300,15 +309,18 @@ def _parse_upload_p50(text: str) -> tuple:
 
 
 def build_row(level: str, profile: str, outdir: Path) -> dict:
-    """Flatten one cell outdir into the run-report row schema."""
+    """Flatten one cell outdir into the run-report row schema.
+
+    The row carries the report columns plus `stages`, the per-scan drain
+    rows parsed from `server.log`, `samples`, the values behind the matrix's
+    p95/max cells, and `storms`, the per-run storm summaries. Report writers
+    iterate `REPORT_COLUMNS`, so none of those helper keys reaches the TSV.
+    """
     outdir = Path(outdir)
     extractor = _extractor()
-    parsed = extractor.parse_log(outdir)
+    parsed = extractor.parse_log(outdir, profile=profile)
     status = extractor.parse_status(outdir)
-    # Empty storm-key list: request latency and S2 drain columns are what
-    # the battery stores; profile-specific storm aggregates stay in the
-    # raw outdir and extractor table.
-    cell = extractor._cell(parsed, status, [])
+    cell = extractor._cell(parsed, status)
     manifest = _read_manifest(outdir)
     try:
         log_text = (outdir / "harness-a.log").read_text()
@@ -317,7 +329,7 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
     upload_submit, upload_visible = _parse_upload_p50(log_text)
 
     walls = parsed.get("scan_runs_ms", [])
-    return {
+    row = {
         "cell": f"{level}-{profile}",
         "profile": profile,
         "level": level,
@@ -326,22 +338,21 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
         "commit": _fmt(manifest.get("git")),
         "scan_wall_s": _fmt(parsed.get("scan_wall_s")),
         "scan_walls_s": ",".join(str(wall) for wall in walls) if walls else NA,
-        "scan_fetch_p50_ms": _fmt(cell.get("scan_fetch_ms")),
-        "fetch_worst_ms": _fmt(cell.get("fetch_worst_ms")),
-        "scan_thumb_p50_ms": _fmt(cell.get("scan_thumb_ms")),
-        "thumb_worst_ms": _fmt(cell.get("thumb_worst_ms")),
-        "scan_edit_p50_ms": _fmt(cell.get("scan_edit_ms")),
-        "edit_worst_ms": _fmt(cell.get("edit_worst_ms")),
-        "idle_thumb_ms": _fmt(cell.get("idle_thumb_ms")),
-        "idle_fetch_ms": _fmt(cell.get("idle_fetch_ms")),
-        "idle_edit_ms": _fmt(cell.get("idle_edit_ms")),
         "upload_submit_p50_ms": upload_submit,
         "upload_visible_p50_ms": upload_visible,
-        "tree_refresh_build_p50_us": _fmt(cell.get("tree_refresh_build_p50_us")),
-        "tree_refresh_build_max_us": _fmt(cell.get("tree_refresh_build_max_us")),
-        "filter_snapshot_clone_p50_us": _fmt(cell.get("filter_snapshot_clone_p50_us")),
-        "filter_snapshot_clone_max_us": _fmt(cell.get("filter_snapshot_clone_max_us")),
     }
+    for column in LATENCY_COLUMNS + STORM_FAILED_COLUMNS + STAGE_COLUMNS:
+        row[column] = _fmt(cell.get(column))
+    # The drain parse behind the stage columns, kept whole for the extract
+    # document: it comes from the same server.log read, so a cell carries
+    # its stage rows without a separate extract run.
+    row["stages"] = parsed.get("stages") or []
+    # The samples behind the p95/max cells and the per-run storm summaries
+    # behind the storm columns, kept for the `:median` row's pooling; they
+    # are never written to the TSV.
+    row["samples"] = parsed.get("samples") or {}
+    row["storms"] = parsed.get("storms") or []
+    return row
 
 
 _NON_NUMERIC_COLUMNS = {
@@ -352,6 +363,48 @@ _NON_NUMERIC_COLUMNS = {
     "build",
     "commit",
 }
+
+
+def _sample_key(column: str) -> str:
+    """Report column -> the `samples` key holding its raw values."""
+    for suffix in ("_p95_ms", "_max_ms"):
+        if column.endswith(suffix):
+            return column[: -len(suffix)]
+    raise KeyError(column)
+
+
+# Latency columns whose tails pool raw samples across repeats: the idle
+# baselines, whose export records every timed run. Probe conditions keep the
+# per-rep values the rounds recorded, and storm conditions pool per-run
+# summaries.
+_SAMPLED_TAIL_COLUMNS = {
+    column
+    for column in LATENCY_COLUMNS
+    if column.startswith("idle_")
+    and "_storm_" not in column
+    and column.endswith(("_p95_ms", "_max_ms"))
+}
+
+_STORM_COLUMN = re.compile(r"^(idle|scan)_storm_(read|thumb|edit)_(p50|p95|max)_ms$")
+_STORM_STAT_FIELD = {"p50": "median", "p95": "p95", "max": "max"}
+
+
+def _storm_runs(rows: list, column: str) -> list:
+    """Per-run storm summaries behind one report column, across all repeats."""
+    match = _STORM_COLUMN.match(column)
+    if match is None:
+        return []
+    background, report_kind, stat = match.groups()
+    kind = _EXTRACTOR.STORM_OP_KIND[report_kind]
+    values = []
+    for row in rows:
+        for storm in row.get("storms") or []:
+            if (
+                _EXTRACTOR.storm_background(storm) == background
+                and _EXTRACTOR.storm_kind(storm) == kind
+            ):
+                values.append(storm[_STORM_STAT_FIELD[stat]] * 1000.0)
+    return values
 
 
 def _numeric_values(raw) -> list:
@@ -381,6 +434,21 @@ def _build_median_row(rows: list) -> dict:
     Comma-separated lists are pooled across repeats and the median taken
     over every value (median of medians would weight a two-scan cell as
     one sample per repeat).
+
+    Three column families aggregate differently:
+
+    - matrix `p50` columns keep that pooling (median over the repeats),
+      which is how the recorded baselines were produced;
+    - `idle_*` `p95`/`max` columns pool the timed post-scan runs every rep
+      carries and take the percentile or worst over all of them, so a tail
+      describes every run rather than the median of three tails;
+    - storm `p95`/`max` columns pool the per-run summaries and take the
+      worst; failed counts are summed, because a count across repeats is a
+      total.
+
+    Probe `p95`/`max` columns follow the default pooling: each rep already
+    summarises its probe rounds, and the recorded worst-case baselines were
+    medians of those per-rep values.
     """
     if not rows:
         return {}
@@ -393,6 +461,38 @@ def _build_median_row(rows: list) -> dict:
             # Non-numeric columns pass through from the first repeat.
             result[column] = first.get(column, result.get(column, NA))
             continue
+        if column.endswith("_failed"):
+            values = []
+            for row in rows:
+                values.extend(_numeric_values(row.get(column, NA)))
+            result[column] = _fmt(int(sum(values))) if values else NA
+            continue
+        if column in _SAMPLED_TAIL_COLUMNS:
+            pooled = []
+            for row in rows:
+                pooled.extend((row.get("samples") or {}).get(_sample_key(column), []))
+            if pooled:
+                value = (
+                    max(pooled) if column.endswith("_max_ms") else _EXTRACTOR.percentile(pooled, 95)
+                )
+                result[column] = _fmt(round(value, 1))
+                continue
+            values = []
+            for row in rows:
+                values.extend(_numeric_values(row.get(column, NA)))
+            result[column] = _fmt(round(max(values), 6)) if values else NA
+            continue
+        if _STORM_COLUMN.match(column):
+            runs = _storm_runs(rows, column)
+            if runs:
+                value = statistics.median(runs) if column.endswith("_p50_ms") else max(runs)
+                result[column] = _fmt(round(value, 1))
+                continue
+            values = []
+            for row in rows:
+                values.extend(_numeric_values(row.get(column, NA)))
+            result[column] = _fmt(round(max(values), 6)) if values else NA
+            continue
         values = []
         for row in rows:
             values.extend(_numeric_values(row.get(column, NA)))
@@ -401,6 +501,8 @@ def _build_median_row(rows: list) -> dict:
         # report column resolves well above 1e-6.
         result[column] = _fmt(round(statistics.median(values), 6)) if values else NA
     result["cell"] = median_cell
+    result.pop("samples", None)
+    result.pop("storms", None)
     return result
 
 
@@ -460,7 +562,15 @@ _MANIFEST_IDENTITY = (
 _REP_DIR_RE = re.compile(r"^(?P<cell>.+)-rep(?P<rep>\d+)$")
 
 # Entries a battery parent may legitimately hold besides `*-repN` subdirs.
-_BATTERY_PARENT_ALLOWED_FILES = {"report.tsv", "report.json", "orchestrator.log"}
+# `report.md` and `matrix.tsv` are the extract's human-readable views of
+# the parent's medians.
+_BATTERY_PARENT_ALLOWED_FILES = {
+    "report.tsv",
+    "report.json",
+    "orchestrator.log",
+    "report.md",
+    "matrix.tsv",
+}
 
 
 def foreign_entries(parent) -> list:
@@ -542,7 +652,13 @@ def _manifest_identity(outdir: Path) -> dict:
 
 
 def _read_stages(outdir: Path) -> list:
-    """Parsed `stages.json` content; an absent or corrupt file yields []."""
+    """Parsed `stages.json` content; an absent or corrupt file yields [].
+
+    `stages.json` is written by a standalone `extract-bench.py` run, so it
+    only exists for cells that were extracted by hand; the extract entry
+    prefers the drain rows `build_row` parsed from `server.log` and uses
+    this as the fallback for the rest.
+    """
     try:
         stages = json.loads((outdir / "stages.json").read_text())
     except OSError, json.JSONDecodeError:
@@ -580,13 +696,22 @@ def _extract_entry(path: Path) -> dict:
         else:
             message = str(err) or type(err).__name__
         return {"dir": path.name, "error": message}
+    # The row's own drain parse first (the server.log the report's stage
+    # columns came from), then a hand-written stages.json for cells the
+    # standalone extractor summarised instead. The row stays report-shaped.
+    stages = row.pop("stages", None) or _read_stages(path)
     return {
         "dir": path.name,
         "row": row,
         "manifest": _manifest_identity(path),
-        "stages": _read_stages(path),
+        "stages": stages,
         "terminal": _terminal_state(path),
     }
+
+
+def _report_row(row: dict) -> dict:
+    """The report-shaped subset of a built row (helper keys dropped)."""
+    return {column: row.get(column, NA) for column in REPORT_COLUMNS}
 
 
 def _median_rows(rows: list) -> list:
@@ -615,16 +740,331 @@ def _json_safe(value):
     return value
 
 
-def extract_battery(parent: Path, out: Path | None = None) -> int:
+# --- battery-level matrix views ---------------------------------------------
+# Human-readable views over the extract's median rows: one table per
+# statistic, rows = accesses, columns = backgrounds. Every cell rolls up
+# the profile medians that measured it (median across the contributors,
+# contributor count recorded next to it); a cell no profile measured is
+# `n/a`. The views are derived here, never stored in the JSON document —
+# the document's `medians` carry everything they recompute from.
+# `matrix.tsv` is the spreadsheet-readable variant of the same values;
+# `report.md` is the human report built on top of them.
+MATRIX_BACKGROUNDS = tuple(_EXTRACTOR.BACKGROUNDS)
+MATRIX_ACCESSES = tuple(_EXTRACTOR.ACCESSES)
+MATRIX_STATS = tuple(_EXTRACTOR.STATS)
+MATRIX_FILE = "matrix.tsv"
+REPORT_FILE = "report.md"
+
+
+def matrix_rollup(median_rows: list) -> dict:
+    """Roll the extract's median rows up into the battery-level view cells.
+
+    Returns `{(stat, background, access): (value, count)}` over every
+    background x access x statistic column of the median rows. `value`
+    is the median across the contributing profile medians (a lone
+    contributor passes its recorded string through, no contributor is
+    `n/a`) and `count` is how many median rows contributed. Non-numeric,
+    `n/a` and non-finite values never contribute.
+    """
+    contributions: dict = {}
+    for row in median_rows:
+        for stat in MATRIX_STATS:
+            for background in MATRIX_BACKGROUNDS:
+                for access in MATRIX_ACCESSES:
+                    raw = row.get(f"{background}_{access}_{stat}_ms")
+                    if raw is None:
+                        continue
+                    text = str(raw).strip()
+                    if text in ("", NA):
+                        continue
+                    try:
+                        value = float(text)
+                    except ValueError:
+                        continue
+                    if not math.isfinite(value):
+                        continue
+                    contributions.setdefault((stat, background, access), []).append((value, text))
+    rollup: dict = {}
+    for stat in MATRIX_STATS:
+        for background in MATRIX_BACKGROUNDS:
+            for access in MATRIX_ACCESSES:
+                found = contributions.get((stat, background, access), [])
+                if not found:
+                    rollup[(stat, background, access)] = (NA, 0)
+                elif len(found) == 1:
+                    rollup[(stat, background, access)] = (found[0][1], 1)
+                else:
+                    median = statistics.median(value for value, _text in sorted(found))
+                    rollup[(stat, background, access)] = (str(round(median, 6)), len(found))
+    return rollup
+
+
+def render_matrix(median_rows: list) -> str:
+    """Render the rollup as one TSV document of four sections.
+
+    Sections are separated by a blank line and introduced by a `#`
+    comment: the three statistic matrices (rows = the six accesses,
+    columns = the three backgrounds, values in ms) followed by the
+    per-cell contributor counts.
+    """
+    rollup = matrix_rollup(median_rows)
+    blocks = []
+    for stat in MATRIX_STATS:
+        lines = [f"# {stat} (ms)", "\t".join(("access",) + MATRIX_BACKGROUNDS)]
+        for access in MATRIX_ACCESSES:
+            values = [rollup[(stat, background, access)][0] for background in MATRIX_BACKGROUNDS]
+            lines.append("\t".join((access, *values)))
+        blocks.append("\n".join(lines))
+    lines = ["# contributors", "\t".join(("stat", "access") + MATRIX_BACKGROUNDS)]
+    for stat in MATRIX_STATS:
+        for access in MATRIX_ACCESSES:
+            counts = [
+                str(rollup[(stat, background, access)][1]) for background in MATRIX_BACKGROUNDS
+            ]
+            lines.append("\t".join((stat, access, *counts)))
+    blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) + "\n"
+
+
+# Report access name each storm profile's burst fills (the extractor's
+# report columns; `storm-idle` bursts with IDLE_PROFILE, default read).
+_STORM_ACCESS = {
+    "storm-read": "storm_read",
+    "storm-thumb": "storm_thumb",
+    "storm-diff": "storm_edit",
+    "storm-idle": "storm_read",
+}
+_MATRIX_COLUMN_RE = re.compile(
+    r"^(idle|scan|uscan)_(prefetch|thumb|edit|storm_read|storm_thumb|storm_edit)"
+    r"_(p50|p95|max)_ms$"
+)
+
+
+def expected_columns(profile: str) -> list:
+    """Report columns one profile's median row is expected to fill.
+
+    The expectations come from the workload design: during-scan probes
+    land in the cell's own background (`scan`, or `uscan` for upload), a
+    storm profile measures exactly its own burst condition, every profile
+    records the idle post-scan baselines and the observer drain stages,
+    and the upload profile records its submit/visible p50s.
+    """
+    probes = ("prefetch", "thumb", "edit")
+    columns = []
+    if profile == "control":
+        columns += [f"scan_{access}_{stat}_ms" for access in probes for stat in MATRIX_STATS]
+    elif profile == "upload":
+        columns += [f"uscan_{access}_{stat}_ms" for access in probes for stat in MATRIX_STATS]
+    elif profile.startswith("storm-"):
+        access = _STORM_ACCESS.get(profile)
+        if access:
+            background = "idle" if profile == "storm-idle" else "scan"
+            columns += [f"{background}_{access}_{stat}_ms" for stat in MATRIX_STATS]
+            columns += [f"{background}_{access}_failed"]
+    columns += [f"idle_{access}_{stat}_ms" for access in probes for stat in MATRIX_STATS]
+    if profile == "upload":
+        columns += ["upload_submit_p50_ms", "upload_visible_p50_ms"]
+    columns += list(STAGE_COLUMNS)
+    return columns
+
+
+def _report_header(document: dict) -> list:
+    """The identity and outcome lines of `report.md`: battery, level,
+    scale, build, commit, date, cell outcomes and any failures."""
+    medians = document.get("medians") or []
+    cells = document.get("cells") or []
+
+    def first(key: str) -> str:
+        rows = medians + [entry["row"] for entry in cells if "row" in entry]
+        return next(
+            (str(row.get(key)) for row in rows if row.get(key) not in (None, "", NA)),
+            NA,
+        )
+
+    counts: dict = {"completed": 0, "failed": 0, "incomplete": 0}
+    failures = []
+    errors = 0
+    for entry in cells:
+        if "error" in entry:
+            errors += 1
+            failures.append(f"{entry['dir']}: error ({entry['error']})")
+            continue
+        state = entry.get("terminal") or "incomplete"
+        counts[state] = counts.get(state, 0) + 1
+        if state != "completed":
+            failures.append(f"{entry['dir']}: {state}")
+    level = document.get("level")
+    outcomes = ", ".join(f"{name}={counts[name]}" for name in counts)
+    return [
+        f"- battery: `{document.get('battery', '')}`",
+        f"- level: `{level if isinstance(level, str) and level else NA}`",
+        f"- scale: `{first('scale')}`",
+        f"- build: `{first('build')}`",
+        f"- commit: `{first('commit')}`",
+        f"- date: `{date.today().isoformat()}`",
+        f"- outcomes: {outcomes}, errors={errors}",
+        f"- failures: {'; '.join(failures) if failures else 'none'}",
+    ]
+
+
+def _report_anomalies(document: dict, rollup: dict) -> list:
+    """The anomalies section, generated from the data: the worst single
+    value per stat (with its cell), every `n/a` a profile was expected
+    to fill, and expected cells whose rollup rests on fewer than two
+    contributor medians. Unmeasured-by-design cells are not anomalies.
+    """
+    medians = document.get("medians") or []
+    lines = ["## Anomalies", "", "### worst values", ""]
+    worst_rows = []
+    for stat in MATRIX_STATS:
+        best = None
+        for row in medians:
+            for background in MATRIX_BACKGROUNDS:
+                for access in MATRIX_ACCESSES:
+                    raw = row.get(f"{background}_{access}_{stat}_ms")
+                    if raw is None:
+                        continue
+                    text = str(raw).strip()
+                    try:
+                        value = float(text)
+                    except ValueError:
+                        continue
+                    if not math.isfinite(value):
+                        continue
+                    if best is None or value > best[0]:
+                        best = (value, text, str(row.get("cell", NA)), background, access)
+        if best:
+            _value, text, cell, background, access = best
+            worst_rows.append(f"| {stat} | {text} | {cell} | {background}/{access} |")
+    if worst_rows:
+        lines += [
+            "| stat | value (ms) | cell | condition |",
+            "| --- | --- | --- | --- |",
+            *worst_rows,
+        ]
+    else:
+        lines.append("- none")
+
+    lines += ["", "### expected data missing", ""]
+    missing = []
+    for row in medians:
+        profile = str(row.get("profile", ""))
+        for column in expected_columns(profile):
+            if row.get(column) in (None, "", NA):
+                missing.append(f"{row.get('cell', NA)}: {column} = {NA}")
+    lines += [f"- {item}" for item in missing] if missing else ["- none"]
+
+    lines += ["", "### contributor counts below 2", ""]
+    profiles = []
+    for row in medians:
+        profile = str(row.get("profile", ""))
+        if profile and profile not in profiles:
+            profiles.append(profile)
+    # Only the shared `idle_*` probe/baseline columns are expected from more
+    # than one contributor: every profile fills them, so a count below 2 means
+    # profiles stopped reporting. Structurally single-contributor columns
+    # (`scan_*`, `uscan_*`, and the storm kinds) are by design and never
+    # flagged, even when their count is 1 (or 0).
+    expected_counts: dict = {}
+    grid = set()
+    for profile in profiles:
+        for column in expected_columns(profile):
+            match = _MATRIX_COLUMN_RE.match(column)
+            if match is None:
+                continue
+            background, access = match.group(1), match.group(2)
+            if background != "idle" or access not in ("prefetch", "thumb", "edit"):
+                continue
+            grid.add((background, access))
+            expected_counts[(background, access)] = expected_counts.get((background, access), 0) + 1
+    thin = [
+        (background, access)
+        for background in MATRIX_BACKGROUNDS
+        for access in MATRIX_ACCESSES
+        if (background, access) in grid
+        and expected_counts.get((background, access), 0) > 1
+        and any(rollup[(stat, background, access)][1] < 2 for stat in MATRIX_STATS)
+    ]
+    if thin:
+        lines += [
+            "| background | access | p50 | p95 | max |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for background, access in thin:
+            counts = [str(rollup[(stat, background, access)][1]) for stat in MATRIX_STATS]
+            lines.append(f"| {background} | {access} | " + " | ".join(counts) + " |")
+    else:
+        lines.append("- none")
+    return lines
+
+
+def render_report(document: dict) -> str:
+    """Render `report.md`: header, the three stat matrices with the
+    contributor counts, and anomalies.
+
+    Every section is generated from the extract's own rows — ranked
+    facts only, no prose judgments — and deterministic for one input.
+    The matrix values come from the same rollup as `matrix.tsv`.
+    """
+    medians = document.get("medians") or []
+    rollup = matrix_rollup(medians)
+    lines = ["# Battery report", ""]
+    lines += _report_header(document)
+    for stat in MATRIX_STATS:
+        lines += [
+            "",
+            f"## {stat} (ms)",
+            "",
+            "| access | idle | scan | uscan |",
+            "| --- | --- | --- | --- |",
+        ]
+        for access in MATRIX_ACCESSES:
+            values = [rollup[(stat, background, access)][0] for background in MATRIX_BACKGROUNDS]
+            lines.append("| " + " | ".join((access, *values)) + " |")
+    lines += [
+        "",
+        "## contributors",
+        "",
+        "| stat | access | idle | scan | uscan |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for stat in MATRIX_STATS:
+        for access in MATRIX_ACCESSES:
+            counts = [
+                str(rollup[(stat, background, access)][1]) for background in MATRIX_BACKGROUNDS
+            ]
+            lines.append("| " + " | ".join((stat, access, *counts)) + " |")
+    lines += [""] + _report_anomalies(document, rollup)
+    return "\n".join(lines) + "\n"
+
+
+def extract_battery(
+    parent: Path,
+    out: Path | None = None,
+    *,
+    matrix_only: bool = False,
+    matrix_format: str = "both",
+) -> int:
     """Dump one battery parent as a single JSON document.
 
     Walks the `<level>-<profile>-repN` subdirs in sorted order and emits
     one entry per subdir (row, manifest identity, stages, terminal state;
     a rep whose artifacts no longer parse becomes an `{"dir", "error"}`
     entry), the pooled median rows, the parent's `report.tsv` rows and an
-    `errors` count. Exit 0 when at least one rep parsed, 1 when the parent
-    holds no rep subdirs, 2 when every rep failed to parse.
+    `errors` count. The pooled medians also render into the human
+    artifacts beside the JSON — `report.md` and/or `matrix.tsv`, selected
+    by `matrix_format` (md/tsv/both), next to `out`, else inside the
+    parent; with `matrix_only` the selected human view reaches stdout
+    instead of the JSON document. Exit 0 when at least one rep parsed, 1
+    when the parent holds no rep subdirs, 2 when every rep failed to
+    parse.
     """
+    if matrix_format == "both":
+        formats = ("md", "tsv")
+    elif matrix_format in ("md", "tsv"):
+        formats = (matrix_format,)
+    else:
+        raise ValueError(f"unknown matrix format: {matrix_format}")
     parent = Path(parent)
     if not parent.is_dir():
         print(f"ERROR: {parent}: not a battery directory", file=sys.stderr)
@@ -648,21 +1088,49 @@ def extract_battery(parent: Path, out: Path | None = None) -> int:
         if "error" not in entry:
             rows.append(entry["row"])
     report_path = parent / "report.tsv"
+    medians = [_report_row(row) for row in _median_rows(rows)]
+    report_rows = []
+    if report_path.is_file():
+        try:
+            report_rows = load_report(report_path)
+        except ValueError as err:
+            # A report written under an older column scheme cannot be
+            # mapped onto this one; the rebuilt rows above are the extract's
+            # record of the parent.
+            print(f"warn: {err}; omitting report rows", file=sys.stderr)
+    # The per-rep rows stay report-shaped in the document; their `samples`
+    # helper key was only needed for the pooled medians above.
+    cells = [
+        {**entry, "row": _report_row(entry["row"])} if "row" in entry else entry for entry in cells
+    ]
     document = {
         "battery": str(parent),
         "level": next((row.get("level") for row in rows if row.get("level")), None),
         "cells": cells,
-        "medians": _median_rows(rows),
-        "report": load_report(report_path) if report_path.is_file() else [],
+        "medians": medians,
+        "report": report_rows,
         "errors": sum(1 for entry in cells if "error" in entry),
     }
     payload = json.dumps(_json_safe(document), indent=2, allow_nan=False) + "\n"
-    if out is None:
+    # The JSON stays the machine-readable record; the human views are
+    # rendered beside it (`out`'s directory, else the battery parent).
+    out_path = Path(out) if out is not None else None
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(payload)
+    elif not matrix_only:
         print(payload, end="")
-    else:
-        out = Path(out)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(payload)
+    matrix_dir = out_path.parent if out_path is not None else parent
+    human_text = None
+    if "md" in formats:
+        human_text = render_report(document)
+        (matrix_dir / REPORT_FILE).write_text(human_text)
+    if "tsv" in formats:
+        tsv_text = render_matrix(medians)
+        (matrix_dir / MATRIX_FILE).write_text(tsv_text)
+        human_text = human_text or tsv_text
+    if matrix_only:
+        print(human_text, end="")
     if not rows:
         print(f"ERROR: {parent}: no rep subdirectory parsed", file=sys.stderr)
         return 2
@@ -971,14 +1439,25 @@ def main(argv=None) -> int:
     )
     extract.add_argument("parent", help="battery directory holding *-repN subdirs")
     extract.add_argument("--out", help="write the JSON document to this file (default: stdout)")
+    extract.add_argument(
+        "--format",
+        choices=("md", "tsv", "both"),
+        default="both",
+        help="human view artifacts to write next to the JSON (default: both)",
+    )
+    extract.add_argument(
+        "--matrix-only",
+        action="store_true",
+        help="print the human view on stdout instead of the JSON document "
+        "(the Markdown report, or the TSV with --format tsv)",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "run":
         raw_out = args.out or os.environ.get("OUT", "")
         if raw_out == "":
-            print("ERROR: --out or OUT is required", file=sys.stderr)
-            return 1
+            raw_out = f"/tmp/picasu-battery-{args.level}-{datetime.now():%Y%m%d-%H%M%S}"
         # SIGTERM unwinds through run-cell's finally so the launcher and its
         # server are stopped instead of orphaned between cells.
         signal.signal(signal.SIGTERM, _interrupt)
@@ -1008,7 +1487,7 @@ def main(argv=None) -> int:
         try:
             validate_parent(parent, fresh=False)
             rows = load_report(report_path)
-            baselines = load_baselines(Path(args.baselines))
+            baselines = load_baselines(Path(args.baselines or str(SCRIPT_DIR / "baselines.tsv")))
         except (OSError, ValueError, ConfigError) as err:
             print(f"ERROR: {err}", file=sys.stderr)
             return 1
@@ -1025,7 +1504,12 @@ def main(argv=None) -> int:
 
     if args.command == "extract":
         try:
-            return extract_battery(Path(args.parent), Path(args.out) if args.out else None)
+            return extract_battery(
+                Path(args.parent),
+                Path(args.out) if args.out else None,
+                matrix_only=args.matrix_only,
+                matrix_format=args.format,
+            )
         except (OSError, ValueError, ConfigError) as err:
             # A corrupt report.tsv surfaces the same way `check` reports it.
             print(f"ERROR: {err}", file=sys.stderr)

@@ -417,9 +417,9 @@ class WorkloadTest(unittest.TestCase):
         self.assertEqual(extract.returncode, 0, extract.stderr)
         lines = [line for line in extract.stdout.splitlines() if line.strip()]
         by_metric = {line.split()[0]: line for line in lines if line.split()}
-        self.assertIn("scan_fetch_ms", by_metric)
-        self.assertIn("idle_edit_ms", by_metric)
-        self.assertNotIn("n/a", by_metric["scan_fetch_ms"])
+        self.assertIn("scan_prefetch_p50_ms", by_metric)
+        self.assertIn("idle_edit_p50_ms", by_metric)
+        self.assertNotIn("n/a", by_metric["scan_prefetch_p50_ms"])
 
     def test_status_without_writer_diagnostics_is_accepted(self):
         # The server status body carries only the index counters; no writer

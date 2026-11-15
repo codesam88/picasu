@@ -68,9 +68,20 @@ practical, so:
 Per cell, joined by scan index so request-side and server-side numbers
 describe the same work:
 
-- Request latencies: per-op medians/p95/max from storm TSVs and
-  hyperfine exports (flat `mean`/`median` shape). Why: the user-facing
-  regression signal; tails matter more than medians under load.
+- Request latencies: a full matrix of median/p95/worst per measurement
+  condition. The backgrounds are `idle` (post-scan baselines, server at
+  rest), `scan` (during-scan probes and concurrent bursts) and `uscan`
+  (the during-scan probes of the upload profile, which runs its own
+  populate scan); the access conditions are `prefetch`, `thumb`, `edit`,
+  `storm_read`, `storm_thumb` and `storm_edit`. Every report row carries
+  every background × access × statistic cell, `n/a` where that cell did
+  not measure it, plus the failed-op count of each storm kind per
+  background. Why: the user-facing regression signal, and tails matter
+  more than medians under load. Post-scan idle baselines contribute every
+  timed run to p95 and worst-case; during-scan probes contribute their
+  per-round summaries (percentile/extreme across rounds); storm bursts
+  contribute their per-run summary lines. p50 keeps the recorded
+  round-and-repeat pooling in every case.
 - Scan walls and convergence: per-run wall time, watermark trail,
   time-to-terminal, time-to-visible for uploads. Why: bounds the
   backstop/convergence claims with wall-clock evidence.
@@ -111,6 +122,12 @@ harness change. Larger scales run on demand and only promote upward
 when the smaller scale is clean. Empty matrix cells are not run until
 their prerequisite is green.
 
+Profiles fill different cells of the measurement matrix rather than
+reporting different metrics: every cell writes the same row schema, so
+a `control` row, a `storm-*` row and an `upload` row are comparable
+column by column and a missing condition is visible as `n/a` instead of
+a different column name.
+
 ## Reporting
 
 One machine-readable result row per cell (profile, scale, build,
@@ -119,3 +136,10 @@ artifacts. Baselines are checked in; a cell that moves a baseline
 beyond its band fails the battery until the move is explained and the
 baseline re-recorded. Hand-transcribed comparison tables are working
 notes, not results.
+
+`battery extract` produces the JSON document for machines, the
+human-readable `report.md` (header with cell outcomes, the battery-level
+p50/p95/max matrices, data anomalies, baseline conformance) and
+`matrix.tsv`, the same matrices as a spreadsheet. Each matrix cell rolls
+up to the median across the profile medians that measured it, with the
+contributor count recorded; an unmeasured cell stays `n/a`.

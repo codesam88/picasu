@@ -298,6 +298,13 @@ class DualFixtureGateTest(FixtureCase):
                 row_legacy = battery().build_row("gate", name, without)
                 self.assertEqual(row_events, row_legacy)
 
+    def test_rebuilt_row_carries_the_whole_matrix(self):
+        for name in CELLS:
+            with self.subTest(cell=name):
+                row = battery().build_row("gate", name, self.cell(name))
+                for column in battery().LATENCY_COLUMNS + battery().STORM_FAILED_COLUMNS:
+                    self.assertIn(column, row)
+
     def _run(self, cell: Path):
         return subprocess.run(
             [sys.executable, str(BENCH / "extract-bench.py"), str(cell)],
@@ -305,6 +312,184 @@ class DualFixtureGateTest(FixtureCase):
             text=True,
             check=False,
         )
+
+
+class MatrixSchemaTest(unittest.TestCase):
+    """The matrix constants are the schema every consumer agrees on."""
+
+    def test_every_background_access_and_stat_has_a_column(self):
+        extract = extractor()
+        self.assertEqual(len(extract.LATENCY_COLUMNS), 54)
+        self.assertEqual(extract.LATENCY_COLUMNS[0], "idle_prefetch_p50_ms")
+        self.assertEqual(extract.LATENCY_COLUMNS[-1], "uscan_storm_edit_max_ms")
+        self.assertIn("scan_storm_thumb_p95_ms", extract.LATENCY_COLUMNS)
+        self.assertEqual(
+            extract.STORM_FAILED_COLUMNS,
+            (
+                "idle_storm_read_failed",
+                "idle_storm_thumb_failed",
+                "idle_storm_edit_failed",
+                "scan_storm_read_failed",
+                "scan_storm_thumb_failed",
+                "scan_storm_edit_failed",
+            ),
+        )
+
+    def test_percentile_matches_the_workload_interpolation(self):
+        extract = extractor()
+        self.assertEqual(extract.percentile([5.0], 95), 5.0)
+        self.assertEqual(extract.percentile([1.0, 3.0], 95), 2.9)
+        self.assertEqual(extract.percentile([0.0, 10.0, 20.0], 50), 10.0)
+
+
+class MatrixStormTest(FixtureCase):
+    """Storm bursts land in their background and kind, failures included."""
+
+    def test_recorded_storm_runs_land_in_the_scan_background(self):
+        cell = self.cell("storm-diff")
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="storm-diff"), {})
+
+        # Two recorded runs: medians 6/5 ms -> 5.5, p95 worst 13 ms, max
+        # worst 27 ms, and 68 failed ops in the first run plus none in the
+        # second.
+        self.assertEqual(matrix["scan_storm_edit_p50_ms"], 5.5)
+        self.assertEqual(matrix["scan_storm_edit_p95_ms"], 13.0)
+        self.assertEqual(matrix["scan_storm_edit_max_ms"], 27.0)
+        self.assertEqual(matrix["scan_storm_edit_failed"], 68)
+        # This cell ran no other storm kind.
+        for column in (
+            "scan_storm_read_p50_ms",
+            "scan_storm_thumb_p50_ms",
+            "idle_storm_edit_p50_ms",
+            "idle_storm_edit_failed",
+            "scan_storm_read_failed",
+        ):
+            self.assertEqual(matrix[column], "n/a", column)
+
+    def test_storm_idle_runs_are_the_idle_background(self):
+        # Values from the recorded storm-idle summary lines; the profile is
+        # what separates the tree-at-rest burst from a concurrent one.
+        row = {
+            "storms": [
+                {
+                    "profile": "storm-idle",
+                    "kind": "read",
+                    "done": 80,
+                    "total": 80,
+                    "median": 0.004,
+                    "p95": 0.015,
+                    "max": 0.019,
+                    "failed": 0,
+                    "wall": 0.1,
+                },
+                {
+                    "profile": "storm-idle",
+                    "kind": "read",
+                    "done": 80,
+                    "total": 80,
+                    "median": 0.004,
+                    "p95": 0.016,
+                    "max": 0.018,
+                    "failed": 2,
+                    "wall": 0.1,
+                },
+            ]
+        }
+        extract = extractor()
+        self.assertEqual(extract._matrix_latency(row, "idle", "storm_read", "p50"), 4.0)
+        self.assertEqual(extract._matrix_latency(row, "idle", "storm_read", "max"), 19.0)
+        self.assertEqual(extract._matrix_failed(row, "idle", "read"), 2)
+        self.assertEqual(extract._matrix_latency(row, "scan", "storm_read", "p50"), "n/a")
+
+
+class MatrixProbeBucketTest(FixtureCase):
+    """Upload probes are `uscan`, every other profile's are `scan`."""
+
+    def test_upload_profile_puts_the_probes_in_uscan(self):
+        cell = self.cell("control")  # recorded gate-upload-rep2 transcript
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="upload"), {})
+
+        # Two recorded rounds: prefetch medians 9.874/7.929 ms -> 8.9;
+        # fetch means 2.7/2.0 ms over 10 fetches each -> 2.35. The tails
+        # are the extremes of those recorded rounds (the old worst-case
+        # columns for this cell were 9.9 and 2.7).
+        self.assertAlmostEqual(float(matrix["uscan_prefetch_p50_ms"]), 8.9, places=1)
+        self.assertAlmostEqual(float(matrix["uscan_thumb_p50_ms"]), 2.35, places=1)
+        self.assertEqual(matrix["uscan_prefetch_max_ms"], 9.9)
+        self.assertEqual(matrix["uscan_thumb_max_ms"], 2.7)
+        self.assertAlmostEqual(float(matrix["uscan_thumb_p95_ms"]), 2.7, places=1)
+        for column in ("scan_prefetch_p50_ms", "scan_thumb_p50_ms", "scan_edit_p50_ms"):
+            self.assertEqual(matrix[column], "n/a", column)
+
+    def test_control_profile_puts_the_same_probes_in_scan(self):
+        cell = self.cell("control")
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
+
+        self.assertAlmostEqual(float(matrix["scan_prefetch_p50_ms"]), 8.9, places=1)
+        self.assertAlmostEqual(float(matrix["scan_thumb_p50_ms"]), 2.35, places=1)
+        # The per-round extremes are the values the report recorded as
+        # worst-case before the matrix existed.
+        self.assertEqual(matrix["scan_prefetch_max_ms"], 9.9)
+        self.assertEqual(matrix["scan_thumb_max_ms"], 2.7)
+        for column in ("uscan_prefetch_p50_ms", "uscan_thumb_p50_ms", "uscan_edit_p50_ms"):
+            self.assertEqual(matrix[column], "n/a", column)
+
+    def test_a_cell_without_probes_leaves_both_buckets_empty(self):
+        cell = self.cell("storm-diff")
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
+        for background in ("scan", "uscan"):
+            for access in ("prefetch", "thumb", "edit"):
+                column = f"{background}_{access}_p50_ms"
+                self.assertEqual(matrix[column], "n/a", column)
+
+
+class MatrixIdleTailTest(FixtureCase):
+    """Idle p50 keeps the recorded median; p95/max pool the timed runs."""
+
+    def _with_export(self, results) -> Path:
+        cell = self.cell("control")
+        (cell / "hyperfine.json").write_text(json.dumps({"results": results}))
+        return cell
+
+    def test_idle_tails_pool_every_post_scan_run(self):
+        # Synthetic export: the post-scan command timings the cell writes.
+        cell = self._with_export(
+            [
+                {"name": "compressed-get", "times": [0.007, 0.008, 0.050]},
+                {"name": "prefetch", "times": [0.006, 0.007, 0.009]},
+                {"name": "edit-rating", "times": [0.007, 0.0072, 0.030]},
+            ]
+        )
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
+
+        # p50 is the transcript's post-scan median, unchanged by the export.
+        self.assertEqual(matrix["idle_prefetch_p50_ms"], 7.1)
+        self.assertEqual(matrix["idle_prefetch_p95_ms"], 8.8)
+        self.assertEqual(matrix["idle_prefetch_max_ms"], 9.0)
+        self.assertAlmostEqual(float(matrix["idle_thumb_p95_ms"]), 45.8, places=1)
+        self.assertEqual(matrix["idle_thumb_max_ms"], 50.0)
+        self.assertEqual(matrix["idle_edit_max_ms"], 30.0)
+
+    def test_hyperfine_v2_measurements_are_read(self):
+        cell = self._with_export(
+            [
+                {
+                    "name": "prefetch",
+                    "measurements": [
+                        {"time_wall_clock": {"value": value}} for value in (0.006, 0.007, 0.011)
+                    ],
+                }
+            ]
+        )
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
+        self.assertEqual(matrix["idle_prefetch_max_ms"], 11.0)
+
+    def test_a_cell_without_the_export_falls_back_to_the_recorded_median(self):
+        cell = self.cell("control")
+        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
+        self.assertEqual(matrix["idle_prefetch_p50_ms"], 7.1)
+        self.assertEqual(matrix["idle_prefetch_p95_ms"], 7.1)
+        self.assertEqual(matrix["idle_prefetch_max_ms"], 7.1)
 
 
 if __name__ == "__main__":
