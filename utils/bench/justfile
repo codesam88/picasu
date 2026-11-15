@@ -103,6 +103,16 @@ battery-extract parent out="": _venv
         "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}"
     fi
 
+
+# Unified CLI shell (bench.py). Prefer this for new flows.
+cli *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" {{ args }}
+
+# Alias for the unified CLI shell.
+bench-cli *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" {{ args }}
+
+
 # Remove the on-demand venv.
 clean:
     rm -rf "{{ venv_dir }}"

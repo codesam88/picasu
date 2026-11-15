@@ -70,6 +70,37 @@ implementation. The launcher subset skips hyperfine because a server-only
 run never drives it. There is one implementation of each rule, so the
 standalone checklist and the in-cell guards cannot drift apart.
 
+## Unified CLI
+
+`bench.py` is the single entry point; module mains are delegated to unchanged.
+
+```sh
+just bench cli <subcommand> [args...]
+# or
+just bench bench-cli <subcommand> [args...]
+```
+
+Command tree:
+
+```
+bench cell ...            # run-cell.py
+bench battery ...         # battery.py (run/check/extract/list)
+bench extract ...         # extract-bench.py
+bench seed ...            # seed_images.py
+bench server ...          # launch-backend.py
+bench prepare ...         # run-prepare.py
+bench preflight ...       # preflight.py
+bench status <parent>     # per-cell state (queued/running/finished/failed)
+```
+
+Examples:
+
+```sh
+just bench cli status /tmp/picasu-battery-gate
+just bench cli battery extract /tmp/picasu-battery-gate --out run.json
+just bench cli preflight --out /dev/shm/scratchpad/cell --port 5795
+```
+
 ## Checks
 
 ```sh
