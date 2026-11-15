@@ -84,6 +84,17 @@ battery-check report baselines="": _venv
         "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}"
     fi
 
+# Dump a battery parent directory as one JSON document (stdout or [out] file).
+battery-extract parent out="": _venv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{ out }}" ]; then
+        "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}" \
+            --out "{{ out }}"
+    else
+        "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}"
+    fi
+
 # Remove the on-demand venv.
 clean:
     rm -rf "{{ venv_dir }}"

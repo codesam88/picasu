@@ -11,11 +11,16 @@ Usage:
     utils/bench/battery.py run gate --out /tmp/picasu-battery-gate
     utils/bench/battery.py check /tmp/picasu-battery-gate/report.tsv
     utils/bench/battery.py list gate
+    utils/bench/battery.py extract /tmp/picasu-battery-gate [--out run.json]
 
 `run` resumes by default: the report is rebuilt from scratch on every
 invocation and each rep whose `status-final.json` parses is reused
 instead of re-run, so an interrupted battery continues where it stopped.
 `--fresh` re-runs every rep.
+
+`extract` dumps one battery parent (its `*-repN` subdirs plus
+`report.tsv`) as a single JSON document: per-rep report rows, manifest
+identity, stages, terminal state, pooled medians and the report rows.
 
 Environment:
     OUT                  battery directory for `run` when --out is absent
@@ -45,6 +50,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 import re
 import signal
@@ -356,6 +362,168 @@ def load_report(path: Path) -> list:
     return rows
 
 
+# --- battery-level JSON extract ---------------------------------------------
+# Identity subset of run-manifest.json: output key -> candidate manifest keys.
+_MANIFEST_IDENTITY = (
+    ("dataset_id", ("dataset_id", "DATASET_ID")),
+    ("dataset_count", ("dataset_count",)),
+    ("commit", ("git", "commit")),
+    ("build_profile", ("build_profile",)),
+    ("observer", ("observer_stats", "effective_observer_stats", "PICASU_OBSERVER_STATS")),
+    ("mode", ("mode",)),
+    ("binary_sha", ("binary_sha", "binary_sha256", "server_binary_sha256")),
+)
+
+_REP_DIR_RE = re.compile(r"^(?P<cell>.+)-rep(?P<rep>\d+)$")
+
+
+def _rep_dirs(parent: Path) -> list:
+    """Sorted `<level>-<profile>-repN` subdirectories of one battery parent."""
+    found = []
+    for entry in parent.iterdir():
+        if not entry.is_dir():
+            continue
+        match = _REP_DIR_RE.match(entry.name)
+        if match:
+            found.append((match.group("cell"), int(match.group("rep")), entry))
+    # Natural order: cells lexicographically, rep numbers numerically
+    # (`-rep10` must not sort between `-rep1` and `-rep2`).
+    return [entry for _cell, _rep, entry in sorted(found, key=lambda item: item[:2])]
+
+
+def _manifest_identity(outdir: Path) -> dict:
+    """The run-manifest identity subset; absent keys become JSON nulls."""
+    manifest = _read_manifest(outdir)
+    return {
+        name: next(
+            (manifest[key] for key in sources if manifest.get(key) is not None),
+            None,
+        )
+        for name, sources in _MANIFEST_IDENTITY
+    }
+
+
+def _read_stages(outdir: Path) -> list:
+    """Parsed `stages.json` content; an absent or corrupt file yields []."""
+    try:
+        stages = json.loads((outdir / "stages.json").read_text())
+    except OSError, json.JSONDecodeError:
+        return []
+    return stages if isinstance(stages, list) else []
+
+
+def _terminal_state(outdir: Path) -> str:
+    """Terminal server state from `status-final.json`, else "incomplete"."""
+    try:
+        status = json.loads((outdir / "status-final.json").read_text())
+    except OSError, json.JSONDecodeError:
+        return "incomplete"
+    state = status.get("state") if isinstance(status, dict) else None
+    return state if isinstance(state, str) and state else "incomplete"
+
+
+def _extract_entry(path: Path) -> dict:
+    """One rep subdir: row + manifest + stages + terminal, or an error entry."""
+    match = _REP_DIR_RE.match(path.name)
+    cell = match.group("cell") if match else ""
+    level, _, profile = cell.partition("-")
+    if not level or not profile:
+        return {
+            "dir": path.name,
+            "error": "cannot derive level and profile from directory name",
+        }
+    try:
+        row = build_row(level, profile, path)
+    except (Exception, SystemExit) as err:
+        # Broken reps become error entries so one bad dir cannot abort the
+        # walk; KeyboardInterrupt still aborts the extract.
+        if isinstance(err, SystemExit):
+            message = f"extractor exited with code {err.code}"
+        else:
+            message = str(err) or type(err).__name__
+        return {"dir": path.name, "error": message}
+    return {
+        "dir": path.name,
+        "row": row,
+        "manifest": _manifest_identity(path),
+        "stages": _read_stages(path),
+        "terminal": _terminal_state(path),
+    }
+
+
+def _median_rows(rows: list) -> list:
+    """One `<cell>:median` row per cell that contributed repeat rows.
+
+    Mirrors the report, which appends a median row only for cells that
+    ran more than once; the pooling itself is `_build_median_row`'s.
+    """
+    groups: dict = {}
+    for row in rows:
+        groups.setdefault(row.get("cell", ""), []).append(row)
+    return [_build_median_row(group) for group in groups.values() if len(group) > 1]
+
+
+def _json_safe(value):
+    """Recursively replace non-finite floats so `json.dump` stays strict.
+
+    `n/a` is a string in report rows and passes through untouched.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def extract_battery(parent: Path, out: Path | None = None) -> int:
+    """Dump one battery parent as a single JSON document.
+
+    Walks the `<level>-<profile>-repN` subdirs in sorted order and emits
+    one entry per subdir (row, manifest identity, stages, terminal state;
+    a rep whose artifacts no longer parse becomes an `{"dir", "error"}`
+    entry), the pooled median rows, the parent's `report.tsv` rows and an
+    `errors` count. Exit 0 when at least one rep parsed, 1 when the parent
+    holds no rep subdirs, 2 when every rep failed to parse.
+    """
+    parent = Path(parent)
+    if not parent.is_dir():
+        print(f"ERROR: {parent}: not a battery directory", file=sys.stderr)
+        return 1
+    paths = _rep_dirs(parent)
+    if not paths:
+        print(f"ERROR: {parent}: no *-repN subdirectories", file=sys.stderr)
+        return 1
+    cells = []
+    rows = []
+    for path in paths:
+        entry = _extract_entry(path)
+        cells.append(entry)
+        if "error" not in entry:
+            rows.append(entry["row"])
+    report_path = parent / "report.tsv"
+    document = {
+        "battery": str(parent),
+        "level": next((row.get("level") for row in rows if row.get("level")), None),
+        "cells": cells,
+        "medians": _median_rows(rows),
+        "report": load_report(report_path) if report_path.is_file() else [],
+        "errors": sum(1 for entry in cells if "error" in entry),
+    }
+    payload = json.dumps(_json_safe(document), indent=2, allow_nan=False) + "\n"
+    if out is None:
+        print(payload, end="")
+    else:
+        out = Path(out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(payload)
+    if not rows:
+        print(f"ERROR: {parent}: no rep subdirectory parsed", file=sys.stderr)
+        return 2
+    return 0
+
+
 # --- baseline checking -------------------------------------------------------
 @dataclass(frozen=True)
 class Baseline:
@@ -627,6 +795,12 @@ def main(argv=None) -> int:
     listing = subparsers.add_parser("list", help="print a battery's cell ids")
     listing.add_argument("level", choices=sorted(_BATTERIES))
 
+    extract = subparsers.add_parser(
+        "extract", help="dump one battery parent as a single JSON document"
+    )
+    extract.add_argument("parent", help="battery directory holding *-repN subdirs")
+    extract.add_argument("--out", help="write the JSON document to this file (default: stdout)")
+
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -667,6 +841,14 @@ def main(argv=None) -> int:
             f"across {result.cells} cell(s)"
         )
         return 1 if result.failures else 0
+
+    if args.command == "extract":
+        try:
+            return extract_battery(Path(args.parent), Path(args.out) if args.out else None)
+        except (OSError, ValueError) as err:
+            # A corrupt report.tsv surfaces the same way `check` reports it.
+            print(f"ERROR: {err}", file=sys.stderr)
+            return 1
 
     for cell in battery_cells(args.level):
         print(cell.cell_id)

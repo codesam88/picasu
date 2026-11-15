@@ -10,7 +10,7 @@ Python; it is not part of the server binary.
 | `workload.py`         | Image-set materialisation, scans, probes and harness-A-compatible artifacts      |
 | `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                      |
 | `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown             |
-| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check                       |
+| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON extract         |
 | `baselines.tsv`       | Checked-in accepted bands for the gate battery                                   |
 | `extract-bench.py`    | Summarise one or more harness output directories                                 |
 | `manifests/`          | PhotoSpec manifests for fixed image sets                                         |
@@ -154,6 +154,43 @@ the file, so an unexplained move keeps failing.
 `battery-check` compares baselines against the `:median` rows only:
 repeat rows are recorded but never checked, so a baselined metric must be
 recorded under its `<cell>:median` name (e.g. `gate-control:median`).
+
+## Battery JSON extract
+
+A battery keeps a single overarching parent directory: the `--out`
+argument of `battery run` (the `just bench battery` recipe) is that
+parent, and it holds one `<level>-<profile>-repN` subdirectory per rep
+plus `report.tsv` directly inside it. New sessions continue an
+interrupted run through the same parent — resume reuses the rep subdirs
+that already carry a parseable `status-final.json` instead of starting a
+second battery elsewhere.
+
+`battery extract` walks every `*-repN` subdirectory of one parent
+(sorted by cell, then rep number) and dumps the whole run as one JSON
+document, on stdout by default or into a file with `--out`:
+
+```sh
+just bench battery-extract /tmp/my-gate-run
+just bench battery-extract /tmp/my-gate-run /tmp/my-gate-run.json
+python3 utils/bench/battery.py extract /tmp/my-gate-run --out run.json
+```
+
+Document shape (one JSON object, strict — non-finite numbers become
+`null`, `n/a` stays the string `"n/a"`):
+
+| Key       | Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `battery` | the parent directory                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `level`   | battery level taken from the parsed rows; `null` when no rep parsed                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `cells`   | one entry per rep subdir in sorted order: `dir`, `row` (the report row via `build_row`), `manifest` (`run-manifest.json` identity subset: `dataset_id`, `dataset_count`, `commit`, `build_profile`, `observer`, `mode`, `binary_sha`; `null` for a missing or unreadable manifest), `stages` (parsed `stages.json`, else `[]`), `terminal` (`state` from `status-final.json`, else `"incomplete"`). A rep whose artifacts no longer parse becomes `{"dir", "error"}` and the walk continues |
+| `medians` | one `<cell>:median` row per cell that contributed two or more rep rows, pooled exactly like the report's median rows                                                                                                                                                                                                                                                                                                                                                                        |
+| `report`  | the parent's `report.tsv` rows verbatim (empty list when the file is absent)                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `errors`  | number of error entries among `cells`                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+Exit status: `0` when at least one rep parsed (a partial battery still
+emits the document), `1` when the parent holds no rep subdirs or is not a
+directory, `2` when every rep failed to parse. A corrupt `report.tsv`
+fails the extract with `1`, the same way `battery check` reports it.
 
 ## Workload profiles (`WORKLOAD`)
 

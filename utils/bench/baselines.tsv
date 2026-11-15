@@ -22,9 +22,68 @@
 # the row by hand. A cell outside its band fails until the move is
 # explained and the row re-recorded. `battery-check` never writes here.
 cell	metric	baseline	rel_tol	abs_tol	recorded	note
-# Example rows (commented; replace with recorded gate values):
-# gate-control:median	scan_fetch_p50_ms	18.0	0.25	1.0	2026-11-14	set-100 release; example only
-# gate-control:median	scan_wall_s	12.0	0.30	1.0	2026-11-14	set-100 release; example only
-# gate-control:median	tree_refresh_build_p50_us	1200	0.30	100	2026-11-14	set-100 release; example only
-# gate-upload:median	upload_submit_p50_ms	12	0.30	2	2026-11-14	set-100 release; example only
-# gate-upload:median	upload_visible_p50_ms	55	0.30	5	2026-11-14	set-100 release; example only
+# First recording: gate2 medians, set-100, release, commit 0d9f3265, 2026-11-15.
+# Bands are wide on purpose (single battery; gate1 showed up to ~40% swings
+# under contention). Tighten after a confirming run.
+gate-control:median	scan_wall_s	9.9	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	scan_fetch_p50_ms	11.9	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	fetch_worst_ms	14.3	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	scan_thumb_p50_ms	6.7	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	thumb_worst_ms	17.8	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	scan_edit_p50_ms	10.6	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	edit_worst_ms	14.1	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	idle_thumb_ms	7.6	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	idle_fetch_ms	6.9	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	idle_edit_ms	7.3	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	tree_refresh_build_p50_us	803.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	tree_refresh_build_max_us	4391.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	filter_snapshot_clone_p50_us	1154.0	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
+gate-control:median	filter_snapshot_clone_max_us	3507.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	scan_wall_s	10.096	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	idle_thumb_ms	7.75	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	idle_fetch_ms	6.95	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	idle_edit_ms	7.3	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	tree_refresh_build_p50_us	774.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	tree_refresh_build_max_us	1652.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	filter_snapshot_clone_p50_us	996.5	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-read:median	filter_snapshot_clone_max_us	1090.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	scan_wall_s	9.8905	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	idle_thumb_ms	7.5	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	idle_fetch_ms	7.3	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	idle_edit_ms	7.5	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	tree_refresh_build_p50_us	785.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	tree_refresh_build_max_us	2925.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	filter_snapshot_clone_p50_us	890.0	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-thumb:median	filter_snapshot_clone_max_us	890.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	scan_wall_s	6.6665	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	idle_thumb_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	idle_fetch_ms	7.0	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	idle_edit_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	tree_refresh_build_p50_us	788.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	tree_refresh_build_max_us	1486.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	filter_snapshot_clone_p50_us	743.5	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-diff:median	filter_snapshot_clone_max_us	832.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-idle:median	scan_wall_s	10.09	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-idle:median	idle_thumb_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-idle:median	idle_fetch_ms	7.1	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-idle:median	idle_edit_ms	7.5	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-idle:median	tree_refresh_build_p50_us	555.0	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
+gate-storm-idle:median	tree_refresh_build_max_us	2238.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording needs confirming run; max doubled vs gate1 rep-level 1117
+gate-storm-idle:median	filter_snapshot_clone_p50_us	0.0	0.0	500.0	2026-11-15	gate2 set-100 release; true zero, no prefetch during idle populate scan
+gate-storm-idle:median	filter_snapshot_clone_max_us	0.0	0.0	500.0	2026-11-15	gate2 set-100 release; true zero, no prefetch during idle populate scan
+gate-upload:median	scan_wall_s	18.666	0.5	3.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	scan_fetch_p50_ms	10.0	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	fetch_worst_ms	10.7	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	scan_thumb_p50_ms	2.2	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	thumb_worst_ms	2.3	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	scan_edit_p50_ms	10.6	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	edit_worst_ms	11.0	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	idle_thumb_ms	7.7	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	idle_fetch_ms	7.45	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	idle_edit_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	upload_submit_p50_ms	3.0	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	upload_visible_p50_ms	636.0	0.5	300.0	2026-11-15	gate2 set-100 release; first recording; worst file 9.3s in gate1 rerun
+gate-upload:median	tree_refresh_build_p50_us	1943.0	0.5	500.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	tree_refresh_build_max_us	4858.0	1.0	1500.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	filter_snapshot_clone_p50_us	2847.5	0.5	500.0	2026-11-15	gate2 set-100 release; first recording
+gate-upload:median	filter_snapshot_clone_max_us	4297.0	1.0	1500.0	2026-11-15	gate2 set-100 release; first recording
