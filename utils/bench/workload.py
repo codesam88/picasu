@@ -111,6 +111,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
+# The preflight checklist owns the shared environment guards (hyperfine).
+sys.path.insert(0, str(SCRIPT_DIR))
+import preflight  # noqa: E402
+
 DEFAULT_IMAGES = 100
 DEFAULT_REPEATS = 3
 DEFAULT_WARMUP = 1
@@ -197,21 +201,15 @@ def _float_env(environ: dict, name: str, default: float, minimum: float = 0.0) -
     return value
 
 
-HYPERFINE_INSTALL_HINT = "hyperfine is required — run: just install hyperfine"
+HYPERFINE_INSTALL_HINT = f"hyperfine is required ({preflight.HYPERFINE_HINT})"
 
 
 def resolve_hyperfine(environ: dict) -> str:
-    explicit = environ.get("HYPERFINE_BIN")
-    if explicit is not None:
-        if explicit == "":
-            raise ConfigError(HYPERFINE_INSTALL_HINT)
-        if not (Path(explicit).is_file() and os.access(explicit, os.X_OK)):
-            raise ConfigError(f"HYPERFINE_BIN is not executable: {explicit}")
-        return explicit
-    found = shutil.which("hyperfine")
-    if found:
-        return found
-    raise ConfigError(HYPERFINE_INSTALL_HINT)
+    """Resolve hyperfine through the shared preflight check."""
+    check = preflight.check_hyperfine(environ)
+    if not check.ok:
+        raise ConfigError(check.message())
+    return check.detail
 
 
 def _validate_out(raw: str) -> Path:

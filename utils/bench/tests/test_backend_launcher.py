@@ -26,10 +26,16 @@ BENCH = Path(__file__).resolve().parent.parent
 
 
 def load_launcher():
+    # One module instance per process: preflight.py imports this module to
+    # reuse its rules, so tests patch the object the callers actually use.
+    module = sys.modules.get("backend_launcher")
+    if module is not None:
+        return module
     spec = importlib.util.spec_from_file_location("backend_launcher", BENCH / "backend_launcher.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["backend_launcher"] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 bl = load_launcher()
