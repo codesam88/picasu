@@ -191,7 +191,7 @@ class FallbackTest(FixtureCase):
                 with contextlib.redirect_stderr(stderr):
                     row = extractor().parse_log(cell)
                 self.assertEqual(row, events_row)
-                self.assertIn("falling back to log lines", stderr.getvalue())
+                self.assertIn("falling back to per-round artifacts", stderr.getvalue())
 
     def test_stream_truncated_at_a_line_boundary_falls_back(self):
         # A cell killed mid-run leaves whole lines only: the stream parses,
@@ -216,7 +216,7 @@ class FallbackTest(FixtureCase):
         with contextlib.redirect_stderr(stderr):
             row = extractor().parse_log(cell)
         self.assertEqual(row, events_row)
-        self.assertIn("falling back to log lines", stderr.getvalue())
+        self.assertIn("falling back to per-round artifacts", stderr.getvalue())
 
     def test_unknown_version_falls_back_with_a_warning(self):
         for name in CELLS:
@@ -229,7 +229,7 @@ class FallbackTest(FixtureCase):
                     row = extractor().parse_log(cell)
                 self.assertEqual(row, events_row)
                 self.assertIn("v=2", stderr.getvalue())
-                self.assertIn("falling back to log lines", stderr.getvalue())
+                self.assertIn("falling back to per-round artifacts", stderr.getvalue())
 
 
 class PreferenceTest(FixtureCase):
@@ -362,16 +362,16 @@ class MatrixIdleTailTest(FixtureCase):
 
     def test_idle_tails_pool_every_post_scan_run(self):
         # Synthetic export: the post-scan command timings the cell writes.
+        # p50 is the export's reported median; tails pool the timed runs.
         cell = self._with_export(
             [
-                {"name": "compressed-get", "times": [0.007, 0.008, 0.050]},
-                {"name": "prefetch", "times": [0.006, 0.007, 0.009]},
-                {"name": "edit-rating", "times": [0.007, 0.0072, 0.030]},
+                {"name": "compressed-get", "median": 0.0076, "times": [0.007, 0.008, 0.050]},
+                {"name": "prefetch", "median": 0.0071, "times": [0.006, 0.007, 0.009]},
+                {"name": "edit-rating", "median": 0.0072, "times": [0.007, 0.0072, 0.030]},
             ]
         )
         matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
 
-        # p50 is the transcript's post-scan median, unchanged by the export.
         self.assertEqual(matrix["idle_prefetch_p50_ms"], 7.1)
         self.assertEqual(matrix["idle_prefetch_p95_ms"], 8.8)
         self.assertEqual(matrix["idle_prefetch_max_ms"], 9.0)
@@ -393,13 +393,152 @@ class MatrixIdleTailTest(FixtureCase):
         matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
         self.assertEqual(matrix["idle_prefetch_max_ms"], 11.0)
 
-    def test_a_cell_without_the_export_falls_back_to_the_recorded_median(self):
+    def test_a_cell_without_the_export_leaves_idle_cells_absent(self):
         cell = self.cell("control")
+        (cell / "hyperfine.json").unlink()
         matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
-        self.assertEqual(matrix["idle_prefetch_p50_ms"], 7.1)
-        self.assertEqual(matrix["idle_prefetch_p95_ms"], 7.1)
-        self.assertEqual(matrix["idle_prefetch_max_ms"], 7.1)
+        self.assertEqual(matrix["idle_prefetch_p50_ms"], "n/a")
+        self.assertEqual(matrix["idle_prefetch_p95_ms"], "n/a")
+        self.assertEqual(matrix["idle_prefetch_max_ms"], "n/a")
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TranscriptFormatTest(unittest.TestCase):
+    """A new-format cell (slim log + per-round artifacts, no inline
+    numbers) extracts identically with and without its event stream."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.cell = self.tmp / "cell"
+        rounds = self.cell / "rounds-run-1"
+        rounds.mkdir(parents=True)
+        (self.cell / "harness-a.log").write_text(
+            "\n".join(
+                [
+                    "02:40:57 N=8 image_count=100 image_bytes=54272755",
+                    "02:40:57 === seeding images (repo=/tmp/sets/set-100 path=/tmp/x) ===",
+                    "02:40:57 scan run 1/2: state=running polls=12 wall_ms=10000",
+                    "02:41:16 scan run 2/2: state=completed polls=3 wall_ms=12000",
+                    "02:41:16 scan wall median_ms=11000 over 2 run(s): 10000,12000",
+                    "02:41:16 probe round=1 rows=100 state=running",
+                    "02:41:17 probe round=2 rows=100 state=running",
+                    "02:41:18 storm: profile=storm-diff ops=4/4 failed=1 wall=0.1s kind=diff",
+                    "02:41:18 storm verify: matched 8/8 canary writes",
+                ]
+            )
+            + "\n"
+        )
+        (self.cell / "status-final.json").write_text('{"state": "completed"}')
+        (self.cell / "scan-walls.tsv").write_text("1\t10000\n2\t12000\n")
+        (rounds / "hyperfine-round-1.json").write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"name": "prefetch", "mean": 0.0081, "median": 0.008},
+                        {"name": "edit-rating", "mean": 0.0111, "median": 0.011},
+                    ]
+                }
+            )
+        )
+        (rounds / "hyperfine-round-2.json").write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"name": "prefetch", "mean": 0.0091, "median": 0.009},
+                        {"name": "edit-rating", "mean": 0.0121, "median": 0.012},
+                    ]
+                }
+            )
+        )
+        (rounds / "probe-round-1.tsv").write_text("h1\t200\t0.004\nh2\t200\t0.008\n")
+        (rounds / "probe-round-2.tsv").write_text("h3\t200\t0.010\n")
+        (rounds / "storm-round-1.tsv").write_text(
+            "0\t0\t0.003\t200\n1\t1\t0.004\t200\n2\t0\t0.005\terror\n3\t1\t0.006\t200\n"
+        )
+        (self.cell / "hyperfine.json").write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"name": "compressed-get", "median": 0.007},
+                        {"name": "prefetch", "median": 0.008},
+                        {"name": "edit-rating", "median": 0.009},
+                    ]
+                }
+            )
+        )
+        events = [
+            {
+                "v": 1,
+                "type": "probe_round",
+                "round": 1,
+                "rows": 100,
+                "fetch_n": 2,
+                "fetch_mean": 0.006,
+            },
+            {
+                "v": 1,
+                "type": "probe_round",
+                "round": 1,
+                "rows": 100,
+                "prefetch_median": 0.008,
+                "edit_median": 0.011,
+            },
+            {
+                "v": 1,
+                "type": "probe_round",
+                "round": 2,
+                "rows": 100,
+                "fetch_n": 1,
+                "fetch_mean": 0.01,
+            },
+            {
+                "v": 1,
+                "type": "probe_round",
+                "round": 2,
+                "rows": 100,
+                "prefetch_median": 0.009,
+                "edit_median": 0.012,
+            },
+            {"v": 1, "type": "scan_state", "run": 1, "state": "running", "wall_ms": 10000},
+            {"v": 1, "type": "scan_state", "run": 2, "state": "completed", "wall_ms": 12000},
+            {
+                "v": 1,
+                "type": "storm_summary",
+                "profile": "storm-diff",
+                "kind": "diff",
+                "done": 4,
+                "total": 4,
+                "median": 0.0045000000000000005,
+                "p95": 0.00585,
+                "max": 0.006,
+                "failed": 1,
+                "wall": 0.1,
+            },
+            {"v": 1, "type": "verify_result", "kind": "storm", "matched": 8, "total": 8},
+        ]
+        (self.cell / "events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
+
+    def test_slim_log_parses_without_events(self):
+        (self.cell / "events.jsonl").unlink()
+        row = extractor().parse_log(self.cell)
+        self.assertEqual(row["probe_rounds"], 2)
+        self.assertEqual(row["scan_rounds"], 2)
+        self.assertEqual(row["scan_thumb_n"], 3)
+        self.assertEqual(row["scan_wall_s"], 11.0)
+        self.assertEqual(row["scan_runs"], 2)
+        self.assertEqual(row["post_compressed"], 0.007)
+        self.assertEqual(row["post_prefetch"], 0.008)
+        self.assertEqual(row["post_edit"], 0.009)
+        self.assertEqual(row["storms"][0]["done"], 4)
+        self.assertEqual(row["storms"][0]["failed"], 1)
+        self.assertEqual(row["storm_verify"], [(8, 8)])
+
+    def test_slim_cell_matches_with_and_without_events(self):
+        with_events = extractor().parse_log(self.cell)
+        (self.cell / "events.jsonl").unlink()
+        without_events = extractor().parse_log(self.cell)
+        self.assertEqual(with_events, without_events)

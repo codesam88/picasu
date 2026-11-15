@@ -166,31 +166,32 @@ switch on `v`.
 
 `extract-bench.py` reads that stream first: `read_events` returns one typed
 list per event type and `parse_log` takes its measurement fields from it.
-The transcript regexes are the fallback — for cells recorded before the
-stream existed, for a stream cut off mid-write, and for a stream with an
-unknown schema version. Every fallback prints one
-`warn: ...; falling back to log lines` line naming the reason (a version
-error names the version) and never fails the extraction. A stream counts as
-complete only when its per-phase counts match the transcript's lines (probe
-rounds, hyperfine rounds, scan runs, storm summaries, canary
+Without a usable stream the same fields come from the per-round artifacts
+(hyperfine exports, probe/storm TSVs, scan walls) that the workload writes
+alongside the transcript; the transcript itself carries only status lines,
+integer counts and millisecond walls — no floating-point stats. Every
+fallback prints one `warn: ...` line naming the reason (a version error
+names the version) and never fails the extraction. A stream counts as
+complete only when its per-phase counts match the transcript's status
+lines (probe rounds, hyperfine rounds, scan runs, storm summaries, canary
 verifications), so a cell killed mid-run cannot report a partly written
 stream.
 
-The stream carries full-precision floats, while the transcript records each
-value at a fixed precision. The extractor pins every reported value to the
-transcript's precision (fetch-round means at 0.1 ms, storm medians at 1 ms,
-the scan-wall median at `:g`), so a cell with `events.jsonl` reports the
-same numbers as the same run without it and recorded cells stay comparable
-with checked-in baselines.
+The stream carries full-precision floats. The extractor pins every
+reported value to a fixed decimal precision (fetch-round means at 4dp,
+storm medians at 3dp, scan walls as integer ms), so a cell with
+`events.jsonl` reports the same numbers as the same cell read from its
+artifacts, and recorded cells stay comparable with checked-in baselines.
 
 Coverage: the stream carries during-scan measurements (probe rounds, storm
 summaries and canary checks, scan walls). Cell identity, the post-scan
-hyperfine runs and the upload p50 columns in `report.tsv` are still read
-from the cell's artifacts and transcript. The p95/max cells of the report
-matrix pool raw samples the stream does not carry — the post-scan
-`hyperfine.json` runs, the per-round `hyperfine-round-*.json` exports and
-the per-fetch `probe-round-*.tsv` files — so those values come from the
-same artifacts for a cell with or without an event stream.
+hyperfine medians (from `hyperfine.json`) and the upload p50 columns in
+`report.tsv` are still read from the cell's artifacts and transcript.
+The p95/max cells of the report matrix pool raw samples the stream does
+not carry — the post-scan `hyperfine.json` runs, the per-round
+`hyperfine-round-*.json` exports and the per-fetch `probe-round-*.tsv`
+files — so those values come from the same artifacts for a cell with or
+without an event stream.
 
 ## Extractor drain tables
 

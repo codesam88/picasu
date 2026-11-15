@@ -48,7 +48,8 @@ def write_cell(
     (prefetch, thumb fetch, edit-rating); `None` omits the probe rounds,
     as the storm profiles do. `post` is the post-scan hyperfine medians
     (prefetch, thumb, edit) that fill the idle background. `storm` is
-    `(profile, median, p95, max)` for one storm summary line.
+    `(profile, median, p95, max)`; the per-op TSV is synthesized so its
+    aggregate reproduces exactly those summary values.
     """
     outdir.mkdir(parents=True, exist_ok=True)
     median_ms = statistics.median(walls)
@@ -62,22 +63,47 @@ def write_cell(
     ]
     if probe is not None:
         probe_pref, probe_thumb, probe_edit = probe
-        log.append(
-            "probe round=1 rows=100 state=completed fetch: "
-            f"thumb: n=100 mean={probe_thumb:.3f} "
-            f"hyperfine: prefetch mean={probe_pref + 0.002:.3f} s median={probe_pref:.3f} s | "
-            f"edit-rating mean={probe_edit + 0.002:.3f} s median={probe_edit:.3f} s"
+        log.append("probe round=1 rows=100 state=completed")
+        rounds_dir = outdir / "rounds-run-1"
+        rounds_dir.mkdir(exist_ok=True)
+        (rounds_dir / "hyperfine-round-1.json").write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"name": "prefetch", "mean": probe_pref, "median": probe_pref},
+                        {"name": "edit-rating", "mean": probe_edit, "median": probe_edit},
+                    ]
+                }
+            )
+            + "\n"
         )
-    log += [
-        f"hyperfine compressed-get: mean={post_thumb + 0.001:.3f} s median={post_thumb:.3f} s",
-        f"hyperfine prefetch: mean={post_pref + 0.001:.3f} s median={post_pref:.3f} s",
-        f"hyperfine edit-rating: mean={post_edit + 0.001:.3f} s median={post_edit:.3f} s",
-    ]
+        (rounds_dir / "probe-round-1.tsv").write_text(
+            "".join(f"h{i:04d}\t200\t{probe_thumb}\n" for i in range(100))
+        )
+    log.append("=== hyperfine (warmup=1 runs=3) ===")
+    (outdir / "hyperfine.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"name": "compressed-get", "median": post_thumb},
+                    {"name": "prefetch", "median": post_pref},
+                    {"name": "edit-rating", "median": post_edit},
+                ]
+            }
+        )
+        + "\n"
+    )
     if storm is not None:
         storm_profile, storm_median, storm_p95, storm_max = storm
-        log.append(
-            f"storm: profile={storm_profile} ops=80/80 median={storm_median:g}s "
-            f"p95={storm_p95:g}s max={storm_max:g}s failed=0 wall=2.0s"
+        log.append(f"storm: profile={storm_profile} ops=80/80 failed=0 wall=2.0s")
+        lo = storm_median / 2
+        mid = (storm_median + storm_p95) / 2
+        assert lo < storm_median < mid < storm_p95 <= storm_max
+        latencies = [lo] * 10 + [storm_median] + [mid] * 8 + [storm_p95, storm_max]
+        rounds_dir = outdir / "rounds-run-1"
+        rounds_dir.mkdir(exist_ok=True)
+        (rounds_dir / "storm-round-1.tsv").write_text(
+            "".join(f"{i}\t0\t{lat}\t200\n" for i, lat in enumerate(latencies))
         )
     if drain:
         # Stage costs come from the backend's server.log, never from the

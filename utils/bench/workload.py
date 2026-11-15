@@ -112,7 +112,6 @@ import json
 import math
 import os
 import random
-import re
 import shutil
 import statistics
 import subprocess
@@ -192,13 +191,6 @@ class Logger:
             self.handle.flush()
         print(line, flush=True)
         return line
-
-    def raw(self, text: str) -> None:
-        if not text:
-            return
-        with self.lock:
-            self.handle.write(text if text.endswith("\n") else text + "\n")
-            self.handle.flush()
 
     def close(self) -> None:
         self.handle.close()
@@ -655,11 +647,12 @@ def run_hyperfine(
     export_json.unlink(missing_ok=True)
     result = subprocess.run(command, capture_output=True, text=True)
     combined = result.stdout + result.stderr
-    logger.raw(combined)
     if output_path is not None:
         output_path.write_text(combined)
     if result.returncode != 0:
         raise WorkloadError(f"hyperfine exited {result.returncode}")
+    names = ", ".join(name for name, _ in benches)
+    logger.log(f"hyperfine: {names} runs={runs} ok")
     return _hyperfine_results(export_json)
 
 
@@ -696,14 +689,9 @@ def random_fetch_round(
             code, _, elapsed = client.get(_compressed_path(hash_value), bearer=token)
         except WorkloadError:
             code, elapsed = 0, 0.0
-        records.append(f"{hash_value}\t{code}\t{elapsed:.6f}")
+        records.append(f"{hash_value}\t{code}\t{elapsed!r}")
     sample.write_text("\n".join(records) + ("\n" if records else ""))
     times = [float(record.split("\t")[2]) for record in records]
-    if records:
-        thumb = f"n={len(times)} mean={sum(times) / len(times):.4f}"
-    else:
-        thumb = "n=0"
-    transcript.log(f"probe round={round_no} rows={rows} state={state} fetch: thumb: {thumb}")
     fetch_mean_s = (sum(times) / len(times)) if times else 0.0
     fetch_min_s = min(times) if times else 0.0
     fetch_max_s = max(times) if times else 0.0
@@ -808,7 +796,7 @@ def probe_round(
         )
         return False
     summary = _summary_line(results)
-    transcript.log(f"probe round={round_no} rows={rows} state={state} hyperfine: {summary}")
+    transcript.log(f"probe round={round_no} rows={rows} state={state}")
     prefetch_wall = _wall_clock(results[0])
     edit_wall = _wall_clock(results[1])
     emit_event(
@@ -1024,11 +1012,10 @@ def run_storm(
     path = round_dir / f"storm-round-{run_index}.tsv"
     with open(path, "w", encoding="utf-8") as handle:  # noqa: PTH123
         for op_index, client_index, elapsed, code in sorted(results):
-            handle.write(f"{op_index}\t{client_index}\t{elapsed:.6f}\t{code}\n")
+            handle.write(f"{op_index}\t{client_index}\t{elapsed!r}\t{code}\n")
     logger.log(
         f"storm: profile={profile} ops={summary['done']}/{total} "
-        f"median={summary['median']:.3f}s p95={summary['p95']:.3f}s "
-        f"max={summary['max']:.3f}s failed={failed} wall={wall:.1f}s kind={op_kind}"
+        f"failed={failed} wall={wall:.1f}s kind={op_kind}"
     )
     emit_event(
         cfg.out,
@@ -1406,10 +1393,7 @@ def probe_stats(path: Path, label: str) -> str:
         return f"{label}: EMPTY"
     times = [elapsed for _, elapsed in rows]
     ok = sum(1 for code, _ in rows if code == "200")
-    return (
-        f"{label}: n={len(rows)} ok={ok} mean={sum(times) / len(times):.6f} "
-        f"min={min(times):.6f} max={max(times):.6f}"
-    )
+    return f"{label}: n={len(rows)} ok={ok} max={max(times):.4f}"
 
 
 def _pick_first_servable(cfg: config.WorkloadConfig, client: HttpClient, lines: list) -> tuple:
@@ -1422,10 +1406,6 @@ def _pick_first_servable(cfg: config.WorkloadConfig, client: HttpClient, lines: 
         if code == 200:
             return hash_value, token
     raise WorkloadError("no servable thumbnail for post-scan hyperfine")
-
-
-def _redact(command: str) -> str:
-    return re.sub(r"Bearer [A-Za-z0-9._-]+", "Bearer <redacted>", command)
 
 
 def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) -> None:
@@ -1463,13 +1443,6 @@ def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger
     )
     if len(results) != 3:
         raise WorkloadError("hyperfine json has no results")
-    for result in results:
-        wall = _wall_clock(result)
-        logger.log(
-            f"hyperfine {_result_name(result)}: mean={wall.get('mean')} s "
-            f"median={wall.get('median')} s stddev={wall.get('stddev')} "
-            f"runs={wall.get('count')} cmd={_redact(str(result.get('command', '')))}"
-        )
 
     logger.log("=== write-probe verification (rating == 3 on snapshot index 0) ===")
     lines = build_probe_list(cfg, client)

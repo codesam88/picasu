@@ -117,7 +117,6 @@
 02:40:57 index trigger=202 start_ms=1794710457359
 02:40:57 === polling /get/index/status ===
 02:40:57 scan poll budget: none — waiting for a terminal state (completed/failed/canceled)
-02:40:57 probe round=1 rows=100 state=running fetch: thumb: n=10 mean=0.0027
 Benchmark 1: prefetch (3 runs)
                 mean     ±       σ          min     …     max
   Wall Time     10.5 ms  ±     1.6 ms       9.4 ms  …    12.4 ms
@@ -130,7 +129,7 @@ Benchmark 2: edit-rating (3 runs)
  
  
   Warning: The first benchmarking run for this command was significantly slower than the rest (12.9 ms). This could be caused by (filesystem) caches that were not filled until after the first run. You should consider using the '--warmup' option to fill those caches before the actual benchmark. Alternatively, use the '--prepare' option to clear the caches before each timing run.
-02:40:57 probe round=1 rows=100 state=running hyperfine: prefetch mean=0.010530407666666667 s median=0.009874127 s runs=3 | edit-rating mean=0.011600974666666668 s median=0.01097071 s runs=3
+02:40:57 probe round=1 rows=100 state=running
 02:41:15 scan run 1/2: state=completed polls=93 wall_ms=18556
 02:41:15 status excerpt: {"state":"completed","scanned":200,"matched":200,"processed":199,"failed":0,"startedAt":1794710457360,"finishedAt":1794710475725}
 02:41:16 probe phase: rounds=1 rows=100 state_at_break=completed
@@ -139,7 +138,6 @@ Benchmark 2: edit-rating (3 runs)
 02:41:16 index trigger=202 start_ms=1794710476214
 02:41:16 === polling /get/index/status ===
 02:41:16 scan poll budget: none — waiting for a terminal state (completed/failed/canceled)
-02:41:16 probe round=1 rows=100 state=running fetch: thumb: n=10 mean=0.0020
 Benchmark 1: prefetch (3 runs)
                 mean     ±       σ          min     …     max
   Wall Time      8.2 ms  ±     0.4 ms       7.9 ms  …     8.6 ms
@@ -150,7 +148,7 @@ Benchmark 2: edit-rating (3 runs)
   Wall Time      8.4 ms  ±     0.3 ms       8.1 ms  …     8.7 ms            +3.2%
   Memory        12.8 MiB ±     0.1 MiB     12.7 MiB …    12.9 MiB           +0.7%
  
-02:41:16 probe round=1 rows=100 state=running hyperfine: prefetch mean=0.008153829333333334 s median=0.007929462 s runs=3 | edit-rating mean=0.008417594 s median=0.008443438000000001 s runs=3
+02:41:16 probe round=1 rows=100 state=running
 02:41:34 scan run 2/2: state=completed polls=94 wall_ms=18776
 02:41:34 status excerpt: {"state":"completed","scanned":201,"matched":200,"processed":200,"failed":0,"startedAt":1794710476215,"finishedAt":1794710494911}
 02:41:35 probe phase: rounds=1 rows=100 state_at_break=completed
@@ -176,9 +174,6 @@ Benchmark 3: edit-rating (3 runs)
   Wall Time      7.5 ms  ±     0.1 ms       7.4 ms  …     7.6 ms            -0.6%
   Memory        12.8 MiB ±     0.1 MiB     12.7 MiB …    12.9 MiB           +1.0%
  
-02:41:35 hyperfine compressed-get: mean=0.007519270666666668 s median=0.007628706000000001 s stddev=0.00027538029795236497 runs=3 cmd=curl -s -o /dev/null -b /dev/shm/picasu-bench-gate2/gate-upload-rep2/cookies.txt -H 'Authorization: Bearer <redacted>' -w '%{http_code} %{time_total}\n' http://127.0.0.1:5800/object/compressed/42/42ef688baf497a3bceb3f36c537cba6c6c1902729aafb7823bfb516295eb5a85.jpg
-02:41:35 hyperfine prefetch: mean=0.007059195 s median=0.007085707 s stddev=5.336209804720963e-05 runs=3 cmd=curl -s -o /dev/null -b /dev/shm/picasu-bench-gate2/gate-upload-rep2/cookies.txt -X POST -H 'Content-Type: application/json' -d '{}' -w '%{http_code} %{time_total}\n' http://127.0.0.1:5800/get/prefetch
-02:41:35 hyperfine edit-rating: mean=0.007475507333333335 s median=0.007454481000000001 s stddev=8.630729332063052e-05 runs=3 cmd=curl -s -o /dev/null -b /dev/shm/picasu-bench-gate2/gate-upload-rep2/cookies.txt -X PUT -H 'Content-Type: application/json' -d '{"indexArray":[0],"timestamp":1794710495111,"rating":3}' -w '%{http_code} %{time_total}\n' http://127.0.0.1:5800/put/edit_rating
 02:41:35 === write-probe verification (rating == 3 on snapshot index 0) ===
 02:41:35 write-probe verification: asset 1ff4nhzy0f7a5zt7ohq3iw6ldhk9ly78z2jubrnbjqp8uxhwddj23gxodeiz0xwv rating=3 (expected 3)
 02:41:35 === summary ===

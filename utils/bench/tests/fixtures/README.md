@@ -22,34 +22,42 @@ recording, not editing either side to agree.
   one. Record the source cell, its date, and why it is an excerpt.
 - **Derived**: a value-for-value replay of a recorded artifact, allowed only
   when the recorded cell cannot carry the file itself (the event stream
-  postdates these cells). The source artifacts stay in the fixture tree and a
+  postdates these cells; the per-round and post-scan hyperfine exports were
+  never checked in). The source artifacts stay in the fixture tree and a
   test re-derives the file from them.
 - **Synthetic**: allowed only for error shapes — an unknown schema version,
   binary garbage, a stream cut mid-line, a missing key. These stay inline in
   the test that needs them, marked as synthetic, and never stand in for a
   valid-path fixture.
+- **Slimmed**: a recorded transcript with its inline per-round stats deleted
+  (the workload no longer logs them). The deleted numbers are preserved
+  verbatim in the added per-round JSONs, so no measured value is lost.
 
 ## Files
 
-| Fixture                                                 | Verdict  | Source                                                                                                                         |
-| ------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `server-drain.log`                                      | recorded | `/tmp/picasu-bench-distort-on/server.log`, full file (110 lines, `PICASU_OBSERVER_STATS=1`, 2 scans), 2026-11-14 03:55–03:56 Z |
-| `server-stats-off.log`                                  | recorded | `/tmp/picasu-bench-distort-off/server.log`, full file (112 lines, no stats banner, no drain tables), 2026-11-14 03:57–03:58 Z  |
-| `events-dual/control/harness-a.log`                     | recorded | `/dev/shm/picasu-bench-gate2/gate-upload-rep2`, full transcript, 2026-11-15, git `0d9f3265`                                    |
-| `events-dual/control/server.log`                        | excerpt  | same cell, recorded lines 94–148: the two `observe drain:` tables through shutdown; startup prefix omitted                     |
-| `events-dual/control/status-final.json`                 | recorded | same cell, full file                                                                                                           |
-| `events-dual/control/scan-walls.tsv`                    | recorded | same cell, full file                                                                                                           |
-| `events-dual/control/run-manifest.json`                 | excerpt  | same cell, identity keys the extractor and battery read; machine/env fields omitted                                            |
-| `events-dual/control/events.jsonl`                      | derived  | replay of the recorded transcript and `rounds-run-*/probe-round-1.tsv`; no cell of this date has a stream                      |
-| `events-dual/control/rounds-run-1/probe-round-1.tsv`    | recorded | same cell, full file (10 probe latencies)                                                                                      |
-| `events-dual/control/rounds-run-2/probe-round-1.tsv`    | recorded | same cell, full file                                                                                                           |
-| `events-dual/storm-diff/harness-a.log`                  | recorded | `/dev/shm/picasu-bench-gate2/gate-storm-diff-rep1`, full transcript, 2026-11-15, git `0d9f3265`                                |
-| `events-dual/storm-diff/status-final.json`              | recorded | same cell, full file                                                                                                           |
-| `events-dual/storm-diff/scan-walls.tsv`                 | recorded | same cell, full file                                                                                                           |
-| `events-dual/storm-diff/run-manifest.json`              | excerpt  | same cell, identity keys only                                                                                                  |
-| `events-dual/storm-diff/rounds-run-1/storm-round-1.tsv` | recorded | same cell, full per-op storm samples (80 rows)                                                                                 |
-| `events-dual/storm-diff/rounds-run-2/storm-round-2.tsv` | recorded | same cell, full per-op storm samples (80 rows)                                                                                 |
-| `events-dual/storm-diff/events.jsonl`                   | derived  | replay of the two storm TSVs and the recorded summary/verify lines                                                             |
+| Fixture                                                   | Verdict  | Source                                                                                                                                                                                                                       |
+| --------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `server-drain.log`                                        | recorded | `/tmp/picasu-bench-distort-on/server.log`, full file (110 lines, `PICASU_OBSERVER_STATS=1`, 2 scans), 2026-11-14 03:55–03:56 Z                                                                                               |
+| `server-stats-off.log`                                    | recorded | `/tmp/picasu-bench-distort-off/server.log`, full file (112 lines, no stats banner, no drain tables), 2026-11-14 03:57–03:58 Z                                                                                                |
+| `events-dual/control/harness-a.log`                       | slimmed  | `/dev/shm/picasu-bench-gate2/gate-upload-rep2`, full transcript, 2026-11-15, git `0d9f3265`; inline per-round stats and post-scan hyperfine lines deleted (the workload no longer logs them), everything else byte-identical |
+| `events-dual/control/server.log`                          | excerpt  | same cell, recorded lines 94–148: the two `observe drain:` tables through shutdown; startup prefix omitted                                                                                                                   |
+| `events-dual/control/status-final.json`                   | recorded | same cell, full file                                                                                                                                                                                                         |
+| `events-dual/control/scan-walls.tsv`                      | recorded | same cell, full file                                                                                                                                                                                                         |
+| `events-dual/control/run-manifest.json`                   | excerpt  | same cell, identity keys the extractor and battery read; machine/env fields omitted                                                                                                                                          |
+| `events-dual/control/events.jsonl`                        | derived  | replay of the recorded transcript and `rounds-run-*/probe-round-1.tsv`; no cell of this date has a stream                                                                                                                    |
+| `events-dual/control/rounds-run-1/probe-round-1.tsv`      | recorded | same cell, full file (10 probe latencies)                                                                                                                                                                                    |
+| `events-dual/control/rounds-run-2/probe-round-1.tsv`      | recorded | same cell, full file                                                                                                                                                                                                         |
+| `events-dual/control/rounds-run-1/hyperfine-round-1.json` | derived  | per-round export the workload would have written; medians copied verbatim from the deleted transcript lines (`prefetch 0.009874127`, `edit-rating 0.01097071`)                                                               |
+| `events-dual/control/rounds-run-2/hyperfine-round-1.json` | derived  | same; medians `prefetch 0.007929462`, `edit-rating 0.008443438000000001`                                                                                                                                                     |
+| `events-dual/control/hyperfine.json`                      | derived  | post-scan export the workload would have written; medians copied verbatim from the deleted transcript lines (`compressed-get 0.007628706000000001`, `prefetch 0.007085707`, `edit-rating 0.007454481000000001`)              |
+| `events-dual/storm-diff/harness-a.log`                    | slimmed  | `/dev/shm/picasu-bench-gate2/gate-storm-diff-rep1`, full transcript, 2026-11-15, git `0d9f3265`; inline storm/post-scan stats deleted, everything else byte-identical                                                        |
+| `events-dual/storm-diff/status-final.json`                | recorded | same cell, full file                                                                                                                                                                                                         |
+| `events-dual/storm-diff/scan-walls.tsv`                   | recorded | same cell, full file                                                                                                                                                                                                         |
+| `events-dual/storm-diff/run-manifest.json`                | excerpt  | same cell, identity keys only                                                                                                                                                                                                |
+| `events-dual/storm-diff/rounds-run-1/storm-round-1.tsv`   | recorded | same cell, full per-op storm samples (80 rows)                                                                                                                                                                               |
+| `events-dual/storm-diff/rounds-run-2/storm-round-2.tsv`   | recorded | same cell, full per-op storm samples (80 rows)                                                                                                                                                                               |
+| `events-dual/storm-diff/hyperfine.json`                   | derived  | post-scan export the workload would have written; medians copied verbatim from the deleted transcript lines (`compressed-get 0.0073826130000000005`, `prefetch 0.006780321000000001`, `edit-rating 0.00719118`)              |
+| `events-dual/storm-diff/events.jsonl`                     | derived  | replay of the two storm TSVs and the recorded summary/verify lines                                                                                                                                                           |
 
 `drain-multi.log` was a byte-identical duplicate of `server-drain.log`; it was
 removed, leaving one copy of the recording.

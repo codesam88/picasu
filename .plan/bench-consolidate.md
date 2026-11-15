@@ -111,6 +111,23 @@ Order: 1, then 2+3 (either order), then 4, then 5+6, then 7+8.
 
 Steps 1-8 implemented on `bench/work` (commits `26f3dfba`..`7b6ccbcf`;
 suite 139 → 256 tests, all green; gate baselines recorded separately).
+
+## Follow-up: quiet transcript, single parsing path (2026-11-15)
+
+The transcript now logs what ran, not numbers: per-round hyperfine
+means, fetch means, storm summaries, and the per-bench post-scan detail
+lines are gone (hyperfine's own stdout dump too). The numbers live where
+they are computed — hyperfine JSON exports, probe/storm TSVs, post-scan
+export, scan walls — and the extractor reads those artifacts. The old
+inline-stat dialects (probe fetch/hyperfine lines, hyperfine mean-only
+and curl-sweep fallbacks, inline storm summaries) are deleted, not
+deprecated: there is one parsing path per artifact kind, each shared by
+the event and legacy readers. The dual fixture cells were converted to
+the new format (inline stats removed, medians moved verbatim into added
+per-round/post-scan JSONs) and the byte-identical events-vs-legacy gate
+still holds on the recorded data. Upload per-file/summary lines stay
+(they are integers, human-readable progress, and the battery's upload
+source); scan state/walls/median lines stay (integer ms, load-bearing).
 Deliberately left out, future work, not oversights:
 
 - `bench setup` from the CLI sketch (venv + managed deps + build +
@@ -121,5 +138,12 @@ Deliberately left out, future work, not oversights:
   scraped `server.log`) needs a backend change; explicitly out of bench
   scope. The drain-table parse stays.
 - Transcript-sourced leftovers noted at 5b (identity, post-scan
-  hyperfine, upload p50s, `scan state=` keys) stay until a deliberate
-  re-record; precision pinning keeps current baselines comparable.
+  hyperfine, upload p50s, `scan state=` keys) stay: they carry no
+  floating-point stats, and the post-scan medians, upload p50s, scan
+  walls, verify counts and identity come from them or the files they
+  point at.
+
+Verified end to end on a live set-100 control cell (3 reps):
+slim-only logs, events path and file path produce byte-identical rows,
+and `battery extract` renders populated p50/p95/max matrices plus 24
+stage rows per cell.
