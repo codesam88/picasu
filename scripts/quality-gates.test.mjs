@@ -127,7 +127,7 @@ test("trigger column reflects the CI workflow files and callers", () => {
     md,
     /`dylint-check`[^\n]*\| ci\s*\| PR, main/,
   );
-  assert.match(md, /`quint-check`[^\n]*\| ❌️\s*\| local/);
+  assert.match(md, /`quint::test`/);
   assert.match(md, /`check-tools`[^\n]*\| ❌️\s*\| -\s*\|/);
   assert.match(
     md,

@@ -193,7 +193,7 @@ const traceText = (() => {
       console.error('specs-check: regenerated utils/quint/pipeline/traceability.json')
     }
   } else if (traceText !== generatedTrace) {
-    fail('utils/quint/pipeline/traceability.json is stale (run `just spec-check --generate` after reviewing the diff)')
+    fail('utils/quint/pipeline/traceability.json is stale (run `node utils/quint/specs-check.mjs utils/quint/pipeline --generate` after reviewing the diff)')
   }
 }
 

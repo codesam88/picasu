@@ -1,0 +1,85 @@
+# Submodule justfile for the quint/spec tooling (utils/quint).
+# Invoke from the repo root as `just quint <recipe>` (works from any
+# directory), or directly: `just -f utils/quint/justfile <recipe>`.
+
+root := source_directory() / ".." / ".."
+pipeline_dir := source_directory() / "pipeline"
+
+# List quint recipes.
+[private]
+default:
+    @just --list --unsorted --justfile "{{ source_file() }}"
+
+# Quint binary via the root install recipe (idempotent; nested `just`
+# needs an explicit working directory — the nearest justfile from here is
+# the module's own).
+[private]
+_install-quint:
+    just -d "{{ root }}" install quint
+
+# Static self-checks: prettier over the layer + typecheck both specs.
+[group('quint')]
+lint: _install-quint
+    cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
+    quint typecheck "{{ pipeline_dir }}/eventual-consistency.qnt"
+    quint typecheck "{{ pipeline_dir }}/asset-aspects.qnt"
+
+# Apply formatting.
+[group('quint')]
+format:
+    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
+
+# Basic spec checks: catalog shapes, marker coverage, property refs,
+# event ownership, tag discipline, generated-doc freshness. Fast —
+# runs on any code change; no model executions.
+[group('quint')]
+check: doc-check
+    node "{{ source_directory() }}/events-check.mjs" "{{ pipeline_dir }}"
+    node "{{ source_directory() }}/catalog-check.mjs" "{{ pipeline_dir }}"
+    node "{{ source_directory() }}/operations-check.mjs" "{{ root }}"
+    node "{{ source_directory() }}/specs-check.mjs" "{{ pipeline_dir }}"
+
+# Run both model entries at the standard sample count (10k per run).
+[group('quint')]
+test: _install-quint
+    quint test "{{ pipeline_dir }}/eventual-consistency.qnt"
+    quint test "{{ pipeline_dir }}/asset-aspects.qnt"
+
+# Extensive model runs: elevated sample counts (deep/nightly lane;
+# expect tens of minutes).
+[group('quint')]
+fulltest: _install-quint
+    #!/usr/bin/env bash
+    set -euo pipefail
+    quint test --max-samples 100000 "{{ pipeline_dir }}/eventual-consistency.qnt"
+    quint test --max-samples 100000 "{{ pipeline_dir }}/asset-aspects.qnt"
+
+# Regenerate docs/eventual-consistency.md from the JSON catalogs.
+[group('quint')]
+docs:
+    node "{{ source_directory() }}/gen-eventual-consistency-doc.mjs" "{{ pipeline_dir }}" "{{ root }}"
+    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern '../docs/eventual-consistency.md'
+
+# Generated-doc drift gate: regenerate into a tempdir and diff.
+[group('quint')]
+doc-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmpdir="$(mktemp -d)"
+    trap 'rm -rf "$tmpdir"' EXIT
+    mkdir -p "$tmpdir/docs"
+    node "{{ source_directory() }}/gen-eventual-consistency-doc.mjs" "{{ pipeline_dir }}" "$tmpdir"
+    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "$tmpdir/docs/eventual-consistency.md" >/dev/null
+    if ! diff -u "{{ root }}/docs/eventual-consistency.md" "$tmpdir/docs/eventual-consistency.md"; then
+        echo ""
+        echo "docs/eventual-consistency.md is out of date with the generator."
+        echo "Run 'just quint docs' and commit the result."
+        exit 1
+    fi
+    echo "docs/eventual-consistency.md matches the generated output"
+
+# Checker self-tests: fixture catalogs prove the gates fail when they
+# should (hermetic; no repo state touched).
+[group('quint')]
+selftest:
+    node --test "{{ source_directory() }}/tests/checkers.test.mjs"
