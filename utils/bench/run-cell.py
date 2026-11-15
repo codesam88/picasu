@@ -66,10 +66,9 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 # primitives here instead of reimplementing them.
 sys.path.insert(0, str(SCRIPT_DIR))
 import backend_launcher  # noqa: E402
+import config  # noqa: E402
+from config import ConfigError  # noqa: E402
 
-DEFAULT_READY_TIMEOUT_S = 150.0
-DEFAULT_STOP_TIMEOUT_S = 30.0
-POLL_INTERVAL_S = 0.2
 PROBE_TIMEOUT_S = 2.0
 SERVER_INFO_PATH = "/get/server-info"
 LAUNCHER_INTERRUPT_RC = 130
@@ -77,19 +76,11 @@ TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
 
 EXIT_CONFIG = 1
 
-HYPERFINE_INSTALL_HINT = "hyperfine is required — run: just install hyperfine"
 EXIT_LAUNCHER_NOT_READY = 10
 EXIT_WORKLOAD_SPAWN = 11
 EXIT_SHUTDOWN_FAILED = 12
 EXIT_WORKLOAD_TIMEOUT = 13
 EXIT_INTERRUPTED = 130
-
-LAUNCHER_SCRIPT = SCRIPT_DIR / "launch-backend.py"
-WORKLOAD_SCRIPT = SCRIPT_DIR / "run-workload.py"
-
-
-class ConfigError(Exception):
-    """Invalid orchestrator configuration."""
 
 
 def log_line(message: str) -> None:
@@ -97,90 +88,11 @@ def log_line(message: str) -> None:
 
 
 # --- config ------------------------------------------------------------------
-def _validate_out(raw: str) -> Path:
-    if raw == "":
-        raise ConfigError("OUT is required (environment OUT or --out)")
-    out = Path(os.path.realpath(raw))
-    if str(out) == "/":
-        raise ConfigError("refusing to use OUT='/'")
-    if out == REPO_ROOT or REPO_ROOT in out.parents:
-        raise ConfigError(f"OUT must not be inside the repo: {out}")
-    return out
-
-
-def _port(raw: str) -> int:
-    try:
-        port = int(raw)
-    except ValueError:
-        raise ConfigError(f"PORT must be an integer, got '{raw}'")
-    if not 1 <= port <= 65535:
-        raise ConfigError(f"PORT must be in 1..65535, got {port}")
-    return port
-
-
-def _positive_float(environ: dict, name: str, default: float) -> float:
-    raw = environ.get(name, str(default))
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ConfigError(f"{name} must be a number, got '{raw}'")
-    if value <= 0:
-        raise ConfigError(f"{name} must be > 0, got {value}")
-    return value
-
-
-def _nonnegative_float(environ: dict, name: str, default: float) -> float:
-    raw = environ.get(name, str(default))
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ConfigError(f"{name} must be a number, got '{raw}'")
-    if value < 0:
-        raise ConfigError(f"{name} must be >= 0, got {value}")
-    return value
-
-
-def resolve_hyperfine(environ: dict):
-    explicit = environ.get("HYPERFINE_BIN")
-    if explicit is not None:
-        if explicit == "":
-            return None
-        path = Path(explicit)
-        if not (path.is_file() and os.access(path, os.X_OK)):
-            return None
-        return explicit
-    return shutil.which("hyperfine")
-
-
-def config_from_env(environ: dict, out_flag=None, port_flag=None) -> dict:
-    """Build cell config. Flags win over environment; mode is derived downstream."""
-    out = _validate_out(out_flag if out_flag is not None else environ.get("OUT", ""))
-    raw_port = port_flag if port_flag is not None else environ.get("PORT", "")
-    if raw_port == "":
-        raise ConfigError("PORT is required (environment PORT or --port)")
-    port = _port(str(raw_port))
-
-    build_profile = environ.get("BUILD_PROFILE", "release")
-    if build_profile not in ("release", "debug"):
-        raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
-
-    if resolve_hyperfine(environ) is None:
-        raise ConfigError(HYPERFINE_INSTALL_HINT)
-
-    return {
-        "out": out,
-        "port": port,
-        "build_profile": build_profile,
-        "ready_timeout": _positive_float(
-            environ, "LAUNCHER_READY_TIMEOUT_S", DEFAULT_READY_TIMEOUT_S
-        ),
-        "stop_timeout": _positive_float(environ, "LAUNCHER_STOP_TIMEOUT_S", DEFAULT_STOP_TIMEOUT_S),
-        "workload_timeout": _nonnegative_float(environ, "WORKLOAD_TIMEOUT_S", 0.0),
-        "gdb": environ.get("GDB", "1") != "0",
-        "poll_interval": POLL_INTERVAL_S,
-        "launcher_script": LAUNCHER_SCRIPT,
-        "workload_script": WORKLOAD_SCRIPT,
-    }
+def config_from_env(environ: dict, out_flag=None, port_flag=None) -> config.CellConfig:
+    """Build cell config once. Flags win over environment; mode is derived downstream."""
+    return config.CellConfig.from_env(
+        environ, out_flag=out_flag, port_flag=port_flag, which=shutil.which
+    )
 
 
 # --- child process control ---------------------------------------------------
@@ -194,7 +106,7 @@ def _signal_group(proc, sig) -> None:
             pass
 
 
-def spawn_launcher(cfg: dict, environ: dict, output_path: Path):
+def spawn_launcher(cfg: config.CellConfig, environ: dict, output_path: Path):
     """Start the launcher CLI in its own process group.
 
     Launcher output goes to a side file because the launcher may wipe OUT
@@ -203,13 +115,13 @@ def spawn_launcher(cfg: dict, environ: dict, output_path: Path):
     env = dict(environ)
     env.update(
         {
-            "OUT": str(cfg["out"]),
-            "PORT": str(cfg["port"]),
-            "BUILD_PROFILE": cfg["build_profile"],
+            "OUT": str(cfg.out),
+            "PORT": str(cfg.port),
+            "BUILD_PROFILE": cfg.build_profile,
         }
     )
-    command = [sys.executable, str(cfg["launcher_script"])]
-    log_line(f"launcher start: port={cfg['port']} out={cfg['out']} profile={cfg['build_profile']}")
+    command = [sys.executable, str(cfg.launcher_script)]
+    log_line(f"launcher start: port={cfg.port} out={cfg.out} profile={cfg.build_profile}")
     handle = open(output_path, "w", encoding="utf-8")  # noqa: PTH123
     try:
         return subprocess.Popen(
@@ -261,10 +173,10 @@ def _read_launcher_info(path: Path):
     return info if isinstance(info, dict) and info.get("base_url") else None
 
 
-def wait_ready(cfg: dict, proc) -> tuple:
+def wait_ready(cfg: config.CellConfig, proc) -> tuple:
     """Return ('ready', info) | ('exited', rc) | ('timeout', None)."""
-    info_path = cfg["out"] / "launcher-info.json"
-    deadline = time.monotonic() + cfg["ready_timeout"]
+    info_path = cfg.out / "launcher-info.json"
+    deadline = time.monotonic() + cfg.ready_timeout
     while time.monotonic() < deadline:
         rc = proc.poll()
         if rc is not None:
@@ -272,19 +184,19 @@ def wait_ready(cfg: dict, proc) -> tuple:
         info = _read_launcher_info(info_path)
         if info is not None and probe_ready(str(info["base_url"])):
             return "ready", info
-        time.sleep(cfg["poll_interval"])
+        time.sleep(cfg.poll_interval)
     return "timeout", None
 
 
 # --- workload ----------------------------------------------------------------
-def run_workload(cfg: dict, environ: dict, info: dict) -> int:
+def run_workload(cfg: config.CellConfig, environ: dict, info: dict) -> int:
     env = dict(environ)
-    env["LAUNCHER_INFO"] = str(cfg["out"] / "launcher-info.json")
-    env["OUT"] = str(cfg["out"])
-    env["BUILD_PROFILE"] = cfg["build_profile"]
-    command = [sys.executable, str(cfg["workload_script"])]
-    log_line(f"workload start: {info.get('base_url')} out={cfg['out']}")
-    timeout = cfg.get("workload_timeout") or None
+    env["LAUNCHER_INFO"] = str(cfg.out / "launcher-info.json")
+    env["OUT"] = str(cfg.out)
+    env["BUILD_PROFILE"] = cfg.build_profile
+    command = [sys.executable, str(cfg.workload_script)]
+    log_line(f"workload start: {info.get('base_url')} out={cfg.out}")
+    timeout = cfg.workload_timeout or None
     completed = subprocess.run(command, env=env, timeout=timeout)
     log_line(f"workload exited rc={completed.returncode}")
     return completed.returncode
@@ -314,14 +226,14 @@ def _read_json(path: Path):
         return None
 
 
-def _server_pid(cfg: dict):
-    info = _read_json(cfg["out"] / "launcher-info.json")
+def _server_pid(cfg: config.CellConfig):
+    info = _read_json(cfg.out / "launcher-info.json")
     pid = info.get("pid") if isinstance(info, dict) else None
     return pid if isinstance(pid, int) and pid > 0 else None
 
 
-def _status_state(cfg: dict) -> str:
-    doc = _read_json(cfg["out"] / "status-last.json")
+def _status_state(cfg: config.CellConfig) -> str:
+    doc = _read_json(cfg.out / "status-last.json")
     state = doc.get("state") if isinstance(doc, dict) else None
     return state if isinstance(state, str) else "unknown"
 
@@ -380,7 +292,7 @@ def capture_proc_thread_state(pid: int, diag: Path) -> dict:
     return {"ok": True, "threads": len(tids), **readable}
 
 
-def capture_live_stacks(cfg: dict, diag: Path) -> dict:
+def capture_live_stacks(cfg: config.CellConfig, diag: Path) -> dict:
     """Capture `/proc` thread state plus best-effort gdb stacks.
 
     The `/proc` capture is the ptrace-independent fallback and always runs
@@ -400,7 +312,7 @@ def capture_live_stacks(cfg: dict, diag: Path) -> dict:
     try:
         logf = open(diag / "stack-capture.log", "a", encoding="utf-8")  # noqa: PTH123
         captures["proc_threads"] = capture_proc_thread_state(pid, diag)
-        gdb_result = backend_launcher.capture_stacks(pid, diag, logf, cfg.get("gdb", True))
+        gdb_result = backend_launcher.capture_stacks(pid, diag, logf, cfg.gdb)
         stacks = diag / "stacks.txt"
         captures["gdb"] = {
             **gdb_result,
@@ -416,7 +328,7 @@ def capture_live_stacks(cfg: dict, diag: Path) -> dict:
 
 
 def collect_diag(
-    cfg: dict,
+    cfg: config.CellConfig,
     reason: str,
     *,
     workload_rc=None,
@@ -429,7 +341,7 @@ def collect_diag(
     With `capture_live` the server is still running, so thread counts and
     gdb stacks are taken before the caller's shutdown path runs.
     """
-    out = cfg["out"]
+    out = cfg.out
     diag = out / "diag-orchestrator"
     try:
         diag.mkdir(parents=True, exist_ok=True)
@@ -442,8 +354,8 @@ def collect_diag(
     meta = {
         "reason": reason,
         "out": str(out),
-        "port": cfg["port"],
-        "build_profile": cfg["build_profile"],
+        "port": cfg.port,
+        "build_profile": cfg.build_profile,
         "workload_rc": workload_rc,
         "launcher_rc": launcher_rc,
         "status_state": state,
@@ -488,7 +400,7 @@ def _temp_log() -> Path:
     return Path(path)
 
 
-def run_cell(cfg: dict, environ: dict) -> int:
+def run_cell(cfg: config.CellConfig, environ: dict) -> int:
     """Run one cell. Returns the orchestrator exit code."""
     launcher_output = _temp_log()
     launcher = None
@@ -503,7 +415,7 @@ def run_cell(cfg: dict, environ: dict) -> int:
             try:
                 workload_rc = run_workload(cfg, environ, info)
             except subprocess.TimeoutExpired:
-                log_line(f"workload exceeded {cfg['workload_timeout']:g}s; killing it")
+                log_line(f"workload exceeded {cfg.workload_timeout:g}s; killing it")
                 collect_diag(
                     cfg,
                     "workload-timeout",
@@ -542,7 +454,7 @@ def run_cell(cfg: dict, environ: dict) -> int:
             )
             result = EXIT_LAUNCHER_NOT_READY
         else:
-            log_line(f"launcher not ready within {cfg['ready_timeout']:g}s")
+            log_line(f"launcher not ready within {cfg.ready_timeout:g}s")
             collect_diag(
                 cfg,
                 "launcher-not-ready",
@@ -554,7 +466,7 @@ def run_cell(cfg: dict, environ: dict) -> int:
         result = EXIT_INTERRUPTED
     finally:
         if launcher is not None:
-            shutdown_rc = stop_launcher(launcher, cfg["stop_timeout"])
+            shutdown_rc = stop_launcher(launcher, cfg.stop_timeout)
             log_line(f"launcher stopped rc={shutdown_rc}")
         launcher_output.unlink(missing_ok=True)
 

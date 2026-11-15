@@ -60,19 +60,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_SETS_ROOT = Path("/tmp/sets")
-DEFAULT_BASE_PORT = 5795
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import config  # noqa: E402
+from config import DEFAULT_SETS_ROOT, ConfigError  # noqa: E402
+
+DEFAULT_BASE_PORT = config.BATTERY_BASE_PORT
 NA = "n/a"
-
-# Per-level workload budget passed to run-cell as WORKLOAD_TIMEOUT_S:
-# run_battery invokes run-cell in-process, so no outer timeout(1) bounds a
-# cell the way the justfile recipe does. The scale figure covers the
-# measured ~1335 s single control cell at 5650 rows.
-WORKLOAD_TIMEOUT_S_BY_LEVEL = {"gate": 1800, "scale": 7200}
-
-BATTERY_REPEATS_DEFAULT = 3
-BATTERY_REPEATS_BY_LEVEL = {"gate": 3, "scale": 3}
-BATTERY_REPEATS_MIN = 1
 
 REPORT_COLUMNS = [
     "cell",
@@ -654,6 +648,30 @@ def _interrupt(signum, frame):
     raise KeyboardInterrupt
 
 
+def _cell_env(
+    base: dict,
+    run_config: config.BatteryConfig,
+    cell: Cell,
+    index: int,
+    cell_out: Path,
+) -> dict:
+    """The environment of one rep, derived from the pinned battery config."""
+    env = dict(base)
+    env.update(cell.env)
+    env["BUILD_PROFILE"] = run_config.build_profile
+    env["WORKLOAD_TIMEOUT_S"] = run_config.workload_timeout_s
+    env["BATTERY_REPEATS"] = str(run_config.repeats)
+    env.update(
+        {
+            "OUT": str(cell_out),
+            "PORT": str(run_config.base_port + index),
+            "IMAGE_REPO": str(repo_path(cell, run_config.sets_root)),
+            "DATASET_ID": cell.repo,
+        }
+    )
+    return env
+
+
 def _reuse_row(level: str, cell: Cell, cell_out: Path) -> dict | None:
     """Return the report row of a completed rep, or None when it must run.
 
@@ -685,26 +703,27 @@ def run_battery(
     The report is rebuilt from scratch on every invocation. By default a
     completed rep is reused instead of re-run (`fresh=True` re-runs every
     rep), so an interrupted battery resumes where it stopped.
+
+    The battery's knobs and budgets are validated once into a
+    `BatteryConfig`; each rep's environment is derived from it.
     """
     outdir = Path(outdir).resolve()
+    environ = dict(os.environ)
+    run_config = config.BatteryConfig.from_env(
+        environ,
+        level=level,
+        out=outdir,
+        sets_root=sets_root,
+        base_port=base_port,
+        build_profile=build_profile,
+        fresh=fresh,
+    )
+    n_repeats = run_config.repeats
     cells = battery_cells(level)
     outdir.mkdir(parents=True, exist_ok=True)
     report = outdir / "report.tsv"
     report.unlink(missing_ok=True)
     orchestrator = _run_cell()
-
-    # Battery-level repeats: an exported BATTERY_REPEATS wins over the
-    # per-level default (env.setdefault leaves an exported value intact).
-    env0 = dict(os.environ)
-    env0.setdefault(
-        "BATTERY_REPEATS", str(BATTERY_REPEATS_BY_LEVEL.get(level, BATTERY_REPEATS_DEFAULT))
-    )
-    try:
-        n_repeats = int(env0["BATTERY_REPEATS"])
-    except TypeError, ValueError:
-        raise ValueError(f"BATTERY_REPEATS must be an integer, got {env0['BATTERY_REPEATS']!r}")
-    if n_repeats < BATTERY_REPEATS_MIN:
-        raise ValueError(f"BATTERY_REPEATS must be >= {BATTERY_REPEATS_MIN}, got {n_repeats}")
 
     for index, cell in enumerate(cells):
         repeat_rows = []
@@ -720,20 +739,7 @@ def run_battery(
                 append_row(report, row)
                 repeat_rows.append(row)
                 continue
-            env = dict(os.environ)
-            env.update(cell.env)
-            env["BUILD_PROFILE"] = build_profile
-            # run-cell's workload budget; an exported WORKLOAD_TIMEOUT_S wins.
-            env.setdefault("WORKLOAD_TIMEOUT_S", str(WORKLOAD_TIMEOUT_S_BY_LEVEL[level]))
-            env.setdefault("BATTERY_REPEATS", str(n_repeats))
-            env.update(
-                {
-                    "OUT": str(cell_out),
-                    "PORT": str(base_port + index),
-                    "IMAGE_REPO": str(repo_path(cell, sets_root)),
-                    "DATASET_ID": cell.repo,
-                }
-            )
+            env = _cell_env(environ, run_config, cell, index, cell_out)
             print(
                 f"[battery {level}] {cell.cell_id}: rep={rep}/{n_repeats} port={env['PORT']} out={cell_out}",
                 flush=True,
@@ -820,6 +826,9 @@ def main(argv=None) -> int:
                 build_profile=args.build,
                 fresh=args.fresh,
             )
+        except ConfigError as err:
+            print(f"ERROR: {err}", file=sys.stderr)
+            return 1
         except KeyboardInterrupt:
             print("[battery] interrupted", file=sys.stderr)
             return 130

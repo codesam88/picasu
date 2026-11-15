@@ -238,7 +238,7 @@ class RunCellTest(unittest.TestCase):
         return env
 
     def cfg(self, **kw):
-        cfg = {
+        fields = {
             "out": self.out,
             "port": self.port,
             "build_profile": "release",
@@ -250,8 +250,8 @@ class RunCellTest(unittest.TestCase):
             "launcher_script": self.launcher_script,
             "workload_script": self.workload_script,
         }
-        cfg.update(kw)
-        return cfg
+        fields.update(kw)
+        return oc.config.CellConfig(**fields)
 
     def events_list(self):
         if not self.events.is_file():
@@ -274,21 +274,21 @@ class RunCellTest(unittest.TestCase):
 
     def test_config_defaults_and_flags(self):
         cfg = oc.config_from_env({"OUT": str(self.out), "PORT": "5800"})
-        self.assertEqual(cfg["build_profile"], "release")
-        self.assertEqual(cfg["ready_timeout"], 150)
-        self.assertEqual(cfg["stop_timeout"], 30)
-        self.assertEqual(cfg["workload_timeout"], 0)
-        self.assertTrue(cfg["gdb"])
-        self.assertEqual(cfg["port"], 5800)
+        self.assertEqual(cfg.build_profile, "release")
+        self.assertEqual(cfg.ready_timeout, 150)
+        self.assertEqual(cfg.stop_timeout, 30)
+        self.assertEqual(cfg.workload_timeout, 0)
+        self.assertTrue(cfg.gdb)
+        self.assertEqual(cfg.port, 5800)
 
         cfg = oc.config_from_env(
             {"OUT": str(self.tmp.name), "PORT": "5800", "BUILD_PROFILE": "debug"},
             out_flag=str(self.out),
             port_flag="5801",
         )
-        self.assertEqual(cfg["out"], Path(self.out).resolve())
-        self.assertEqual(cfg["port"], 5801)
-        self.assertEqual(cfg["build_profile"], "debug")
+        self.assertEqual(cfg.out, Path(self.out).resolve())
+        self.assertEqual(cfg.port, 5801)
+        self.assertEqual(cfg.build_profile, "debug")
 
     def test_config_rejects_negative_workload_timeout(self):
         with self.assertRaises(oc.ConfigError):
@@ -296,8 +296,8 @@ class RunCellTest(unittest.TestCase):
         cfg = oc.config_from_env(
             {"OUT": str(self.out), "PORT": "5800", "WORKLOAD_TIMEOUT_S": "0", "GDB": "0"}
         )
-        self.assertEqual(cfg["workload_timeout"], 0)
-        self.assertFalse(cfg["gdb"])
+        self.assertEqual(cfg.workload_timeout, 0)
+        self.assertFalse(cfg.gdb)
 
     def test_missing_hyperfine_fails_fast(self):
         with (

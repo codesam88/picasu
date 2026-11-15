@@ -188,26 +188,26 @@ class LauncherTest(unittest.TestCase):
         env = base_env(OUT=str(Path(self.tmp.name) / "c"))
         env.pop("GDB")
         cfg = bl.config_from_env(env)
-        self.assertEqual(cfg["mode"], "bench")
-        self.assertTrue(cfg["fresh"])
-        self.assertEqual(cfg["build_profile"], "release")
-        self.assertEqual(cfg["ready_timeout"], 120)
-        self.assertEqual(cfg["launch_timeout"], 0)
-        self.assertEqual(cfg["ncpu"], 4)
-        self.assertTrue(cfg["gdb"])
-        self.assertEqual(cfg["admin_id"], "bench-admin")
-        self.assertTrue(cfg["admin_pw"].startswith("bench-"))
+        self.assertEqual(cfg.mode, "bench")
+        self.assertTrue(cfg.fresh)
+        self.assertEqual(cfg.build_profile, "release")
+        self.assertEqual(cfg.ready_timeout, 120)
+        self.assertEqual(cfg.launch_timeout, 0)
+        self.assertEqual(cfg.ncpu, 4)
+        self.assertTrue(cfg.gdb)
+        self.assertEqual(cfg.admin_id, "bench-admin")
+        self.assertTrue(cfg.admin_pw.startswith("bench-"))
 
     def test_debug_profile_is_not_canonical(self):
         env = base_env(BUILD_PROFILE="debug", OUT=str(Path(self.tmp.name) / "c"))
         cfg = bl.config_from_env(env)
-        self.assertEqual(cfg["mode"], "debug")
-        self.assertEqual(cfg["build_profile"], "debug")
+        self.assertEqual(cfg.mode, "debug")
+        self.assertEqual(cfg.build_profile, "debug")
 
     def test_release_with_rust_log_is_not_canonical(self):
         env = base_env(OUT=str(Path(self.tmp.name) / "c"), RUST_LOG="info")
         cfg = bl.config_from_env(env)
-        self.assertEqual(cfg["mode"], "debug")
+        self.assertEqual(cfg.mode, "debug")
 
     def test_bad_profile(self):
         with self.assertRaises(bl.ConfigError):
@@ -225,11 +225,11 @@ class LauncherTest(unittest.TestCase):
     def test_mode_derived_from_profile_and_env(self):
         out = str(Path(self.tmp.name) / "c")
         cfg = bl.config_from_env(base_env(OUT=out))
-        self.assertEqual(cfg["mode"], "bench")
+        self.assertEqual(cfg.mode, "bench")
         cfg = bl.config_from_env(base_env(OUT=out, RUST_LOG="info"))
-        self.assertEqual(cfg["mode"], "debug")
+        self.assertEqual(cfg.mode, "debug")
         cfg = bl.config_from_env(base_env(OUT=out, BUILD_PROFILE="debug"))
-        self.assertEqual(cfg["mode"], "debug")
+        self.assertEqual(cfg.mode, "debug")
 
     def test_missing_binary(self):
         with self.assertRaises(bl.ConfigError):
@@ -253,7 +253,7 @@ class LauncherTest(unittest.TestCase):
         with self.assertRaises(bl.ConfigError):
             bl.config_from_env(base_env(OUT=str(out), FRESH="0"))
         cfg = bl.config_from_env(base_env(OUT=str(out), FRESH="0", ADMIN_PW="pw"))
-        self.assertFalse(cfg["fresh"])
+        self.assertFalse(cfg.fresh)
 
     # --- runtime --------------------------------------------------------
     def test_fresh_success(self):
@@ -514,7 +514,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
         out = self.root / "cell"
         env = base_env(OUT=str(out), IMAGE_HOME_SRC=str(src), DATASET_ID="ds-1")
         cfg = bl.config_from_env(env)
-        self.assertEqual(cfg["image_home"], src)
+        self.assertEqual(cfg.image_home, src)
         bl.prepare_out(cfg)
         self.assertFalse((out / "images").exists())
         self.assertTrue(src.exists())
@@ -541,7 +541,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
             cfg = bl.config_from_env(env)
             bl.prepare_out(cfg)
             bl.write_manifest(cfg, env)
-            m = json.loads((cfg["out"] / "run-manifest.json").read_text())
+            m = json.loads((cfg.out / "run-manifest.json").read_text())
             self.assertEqual(m["PICASU_OBSERVER_STATS"], expected)
             self.assertEqual(m["observer_stats"], expected)
             self.assertEqual(m["effective_observer_stats"], expected)
@@ -555,7 +555,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
             cfg = bl.config_from_env(env)
             bl.prepare_out(cfg)
             bl.write_manifest(cfg, env)
-            m = json.loads((cfg["out"] / "run-manifest.json").read_text())
+            m = json.loads((cfg.out / "run-manifest.json").read_text())
             self.assertEqual(m["PICASU_OBSERVER_STATS"], expected)
 
     def test_local_dataset_recorded_as_out_local(self):

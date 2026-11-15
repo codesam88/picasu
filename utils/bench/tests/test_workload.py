@@ -625,12 +625,12 @@ class ImageSetTest(unittest.TestCase):
             (repo / name).write_bytes(b"x" * 1000)
         out = self.tmp_path / "cell"
         out.mkdir(exist_ok=True)
-        cfg = {
-            "out": out,
-            "image_repo": repo,
-            "image_path": image_path or out / "images",
-            "images": images,
-        }
+        cfg = self.workload.config.WorkloadConfig(
+            out=out,
+            image_repo=repo,
+            image_path=image_path or out / "images",
+            images=images,
+        )
         logger = self.workload.Logger(out / "prepare.log")
         try:
             with contextlib.redirect_stdout(io.StringIO()):
@@ -727,14 +727,14 @@ class ConfigTest(unittest.TestCase):
                 "SCAN_TIMEOUT_S": "0",
             }
             cfg = workload.config_from_env(env)
-            self.assertEqual(cfg["base_url"], "http://127.0.0.1:9999")
-            self.assertEqual(cfg["out"], cell.resolve())
-            self.assertEqual(cfg["images"], 7)
-            self.assertEqual(cfg["scan_repeats"], 2)
-            self.assertEqual(cfg["repeats"], 4)
-            self.assertEqual(cfg["warmup"], 1)
-            self.assertEqual(cfg["runs_during"], 2)
-            self.assertEqual(cfg["fetches"], 3)
+            self.assertEqual(cfg.base_url, "http://127.0.0.1:9999")
+            self.assertEqual(cfg.out, cell.resolve())
+            self.assertEqual(cfg.images, 7)
+            self.assertEqual(cfg.scan_repeats, 2)
+            self.assertEqual(cfg.repeats, 4)
+            self.assertEqual(cfg.warmup, 1)
+            self.assertEqual(cfg.runs_during, 2)
+            self.assertEqual(cfg.fetches, 3)
 
     def test_workload_defaults_and_validation(self):
         workload = load_workload()
@@ -759,10 +759,10 @@ class ConfigTest(unittest.TestCase):
             repo.mkdir()
             base = {"LAUNCHER_INFO": str(info), "IMAGE_REPO": str(repo)}
             cfg = workload.config_from_env(dict(base))
-            self.assertEqual(cfg["workload"], "control")
-            self.assertEqual(cfg["storm_clients"], 8)
-            self.assertEqual(cfg["storm_ops"], 10)
-            self.assertEqual(cfg["storm_margin_s"], 0.5)
+            self.assertEqual(cfg.workload, "control")
+            self.assertEqual(cfg.storm_clients, 8)
+            self.assertEqual(cfg.storm_ops, 10)
+            self.assertEqual(cfg.storm_margin_s, 0.5)
             for bad in ("storm-everything", "CONTROL", ""):
                 with self.subTest(workload=bad):
                     with self.assertRaises(workload.ConfigError):
@@ -792,10 +792,10 @@ class ConfigTest(unittest.TestCase):
             base = {"LAUNCHER_INFO": str(info), "IMAGE_REPO": str(repo)}
 
             cfg = workload.config_from_env(dict(base))
-            self.assertEqual(cfg["probe_page"], 1000)
-            self.assertEqual(cfg["index_settle_timeout_s"], 600.0)
-            self.assertEqual(cfg["upload_timeout_s"], 30.0)
-            self.assertEqual(cfg["upload_post_timeout_s"], 60.0)
+            self.assertEqual(cfg.probe_page, 1000)
+            self.assertEqual(cfg.index_settle_timeout_s, 600.0)
+            self.assertEqual(cfg.upload_timeout_s, 30.0)
+            self.assertEqual(cfg.upload_post_timeout_s, 60.0)
 
             cfg = workload.config_from_env(
                 dict(
@@ -806,10 +806,10 @@ class ConfigTest(unittest.TestCase):
                     UPLOAD_POST_TIMEOUT_S="12.5",
                 )
             )
-            self.assertEqual(cfg["probe_page"], 250)
-            self.assertEqual(cfg["index_settle_timeout_s"], 30.0)
-            self.assertEqual(cfg["upload_timeout_s"], 45.0)
-            self.assertEqual(cfg["upload_post_timeout_s"], 12.5)
+            self.assertEqual(cfg.probe_page, 250)
+            self.assertEqual(cfg.index_settle_timeout_s, 30.0)
+            self.assertEqual(cfg.upload_timeout_s, 45.0)
+            self.assertEqual(cfg.upload_post_timeout_s, 12.5)
 
             for name, value in (
                 ("PROBE_PAGE", "0"),
@@ -914,7 +914,7 @@ class ConfigTest(unittest.TestCase):
                 "IMAGE_REPO": str(repo_images),
             }
             cfg = workload.config_from_env(env)
-            self.assertEqual(cfg["image_repo"], repo_images)
+            self.assertEqual(cfg.image_repo, repo_images)
 
 
 class StatusFinalTest(unittest.TestCase):
@@ -989,9 +989,9 @@ class ProbeWindowTest(unittest.TestCase):
 
     def build(self, total_rows, probe_limit, probe_page=None):
         self.server.total_rows = total_rows
-        cfg = {"out": self.cell, "probe_limit": probe_limit}
+        cfg = self.workload.config.WorkloadConfig(out=self.cell, probe_limit=probe_limit)
         if probe_page is not None:
-            cfg["probe_page"] = probe_page
+            cfg.probe_page = probe_page
         return self.workload.build_probe_list(cfg, self.client)
 
     def get_data_windows(self):
@@ -1088,9 +1088,9 @@ class PagedRowLookupTest(unittest.TestCase):
         self.server.server_close()
 
     def cfg(self, **overrides):
-        cfg = {"images": 1500, "upload_files": 1, "probe_page": 1000}
-        cfg.update(overrides)
-        return cfg
+        fields = {"out": self.cell, "images": 1500, "upload_files": 1, "probe_page": 1000}
+        fields.update(overrides)
+        return self.workload.config.WorkloadConfig(**fields)
 
     def get_data_windows(self):
         return [
@@ -1164,7 +1164,9 @@ class IndexSettleTest(unittest.TestCase):
         self.server.server_close()
 
     def _cfg(self, timeout=5.0):
-        return {"index_settle_timeout_s": timeout, "poll_interval_s": 0.02}
+        return self.workload.config.WorkloadConfig(
+            out=self.cell, index_settle_timeout_s=timeout, poll_interval_s=0.02
+        )
 
     def status_polls(self):
         return sum(
@@ -1236,7 +1238,8 @@ class UploadStimulusTest(unittest.TestCase):
         return logger
 
     def _cfg(self, **overrides):
-        cfg = {
+        fields = {
+            "out": self.cell,
             "image_repo": self.repo,
             "image_path": self.image_path,
             "upload_files": 2,
@@ -1244,8 +1247,8 @@ class UploadStimulusTest(unittest.TestCase):
             "poll_interval_s": 0.01,
             "upload_post_timeout_s": 60.0,
         }
-        cfg.update(overrides)
-        return cfg
+        fields.update(overrides)
+        return self.workload.config.WorkloadConfig(**fields)
 
     def test_post_budget_reaches_the_upload_call(self):
         client = RecordingUploadClient(["u1.jpg", "u2.jpg"])

@@ -38,9 +38,11 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # The checks call into the launcher for the port, OUT, binary and sandbox
-# rules; keep a single importable module instance across callers.
+# rules; keep a single importable module instance across callers. The
+# checklist inputs themselves are normalised by config.PreflightConfig.
 sys.path.insert(0, str(SCRIPT_DIR))
 import backend_launcher  # noqa: E402
+import config  # noqa: E402
 
 HYPERFINE_HINT = "run: just install hyperfine"
 SANDBOX_MANIFEST = "sandbox-manifest.json"
@@ -210,26 +212,27 @@ def preflight(
     re-derive a different one. `require_hyperfine=False` is the
     server-only subset (no workload will run).
     """
-    checks = [check_server_binary(environ, binary=binary)]
-    if require_hyperfine:
-        checks.append(check_hyperfine(environ))
-    if archive is not None:
-        checks.append(check_archive(archive))
-    sandbox_path = sandbox if sandbox is not None else environ.get("IMAGE_HOME_SRC")
-    if sandbox_path:
-        checks.append(check_sandbox_manifest(sandbox_path))
-    out_path = out if out is not None else environ.get("OUT")
-    if out_path:
-        checks.append(check_out(out_path, fresh=_fresh_flag(environ, fresh)))
-    default_port = environ.get("PORT", backend_launcher.DEFAULT_PORT)
-    checks.append(check_port(port if port is not None else default_port))
+    cfg = config.PreflightConfig.from_env(
+        environ,
+        out=out,
+        fresh=fresh,
+        port=port,
+        archive=archive,
+        sandbox=sandbox,
+        binary=binary,
+        require_hyperfine=require_hyperfine,
+    )
+    checks = [check_server_binary(cfg.environ, binary=cfg.binary)]
+    if cfg.require_hyperfine:
+        checks.append(check_hyperfine(cfg.environ))
+    if cfg.archive is not None:
+        checks.append(check_archive(cfg.archive))
+    if cfg.sandbox:
+        checks.append(check_sandbox_manifest(cfg.sandbox))
+    if cfg.out:
+        checks.append(check_out(cfg.out, fresh=cfg.fresh))
+    checks.append(check_port(cfg.port))
     return checks
-
-
-def _fresh_flag(environ: dict, fresh: bool | None) -> bool:
-    if fresh is not None:
-        return bool(fresh)
-    return environ.get("FRESH", "1") == "1"
 
 
 def print_checklist(checks: list[Check]) -> list[Check]:

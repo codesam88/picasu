@@ -15,11 +15,39 @@ Python; it is not part of the server binary.
 | `extract-bench.py`    | Summarise one or more harness output directories                                 |
 | `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest               |
 | `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT     |
+| `config.py`           | Typed, validated per-layer configuration shared by every module                  |
 | `manifests/`          | PhotoSpec manifests for fixed image sets                                         |
 
 The environment contracts live in the module docstrings. Each producer writes
 into `$OUT`; the launcher writes `launcher-info.json`, which the workload
 consumes.
+
+## Configuration
+
+Configuration is validated once per layer, in `config.py`. Each object is
+built from its inputs through a single constructor and then read as
+attributes:
+
+| Object            | Constructor | Layer                                 |
+| ----------------- | ----------- | ------------------------------------- |
+| `LauncherConfig`  | `from_env`  | `backend_launcher.py`: server half    |
+| `WorkloadConfig`  | `from_env`  | `workload.py`: measurement half       |
+| `CellConfig`      | `from_env`  | `run-cell.py`: launcher + workload    |
+| `BatteryConfig`   | `from_env`  | `battery.py`: repeats, budgets, knobs |
+| `PrepareConfig`   | `from_args` | `prepare.py`: sandbox preparation     |
+| `PreflightConfig` | `from_env`  | `preflight.py`: checklist inputs      |
+
+Defaults and validation rules live in `config.py`, not in the layer modules.
+Shared rules — integer and float bounds, the port range, and the OUT, sandbox
+and binary path checks — are single functions imported by every consumer, so
+one bad variable is rejected with one message wherever it is read. All
+failures raise `ConfigError`. `battery.py` builds one `BatteryConfig` per run
+and derives every rep's cell environment from it; a rep never re-reads the
+battery-level knobs.
+
+Two seams stay with their layer: the workload resolves `hyperfine` through the
+preflight checklist, and the launcher and orchestrator bind their own
+repository root and script paths.
 
 ## Prerequisites
 

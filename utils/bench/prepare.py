@@ -14,7 +14,6 @@ non-empty sandbox without --force, or link+copy both failed).
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import shutil
@@ -27,9 +26,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
-
-class ConfigError(Exception):
-    """Configuration / preflight failure."""
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import config  # noqa: E402
+from config import ConfigError  # noqa: E402
 
 
 def git_commit() -> str:
@@ -46,33 +46,14 @@ def git_commit() -> str:
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--archive", required=True, help="canonical read-only archive root")
-    parser.add_argument("--sandbox", required=True, help="target sandbox directory")
-    parser.add_argument("--count", type=int, default=100, help="images to link (default 100)")
-    parser.add_argument(
-        "--large", action="store_true", help="large-file class archive (used as-is)"
-    )
-    parser.add_argument(
-        "--force", action="store_true", help="allow non-empty sandbox (wiped first)"
-    )
-    args = parser.parse_args(argv)
-    return args
+    """Parse the prepare flags into the validated config object."""
+    return config.PrepareConfig.from_args(argv)
 
 
-def prepare(archive, sandbox, count=100, large=False, force=False) -> int:
-    archive_path = Path(archive)
-    if not archive_path.is_dir():
-        print(f"ERROR: archive is not a directory: {archive}", file=sys.stderr)
-        return 1
-    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-        print(f"ERROR: count must be a positive integer, got {count!r}", file=sys.stderr)
-        return 1
-
-    sandbox_path = Path(sandbox)
-    if sandbox_path.exists() and archive_path.resolve() == sandbox_path.resolve():
-        print("ERROR: sandbox must differ from archive", file=sys.stderr)
-        return 1
+def prepare(options: config.PrepareConfig) -> int:
+    archive_path = options.archive
+    sandbox_path = options.sandbox
+    count = options.count
 
     entries = sorted(archive_path.glob("*.jpg"), key=lambda path: path.name)
     if len(entries) < count:
@@ -89,7 +70,7 @@ def prepare(archive, sandbox, count=100, large=False, force=False) -> int:
         except OSError:
             is_empty = False
         if not is_empty:
-            if not force:
+            if not options.force:
                 print(
                     f"ERROR: sandbox is not empty: {sandbox_path} (use --force)",
                     file=sys.stderr,
@@ -101,7 +82,7 @@ def prepare(archive, sandbox, count=100, large=False, force=False) -> int:
                 sandbox_path.unlink()
     sandbox_path.mkdir(parents=True, exist_ok=True)
 
-    if large:
+    if options.large:
         print("note: large-file class archive used as-is; no synthesis", file=sys.stderr)
 
     linked = 0
@@ -159,14 +140,12 @@ def prepare(archive, sandbox, count=100, large=False, force=False) -> int:
 
 
 def main(argv=None) -> int:
-    args = parse_args(argv)
-    return prepare(
-        archive=args.archive,
-        sandbox=args.sandbox,
-        count=args.count,
-        large=args.large,
-        force=args.force,
-    )
+    try:
+        options = parse_args(argv)
+    except ConfigError as err:
+        print(f"ERROR: {err}", file=sys.stderr)
+        return 1
+    return prepare(options)
 
 
 # Aliases for callers that expect other entry-point names.

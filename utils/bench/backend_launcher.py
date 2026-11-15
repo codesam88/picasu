@@ -55,13 +55,11 @@ import hashlib
 import http.cookiejar
 import json
 import os
-import random
 import shutil
 import signal
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -76,19 +74,20 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import config  # noqa: E402
+
+# Re-export the shared rules under the launcher's name: the preflight
+# checklist reads them here instead of importing config directly.
+ConfigError = config.ConfigError
+executable_file = config.executable_file
+validate_image_home_src = config.validate_image_home_src
+validate_port = config.validate_port
+
 MODES = ("bench", "debug")  # run-manifest/launcher-info labels (derived, not input)
 DIAGNOSTIC_ENV = ("RUST_LOG",)
-DEFAULT_PORT = 5713
-DEFAULT_ADMIN_ID = "bench-admin"
-READY_TIMEOUT_S = 120.0
-POLL_INTERVAL_S = 0.2
 SERVER_INFO_PATH = "/get/server-info"
 BOOTSTRAP_PATH = "/post/users/bootstrap"
 AUTH_PATH = "/post/users/authenticate"
-
-
-class ConfigError(Exception):
-    """Invalid or unsafe launcher configuration."""
 
 
 def log_line(logf, msg: str) -> None:
@@ -134,178 +133,23 @@ def git_info() -> dict:
 
 
 # --- config ------------------------------------------------------------------
-def allowed_out_roots() -> list:
-    """Directories a FRESH wipe is allowed to delete beneath."""
-    return [
-        Path(tempfile.gettempdir()).resolve(),
-        Path("/tmp"),
-        Path("/var/tmp"),
-        Path("/tmp/opencode"),
-        Path("/dev/shm"),
-    ]
-
-
-def _resolved_out(raw: str) -> Path:
-    if raw == "":
-        raise ConfigError("OUT is required")
-    # realpath: a pre-existing symlink must not smuggle the guard targets.
-    return Path(os.path.realpath(raw))
-
-
-def _under(path: Path, root: Path) -> bool:
-    return path != root and root in path.parents
-
-
 def validate_out(raw: str, fresh: bool) -> Path:
-    out = _resolved_out(raw)
-    if str(out) == "/":
-        raise ConfigError("refusing to use OUT='/'")
-    if out == REPO_ROOT or REPO_ROOT in out.parents:
-        raise ConfigError(f"OUT must not be inside the repo: {out}")
-    if fresh:
-        roots = allowed_out_roots()
-        if not any(_under(out, root) for root in roots):
-            shown = ", ".join(str(r) for r in roots)
-            raise ConfigError(f"refusing to wipe outside a temp root ({shown}): {out}")
-    return out
+    """OUT rule bound to this module's repository root.
 
-
-def _positive_float(environ: dict, name: str, default: float) -> float:
-    raw = environ.get(name, str(default))
-    try:
-        val = float(raw)
-    except ValueError:
-        raise ConfigError(f"{name} must be a number, got '{raw}'")
-    if val <= 0:
-        raise ConfigError(f"{name} must be > 0, got {val}")
-    return val
-
-
-def validate_port(raw) -> int:
-    """Parse and range-check PORT; shared with the preflight checklist."""
-    try:
-        port = int(raw)
-    except TypeError, ValueError:
-        raise ConfigError(f"PORT must be an integer, got '{raw}'")
-    if not 1 <= port <= 65535:
-        raise ConfigError(f"PORT must be in 1..65535, got {port}")
-    return port
-
-
-def executable_file(path: Path) -> bool:
-    return path.exists() and os.access(path, os.X_OK)
+    The preflight checklist patches `REPO_ROOT` here, so the shared rule
+    takes the module's root rather than reading `config.REPO_ROOT`.
+    """
+    return config.validate_out(raw, fresh, repo_root=REPO_ROOT)
 
 
 def resolve_binary(environ: dict) -> tuple:
-    """Return `(binary, explicit_bin, build_profile)` for this cell.
-
-    An explicit PICASU_BIN is used as-is; otherwise the launcher uses
-    target/<profile>/picasu. Existence is not checked here.
-    """
-    build_profile = environ.get("BUILD_PROFILE", "release")
-    if build_profile not in ("release", "debug"):
-        raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{build_profile}'")
-    explicit_bin = "PICASU_BIN" in environ
-    if explicit_bin:
-        binary = Path(environ["PICASU_BIN"])
-    else:
-        binary = REPO_ROOT / "target" / build_profile / "picasu"
-    return binary, explicit_bin, build_profile
+    """Return `(binary, explicit_bin, build_profile)` for this cell."""
+    return config.resolve_binary(environ, repo_root=REPO_ROOT)
 
 
-def validate_image_home_src(raw: str) -> Path:
-    """Return the prepared sandbox a cell will read images from.
-
-    A sandbox is only a sandbox when `bench prepare` wrote its manifest;
-    shared with the preflight checklist.
-    """
-    image_home_path = Path(raw)
-    if not image_home_path.is_dir():
-        raise ConfigError(f"IMAGE_HOME_SRC must be a directory, got '{raw}'")
-    if not (image_home_path / "sandbox-manifest.json").is_file():
-        raise ConfigError(
-            f"IMAGE_HOME_SRC has no sandbox-manifest.json: {raw} (prepare it with `bench prepare`)"
-        )
-    return image_home_path
-
-
-def config_from_env(environ: dict) -> dict:
-    """Build and validate launcher config. Reads env; only stats paths."""
-    port = validate_port(environ.get("PORT", str(DEFAULT_PORT)))
-
-    fresh_raw = environ.get("FRESH", "1")
-    if fresh_raw not in ("0", "1"):
-        raise ConfigError(f"FRESH must be 0 or 1, got '{fresh_raw}'")
-    fresh = fresh_raw == "1"
-    out = validate_out(environ.get("OUT", ""), fresh=fresh)
-
-    if "IMAGE_HOME_SRC" in environ:
-        image_home_src_raw = environ["IMAGE_HOME_SRC"]
-        image_home = validate_image_home_src(image_home_src_raw)
-        image_home_src = image_home_src_raw
-    else:
-        image_home = None
-        image_home_src = None
-
-    binary, explicit_bin, build_profile = resolve_binary(environ)
-    # No MODE knob: a cell is canonical ("bench") iff it runs the release
-    # binary with default logging; anything else is "debug". The manifest
-    # records the verdict, so non-canonical runs cannot masquerade as bench.
-    mode = "bench" if (build_profile == "release" and "RUST_LOG" not in environ) else "debug"
-
-    if not executable_file(binary):
-        raise ConfigError(
-            f"missing executable server binary {binary} "
-            f"(build it: cargo build --profile {build_profile} --bin picasu)"
-        )
-
-    try:
-        ncpu = int(environ.get("NCPU", "4"))
-    except ValueError:
-        raise ConfigError(f"NCPU must be an integer, got '{environ.get('NCPU')}'")
-    if ncpu < 0:
-        raise ConfigError(f"NCPU must be >= 0, got {ncpu}")
-
-    ready_timeout = _positive_float(environ, "READY_TIMEOUT_S", READY_TIMEOUT_S)
-    try:
-        launch_timeout = float(environ.get("LAUNCH_TIMEOUT_S", "0"))
-    except ValueError:
-        raise ConfigError(
-            f"LAUNCH_TIMEOUT_S must be a number, got '{environ.get('LAUNCH_TIMEOUT_S')}'"
-        )
-    if launch_timeout < 0:
-        raise ConfigError(f"LAUNCH_TIMEOUT_S must be >= 0, got {launch_timeout}")
-
-    admin_id = environ.get("ADMIN_ID", DEFAULT_ADMIN_ID)
-    if fresh:
-        generated = f"bench-{os.getpid():04x}-{random.randrange(0x10000):04x}"
-        admin_pw = environ.get("ADMIN_PW") or generated
-    else:
-        admin_pw = environ.get("ADMIN_PW", "")
-        if not admin_pw:
-            raise ConfigError("FRESH=0 requires ADMIN_PW for the existing data home")
-        if not (out / "data").is_dir():
-            raise ConfigError(f"FRESH=0 requires an existing data dir: {out / 'data'}")
-
-    return {
-        "mode": mode,
-        "out": out,
-        "port": port,
-        "fresh": fresh,
-        "binary": binary,
-        "explicit_bin": explicit_bin,
-        "build_profile": build_profile,
-        "ncpu": ncpu,
-        "gdb": environ.get("GDB", "1") != "0",
-        "ready_timeout": ready_timeout,
-        "launch_timeout": launch_timeout,
-        "admin_id": admin_id,
-        "admin_pw": admin_pw,
-        "base_url": f"http://127.0.0.1:{port}",
-        "poll_interval": POLL_INTERVAL_S,
-        "image_home": image_home,
-        "image_home_src": image_home_src,
-    }
+def config_from_env(environ: dict) -> config.LauncherConfig:
+    """Build and validate launcher config once; consumers read attributes."""
+    return config.LauncherConfig.from_env(environ, repo_root=REPO_ROOT)
 
 
 def count_image_files(path: Path) -> int:
@@ -397,13 +241,11 @@ def machine_info(out: Path) -> dict:
 
 
 # --- artifacts ---------------------------------------------------------------
-def _dataset_info(cfg: dict, environ: dict) -> dict:
-    out = cfg["out"]
-    if cfg.get("image_home") is not None:
-        source_path = str(
-            cfg["image_home_src"] if cfg.get("image_home_src") is not None else cfg["image_home"]
-        )
-        image_home = cfg["image_home"]
+def _dataset_info(cfg: config.LauncherConfig, environ: dict) -> dict:
+    out = cfg.out
+    if cfg.image_home is not None:
+        source_path = str(cfg.image_home_src if cfg.image_home_src is not None else cfg.image_home)
+        image_home = cfg.image_home
         default_id = Path(source_path).name
     else:
         source_path = "out-local"
@@ -426,26 +268,26 @@ def _dataset_info(cfg: dict, environ: dict) -> dict:
     return info, str(image_home)
 
 
-def write_manifest(cfg: dict, environ: dict) -> None:
+def write_manifest(cfg: config.LauncherConfig, environ: dict) -> None:
     gi = git_info()
     dataset_info, image_home_str = _dataset_info(cfg, environ)
     raw_observer = environ.get("PICASU_OBSERVER_STATS")
-    if raw_observer is None and cfg["mode"] == "bench":
+    if raw_observer is None and cfg.mode == "bench":
         raw_observer = "1"
     observer_stats = raw_observer if raw_observer is not None else "unset"
-    binary_sha = sha256_file(cfg["binary"])
-    machine = machine_info(cfg["out"])
-    (cfg["out"] / "run-manifest.json").write_text(
+    binary_sha = sha256_file(cfg.binary)
+    machine = machine_info(cfg.out)
+    (cfg.out / "run-manifest.json").write_text(
         json.dumps(
             {
-                "mode": cfg["mode"],
-                "out": str(cfg["out"]),
-                "port": cfg["port"],
-                "base_url": cfg["base_url"],
-                "fresh": cfg["fresh"],
-                "build_profile": cfg["build_profile"],
+                "mode": cfg.mode,
+                "out": str(cfg.out),
+                "port": cfg.port,
+                "base_url": cfg.base_url,
+                "fresh": cfg.fresh,
+                "build_profile": cfg.build_profile,
                 "NCPU": environ.get("NCPU", ""),
-                "ADMIN_ID": cfg["admin_id"],
+                "ADMIN_ID": cfg.admin_id,
                 "RUST_LOG": environ.get("RUST_LOG", ""),
                 "git": gi["sha"],
                 "started": datetime.now(timezone.utc).isoformat(),
@@ -478,18 +320,18 @@ def write_manifest(cfg: dict, environ: dict) -> None:
     )
 
 
-def write_launcher_info(cfg: dict, pid: int) -> None:
-    image_home = cfg.get("image_home")
+def write_launcher_info(cfg: config.LauncherConfig, pid: int) -> None:
+    image_home = cfg.image_home
     if image_home is None:
-        image_home = cfg["out"] / "images"
-    (cfg["out"] / "launcher-info.json").write_text(
+        image_home = cfg.out / "images"
+    (cfg.out / "launcher-info.json").write_text(
         json.dumps(
             {
-                "base_url": cfg["base_url"],
-                "cookie_jar": str(cfg["out"] / "cookies.txt"),
+                "base_url": cfg.base_url,
+                "cookie_jar": str(cfg.out / "cookies.txt"),
                 "pid": pid,
-                "out": str(cfg["out"]),
-                "mode": cfg["mode"],
+                "out": str(cfg.out),
+                "mode": cfg.mode,
                 "image_home": str(image_home),
             },
             indent=2,
@@ -538,35 +380,35 @@ def _body_text(raw: bytes) -> str:
 
 
 # --- process control ---------------------------------------------------------
-def server_command(cfg: dict) -> list:
-    cmd = [str(cfg["binary"])]
-    if cfg["ncpu"] > 0 and shutil.which("taskset") is not None:
-        cmd = ["taskset", "-c", f"0-{cfg['ncpu'] - 1}", *cmd]
+def server_command(cfg: config.LauncherConfig) -> list:
+    cmd = [str(cfg.binary)]
+    if cfg.ncpu > 0 and shutil.which("taskset") is not None:
+        cmd = ["taskset", "-c", f"0-{cfg.ncpu - 1}", *cmd]
     return cmd
 
 
-def server_env(cfg: dict, environ: dict) -> dict:
-    out = cfg["out"]
+def server_env(cfg: config.LauncherConfig, environ: dict) -> dict:
+    out = cfg.out
     data = out / "data"
     env = dict(environ)
-    if cfg.get("image_home") is not None:
-        image_home = cfg["image_home"]
+    if cfg.image_home is not None:
+        image_home = cfg.image_home
     else:
         image_home = out / "images"
     env.update(
         {
             "PICASU_ADDRESS": "127.0.0.1",
-            "PICASU_PORT": str(cfg["port"]),
+            "PICASU_PORT": str(cfg.port),
             "PICASU_DATA_HOME": str(data),
             "PICASU_CONFIG_HOME": str(out / "config"),
             "PICASU_IMAGE_HOME": str(image_home),
             "PICASU_USERS_HOME": str(data / "users"),
-            "PICASU_BOOTSTRAP_ADMIN": "true" if cfg["fresh"] else "false",
+            "PICASU_BOOTSTRAP_ADMIN": "true" if cfg.fresh else "false",
             "PICASU_TRIVIAL_PASSWORDS": "true",
             "PICASU_WEAK_PWHASH": "1",
         }
     )
-    if cfg["mode"] == "bench":
+    if cfg.mode == "bench":
         for name in DIAGNOSTIC_ENV:
             env.pop(name, None)
         # Bench mode defaults observer stats on; explicit user value wins.
@@ -575,10 +417,10 @@ def server_env(cfg: dict, environ: dict) -> dict:
     return env
 
 
-def spawn_server(cfg: dict, env: dict):
+def spawn_server(cfg: config.LauncherConfig, env: dict):
     """Start the server in its own process group; stdout/stderr -> server.log."""
-    out = cfg["out"]
-    mode = "w" if cfg["fresh"] else "a"
+    out = cfg.out
+    mode = "w" if cfg.fresh else "a"
     with open(out / "server.log", mode) as logf:  # noqa: PTH123
         return subprocess.Popen(
             server_command(cfg),
@@ -740,56 +582,56 @@ def capture_stacks(pid: int, diag: Path, logf, use_gdb: bool) -> dict:
     return result
 
 
-def collect_bundle(cfg: dict, proc, reason: str, logf) -> None:
-    diag = cfg["out"] / "diag"
+def collect_bundle(cfg: config.LauncherConfig, proc, reason: str, logf) -> None:
+    diag = cfg.out / "diag"
     diag.mkdir(parents=True, exist_ok=True)
     log_line(logf, f"collecting diagnostics ({reason}) into {diag}")
     for name in ("status-last.json", "run-manifest.json", "launcher-info.json"):
-        src = cfg["out"] / name
+        src = cfg.out / name
         if src.exists():
             shutil.copy(src, diag / name.replace(".json", f"-{reason}.json"))
-    tail = _tail(cfg["out"] / "server.log", 200)
+    tail = _tail(cfg.out / "server.log", 200)
     if tail:
         (diag / "server-tail.log").write_text(tail + "\n")
-    capture_stacks(proc.pid, diag, logf, cfg["gdb"])
+    capture_stacks(proc.pid, diag, logf, cfg.gdb)
 
 
 # --- startup steps -----------------------------------------------------------
-def prepare_out(cfg: dict) -> None:
-    out = cfg["out"]
-    if cfg["fresh"]:
+def prepare_out(cfg: config.LauncherConfig) -> None:
+    out = cfg.out
+    if cfg.fresh:
         if out.exists():
             shutil.rmtree(out)
         out.mkdir(parents=True)
     else:
         out.mkdir(parents=True, exist_ok=True)
     subs = ["data", "data/users", "config"]
-    if cfg.get("image_home") is None:
+    if cfg.image_home is None:
         subs.append("images")
     for sub in subs:
         (out / sub).mkdir(parents=True, exist_ok=True)
 
 
-def wait_ready(cfg: dict, proc):
+def wait_ready(cfg: config.LauncherConfig, proc):
     """Poll /get/server-info; distinguish ready, server death, and timeout."""
-    deadline = time.monotonic() + cfg["ready_timeout"]
+    deadline = time.monotonic() + cfg.ready_timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return "died"
-        if probe_server_info(cfg["base_url"]):
+        if probe_server_info(cfg.base_url):
             return "ready"
-        time.sleep(cfg["poll_interval"])
+        time.sleep(cfg.poll_interval)
     return "timeout"
 
 
-def bootstrap(cfg: dict, logf) -> None:
+def bootstrap(cfg: config.LauncherConfig, logf) -> None:
     opener = _opener()
     code, raw = _post_json(
         opener,
-        cfg["base_url"] + BOOTSTRAP_PATH,
-        {"userId": cfg["admin_id"], "password": cfg["admin_pw"]},
+        cfg.base_url + BOOTSTRAP_PATH,
+        {"userId": cfg.admin_id, "password": cfg.admin_pw},
     )
-    (cfg["out"] / "bootstrap.json").write_text(_body_text(raw) + "\n")
+    (cfg.out / "bootstrap.json").write_text(_body_text(raw) + "\n")
     if code != 200:
         body = _body_text(raw)
         log_line(logf, f"bootstrap returned {code}: {body}")
@@ -800,17 +642,17 @@ def bootstrap(cfg: dict, logf) -> None:
     log_line(logf, f"bootstrap=200 {_body_text(raw)}")
 
 
-def authenticate(cfg: dict, logf) -> None:
-    jar_path = cfg["out"] / "cookies.txt"
+def authenticate(cfg: config.LauncherConfig, logf) -> None:
+    jar_path = cfg.out / "cookies.txt"
     jar_path.unlink(missing_ok=True)
     jar = http.cookiejar.MozillaCookieJar(str(jar_path))
     opener = _opener(jar)
     code, raw = _post_json(
         opener,
-        cfg["base_url"] + AUTH_PATH,
-        {"userId": cfg["admin_id"], "password": cfg["admin_pw"]},
+        cfg.base_url + AUTH_PATH,
+        {"userId": cfg.admin_id, "password": cfg.admin_pw},
     )
-    (cfg["out"] / "login.json").write_text(_body_text(raw) + "\n")
+    (cfg.out / "login.json").write_text(_body_text(raw) + "\n")
     if code != 200:
         log_line(logf, f"login returned {code}: {_body_text(raw)}")
         raise RuntimeError(f"login returned {code}")
@@ -824,22 +666,22 @@ def authenticate(cfg: dict, logf) -> None:
     log_line(logf, f"login=200 cookie_jar={jar_path}")
 
 
-def supervise(cfg: dict, proc) -> str:
+def supervise(cfg: config.LauncherConfig, proc) -> str:
     """Wait for server exit or the optional outer timeout."""
     start = time.monotonic()
     while True:
         if proc.poll() is not None:
             return "exited"
-        if cfg["launch_timeout"] and time.monotonic() - start >= cfg["launch_timeout"]:
+        if cfg.launch_timeout and time.monotonic() - start >= cfg.launch_timeout:
             return "timeout"
-        time.sleep(cfg["poll_interval"])
+        time.sleep(cfg.poll_interval)
 
 
 # --- main flow ---------------------------------------------------------------
-def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
+def run_backend(cfg: config.LauncherConfig, environ: dict, spawn=None) -> int:
     """Prepare, spawn, authenticate, supervise. Returns a launcher exit code."""
     spawn = spawn or spawn_server
-    out = cfg["out"]
+    out = cfg.out
 
     # Preflight before touching OUT: the checklist refuses the run before
     # any process spawns and leaves whatever state is already there alone.
@@ -850,10 +692,10 @@ def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
     checks = preflight.preflight(
         environ,
         out=out,
-        fresh=cfg["fresh"],
-        port=cfg["port"],
-        binary=cfg["binary"],
-        sandbox=cfg.get("image_home"),
+        fresh=cfg.fresh,
+        port=cfg.port,
+        binary=cfg.binary,
+        sandbox=cfg.image_home,
         require_hyperfine=False,
     )
     if preflight.print_checklist(checks):
@@ -865,14 +707,14 @@ def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
         print(f"ERROR: preparing OUT failed: {err}", file=sys.stderr)
         return 2
 
-    logf = open(out / "launcher.log", "w" if cfg["fresh"] else "a")  # noqa: PTH123
+    logf = open(out / "launcher.log", "w" if cfg.fresh else "a")  # noqa: PTH123
     proc = None
     try:
         log_line(logf, "=== backend launcher preflight ===")
         log_line(
             logf,
-            f"mode={cfg['mode']} fresh={cfg['fresh']} out={out} port={cfg['port']} "
-            f"build_profile={cfg['build_profile']} ncpu={cfg['ncpu']} gdb={cfg['gdb']}",
+            f"mode={cfg.mode} fresh={cfg.fresh} out={out} port={cfg.port} "
+            f"build_profile={cfg.build_profile} ncpu={cfg.ncpu} gdb={cfg.gdb}",
         )
         gi = git_info()
         log_line(logf, f"git={gi['sha'][:12]} {gi['status']}")
@@ -895,14 +737,14 @@ def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
             collect_bundle(cfg, proc, "startup-died", logf)
             return 2
         if state == "timeout":
-            log_line(logf, f"server not ready within {cfg['ready_timeout']}s")
+            log_line(logf, f"server not ready within {cfg.ready_timeout}s")
             collect_bundle(cfg, proc, "ready-timeout", logf)
             kill_group(proc)
             return 2
-        log_line(logf, f"server ready pid={proc.pid} base_url={cfg['base_url']}")
+        log_line(logf, f"server ready pid={proc.pid} base_url={cfg.base_url}")
 
         try:
-            if cfg["fresh"]:
+            if cfg.fresh:
                 bootstrap(cfg, logf)
             else:
                 log_line(logf, "FRESH=0: skipping bootstrap, reusing existing data home")
@@ -920,7 +762,7 @@ def run_backend(cfg: dict, environ: dict, spawn=None) -> int:
 
         state = supervise(cfg, proc)
         if state == "timeout":
-            log_line(logf, f"outer timeout {cfg['launch_timeout']}s reached")
+            log_line(logf, f"outer timeout {cfg.launch_timeout}s reached")
             collect_bundle(cfg, proc, "launch-timeout", logf)
             kill_group(proc)
             return 4
