@@ -10,7 +10,7 @@ use crate::storage::cache::SnapshotReadError;
 use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
-use crate::tasks::queue::submit_interactive_album_detached;
+
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, Serialize, json::Json};
@@ -34,8 +34,7 @@ pub struct EditFlagsData {
 /// the marker a rebuild from the filesystem would bring trashed files back as
 /// normal assets. A restore removes the marker. The sidecar is written before
 /// the record, and a write that cannot land fails the request without storing
-/// anything. Every album that lost or regained a member is refreshed in the
-/// background, so its counts may still be catching up when the call returns.
+/// anything. Album aggregates are maintained by deltas in the same transaction.
 ///
 /// Corner cases: the removed `isFavorite` and `isArchived` keys are still
 /// accepted and ignored rather than rejected, and an absent `isTrashed` leaves
@@ -160,14 +159,7 @@ pub async fn edit_flags(
         .await;
     crate::storage::tree_view::tree_changed();
 
-    // After memory update, trigger album self-update
-    if !affected_album_ids.is_empty() {
-        for album_id in affected_album_ids {
-            if let Err(e) = submit_interactive_album_detached(album_id).await {
-                log::warn!("detached album self-update submit failed: {e:#}");
-            }
-        }
-    }
+    let _ = affected_album_ids;
 
     Ok(Json(()))
 }

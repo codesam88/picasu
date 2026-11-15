@@ -185,6 +185,12 @@ pub const ASSET_BY_PATH: TableDefinition<&str, &str> = TableDefinition::new("ass
 /// One row per asset. Contains kind, path, hash, and metadata.
 pub const ASSET_BY_ID: TableDefinition<&str, &str> = TableDefinition::new("asset_by_id");
 
+/// Maps `"<album_id>/<asset_id>"` → `asset_id`. One row per album member.
+/// Per-member rows (not a per-album list) so add/remove are O(log) and
+/// enumerate an album is a prefix range scan. Keyed by `album_id` (stable
+/// identity), not `album_dir`.
+pub const ASSET_BY_ALBUM: TableDefinition<&str, &str> = TableDefinition::new("asset_by_album");
+
 /// Maps `content_hash` → JSON-serialized `Vec` of `asset_id`.
 /// One row per unique content hash. Albums do not appear here.
 /// Multiple asset IDs in a row means those assets share identical content
@@ -249,6 +255,12 @@ pub fn clear_all_asset_tables_drop() -> anyhow::Result<()> {
         .delete_table(ASSET_BY_ID)
         .context("delete ASSET_BY_ID")?;
     txn.open_table(ASSET_BY_ID).context("reopen ASSET_BY_ID")?;
+
+    let _ = txn
+        .delete_table(ASSET_BY_ALBUM)
+        .context("delete ASSET_BY_ALBUM")?;
+    txn.open_table(ASSET_BY_ALBUM)
+        .context("reopen ASSET_BY_ALBUM")?;
 
     let _ = txn.delete_table(DUPE_INDEX).context("delete DUPE_INDEX")?;
     txn.open_table(DUPE_INDEX).context("reopen DUPE_INDEX")?;

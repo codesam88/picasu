@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
@@ -23,10 +23,6 @@ use redb::{ReadableDatabase, ReadableTable};
 /// prevent races under concurrent file indexing.
 static DIR_ALBUM_CACHE: LazyLock<Mutex<HashMap<PathBuf, ArrayString<64>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Album IDs that need a self-update after the next in-memory tree refresh.
-pub static PENDING_ALBUM_UPDATES: LazyLock<Mutex<HashSet<ArrayString<64>>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Populate `DIR_ALBUM_CACHE` from the database at startup by scanning all
 /// albums that have a stored metadata payload, joining each with its
@@ -77,13 +73,6 @@ pub fn init_dir_album_cache() {
         info!("Skipped {stale_count} stale dir album entries (directories no longer exist)");
     }
     debug!("Loaded {} dir album mappings from database", cache.len());
-
-    if !cache.is_empty() {
-        let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
-        for &id in cache.values() {
-            pending.insert(id);
-        }
-    }
 }
 
 /// Convert a directory name into a human-readable album title.
@@ -111,24 +100,6 @@ pub fn derive_default_title(dir_path: &str) -> String {
         .and_then(|n| n.to_str())
         .unwrap_or("Album");
     prettify_dir_name(name)
-}
-
-/// Mark `album_id` as needing a statistics self-update.
-pub fn mark_album_for_update(album_id: ArrayString<64>) {
-    PENDING_ALBUM_UPDATES
-        .lock()
-        .expect("lock poisoned")
-        .insert(album_id);
-}
-
-/// Drain and return all albums that need a self-update.
-/// Drained by the writer cascade after a flush writes new asset rows.
-pub fn drain_pending_album_updates() -> Vec<ArrayString<64>> {
-    PENDING_ALBUM_UPDATES
-        .lock()
-        .expect("lock poisoned")
-        .drain()
-        .collect()
 }
 
 /// Return the album ID whose `dir_path` is the direct parent of `dir_path`,
@@ -199,27 +170,26 @@ pub fn rewrite_dir_album_cache_prefix(old_prefix: &Path, new_prefix: &Path) {
     }
 }
 
+/// Return the album IDs of every directory album whose path is a prefix of
+/// `file_path` (i.e. the ancestors that may need a descendant-cover refresh).
+pub fn ancestor_album_ids_for_path(file_path: &Path) -> Vec<ArrayString<64>> {
+    let cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    cache
+        .iter()
+        .filter(|(dir_path, _)| file_path.starts_with(dir_path))
+        .map(|(_, &album_id)| album_id)
+        .collect()
+}
+
 /// Mark every directory album whose path is a prefix of `file_path` for a
 /// stats self-update.  Called from `flush_tree_task` after a media item is
 /// written to the database.
-pub fn mark_dir_albums_for_path(file_path: &Path) {
-    let cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
-    let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
-    for (dir_path, &album_id) in cache.iter() {
-        if file_path.starts_with(dir_path) {
-            pending.insert(album_id);
-        }
-    }
-}
-
-/// Clear `DIR_ALBUM_CACHE` and `PENDING_ALBUM_UPDATES`.
+/// Clear `DIR_ALBUM_CACHE`.
 /// Called from test teardown and from the HTTP reset path so stale album IDs
 /// are not reused after the asset tables are dropped.
 pub fn reset_dir_album_cache() {
     let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
     cache.clear();
-    let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
-    pending.clear();
 }
 
 /// Find or create the album corresponding to `dir_path`.
@@ -430,7 +400,10 @@ mod tests {
             let data = read_albuminfo(dir.path());
             assert_eq!(data.title.as_deref(), Some("Custom Title"));
             assert_eq!(data.description.as_deref(), Some("A trip"));
-            assert_eq!(data.tags, HashSet::from(["hiking".to_string()]));
+            assert_eq!(
+                data.tags,
+                std::collections::HashSet::from(["hiking".to_string()])
+            );
             assert_eq!(data.rating, Some(5));
         }
     }

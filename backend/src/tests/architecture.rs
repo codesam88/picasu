@@ -11,7 +11,7 @@
 #[test]
 fn tree_readers_snapshot_before_parallel_work() {
     // (module path, source). The readers run on request paths or inside
-    // pool jobs (`album_task`); every listed file must avoid live guards.
+    // pool jobs; every listed file must avoid live guards.
     // `post_upload` stays listed even though it no longer reads the tree at
     // all (store-and-return upload never touches it): the entry pins that.
     const SOURCES: &[(&str, &str)] = &[
@@ -28,10 +28,6 @@ fn tree_readers_snapshot_before_parallel_work() {
             include_str!("../router/get/get_data.rs"),
         ),
         ("model/album.rs", include_str!("../model/album.rs")),
-        (
-            "tasks/actor/album.rs",
-            include_str!("../tasks/actor/album.rs"),
-        ),
     ];
 
     for (path, source) in SOURCES {

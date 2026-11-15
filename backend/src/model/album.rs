@@ -20,6 +20,7 @@ pub struct AlbumCombined {
 }
 
 /// A helper struct to hold media item info for album calculations
+#[allow(dead_code)]
 struct MediaItemInfo {
     asset_id: ArrayString<64>,
     size: u64,
@@ -27,6 +28,7 @@ struct MediaItemInfo {
     timestamp: i64,
 }
 
+#[allow(dead_code)]
 fn path_is_in_album_or_descendant(path: &str, dir_path: &Path) -> bool {
     let path = Path::new(path);
     path.starts_with(dir_path)
@@ -41,11 +43,13 @@ impl AlbumCombined {
         self.object.thumbhash = cover_data.thumbhash().cloned();
     }
 
+    #[allow(dead_code)]
     fn set_cover_from_info(&mut self, info: &MediaItemInfo) {
         self.metadata.cover = Some(info.asset_id);
         self.object.thumbhash.clone_from(&info.thumbhash);
     }
 
+    #[allow(dead_code)]
     pub fn self_update_with(&mut self, ref_data: &[DatabaseTimestamp]) {
         let dir_path = Path::new(&self.metadata.dir_path).to_path_buf();
 

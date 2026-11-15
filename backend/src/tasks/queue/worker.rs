@@ -4,13 +4,13 @@
 //! matching pipeline: scan and watcher files through
 //! `workflow::process_file`, removals through the watcher removal handler
 //! plus writer barriers, expiry sweeps through the serial writer, and
-//! Interactive album updates through `album_task` with the outcome reported
-//! on the item's oneshot. Completion feeds the per-job barrier in
+//! Interactive album updates are no-ops: album aggregates are maintained by
+//! deltas at write time. Completion feeds the per-job barrier in
 //! [`drain_intake`]; the `barrier_*` functions are generation barriers over
 //! the serial writer (see `super::writer`), keeping the same call sites and
 //! the same flush→sweep→flush→drain-before-Completed order.
 
-use super::bridge::{run_interactive, run_io};
+use super::bridge::run_io;
 use super::intake::{
     IntakeItem, IntakeKind, job_progress, note_item_complete, recv_item, remove_job,
 };
@@ -95,21 +95,12 @@ async fn dispatch_item(item: IntakeItem) {
         IntakeKind::WatcherIndex => process_watcher_index(item).await,
         IntakeKind::WatcherRemove => process_watcher_remove(item).await,
         IntakeKind::ExpireCheck => process_expire_check().await,
-        IntakeKind::InteractiveAlbum { album_id, reply } => {
-            let ref_data = crate::storage::db::snapshot_tree();
-            let outcome = run_interactive(move || {
-                crate::tasks::actor::album::album_task(album_id, &ref_data)
-            })
-            .await;
-            match reply {
-                Some(tx) => {
-                    let _ = tx.send(outcome);
-                }
-                None => {
-                    if let Err(err) = outcome {
-                        warn!("detached album self-update failed: {err:#}");
-                    }
-                }
+        IntakeKind::InteractiveAlbum { reply, .. } => {
+            // Album aggregates are maintained by deltas at write time; no
+            // deferred self-update remains.
+            let outcome: Result<(), anyhow::Error> = Ok(());
+            if let Some(tx) = reply {
+                let _ = tx.send(outcome);
             }
         }
     }
