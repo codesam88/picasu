@@ -25,6 +25,7 @@ static EVENTS: OnceLock<HashSet<String>> = OnceLock::new();
 
 fn catalog_path(file: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
         .join("pipeline")
         .join(file)
 }
