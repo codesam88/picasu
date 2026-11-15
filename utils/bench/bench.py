@@ -34,6 +34,7 @@ MODULE_ALIASES = {
 }
 
 SUBCOMMAND_NAMES = (
+    "run",
     "cell",
     "battery",
     "extract",
@@ -182,6 +183,27 @@ def _status(argv) -> int:
         return 2
 
     parent_path = Path(parent)
+    if not parent_path.exists():
+        print(f"ERROR: {parent_path}: cannot read parent directory", file=sys.stderr)
+        return 1
+    if not parent_path.is_dir():
+        print(f"ERROR: {parent_path}: not a directory", file=sys.stderr)
+        return 1
+    # Validate the parent the same way the battery does: a non-battery
+    # directory (foreign entries) is refused instead of being walked.
+    try:
+        foreign = battery.validate_parent(parent_path, fresh=False)
+    except Exception as err:  # ConfigError or any other validation failure
+        print(f"ERROR: {err}", file=sys.stderr)
+        return 1
+    if foreign:
+        print(
+            f"ERROR: {parent_path}: refusing to read a non-battery directory; "
+            f"foreign entries: {', '.join(foreign)}",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         entries = sorted(
             (entry for entry in parent_path.iterdir() if entry.is_dir()),
@@ -192,8 +214,8 @@ def _status(argv) -> int:
         return 1
 
     if not entries:
-        print(f"ERROR: {parent_path}: no cell/rep subdirectories", file=sys.stderr)
-        return 1
+        print("no cells yet")
+        return 0
 
     printed = 0
     for cell in entries:
@@ -234,6 +256,18 @@ def main(argv=None) -> int:
 
     if cmd == "status":
         return _status(rest)
+
+    if cmd == "run":
+        try:
+            return battery.main(["run"] + list(rest))
+        except SystemExit as exc:
+            code = exc.code
+            if code is None:
+                return 0
+            try:
+                return int(code)
+            except TypeError, ValueError:
+                return 0 if code is None else 1
 
     handler = DISPATCH.get(cmd) if isinstance(DISPATCH, dict) else None
     if callable(handler):

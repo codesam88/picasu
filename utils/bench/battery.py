@@ -53,6 +53,7 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import statistics
 import sys
@@ -175,8 +176,96 @@ _BATTERIES = {
 }
 
 
-def battery_cells(level: str) -> tuple:
+_KNOWN_LEVELS = ("cell", "gate", "scale")
+
+
+def _cell_from_env(environ: dict) -> Cell:
+    """Build the single cell for the `cell` battery level from the environment."""
+    environ = environ or {}
+    profile = environ.get("WORKLOAD", "control")
+    if profile not in config.WORKLOADS:
+        raise config.ConfigError(f"WORKLOAD must be one of {config.WORKLOADS}, got '{profile}'")
+
+    images = config.integer(environ, "IMAGES", config.DEFAULT_IMAGES, minimum=1)
+    ncpu = config.integer(environ, "NCPU", 8, minimum=0)
+    build_profile = config.validate_build_profile(environ, "release")
+
+    # Validate the remaining env keys up front so a bad cell is refused
+    # before any process spawns (reuse the shared config rules).
+    if "PORT" in environ:
+        config.validate_port(environ["PORT"])
+    scan_repeats = config.integer(environ, "SCAN_REPEATS", 2, minimum=1)
+    hyperfine_repeats = config.integer(environ, "REPEATS", config.DEFAULT_REPEATS, minimum=1)
+    warmup = config.integer(environ, "WARMUP", config.DEFAULT_WARMUP, minimum=0)
+    if "WARMUP" in environ:
+        pass
+
+    storm_clients = (
+        config.integer(environ, "STORM_CLIENTS", config.DEFAULT_STORM_CLIENTS, minimum=1)
+        if "STORM_CLIENTS" in environ
+        else config.DEFAULT_STORM_CLIENTS
+    )
+    storm_ops = (
+        config.integer(environ, "STORM_OPS", config.DEFAULT_STORM_OPS, minimum=1)
+        if "STORM_OPS" in environ
+        else config.DEFAULT_STORM_OPS
+    )
+    storm_margin = (
+        config.number(environ, "STORM_MARGIN_S", config.DEFAULT_STORM_MARGIN_S)
+        if "STORM_MARGIN_S" in environ
+        else config.DEFAULT_STORM_MARGIN_S
+    )
+
+    image_repo_raw = environ.get("IMAGE_REPO", "")
+    if image_repo_raw:
+        if not Path(image_repo_raw).is_dir():
+            raise config.ConfigError(f"IMAGE_REPO not a directory: {image_repo_raw}")
+        repo = image_repo_raw
+    else:
+        repo = ""
+
+    env = {
+        "WORKLOAD": profile,
+        "IMAGES": str(images),
+        "NCPU": str(ncpu),
+        "BUILD_PROFILE": build_profile,
+        "SCAN_REPEATS": str(scan_repeats),
+        "REPEATS": str(hyperfine_repeats),
+        "WARMUP": str(warmup),
+    }
+    if profile.startswith("storm-"):
+        env.update(
+            {
+                "STORM_CLIENTS": str(storm_clients),
+                "STORM_OPS": str(storm_ops),
+                "STORM_MARGIN_S": str(storm_margin),
+            }
+        )
+    if profile == "upload":
+        upload_files = (
+            config.integer(environ, "UPLOAD_FILES", images, minimum=1)
+            if "UPLOAD_FILES" in environ
+            else images
+        )
+        env["UPLOAD_FILES"] = str(upload_files)
+
+    return Cell(
+        level="cell",
+        profile=profile,
+        images=images,
+        repo=repo,
+        ncpu=ncpu,
+        env=env,
+        outdir_suffix=f"cell-{profile}",
+    )
+
+
+def battery_cells(level: str, environ=None) -> tuple:
     """Return the ordered cell list for a battery level."""
+    if level not in _KNOWN_LEVELS:
+        raise KeyError(level)
+    if level == "cell":
+        return (_cell_from_env(environ if environ is not None else os.environ),)
     spec = _BATTERIES[level]
     return tuple(
         _cell(level, profile, spec["images"], spec["repo"]) for profile in spec["profiles"]
@@ -370,6 +459,61 @@ _MANIFEST_IDENTITY = (
 
 _REP_DIR_RE = re.compile(r"^(?P<cell>.+)-rep(?P<rep>\d+)$")
 
+# Entries a battery parent may legitimately hold besides `*-repN` subdirs.
+_BATTERY_PARENT_ALLOWED_FILES = {"report.tsv", "report.json", "orchestrator.log"}
+
+
+def foreign_entries(parent) -> list:
+    """Names of entries in `parent` that are not battery-created.
+
+    An empty list means the directory is either absent or a clean battery
+    parent (only `*-repN` subdirs plus the known report/log files).
+    """
+    parent = Path(parent)
+    if not parent.exists() or not parent.is_dir():
+        return []
+    foreign = []
+    for entry in parent.iterdir():
+        name = entry.name
+        if entry.is_dir() and _REP_DIR_RE.match(name):
+            continue
+        if entry.is_file() and name in _BATTERY_PARENT_ALLOWED_FILES:
+            continue
+        foreign.append(name)
+    return sorted(foreign)
+
+
+def validate_parent(parent, *, fresh: bool = False) -> list:
+    """Validate (and, conceptually, gate) a battery parent directory.
+
+    Returns the (possibly empty) list of foreign entries. Raises
+    `ConfigError` when `parent` exists, is not a directory, or holds
+    foreign content while `fresh` is False. `fresh=True` is the explicit
+    escape hatch: callers wipe first and this function reports what was
+    there without raising.
+    """
+    parent = Path(parent)
+    if not parent.exists():
+        return []
+    if not parent.is_dir():
+        raise ConfigError(f"{parent}: not a battery directory (not a directory)")
+    foreign = foreign_entries(parent)
+    if foreign and not fresh:
+        raise ConfigError(
+            f"{parent}: refusing to run into a non-battery directory; "
+            f"foreign entries: {', '.join(foreign)}"
+        )
+    return foreign
+
+
+# Back-compat / alternate names used by callers and tests.
+validate_battery_parent = validate_parent
+check_parent = validate_parent
+
+
+def is_battery_parent(parent) -> bool:
+    return not foreign_entries(parent)
+
 
 def _rep_dirs(parent: Path) -> list:
     """Sorted `<level>-<profile>-repN` subdirectories of one battery parent."""
@@ -484,6 +628,13 @@ def extract_battery(parent: Path, out: Path | None = None) -> int:
     parent = Path(parent)
     if not parent.is_dir():
         print(f"ERROR: {parent}: not a battery directory", file=sys.stderr)
+        return 1
+    foreign = foreign_entries(parent)
+    if foreign:
+        print(
+            f"ERROR: {parent}: not a battery directory; foreign entries: {', '.join(foreign)}",
+            file=sys.stderr,
+        )
         return 1
     paths = _rep_dirs(parent)
     if not paths:
@@ -708,7 +859,22 @@ def run_battery(
     `BatteryConfig`; each rep's environment is derived from it.
     """
     outdir = Path(outdir).resolve()
+    # The runner owns the parent: create it here, and refuse (or, with
+    # --fresh, wipe) any foreign content left by a manual/loose cell.
+    if fresh:
+        if outdir.exists():
+            shutil.rmtree(outdir)
+        outdir.mkdir(parents=True, exist_ok=True)
+    else:
+        validate_parent(outdir, fresh=False)
+        outdir.mkdir(parents=True, exist_ok=True)
     environ = dict(os.environ)
+    # Cell level is fully parameterized by env: honor PORT/BUILD_PROFILE when
+    # the caller did not override them explicitly.
+    if build_profile == "release" and "BUILD_PROFILE" in environ:
+        build_profile = config.validate_build_profile(environ, build_profile)
+    if base_port == DEFAULT_BASE_PORT and "PORT" in environ:
+        base_port = config.validate_port(environ["PORT"])
     run_config = config.BatteryConfig.from_env(
         environ,
         level=level,
@@ -719,8 +885,7 @@ def run_battery(
         fresh=fresh,
     )
     n_repeats = run_config.repeats
-    cells = battery_cells(level)
-    outdir.mkdir(parents=True, exist_ok=True)
+    cells = battery_cells(level, environ)
     report = outdir / "report.tsv"
     report.unlink(missing_ok=True)
     orchestrator = _run_cell()
@@ -770,7 +935,7 @@ def main(argv=None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="run a battery and write its report")
-    run.add_argument("level", choices=sorted(_BATTERIES))
+    run.add_argument("level", choices=sorted(_KNOWN_LEVELS))
     run.add_argument("--out", help="battery directory (default: $OUT)")
     run.add_argument(
         "--sets-root",
@@ -799,7 +964,7 @@ def main(argv=None) -> int:
     )
 
     listing = subparsers.add_parser("list", help="print a battery's cell ids")
-    listing.add_argument("level", choices=sorted(_BATTERIES))
+    listing.add_argument("level", choices=sorted(_KNOWN_LEVELS))
 
     extract = subparsers.add_parser(
         "extract", help="dump one battery parent as a single JSON document"
@@ -826,7 +991,7 @@ def main(argv=None) -> int:
                 build_profile=args.build,
                 fresh=args.fresh,
             )
-        except ConfigError as err:
+        except (ConfigError, ValueError) as err:
             print(f"ERROR: {err}", file=sys.stderr)
             return 1
         except KeyboardInterrupt:
@@ -834,10 +999,17 @@ def main(argv=None) -> int:
             return 130
 
     if args.command == "check":
+        report_path = Path(args.report)
+        if report_path.is_dir():
+            parent = report_path
+            report_path = parent / "report.tsv"
+        else:
+            parent = report_path.parent
         try:
-            rows = load_report(Path(args.report))
+            validate_parent(parent, fresh=False)
+            rows = load_report(report_path)
             baselines = load_baselines(Path(args.baselines))
-        except (OSError, ValueError) as err:
+        except (OSError, ValueError, ConfigError) as err:
             print(f"ERROR: {err}", file=sys.stderr)
             return 1
         result = check_report(rows, baselines)
@@ -854,7 +1026,7 @@ def main(argv=None) -> int:
     if args.command == "extract":
         try:
             return extract_battery(Path(args.parent), Path(args.out) if args.out else None)
-        except (OSError, ValueError) as err:
+        except (OSError, ValueError, ConfigError) as err:
             # A corrupt report.tsv surfaces the same way `check` reports it.
             print(f"ERROR: {err}", file=sys.stderr)
             return 1

@@ -212,7 +212,9 @@ class BaselineCheckTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.report = self.root / "report.tsv"
-        self.baselines = self.root / "baselines.tsv"
+        self.baselines_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.baselines_tmp.cleanup)
+        self.baselines = Path(self.baselines_tmp.name) / "baselines.tsv"
 
     def write_report(self, **overrides):
         row = {column: self.battery.NA for column in self.battery.REPORT_COLUMNS}
@@ -385,6 +387,183 @@ class BatteryWorkloadTimeoutTest(unittest.TestCase):
     def test_exported_workload_timeout_wins_over_the_level_default(self):
         envs = self.cell_envs("gate", preset="999")
         self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "999" for env in envs))
+
+
+class CellLevelDefinitionTest(unittest.TestCase):
+    """The `cell` battery level: one fully-parameterized cell from env."""
+
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+
+    def test_one_cell_honors_env_overrides(self):
+        environ = {
+            "WORKLOAD": "upload",
+            "IMAGES": "42",
+            "NCPU": "2",
+            "BUILD_PROFILE": "debug",
+            "IMAGE_REPO": str(self.repo),
+            "SCAN_REPEATS": "5",
+        }
+        with mock.patch.dict(os.environ, environ, clear=False):
+            cells = self.battery.battery_cells("cell")
+
+        self.assertEqual(len(cells), 1)
+        cell = cells[0]
+        self.assertEqual(cell.level, "cell")
+        self.assertEqual(cell.profile, "upload")
+        self.assertEqual(cell.images, 42)
+        self.assertEqual(cell.ncpu, 2)
+        self.assertEqual(cell.repo, str(self.repo))
+        self.assertEqual(cell.env["WORKLOAD"], "upload")
+        self.assertEqual(cell.env["IMAGES"], "42")
+        self.assertEqual(cell.env["NCPU"], "2")
+        self.assertEqual(cell.env["BUILD_PROFILE"], "debug")
+        self.assertEqual(cell.env["SCAN_REPEATS"], "5")
+        self.assertEqual(cell.env["UPLOAD_FILES"], "42")
+        self.assertEqual(cell.outdir_suffix, "cell-upload")
+
+    def test_defaults_are_applied(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            cell = self.battery.battery_cells("cell")[0]
+
+        self.assertEqual(cell.profile, "control")
+        self.assertEqual(cell.images, 100)
+        self.assertEqual(cell.ncpu, 8)
+        self.assertEqual(cell.env["BUILD_PROFILE"], "release")
+        self.assertEqual(cell.env["IMAGES"], "100")
+        self.assertEqual(cell.env["NCPU"], "8")
+        self.assertEqual(cell.env["SCAN_REPEATS"], "2")
+        self.assertEqual(cell.env["REPEATS"], str(self.battery.config.DEFAULT_REPEATS))
+        self.assertEqual(cell.env["WARMUP"], "1")
+
+    def test_bad_env_fails_before_run(self):
+        for bad in (
+            {"IMAGES": "0", "IMAGE_REPO": str(self.repo)},
+            {"PORT": "abc", "IMAGE_REPO": str(self.repo)},
+        ):
+            with self.subTest(bad=bad):
+                with mock.patch.dict(os.environ, bad, clear=False):
+                    os.environ.pop("IMAGES", None) if "IMAGES" not in bad else None
+                    with self.assertRaises(self.battery.config.ConfigError):
+                        self.battery.battery_cells("cell")
+
+    def test_list_includes_cell(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = self.battery.main(["list", "cell"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(buf.getvalue().strip(), "cell-control")
+
+
+class CellLevelTimeoutTest(unittest.TestCase):
+    """WORKLOAD_TIMEOUT_S default for the cell level is the generous 7200s."""
+
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def cell_envs(self, *, preset=None):
+        captured = []
+
+        class FakeOrchestrator:
+            def config_from_env(self, env):
+                return env
+
+            def run_cell(self, cfg, env):
+                captured.append(env)
+                return 0
+
+        row = {column: self.battery.NA for column in self.battery.REPORT_COLUMNS}
+        with (
+            mock.patch.dict(os.environ, {}, clear=False),
+            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            mock.patch.object(self.battery, "build_row", return_value=row),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            os.environ.pop("WORKLOAD_TIMEOUT_S", None)
+            os.environ["BATTERY_REPEATS"] = "1"
+            if preset is not None:
+                os.environ["WORKLOAD_TIMEOUT_S"] = preset
+            rc = self.battery.run_battery("cell", self.root / "cell")
+        self.assertEqual(rc, 0)
+        return captured
+
+    def test_cell_gets_7200s_budget(self):
+        envs = self.cell_envs()
+        self.assertEqual(len(envs), 1)
+        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "7200" for env in envs))
+
+    def test_exported_timeout_wins(self):
+        envs = self.cell_envs(preset="123")
+        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "123" for env in envs))
+
+
+class CellLevelResumeTest(unittest.TestCase):
+    """Resume and median behavior for the cell level."""
+
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.outdir = self.root / "cell"
+        self.cell = self.battery.battery_cells("cell")[0]
+        self.report = self.outdir / "report.tsv"
+
+    def complete_rep(self, rep, *, walls=(11000, 13000)):
+        out = self.outdir / f"{self.cell.outdir_suffix}-rep{rep}"
+        write_cell(out, walls=walls)
+        return out
+
+    def run_battery(self, *, repeats=2, fresh=False, fail=(), write=True):
+        invoked = []
+        stdout = io.StringIO()
+
+        class FakeOrchestrator:
+            def config_from_env(self, env):
+                return env
+
+            def run_cell(self, cfg, env):
+                out = Path(env["OUT"])
+                invoked.append(out)
+                if out.name in fail:
+                    return 7
+                if write:
+                    write_cell(out)
+                return 0
+
+        with (
+            mock.patch.dict(os.environ, {"BATTERY_REPEATS": str(repeats)}, clear=False),
+            mock.patch.object(self.battery, "battery_cells", return_value=(self.cell,)),
+            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            rc = self.battery.run_battery("cell", self.outdir, fresh=fresh)
+        return invoked, stdout.getvalue(), rc
+
+    def test_resume_reuses_completed_rep(self):
+        self.complete_rep(1)
+        invoked, stdout, rc = self.run_battery(repeats=2)
+        self.assertEqual(rc, 0)
+        self.assertEqual([p.name for p in invoked], [f"{self.cell.outdir_suffix}-rep2"])
+        self.assertIn("rep=1/2 reused", stdout)
+        rows = self.battery.load_report(self.report)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(any(row["cell"].endswith(":median") for row in rows))
+
+    def test_median_row_recomputed(self):
+        invoked, stdout, rc = self.run_battery(repeats=2)
+        self.assertEqual(rc, 0)
+        rows = self.battery.load_report(self.report)
+        self.assertEqual(sum(1 for row in rows if row["cell"].endswith(":median")), 1)
 
 
 if __name__ == "__main__":
@@ -607,7 +786,9 @@ class BatteryCheckMedianTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.report = self.root / "report.tsv"
-        self.baselines = self.root / "baselines.tsv"
+        self.baselines_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.baselines_tmp.cleanup)
+        self.baselines = Path(self.baselines_tmp.name) / "baselines.tsv"
 
     def test_failing_repeat_with_passing_median_passes(self):
         rows = [
