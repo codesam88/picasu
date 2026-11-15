@@ -195,6 +195,11 @@ def config_from_env(environ: dict) -> dict:
         image_home_path = Path(image_home_src_raw)
         if not image_home_path.is_dir():
             raise ConfigError(f"IMAGE_HOME_SRC must be a directory, got '{image_home_src_raw}'")
+        if not (image_home_path / "sandbox-manifest.json").is_file():
+            raise ConfigError(
+                f"IMAGE_HOME_SRC has no sandbox-manifest.json: {image_home_src_raw} "
+                "(prepare it with `bench prepare`)"
+            )
         image_home = image_home_path
         image_home_src = image_home_src_raw
     else:
@@ -218,8 +223,6 @@ def config_from_env(environ: dict) -> dict:
             f"(build it: cargo build --profile {build_profile} --bin picasu)"
         )
 
-    if "N" in environ:
-        raise ConfigError("N was renamed to NCPU")
     try:
         ncpu = int(environ.get("NCPU", "4"))
     except ValueError:
@@ -278,7 +281,7 @@ def count_image_files(path: Path) -> int:
     try:
         with os.scandir(path) as it:
             for entry in it:
-                if entry.name.startswith("."):
+                if entry.name.startswith(".") or entry.name == "sandbox-manifest.json":
                     continue
                 try:
                     if entry.is_file():
@@ -417,7 +420,6 @@ def write_manifest(cfg: dict, environ: dict) -> None:
                 "dataset_path": dataset_info["source"],
                 "dataset_count": dataset_info["count"],
                 "dataset_id": dataset_info["id"],
-                "DATASET_ID": dataset_info["id"],
                 "machine": machine,
                 "machine_info": machine,
                 "cpu_model": machine["cpu_model"],
@@ -438,170 +440,6 @@ def write_manifest(cfg: dict, environ: dict) -> None:
         )
         + "\n"
     )
-
-
-def _coerce_manifest_count(value):
-    """Best-effort coercion of a dataset count from int/str/dict inputs."""
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            try:
-                return int(float(value))
-            except ValueError:
-                return None
-    if isinstance(value, (list, tuple, set)):
-        return len(value)
-    if isinstance(value, dict):
-        for key in ("count", "image_count", "file_count", "n", "total", "images"):
-            if key in value:
-                coerced = _coerce_manifest_count(value[key])
-                if coerced is not None:
-                    return coerced
-    return None
-
-
-def update_run_manifest(out=None, *args, **kwargs) -> dict:
-    """Read-modify-write ``run-manifest.json`` with a real dataset count.
-
-    Used by the workload after materialising (or reusing) its image set:
-    the launcher writes the manifest before images exist for out-local
-    cells, so the count is corrected here. ``dataset_id`` is updated only
-    when supplied (``None`` leaves the launcher's value intact).
-    """
-    out_path = out
-    positional = list(args)
-    for key in ("out", "outdir", "out_dir", "directory", "path", "folder", "out_path"):
-        if key in kwargs:
-            out_path = kwargs.pop(key)
-    if isinstance(out_path, dict):
-        # Allow update_run_manifest({"out": ..., "count": ...}) style.
-        d = out_path
-        out_path = d.get("out", d.get("outdir", d.get("path", d.get("directory"))))
-        if "count" in d and "count" not in kwargs:
-            kwargs["count"] = d["count"]
-        if "dataset_count" in d and "dataset_count" not in kwargs:
-            kwargs["dataset_count"] = d["dataset_count"]
-        if "dataset_id" in d and "dataset_id" not in kwargs:
-            kwargs["dataset_id"] = d["dataset_id"]
-        if "id" in d and "id" not in kwargs:
-            kwargs["id"] = d["id"]
-    if out_path is None:
-        raise ValueError("out is required")
-    out_path = Path(out_path)
-
-    count = None
-    dataset_id = None
-    if positional:
-        first = positional.pop(0)
-        if isinstance(first, dict):
-            count = _coerce_manifest_count(first)
-            if dataset_id is None:
-                dataset_id = first.get("id", first.get("dataset_id"))
-        else:
-            coerced = _coerce_manifest_count(first)
-            if coerced is not None:
-                count = coerced
-            else:
-                dataset_id = first
-    if positional:
-        second = positional.pop(0)
-        if isinstance(second, dict):
-            if count is None:
-                count = _coerce_manifest_count(second)
-            if dataset_id is None:
-                dataset_id = second.get("id", second.get("dataset_id"))
-        else:
-            if dataset_id is None and not isinstance(second, (int, float, bool)):
-                dataset_id = second
-            elif count is None:
-                coerced = _coerce_manifest_count(second)
-                if coerced is not None:
-                    count = coerced
-    for key, value in list(kwargs.items()):
-        kl = key.lower()
-        if kl in (
-            "count",
-            "dataset_count",
-            "image_count",
-            "file_count",
-            "n",
-            "total",
-            "images",
-            "num",
-            "number",
-        ):
-            coerced = _coerce_manifest_count(value)
-            if coerced is not None:
-                count = coerced
-        elif kl in ("dataset_id", "id", "dataset", "dataset_name", "name", "datasetid"):
-            dataset_id = value
-        elif kl in ("dataset",) and isinstance(value, dict):
-            if count is None:
-                count = _coerce_manifest_count(value)
-            if dataset_id is None:
-                dataset_id = value.get("id", value.get("dataset_id"))
-        else:
-            # ignore unknown keys
-            pass
-
-    manifest_path = out_path / "run-manifest.json"
-    if manifest_path.exists():
-        try:
-            data = json.loads(manifest_path.read_text())
-        except OSError, json.JSONDecodeError:
-            data = {}
-    else:
-        data = {}
-    if count is not None:
-        data["dataset_count"] = count
-    if dataset_id is not None:
-        data["dataset_id"] = dataset_id
-        data["DATASET_ID"] = dataset_id
-    for key in ("dataset", "dataset_info", "dataset_identity"):
-        if isinstance(data.get(key), dict):
-            nested = data[key]
-            if count is not None:
-                nested["count"] = count
-                nested["image_count"] = count
-                nested["file_count"] = count
-            if dataset_id is not None:
-                nested["id"] = dataset_id
-                nested["dataset_id"] = dataset_id
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(data, indent=2) + "\n")
-    return data
-
-
-# Aliases covering likely caller spellings.
-update_manifest = update_run_manifest
-update_manifest_dataset = update_run_manifest
-update_manifest_dataset_count = update_run_manifest
-update_manifest_count = update_run_manifest
-update_run_manifest_dataset = update_run_manifest
-update_run_manifest_dataset_count = update_run_manifest
-update_run_manifest_count = update_run_manifest
-update_dataset = update_run_manifest
-update_dataset_count = update_run_manifest
-update_dataset_info = update_run_manifest
-update_dataset_manifest = update_run_manifest
-record_dataset = update_run_manifest
-record_dataset_count = update_run_manifest
-set_dataset_count = update_run_manifest
-set_dataset = update_run_manifest
-write_dataset_count = update_run_manifest
-write_run_manifest_dataset = update_run_manifest
-
-
-def __getattr__(name):
-    lowered = name.lower()
-    if any(tok in lowered for tok in ("manifest", "dataset", "count", "image")):
-        return update_run_manifest
-    raise AttributeError(name)
 
 
 def write_launcher_info(cfg: dict, pid: int) -> None:

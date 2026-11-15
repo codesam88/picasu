@@ -365,7 +365,7 @@ def load_report(path: Path) -> list:
 # --- battery-level JSON extract ---------------------------------------------
 # Identity subset of run-manifest.json: output key -> candidate manifest keys.
 _MANIFEST_IDENTITY = (
-    ("dataset_id", ("dataset_id", "DATASET_ID")),
+    ("dataset_id", ("dataset_id",)),
     ("dataset_count", ("dataset_count",)),
     ("commit", ("git", "commit")),
     ("build_profile", ("build_profile",)),

@@ -52,6 +52,10 @@ workload out image_repo images="100" ncpu="8" build="release" port="5795": _venv
     export REPEATS="${REPEATS:-1}" SCAN_REPEATS="${SCAN_REPEATS:-2}"
     timeout "${TIMEOUT:-3600}" "{{ venv_python }}" "{{ source_directory() }}/run-cell.py"
 
+# Prepare a sandbox from a canonical archive.
+prepare *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/prepare.py" {{ args }}
+
 # Seed an image repo.
 seed-images image_repo images="100" template="" jobs="4": _venv
     "{{ venv_python }}" "{{ source_directory() }}/seed_images.py" --repo "{{ image_repo }}" \

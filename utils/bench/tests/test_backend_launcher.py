@@ -489,6 +489,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
         src = self.root / "src"
         src.mkdir()
         (src / "a.jpg").write_bytes(b"x")
+        (src / "sandbox-manifest.json").write_text(json.dumps({"archive": str(src), "count": 1}))
         out = self.root / "cell"
         env = base_env(OUT=str(out), IMAGE_HOME_SRC=str(src))
         cfg = bl.config_from_env(env)
@@ -503,6 +504,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
         src.mkdir()
         (src / "a.jpg").write_bytes(b"x")
         (src / "b.jpg").write_bytes(b"x")
+        (src / "sandbox-manifest.json").write_text(json.dumps({"archive": str(src), "count": 2}))
         out = self.root / "cell"
         env = base_env(OUT=str(out), IMAGE_HOME_SRC=str(src), DATASET_ID="ds-1")
         cfg = bl.config_from_env(env)
@@ -510,7 +512,7 @@ class ImageHomeAndManifestTest(unittest.TestCase):
         bl.prepare_out(cfg)
         self.assertFalse((out / "images").exists())
         self.assertTrue(src.exists())
-        self.assertEqual(sorted(p.name for p in src.iterdir()), ["a.jpg", "b.jpg"])
+        self.assertEqual(sorted(p.name for p in src.glob("*.jpg")), ["a.jpg", "b.jpg"])
         se = bl.server_env(cfg, env)
         self.assertEqual(se["PICASU_IMAGE_HOME"], str(src))
         bl.write_manifest(cfg, env)

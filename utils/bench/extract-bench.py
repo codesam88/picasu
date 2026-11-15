@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract benchmark summary from one or more harness-A output dirs.
+"""Extract benchmark summary from one or more bench output dirs.
 
 Usage:
     utils/bench/extract-bench.py /tmp/.../bench-after-N4-100 [...]
@@ -200,8 +200,7 @@ def parse_log(outdir: Path) -> dict:
         row["scan_thumb_worst"] = max(float(f[2]) for f in fetches)
     else:
         rounds = re.findall(
-            r"probe round=\d+ rows=(\d+) state=\w+ (?:seq: seq: n=\d+ ok=\d+ mean=([\d.]+).*?conc(?:-P\d+)?: n=\d+ ok=\d+ mean=([\d.]+)"
-            r"|hyperfine: compressed-get mean=([\d.]+) s.*?prefetch mean=([\d.]+) s)",
+            r"probe round=\d+ rows=(\d+) state=\w+ (?:seq: seq: n=\d+ ok=\d+ mean=([\d.]+).*?conc(?:-P\d+)?: n=\d+ ok=\d+ mean=([\d.]+))",
             log,
         )
         if rounds:
@@ -211,9 +210,6 @@ def parse_log(outdir: Path) -> dict:
                 # Legacy curl-sweep format: full-list mean, no per-round
                 # prefetch — prefetch stays absent (n/a), not zero.
                 row["scan_thumb_mean"] = float(last[1])
-            else:
-                # Previous format: per-round compressed hyperfine mean.
-                row["scan_thumb_mean"] = float(last[3])
     # Pool ALL per-round hyperfine lines the same way: median of round
     # medians (robust to single stalled runs and single stalled rounds).
     rh = re.findall(
@@ -238,24 +234,11 @@ def parse_log(outdir: Path) -> dict:
             row["scan_pref_worst"] = max(float(r[0]) for r in rh_single)
             row["scan_edit_worst"] = max(float(r[1]) for r in rh_single)
             row["scan_rounds"] = len(rh_single)
-        else:
-            # Previous format: per-round compressed+prefetch hyperfine means.
-            rh_old = re.findall(
-                r"probe round=\d+ .*?hyperfine: compressed-get mean=([\d.]+) s.*?prefetch mean=([\d.]+) s",
-                log,
-            )
-            if rh_old:
-                row["scan_thumb_mean"] = float(rh_old[-1][0])
-                row["scan_pref_mean"] = float(rh_old[-1][1])
     # Post-scan hyperfine medians (idle server: mean ~= median, take median
     # for consistency with the during-scan columns).
     m = re.search(r"hyperfine compressed-get: mean=[\d.]+ s median=([\d.]+) s", log)
     if m:
         row["post_compressed"] = float(m.group(1))
-    else:
-        m = re.search(r"hyperfine compressed-get: mean=([\d.]+)", log)
-        if m:
-            row["post_compressed"] = float(m.group(1))
     m = re.search(r"hyperfine prefetch: mean=[\d.]+ s median=([\d.]+) s", log)
     if m:
         row["post_prefetch"] = float(m.group(1))
@@ -436,7 +419,7 @@ def _ms(value) -> object:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("outdirs", nargs="+", help="harness-A OUT dirs")
+    parser.add_argument("outdirs", nargs="+", help="bench OUT dirs")
     args = parser.parse_args()
 
     parsed = []

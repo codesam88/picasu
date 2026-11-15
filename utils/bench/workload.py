@@ -8,7 +8,7 @@ image-set materialisation, repeated album-index scans, during-scan random
 compressed fetches plus hyperfine prefetch/edit-rating probes, a post-scan
 sequential sweep, post-scan hyperfine baselines, and write-probe verification.
 
-Artifacts are written in the harness-A layout so `utils/bench/extract-bench.py`
+Artifacts are written in the bench transcript format so `utils/bench/extract-bench.py`
 parses either producer unchanged:
 
   harness-a.log                    run transcript (harness line formats)
@@ -43,7 +43,7 @@ Environment contract (on top of the launcher's):
   REPEATS         post-scan hyperfine runs (default 3)
   WARMUP          post-scan hyperfine warmup runs (default 1)
   RUNS_DURING     per-round hyperfine runs during a scan (default 3; the
-                  per-round warmup is always 0, matching harness-A)
+                  per-round warmup is always 0)
   SCAN_REPEATS    scan repetitions per cell (default 3)
   FETCHES         random compressed fetches per during-scan round (default 10)
   PROBE_LIMIT     max probe-list rows (default: IMAGES)
@@ -301,11 +301,6 @@ def config_from_env(environ: dict) -> dict:
     if not repo_path.is_dir():
         raise ConfigError(f"IMAGE_REPO not a directory: {environ['IMAGE_REPO']}")
 
-    materialise_raw = environ.get("MATERIALISE", "1")
-    if materialise_raw not in ("0", "1"):
-        raise ConfigError(f"MATERIALISE must be 0 or 1, got '{materialise_raw}'")
-    materialise = materialise_raw == "1"
-
     image_home_raw = info.get("image_home")
     if environ.get("IMAGE_PATH", ""):
         image_path = Path(environ["IMAGE_PATH"])
@@ -352,7 +347,6 @@ def config_from_env(environ: dict) -> dict:
         "image_repo": repo_path,
         "image_path": image_path,
         "image_home": image_home_raw,
-        "materialise": materialise,
         "dataset_id": dataset_id,
         "build_profile": build_profile,
         "hyperfine": resolve_hyperfine(environ),
@@ -386,7 +380,7 @@ class Logger:
 
 
 class ProbeTranscript:
-    """Mirror of probe-phase log lines, as harness-A's redirected stdout."""
+    """Mirror of probe-phase log lines, as the bench transcript's redirected stdout."""
 
     def __init__(self, logger: Logger, path: Path):
         self.logger = logger
@@ -503,19 +497,30 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
     img_dir = cfg["image_path"]
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    if not cfg.get("materialise", True):
+    # Prepared sandbox: manifest present means the sandbox was built by
+    # `bench prepare`; never materialise, just use it as-is.
+    manifest_path = img_dir / "sandbox-manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except OSError, json.JSONDecodeError:
+            manifest = {}
+        archive = manifest.get("archive")
+        manifest_count = manifest.get("count")
+        logger.log(
+            f"=== prepared sandbox (materialise skipped) path={img_dir} "
+            f"archive={archive} count={manifest_count} ==="
+        )
         jpgs = sorted(img_dir.glob("*.jpg"), key=lambda path: path.name)
         image_count = len(jpgs)
         image_bytes = sum(path.stat().st_size for path in jpgs)
         logger.log(
-            f"=== reusing images (materialise=0) path={img_dir} dataset={cfg.get('dataset_id')} ==="
-        )
-        logger.log(
-            f"reused count={image_count} bytes={image_bytes} wall_ms=0 "
-            f"mode=reuse({cfg.get('dataset_id')})"
+            f"reused count={image_count} bytes={image_bytes} wall_ms=0 mode=prepared({archive})"
         )
         return image_count, image_bytes
 
+    # Deprecated: unprepared dirs still materialise by copy/link. New cells
+    # should point at a prepared sandbox instead of relying on this path.
     available = sorted(cfg["image_repo"].glob("*.jpg"), key=lambda path: path.name)
     if len(available) < cfg["images"]:
         raise ConfigError(
