@@ -29,7 +29,7 @@ the human view on stdout instead of the JSON document.
 
 Environment:
     OUT                  battery directory for `run` when --out is absent
-    BENCH_SETS_ROOT      image repo root (default /tmp/sets)
+    BENCH_SETS_ROOT      image repo root (default ~/picasu-bench)
     BENCH_PORT           first cell port (default 5795); cells increment
     IMAGE_PATH           passed through to each cell by run-cell.py
     WORKLOAD_TIMEOUT_S   per-cell workload budget handed to run-cell
@@ -1408,7 +1408,7 @@ def main(argv=None) -> int:
     run.add_argument(
         "--sets-root",
         default=os.environ.get("BENCH_SETS_ROOT", str(DEFAULT_SETS_ROOT)),
-        help="image repo root (default: $BENCH_SETS_ROOT or /tmp/sets)",
+        help="image repo root (default: $BENCH_SETS_ROOT or ~/picasu-bench)",
     )
     run.add_argument(
         "--port",

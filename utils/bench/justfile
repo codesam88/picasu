@@ -1,7 +1,5 @@
-# Submodule justfile for the benchmark harness (utils/bench).
-# Invoke from the repo root as `just bench <recipe>` (works from any
-# directory), or directly: `just -f utils/bench/justfile <recipe>`.
-# A local venv (.venv/) is created on demand; ruff is installed into it.
+# Bench harness. `just bench <recipe>` from the repo root.
+# A local venv (.venv/) is created on demand for ruff.
 
 venv_dir := source_directory() / ".venv"
 venv_python := venv_dir / "bin/python"
@@ -12,7 +10,7 @@ ruff_version := "0.17.3"
 default:
     @just --list --unsorted --justfile "{{ source_file() }}"
 
-# Create the venv and install ruff on first use (idempotent).
+# Create the venv and install ruff on first use.
 _venv:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -40,43 +38,15 @@ format: _venv
 server: _venv
     "{{ venv_python }}" "{{ source_directory() }}/launch-backend.py"
 
-# Run a benchmark cell via the battery cell level (TIMEOUT bounds the workload, default 7200 s).
-workload out image_repo images="100" ncpu="8" build="release" port="5795": _venv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p "{{ out }}"
-    export OUT="{{ out }}" PORT="{{ port }}" BUILD_PROFILE="{{ build }}"
-    export NCPU="{{ ncpu }}" IMAGES="{{ images }}"
-    export IMAGE_REPO="{{ image_repo }}"
-    if [ -n "${IMAGE_PATH:-}" ]; then export IMAGE_PATH; fi
-    # A prepared sandbox is an explicit opt-in: forward it into the cell and
-    # refuse an unprepared one here, before any cell process starts.
-    if [ -n "${IMAGE_HOME_SRC:-}" ]; then
-        export IMAGE_HOME_SRC
-        # just strips the recipe's indentation, so the heredoc body sits at
-        # recipe level and reaches python at column 0.
-        "{{ venv_python }}" - <<'PY'
-    import os
-    import sys
-
-    sys.path.insert(0, "{{ source_directory() }}")
-    import preflight
-
-    check = preflight.check_sandbox_manifest(os.environ["IMAGE_HOME_SRC"])
-    if not check.ok:
-        print(check.line(), file=sys.stderr)
-        sys.exit(1)
-    PY
-    fi
-    export REPEATS="${REPEATS:-1}" SCAN_REPEATS="${SCAN_REPEATS:-2}"
-    export WORKLOAD_TIMEOUT_S="${WORKLOAD_TIMEOUT_S:-${TIMEOUT:-7200}}"
-    "{{ venv_python }}" "{{ source_directory() }}/battery.py" run cell --out "{{ out }}"
+# Run one cell (env-driven; see README).
+run *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" run cell {{ args }}
 
 # Prepare a sandbox from a canonical archive.
 prepare *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/prepare.py" {{ args }}
 
-# Run the preflight checklist (binary, hyperfine, archive/sandbox, port, OUT).
+# Run the preflight checklist.
 preflight *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/preflight.py" {{ args }}
 
@@ -85,7 +55,7 @@ seed-images image_repo images="100" template="" jobs="4": _venv
     "{{ venv_python }}" "{{ source_directory() }}/seed_images.py" --repo "{{ image_repo }}" \
         --count "{{ images }}" --template "{{ template }}" --jobs "{{ jobs }}"
 
-# Extract a battery parent as one JSON document (writes report.md + matrix.tsv beside it).
+# Extract a battery parent as JSON + report.
 extract parent out="": _venv
     "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}" --out "{{ out }}"
 
@@ -97,18 +67,9 @@ battery level="gate" out="": _venv
 battery-check report baselines="": _venv
     "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}" --baselines "{{ baselines }}"
 
-# Report per-cell state under a battery parent (queued/running/finished/failed).
+# Report per-cell state under a battery parent.
 status *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/bench.py" status {{ args }}
-
-
-# Unified CLI shell (bench.py). Prefer this for new flows.
-cli *args: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" {{ args }}
-
-# Alias for the unified CLI shell.
-bench-cli *args: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" {{ args }}
 
 
 # Remove the on-demand venv.

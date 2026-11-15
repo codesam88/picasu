@@ -16,8 +16,7 @@ parses either producer unchanged:
   status-final.json                last run's terminal status
   status-final-run-<n>.json        per-run terminal status
   scan-walls.tsv                   run index + wall ms
-  prefetch.json / get-data.json    raw probe-list sources
-  probe-list.tsv                   hash<TAB>token rows
+  prefetch.json / get-data.json    raw probe-request records (debug)
   probe-seq.tsv                    hash<TAB>code<TAB>seconds sweep
   rounds-run-<n>/                  per-run probe rounds
     hyperfine-round-<n>.json
@@ -147,7 +146,6 @@ ARTIFACT_FILES = (
     "scan-done.marker",
     "prefetch.json",
     "get-data.json",
-    "probe-list.tsv",
     "probe-seq.tsv",
     "probe-phase.log",
     "hyperfine.json",
@@ -505,8 +503,6 @@ def build_probe_list(cfg: config.WorkloadConfig, client: HttpClient) -> list | N
         (out / "get-data.json").write_bytes(raw_pages[0])
     else:
         (out / "get-data.json").write_text(json.dumps(collected_rows))
-    text = "\n".join(lines) + ("\n" if lines else "")
-    (out / "probe-list.tsv").write_text(text)
     return lines or None
 
 

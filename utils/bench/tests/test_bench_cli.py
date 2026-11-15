@@ -28,11 +28,11 @@ class BenchDispatchTests(unittest.TestCase):
     def test_exit_code_passthrough(self):
         for code in (0, 1, 2, 7, 130):
             fake = mock.Mock(return_value=code)
-            alias = self.bench.MODULE_ALIASES["cell"]
+            alias = self.bench.MODULE_ALIASES["extract"]
             mod = getattr(self.bench, alias)
             mod.main = fake
-            self.bench.MODULES["cell"] = mod
-            rc = self.bench.main(["cell", "x"])
+            self.bench.MODULES["extract"] = mod
+            rc = self.bench.main(["extract", "x"])
             self.assertEqual(rc, code)
 
 
