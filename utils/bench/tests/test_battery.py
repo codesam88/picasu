@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import os
+import statistics
 import sys
 import tempfile
 import unittest
@@ -33,12 +34,15 @@ def write_cell(
     drain: bool = True,
     upload: bool = True,
     profile: str = "control",
+    walls: tuple = (11000, 13000),
 ) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
+    median_ms = statistics.median(walls)
     log = [
         "=== seeding images (repo=set-100 path=/tmp/sets/set-100)",
         "image_count=100 image_bytes=57000000",
-        "scan wall median_ms=12000.0 over 2 run(s): 11000,13000",
+        f"scan wall median_ms={median_ms:g} over {len(walls)} run(s): "
+        + ",".join(str(wall) for wall in walls),
         "scan state=completed polls=20 wall_ms=12000",
         "probe round=1 rows=100 state=completed fetch: thumb: n=100 mean=0.006 "
         "hyperfine: prefetch mean=0.020 s median=0.018 s | "
@@ -76,7 +80,9 @@ def write_cell(
     (outdir / "run-manifest.json").write_text(
         json.dumps({"build_profile": "release", "git": "abc1234", "mode": "bench"})
     )
-    (outdir / "scan-walls.tsv").write_text("1\t11000\n2\t13000\n")
+    (outdir / "scan-walls.tsv").write_text(
+        "".join(f"{index}\t{wall}\n" for index, wall in enumerate(walls, 1))
+    )
 
 
 class BatteryDefinitionTest(unittest.TestCase):
@@ -359,6 +365,7 @@ class BatteryWorkloadTimeoutTest(unittest.TestCase):
             contextlib.redirect_stdout(io.StringIO()),
         ):
             os.environ.pop("WORKLOAD_TIMEOUT_S", None)
+            os.environ["BATTERY_REPEATS"] = "1"
             if preset is not None:
                 os.environ["WORKLOAD_TIMEOUT_S"] = preset
             rc = self.battery.run_battery(level, self.root / level)
@@ -382,3 +389,280 @@ class BatteryWorkloadTimeoutTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BatteryExpansionTest(unittest.TestCase):
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def run_with_repeats(self, repeats):
+        captured = []
+
+        class FakeOrchestrator:
+            def config_from_env(self, env):
+                return env
+
+            def run_cell(self, cfg, env):
+                captured.append(env["OUT"])
+                return 0
+
+        row = {column: self.battery.NA for column in self.battery.REPORT_COLUMNS}
+        row.update({"cell": "gate-control", "profile": "control", "level": "gate"})
+        with (
+            mock.patch.dict(os.environ, {}, clear=False),
+            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            mock.patch.object(self.battery, "build_row", return_value=dict(row)),
+            mock.patch.object(
+                self.battery, "_build_median_row", return_value={"cell": "gate-control:median"}
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            os.environ.pop("WORKLOAD_TIMEOUT_S", None)
+            os.environ["BATTERY_REPEATS"] = str(repeats)
+            rc = self.battery.run_battery("gate", self.root / "gate")
+        self.assertEqual(rc, 0)
+        return captured, self.root / "gate" / "report.tsv"
+
+    def test_expands_into_n_outdirs(self):
+        captured, report = self.run_with_repeats(3)
+        cells = self.battery.battery_cells("gate")
+        self.assertEqual(len(captured), 3 * len(cells))
+        for cell in cells:
+            for rep in range(1, 4):
+                self.assertTrue(
+                    any(Path(p).name == f"{cell.outdir_suffix}-rep{rep}" for p in captured),
+                    f"missing {cell.outdir_suffix}-rep{rep}",
+                )
+        lines = report.read_text().splitlines()
+        self.assertEqual(len(lines) - 1, 4 * len(cells))
+        self.assertEqual(sum(1 for line in lines if ":median" in line), len(cells))
+
+    def test_repeats_one_is_backward_compatible(self):
+        captured, report = self.run_with_repeats(1)
+        cells = self.battery.battery_cells("gate")
+        self.assertEqual(len(captured), len(cells))
+        lines = report.read_text().splitlines()
+        self.assertEqual(len(lines) - 1, len(cells))
+        self.assertEqual(sum(1 for line in lines if ":median" in line), 0)
+        for cell in cells:
+            self.assertTrue(any(Path(p).name == f"{cell.outdir_suffix}-rep1" for p in captured))
+
+
+class MedianRowTest(unittest.TestCase):
+    def setUp(self):
+        self.battery = load_battery()
+
+    def test_median_math_odd_even_and_na(self):
+        row_a = {
+            "cell": "gate-control",
+            "profile": "control",
+            "level": "gate",
+            "scale": "100",
+            "build": "release",
+            "commit": "abc",
+            "scan_wall_s": "10.0",
+            "scan_fetch_p50_ms": self.battery.NA,
+            "idle_thumb_ms": self.battery.NA,
+        }
+        row_b = {
+            "cell": "gate-control",
+            "profile": "control",
+            "level": "gate",
+            "scale": "100",
+            "build": "release",
+            "commit": "abc",
+            "scan_wall_s": "20.0",
+            "scan_fetch_p50_ms": "18.0",
+            "idle_thumb_ms": self.battery.NA,
+        }
+        row_c = {
+            "cell": "gate-control",
+            "profile": "control",
+            "level": "gate",
+            "scale": "100",
+            "build": "release",
+            "commit": "abc",
+            "scan_wall_s": "30.0",
+            "scan_fetch_p50_ms": "22.0",
+            "idle_thumb_ms": self.battery.NA,
+        }
+        odd = self.battery._build_median_row([row_a, row_b, row_c])
+        self.assertEqual(odd["cell"], "gate-control:median")
+        self.assertEqual(odd["scan_wall_s"], "20.0")
+        self.assertEqual(odd["scan_fetch_p50_ms"], "20.0")
+        self.assertEqual(odd["idle_thumb_ms"], self.battery.NA)
+
+        even = self.battery._build_median_row([row_a, row_b])
+        self.assertEqual(even["scan_wall_s"], "15.0")
+
+    def test_non_numeric_columns_pass_through_from_first_repeat(self):
+        row_a = {
+            "cell": "gate-control",
+            "profile": "first",
+            "level": "gate",
+            "scale": "100",
+            "build": "release",
+            "commit": "abc",
+            "scan_wall_s": "10.0",
+        }
+        row_b = {
+            "cell": "gate-control",
+            "profile": "second",
+            "level": "gate",
+            "scale": "200",
+            "build": "debug",
+            "commit": "def",
+            "scan_wall_s": "12.0",
+        }
+        med = self.battery._build_median_row([row_a, row_b])
+        self.assertEqual(med["profile"], "first")
+        self.assertEqual(med["scale"], "100")
+        self.assertEqual(med["build"], "release")
+        self.assertEqual(med["commit"], "abc")
+        self.assertEqual(med["scan_wall_s"], "11.0")
+
+    def test_comma_lists_are_pooled_across_repeats_not_median_of_medians(self):
+        row_a = {
+            "cell": "gate-control",
+            "tree_refresh_build_p50_us": "0,10",
+            "scan_walls_s": "11,13",
+        }
+        row_b = {
+            "cell": "gate-control",
+            "tree_refresh_build_p50_us": "10,10",
+            "scan_walls_s": "9,15",
+        }
+        med = self.battery._build_median_row([row_a, row_b])
+        # Pooled samples are [0, 10, 10, 10]; the per-repeat medians
+        # (5.0, 10.0) would give 7.5.
+        self.assertEqual(float(med["tree_refresh_build_p50_us"]), 10.0)
+        self.assertEqual(float(med["scan_walls_s"]), 12.0)
+
+    def test_comma_lists_skip_na_entries_and_keep_single_values(self):
+        row_a = {
+            "cell": "gate-control",
+            "filter_snapshot_clone_p50_us": "376,1483",
+            "scan_fetch_p50_ms": "18.0",
+        }
+        row_b = {
+            "cell": "gate-control",
+            "filter_snapshot_clone_p50_us": self.battery.NA,
+            "scan_fetch_p50_ms": "20.0",
+        }
+        row_c = {
+            "cell": "gate-control",
+            "filter_snapshot_clone_p50_us": "425,1500",
+            "scan_fetch_p50_ms": self.battery.NA,
+        }
+        med = self.battery._build_median_row([row_a, row_b, row_c])
+        # Pools [376, 1483, 425, 1500] and [18.0, 20.0]; the n/a repeats
+        # contribute nothing and the all-n/a column stays n/a.
+        self.assertEqual(float(med["filter_snapshot_clone_p50_us"]), 954.0)
+        self.assertEqual(float(med["scan_fetch_p50_ms"]), 19.0)
+        self.assertEqual(med["upload_submit_p50_ms"], self.battery.NA)
+
+    def test_stage_zero_reading_is_numeric_not_na(self):
+        # A drain stage with no samples is logged as an explicit 0 by the
+        # backend; the battery must keep it as data, not turn it into n/a.
+        rows = [{"cell": "gate-storm-idle", "filter_snapshot_clone_p50_us": "0"} for _ in range(3)]
+        med = self.battery._build_median_row(rows)
+        self.assertEqual(float(med["filter_snapshot_clone_p50_us"]), 0.0)
+
+    def test_pooled_median_avoids_float_representation_noise(self):
+        rows = [
+            {"cell": "gate-storm-diff", "scan_walls_s": "20.188,3.027"},
+            {"cell": "gate-storm-diff", "scan_walls_s": "10.288,3.026"},
+            {"cell": "gate-storm-diff", "scan_walls_s": "11.103,2.826"},
+        ]
+        med = self.battery._build_median_row(rows)
+        self.assertEqual(med["scan_walls_s"], "6.6575")
+
+    def test_median_of_built_rows_pools_scan_walls_and_stage_lists(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        repeat_walls = ((11000, 13000), (9000, 15000), (12000, 12000))
+        rows = []
+        for index, walls in enumerate(repeat_walls, 1):
+            outdir = root / f"gate-control-rep{index}"
+            write_cell(outdir, walls=walls)
+            rows.append(self.battery.build_row("gate", "control", outdir))
+
+        med = self.battery._build_median_row(rows)
+
+        self.assertEqual(med["cell"], "gate-control:median")
+        # Pooled [9, 11, 12, 12, 13, 15] s.
+        self.assertEqual(med["scan_walls_s"], "12.0")
+        self.assertEqual(float(med["tree_refresh_build_p50_us"]), 1200.0)
+        self.assertEqual(float(med["filter_snapshot_clone_max_us"]), 1000.0)
+
+
+class BatteryCheckMedianTest(unittest.TestCase):
+    def setUp(self):
+        self.battery = load_battery()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.report = self.root / "report.tsv"
+        self.baselines = self.root / "baselines.tsv"
+
+    def test_failing_repeat_with_passing_median_passes(self):
+        rows = [
+            {
+                "cell": "gate-control",
+                "profile": "control",
+                "level": "gate",
+                "scale": "100",
+                "build": "release",
+                "commit": "abc",
+                "scan_fetch_p50_ms": "40.0",
+            },
+            {
+                "cell": "gate-control:median",
+                "profile": "control",
+                "level": "gate",
+                "scale": "100",
+                "build": "release",
+                "commit": "abc",
+                "scan_fetch_p50_ms": "18.0",
+            },
+        ]
+        self.battery.write_report(self.report, rows)
+        self.baselines.write_text(
+            self.battery.BASELINE_HEADER
+            + "\n"
+            + "gate-control:median\tscan_fetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate\n"
+        )
+        result = self.battery.check_report(
+            self.battery.load_report(self.report),
+            self.battery.load_baselines(self.baselines),
+        )
+        self.assertEqual(result.failures, [])
+        self.assertEqual(result.checked, 1)
+
+    def test_failing_median_row_fails(self):
+        rows = [
+            {
+                "cell": "gate-control:median",
+                "profile": "control",
+                "level": "gate",
+                "scale": "100",
+                "build": "release",
+                "commit": "abc",
+                "scan_fetch_p50_ms": "40.0",
+            },
+        ]
+        self.battery.write_report(self.report, rows)
+        self.baselines.write_text(
+            self.battery.BASELINE_HEADER
+            + "\n"
+            + "gate-control:median\tscan_fetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate\n"
+        )
+        result = self.battery.check_report(
+            self.battery.load_report(self.report),
+            self.battery.load_baselines(self.baselines),
+        )
+        self.assertEqual(len(result.failures), 1)

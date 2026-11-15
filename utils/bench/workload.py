@@ -68,7 +68,8 @@ Environment contract (on top of the launcher's):
                   measures the write path end to end and runs the control
                   probe rounds during the subsequent scan
   UPLOAD_FILES    files to upload in the upload profile (default IMAGES)
-  UPLOAD_TIMEOUT_S visibility poll budget for uploaded files (default 5)
+  UPLOAD_TIMEOUT_S visibility poll budget per uploaded file (default 30);
+                  a file that never becomes visible fails the cell
   UPLOAD_POST_TIMEOUT_S  budget for one upload POST (default 60)
   INDEX_SETTLE_TIMEOUT_S  upload profile: budget for the library index to
                   settle before the upload stimulus, so the write path is
@@ -118,6 +119,7 @@ DEFAULT_SCAN_REPEATS = 3
 DEFAULT_FETCHES = 10
 DEFAULT_PROBE_PAGE = 1000
 DEFAULT_INDEX_SETTLE_TIMEOUT_S = 600.0
+DEFAULT_UPLOAD_TIMEOUT_S = 30.0
 DEFAULT_UPLOAD_POST_TIMEOUT_S = 60.0
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
@@ -275,7 +277,7 @@ def config_from_env(environ: dict) -> dict:
         raise ConfigError(f"IDLE_PROFILE must be diff|read|thumb, got '{idle_profile}'")
     scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
     upload_files = _int_env(environ, "UPLOAD_FILES", images, minimum=1)
-    upload_timeout = _float_env(environ, "UPLOAD_TIMEOUT_S", 5.0, minimum=0.1)
+    upload_timeout = _float_env(environ, "UPLOAD_TIMEOUT_S", DEFAULT_UPLOAD_TIMEOUT_S, minimum=0.1)
     upload_post_timeout = _float_env(
         environ, "UPLOAD_POST_TIMEOUT_S", DEFAULT_UPLOAD_POST_TIMEOUT_S, minimum=0.1
     )
@@ -1648,7 +1650,7 @@ def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
     submit_times = []
     visible_times = []
     poll_interval = cfg.get("poll_interval_s", 0.2)
-    timeout = cfg.get("upload_timeout_s", 5.0)
+    timeout = cfg.get("upload_timeout_s", DEFAULT_UPLOAD_TIMEOUT_S)
     post_timeout = cfg.get("upload_post_timeout_s", DEFAULT_UPLOAD_POST_TIMEOUT_S)
     for source in sources:
         started = time.perf_counter()
