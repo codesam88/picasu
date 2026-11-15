@@ -21,6 +21,10 @@ Environment:
                          (default: gate 1800, scale 7200); an exported
                          value overrides the level default
 
+    BATTERY_REPEATS  number of times each cell runs; the median row becomes
+                     the comparison unit (default: 3, minimum 1; 1 = single
+                     row per cell, no median row). An exported value wins.
+
 Batteries pin every knob that changes a measurement (`SCAN_REPEATS`,
 hyperfine `REPEATS`/`WARMUP`, storm client/op counts and margin) plus the
 build profile, image set and CPU count. Cells run sequentially: backend
@@ -39,6 +43,7 @@ import json
 import os
 import re
 import signal
+import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +58,10 @@ NA = "n/a"
 # cell the way the justfile recipe does. The scale figure covers the
 # measured ~1335 s single control cell at 5650 rows.
 WORKLOAD_TIMEOUT_S_BY_LEVEL = {"gate": 1800, "scale": 7200}
+
+BATTERY_REPEATS_DEFAULT = 3
+BATTERY_REPEATS_BY_LEVEL = {"gate": 3, "scale": 3}
+BATTERY_REPEATS_MIN = 1
 
 REPORT_COLUMNS = [
     "cell",
@@ -241,6 +250,66 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
     }
 
 
+_NON_NUMERIC_COLUMNS = {
+    "cell",
+    "profile",
+    "level",
+    "scale",
+    "build",
+    "commit",
+}
+
+
+def _numeric_values(raw) -> list:
+    """Parse one report cell as a list of numbers.
+
+    Repeat rows carry per-scan/per-run lists (`scan_walls_s`, stage
+    p50/max) as comma-separated text, so one cell contributes every
+    member. Empty entries, `n/a` and unparseable text contribute nothing.
+    """
+    if raw is None:
+        return []
+    values = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if part == "" or part == NA:
+            continue
+        try:
+            values.append(float(part))
+        except ValueError:
+            continue
+    return values
+
+
+def _build_median_row(rows: list) -> dict:
+    """Return one median row for the given repeat rows.
+
+    Comma-separated lists are pooled across repeats and the median taken
+    over every value (median of medians would weight a two-scan cell as
+    one sample per repeat).
+    """
+    if not rows:
+        return {}
+    first = dict(rows[0])
+    base_cell = first.get("cell", "")
+    median_cell = base_cell + ":median" if isinstance(base_cell, str) and base_cell else "median"
+    result = dict(first)
+    for column in REPORT_COLUMNS:
+        if column in _NON_NUMERIC_COLUMNS:
+            # Non-numeric columns pass through from the first repeat.
+            result[column] = first.get(column, result.get(column, NA))
+            continue
+        values = []
+        for row in rows:
+            values.extend(_numeric_values(row.get(column, NA)))
+        # Round out binary-float noise from averaging two odd-count
+        # neighbours (ms/1000 seconds land as 6.657500000000001); every
+        # report column resolves well above 1e-6.
+        result[column] = _fmt(round(statistics.median(values), 6)) if values else NA
+    result["cell"] = median_cell
+    return result
+
+
 def _row_line(row: dict) -> str:
     return "\t".join(
         str(row.get(column, NA)).replace("\t", " ").replace("\n", " ") for column in REPORT_COLUMNS
@@ -348,6 +417,9 @@ def load_baselines(path: Path) -> list:
 
 def check_report(rows: list, baselines: list) -> CheckResult:
     """Compare report rows against baselines; never mutates the baselines."""
+    median_rows = [row for row in rows if str(row.get("cell", "")).endswith(":median")]
+    if median_rows:
+        rows = median_rows
     by_cell = {row.get("cell"): row for row in rows}
     failures = []
     checked = 0
@@ -425,34 +497,58 @@ def run_battery(
     report.unlink(missing_ok=True)
     orchestrator = _run_cell()
 
+    # Battery-level repeats: an exported BATTERY_REPEATS wins over the
+    # per-level default (env.setdefault leaves an exported value intact).
+    env0 = dict(os.environ)
+    env0.setdefault(
+        "BATTERY_REPEATS", str(BATTERY_REPEATS_BY_LEVEL.get(level, BATTERY_REPEATS_DEFAULT))
+    )
+    try:
+        n_repeats = int(env0["BATTERY_REPEATS"])
+    except TypeError, ValueError:
+        raise ValueError(f"BATTERY_REPEATS must be an integer, got {env0['BATTERY_REPEATS']!r}")
+    if n_repeats < BATTERY_REPEATS_MIN:
+        raise ValueError(f"BATTERY_REPEATS must be >= {BATTERY_REPEATS_MIN}, got {n_repeats}")
+
     for index, cell in enumerate(cells):
-        cell_out = outdir / cell.outdir_suffix
-        env = dict(os.environ)
-        env.update(cell.env)
-        env["BUILD_PROFILE"] = build_profile
-        # run-cell's workload budget; an exported WORKLOAD_TIMEOUT_S wins.
-        env.setdefault("WORKLOAD_TIMEOUT_S", str(WORKLOAD_TIMEOUT_S_BY_LEVEL[level]))
-        env.update(
-            {
-                "OUT": str(cell_out),
-                "PORT": str(base_port + index),
-                "IMAGE_REPO": str(repo_path(cell, sets_root)),
-                "DATASET_ID": cell.repo,
-            }
-        )
-        print(f"[battery {level}] {cell.cell_id}: port={env['PORT']} out={cell_out}", flush=True)
-        cfg = orchestrator.config_from_env(env)
-        rc = orchestrator.run_cell(cfg, env)
-        try:
-            row = build_row(level, cell.profile, cell_out)
-        except (OSError, ValueError, SystemExit) as err:
-            print(f"[battery {level}] {cell.cell_id}: no result row: {err}", file=sys.stderr)
-        else:
-            append_row(report, row)
-            print(f"[battery {level}] {cell.cell_id}: row appended (rc={rc})", flush=True)
-        if rc != 0:
-            print(f"[battery {level}] {cell.cell_id}: cell failed rc={rc}", file=sys.stderr)
-            return rc
+        repeat_rows = []
+        for rep in range(1, n_repeats + 1):
+            cell_out = outdir / f"{cell.outdir_suffix}-rep{rep}"
+            env = dict(os.environ)
+            env.update(cell.env)
+            env["BUILD_PROFILE"] = build_profile
+            # run-cell's workload budget; an exported WORKLOAD_TIMEOUT_S wins.
+            env.setdefault("WORKLOAD_TIMEOUT_S", str(WORKLOAD_TIMEOUT_S_BY_LEVEL[level]))
+            env.setdefault("BATTERY_REPEATS", str(n_repeats))
+            env.update(
+                {
+                    "OUT": str(cell_out),
+                    "PORT": str(base_port + index),
+                    "IMAGE_REPO": str(repo_path(cell, sets_root)),
+                    "DATASET_ID": cell.repo,
+                }
+            )
+            print(
+                f"[battery {level}] {cell.cell_id}: rep={rep}/{n_repeats} port={env['PORT']} out={cell_out}",
+                flush=True,
+            )
+            cfg = orchestrator.config_from_env(env)
+            rc = orchestrator.run_cell(cfg, env)
+            try:
+                row = build_row(level, cell.profile, cell_out)
+            except (OSError, ValueError, SystemExit) as err:
+                print(f"[battery {level}] {cell.cell_id}: no result row: {err}", file=sys.stderr)
+            else:
+                append_row(report, row)
+                repeat_rows.append(row)
+                print(f"[battery {level}] {cell.cell_id}: row appended (rc={rc})", flush=True)
+            if rc != 0:
+                print(f"[battery {level}] {cell.cell_id}: cell failed rc={rc}", file=sys.stderr)
+                return rc
+        if n_repeats > 1 and repeat_rows:
+            median_row = _build_median_row(repeat_rows)
+            append_row(report, median_row)
+            print(f"[battery {level}] {cell.cell_id}: median row appended", flush=True)
     print(f"[battery {level}] report: {report}", flush=True)
     return 0
 

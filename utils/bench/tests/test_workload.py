@@ -794,6 +794,7 @@ class ConfigTest(unittest.TestCase):
             cfg = workload.config_from_env(dict(base))
             self.assertEqual(cfg["probe_page"], 1000)
             self.assertEqual(cfg["index_settle_timeout_s"], 600.0)
+            self.assertEqual(cfg["upload_timeout_s"], 30.0)
             self.assertEqual(cfg["upload_post_timeout_s"], 60.0)
 
             cfg = workload.config_from_env(
@@ -801,17 +802,20 @@ class ConfigTest(unittest.TestCase):
                     base,
                     PROBE_PAGE="250",
                     INDEX_SETTLE_TIMEOUT_S="30",
+                    UPLOAD_TIMEOUT_S="45",
                     UPLOAD_POST_TIMEOUT_S="12.5",
                 )
             )
             self.assertEqual(cfg["probe_page"], 250)
             self.assertEqual(cfg["index_settle_timeout_s"], 30.0)
+            self.assertEqual(cfg["upload_timeout_s"], 45.0)
             self.assertEqual(cfg["upload_post_timeout_s"], 12.5)
 
             for name, value in (
                 ("PROBE_PAGE", "0"),
                 ("PROBE_PAGE", "page"),
                 ("INDEX_SETTLE_TIMEOUT_S", "0"),
+                ("UPLOAD_TIMEOUT_S", "0"),
                 ("UPLOAD_POST_TIMEOUT_S", "0"),
             ):
                 with self.subTest(name=name, value=value):

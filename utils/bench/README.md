@@ -72,9 +72,19 @@ workload.
 
 A battery is an ordered, pinned matrix of cells for one scale. Env and
 ports are fixed by `battery.py`; cells run sequentially (shared tempdir
-state) and each writes one row to `<out>/report.tsv`. A failing cell
-writes its row when the artifacts still parse, then stops the battery
-with that cell's exit code.
+state). Each cell runs `BATTERY_REPEATS` times (default 3, minimum 1;
+an exported `BATTERY_REPEATS` wins) into outdirs `<out>-rep1..N`, and
+each run writes one row to `<out>/report.tsv`. After the N runs an extra
+row named `<cell>:median` is appended. Numeric metrics are pooled across
+the N repeat rows and reduced to their median; comma-separated lists
+(the per-scan `scan_walls_s` and per-scan stage p50/max values) are
+pooled value by value before the median, so a two-scan repeat contributes
+two samples. `n/a` and empty entries contribute nothing and a column
+that is `n/a` in every repeat stays `n/a`. Identity columns (`cell`,
+profile, level, scale, build, commit) are copied from the first repeat.
+With `BATTERY_REPEATS=1` there is a single row per cell and no median row
+(backward compatible). A failing cell writes its row when the artifacts
+still parse, then stops the battery with that cell's exit code.
 
 | Level   | Images | Cells                                                                        |
 | ------- | ------ | ---------------------------------------------------------------------------- |
@@ -90,6 +100,9 @@ workload budget `battery run` hands to run-cell as `WORKLOAD_TIMEOUT_S`
 (gate 1800 s, scale 7200 s) — `battery run` invokes run-cell
 in-process, so no outer `timeout` bounds a cell. An exported
 `WORKLOAD_TIMEOUT_S` overrides the level default.
+
+Each level also pins `BATTERY_REPEATS=3` (overridable via the exported
+`BATTERY_REPEATS` env var, minimum 1).
 
 ```sh
 just bench seed-images ~/picasu-bench/set-100 100
@@ -107,6 +120,13 @@ and idle baselines, upload submit/visible p50s (parsed from the
 `filter_snapshot_clone` p50/max columns (`n/a` when the drain table is
 absent). Storm aggregates remain in the cell outdir and extractor table.
 
+Wall and stage columns hold one comma-separated value per scan or per
+run in repeat rows (`scan_walls_s`, `tree_refresh_build_p50_us`,
+`filter_snapshot_clone_max_us`, ...); a drain stage the backend logged
+with no samples arrives as an explicit `0`, not `n/a`. The `:median`
+row pools those values, so its figures are medians over all scans of all
+repeats.
+
 `baselines.tsv` is long-format (`cell`, `metric`, `baseline`, `rel_tol`,
 `abs_tol`, `recorded`, `note`). The band is
 `max(abs_tol, abs(baseline) * rel_tol)`. A baselined metric that is
@@ -115,6 +135,10 @@ metric named; a baselined cell missing from the report also fails.
 Recording is deliberate: run the battery, review the report, edit the
 baseline row, and note why in the commit. `battery-check` never writes
 the file, so an unexplained move keeps failing.
+
+`battery-check` compares baselines against the `:median` rows only:
+repeat rows are recorded but never checked, so a baselined metric must be
+recorded under its `<cell>:median` name (e.g. `gate-control:median`).
 
 ## Workload profiles (`WORKLOAD`)
 
@@ -147,10 +171,12 @@ upload-visibility polls and the storm canary check walk the row space in
 `submit_ms` and `visible_ms`, then runs the control probe rounds during
 the subsequent scan. The stimulus first waits for the library index to
 settle (`INDEX_SETTLE_TIMEOUT_S`, default 600 s) so the write path is
-measured on an idle server, and each upload POST is bounded by
-`UPLOAD_POST_TIMEOUT_S` (default 60 s). Fails (exit 2) if any uploaded
-file never becomes visible. Uses `IMAGE_REPO` for both the base set and
-the uploaded files.
+measured on an idle server. Each upload POST is bounded by
+`UPLOAD_POST_TIMEOUT_S` (default 60 s) and each file's visibility by
+`UPLOAD_TIMEOUT_S` (default 30 s); a stuck file never becomes visible,
+so that budget still bounds the wait per file. Fails (exit 2) if any
+uploaded file never becomes visible. Uses `IMAGE_REPO` for both the base
+set and the uploaded files.
 
 ## Image repos (seeded a priori)
 
