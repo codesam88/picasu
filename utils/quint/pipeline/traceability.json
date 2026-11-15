@@ -6,6 +6,10 @@
       "kind": "ASS",
       "title": "path is identity (keyed state, identity runs)",
       "refs": [
+        "asset-aspects-step.qnt:AssetIdKeyCoherent",
+        "asset-aspects-step.qnt:WithinBounds",
+        "asset-aspects-step.qnt:stepAspectsFourStepTest",
+        "asset-aspects-step.qnt:stepAspectsTwoStepTest",
         "eventual-consistency.qnt:ApiAssignDirMove",
         "eventual-consistency.qnt:ApiMove",
         "eventual-consistency.qnt:ExternalRenameDir",
@@ -29,6 +33,7 @@
       "kind": "ASS",
       "title": "filesystem first: external FS modifications are authoritative and adopted by convergence",
       "refs": [
+        "asset-aspects-step.qnt:ConvergenceInvariant",
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
         "asset-aspects.qnt:DupeIndexBijective",
@@ -105,6 +110,10 @@
       "kind": "ASS",
       "title": "quiescence (safety invariants asserted at settled state)",
       "refs": [
+        "asset-aspects-step.qnt:ConvergenceInvariant",
+        "asset-aspects-step.qnt:Settled",
+        "asset-aspects-step.qnt:stepAspects",
+        "asset-aspects-step.qnt:stepAspectsSettledInitTest",
         "asset-aspects.qnt:AlbumShareEdit",
         "asset-aspects.qnt:AlbumStatsConsistent",
         "asset-aspects.qnt:AlbumStatsNoPhantom",
@@ -206,6 +215,7 @@
       "kind": "SCOPE",
       "title": "Finite bounds",
       "refs": [
+        "asset-aspects-step.qnt:WithinBounds",
         "eventual-consistency-state.qnt:HASHES",
         "eventual-consistency-state.qnt:PATHS",
         "eventual-consistency-state.qnt:ROOTS",
@@ -345,6 +355,7 @@
       "kind": "SCOPE",
       "title": "sweep_remove_batch micro-stage",
       "refs": [
+        "asset-aspects-step.qnt:AssetIdKeyCoherent",
         "asset-aspects.qnt:DupeIndexBijective",
         "asset-aspects.qnt:PathMapIdentityCoherence",
         "asset-aspects.qnt:PathMapIdentityCoherence",
@@ -368,6 +379,20 @@
         "asset-aspects.qnt:aspectsAlbumDeltaThenShareEditTest",
         "asset-aspects.qnt:aspectsAlbumDeltaTrashToggleTest",
         "asset-aspects.qnt:aspectsShareEditThenAlbumDeltaTest"
+      ]
+    },
+    {
+      "id": "SCOPE-13",
+      "kind": "SCOPE",
+      "title": "Nondeterministic scheduling",
+      "refs": [
+        "asset-aspects-step.qnt:ConvergenceInvariant",
+        "asset-aspects-step.qnt:Settled",
+        "asset-aspects-step.qnt:Skip",
+        "asset-aspects-step.qnt:stepAspects",
+        "asset-aspects-step.qnt:stepAspectsFourStepTest",
+        "asset-aspects-step.qnt:stepAspectsSettledInitTest",
+        "asset-aspects-step.qnt:stepAspectsTwoStepTest"
       ]
     }
   ]

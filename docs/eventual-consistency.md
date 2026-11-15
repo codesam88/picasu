@@ -263,6 +263,14 @@ Lifting: Split into read-album txn + outside-txn compute + write-txn liveness re
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
+### SCOPE-13: Nondeterministic scheduling
+
+Bound: Any action may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints (stepAspects in utils/quint/pipeline/asset-aspects-step.qnt).
+
+Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
+
+Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness properties.
+
 ## Requirements
 
 Implementation obligations derived from committed goals: each entry carries the contract, a concise implementation summary, its gate tests, and known limits.
