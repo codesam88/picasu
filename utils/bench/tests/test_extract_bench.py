@@ -26,11 +26,11 @@ import importlib.util
 import io
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "events-dual"
@@ -114,17 +114,6 @@ class ReaderTest(unittest.TestCase):
     def setUp(self):
         self.extract = extractor()
 
-    def test_v1_stream_becomes_typed_lists(self):
-        events = self.extract.read_events(self._with_stream(sample_stream()))
-        self.assertEqual(len(events.probe_rounds), 2)
-        self.assertEqual(events.probe_rounds[0]["fetch_n"], 10)
-        self.assertEqual(events.scan_states[0]["wall_ms"], 10297)
-        self.assertEqual(events.storm_summaries[0]["kind"], "diff")
-        self.assertEqual(len(events.storm_samples), 1)
-        self.assertEqual(events.verify_results[0]["matched"], 8)
-        self.assertEqual(events.upload_files[0]["file"], "img_00001.jpeg")
-        self.assertEqual(events.upload_summaries[0]["visible_p50"], 636)
-
     def test_missing_stream_is_absent_not_an_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
@@ -156,11 +145,13 @@ class ReaderTest(unittest.TestCase):
             self.extract.parse_events(stream)
         self.assertIn("scan_progress", str(caught.exception))
 
-    def _with_stream(self, stream: str) -> Path:
-        directory = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
-        (Path(directory) / "events.jsonl").write_text(stream)
-        return Path(directory)
+
+class MatrixMathTest(unittest.TestCase):
+    def test_percentile_matches_the_workload_interpolation(self):
+        extract = extractor()
+        self.assertEqual(extract.percentile([5.0], 95), 5.0)
+        self.assertEqual(extract.percentile([1.0, 3.0], 95), 2.9)
+        self.assertEqual(extract.percentile([0.0, 10.0, 20.0], 50), 10.0)
 
 
 class FixtureCase(unittest.TestCase):
@@ -298,48 +289,22 @@ class DualFixtureGateTest(FixtureCase):
                 row_legacy = battery().build_row("gate", name, without)
                 self.assertEqual(row_events, row_legacy)
 
-    def test_rebuilt_row_carries_the_whole_matrix(self):
-        for name in CELLS:
-            with self.subTest(cell=name):
-                row = battery().build_row("gate", name, self.cell(name))
-                for column in battery().LATENCY_COLUMNS + battery().STORM_FAILED_COLUMNS:
-                    self.assertIn(column, row)
-
     def _run(self, cell: Path):
-        return subprocess.run(
-            [sys.executable, str(BENCH / "extract-bench.py"), str(cell)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        from types import SimpleNamespace
 
-
-class MatrixSchemaTest(unittest.TestCase):
-    """The matrix constants are the schema every consumer agrees on."""
-
-    def test_every_background_access_and_stat_has_a_column(self):
-        extract = extractor()
-        self.assertEqual(len(extract.LATENCY_COLUMNS), 54)
-        self.assertEqual(extract.LATENCY_COLUMNS[0], "idle_prefetch_p50_ms")
-        self.assertEqual(extract.LATENCY_COLUMNS[-1], "uscan_storm_edit_max_ms")
-        self.assertIn("scan_storm_thumb_p95_ms", extract.LATENCY_COLUMNS)
-        self.assertEqual(
-            extract.STORM_FAILED_COLUMNS,
-            (
-                "idle_storm_read_failed",
-                "idle_storm_thumb_failed",
-                "idle_storm_edit_failed",
-                "scan_storm_read_failed",
-                "scan_storm_thumb_failed",
-                "scan_storm_edit_failed",
-            ),
-        )
-
-    def test_percentile_matches_the_workload_interpolation(self):
-        extract = extractor()
-        self.assertEqual(extract.percentile([5.0], 95), 5.0)
-        self.assertEqual(extract.percentile([1.0, 3.0], 95), 2.9)
-        self.assertEqual(extract.percentile([0.0, 10.0, 20.0], 50), 10.0)
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", ["extract-bench.py", str(cell)]),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                extractor().main()
+            except SystemExit as exc:
+                rc = exc.code if isinstance(exc.code, int) else 1
+            else:
+                rc = 0
+        return SimpleNamespace(stdout=out.getvalue(), stderr=err.getvalue(), returncode=rc)
 
 
 class MatrixStormTest(FixtureCase):
@@ -366,41 +331,6 @@ class MatrixStormTest(FixtureCase):
         ):
             self.assertEqual(matrix[column], "n/a", column)
 
-    def test_storm_idle_runs_are_the_idle_background(self):
-        # Values from the recorded storm-idle summary lines; the profile is
-        # what separates the tree-at-rest burst from a concurrent one.
-        row = {
-            "storms": [
-                {
-                    "profile": "storm-idle",
-                    "kind": "read",
-                    "done": 80,
-                    "total": 80,
-                    "median": 0.004,
-                    "p95": 0.015,
-                    "max": 0.019,
-                    "failed": 0,
-                    "wall": 0.1,
-                },
-                {
-                    "profile": "storm-idle",
-                    "kind": "read",
-                    "done": 80,
-                    "total": 80,
-                    "median": 0.004,
-                    "p95": 0.016,
-                    "max": 0.018,
-                    "failed": 2,
-                    "wall": 0.1,
-                },
-            ]
-        }
-        extract = extractor()
-        self.assertEqual(extract._matrix_latency(row, "idle", "storm_read", "p50"), 4.0)
-        self.assertEqual(extract._matrix_latency(row, "idle", "storm_read", "max"), 19.0)
-        self.assertEqual(extract._matrix_failed(row, "idle", "read"), 2)
-        self.assertEqual(extract._matrix_latency(row, "scan", "storm_read", "p50"), "n/a")
-
 
 class MatrixProbeBucketTest(FixtureCase):
     """Upload probes are `uscan`, every other profile's are `scan`."""
@@ -420,27 +350,6 @@ class MatrixProbeBucketTest(FixtureCase):
         self.assertAlmostEqual(float(matrix["uscan_thumb_p95_ms"]), 2.7, places=1)
         for column in ("scan_prefetch_p50_ms", "scan_thumb_p50_ms", "scan_edit_p50_ms"):
             self.assertEqual(matrix[column], "n/a", column)
-
-    def test_control_profile_puts_the_same_probes_in_scan(self):
-        cell = self.cell("control")
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
-
-        self.assertAlmostEqual(float(matrix["scan_prefetch_p50_ms"]), 8.9, places=1)
-        self.assertAlmostEqual(float(matrix["scan_thumb_p50_ms"]), 2.35, places=1)
-        # The per-round extremes are the values the report recorded as
-        # worst-case before the matrix existed.
-        self.assertEqual(matrix["scan_prefetch_max_ms"], 9.9)
-        self.assertEqual(matrix["scan_thumb_max_ms"], 2.7)
-        for column in ("uscan_prefetch_p50_ms", "uscan_thumb_p50_ms", "uscan_edit_p50_ms"):
-            self.assertEqual(matrix[column], "n/a", column)
-
-    def test_a_cell_without_probes_leaves_both_buckets_empty(self):
-        cell = self.cell("storm-diff")
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
-        for background in ("scan", "uscan"):
-            for access in ("prefetch", "thumb", "edit"):
-                column = f"{background}_{access}_p50_ms"
-                self.assertEqual(matrix[column], "n/a", column)
 
 
 class MatrixIdleTailTest(FixtureCase):

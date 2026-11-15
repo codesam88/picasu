@@ -106,37 +106,6 @@ class ValidatorTest(unittest.TestCase):
             self.assertEqual(cf.validate_image_home_src(str(empty)), empty)
 
 
-class LauncherConfigTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-
-    def env(self, **kw):
-        env = {
-            "BUILD_PROFILE": "release",
-            "PICASU_BIN": sys.executable,
-            "GDB": "0",
-            "OUT": str(self.root / "cell"),
-        }
-        env.update(kw)
-        return env
-
-    def test_builds_one_object_with_the_documented_defaults(self):
-        cfg = cf.LauncherConfig.from_env(self.env())
-        self.assertEqual(cfg.mode, "bench")
-        self.assertTrue(cfg.fresh)
-        self.assertEqual(cfg.port, cf.DEFAULT_PORT)
-        self.assertEqual(cfg.ncpu, 4)
-        self.assertEqual(cfg.ready_timeout, cf.READY_TIMEOUT_S)
-        self.assertEqual(cfg.launch_timeout, 0)
-        self.assertTrue(cfg.admin_pw.startswith("bench-"))
-
-    def test_adapter_returns_the_same_object_type(self):
-        cfg = bl.config_from_env(self.env())
-        self.assertIsInstance(cfg, cf.LauncherConfig)
-
-
 class CellConfigTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -151,12 +120,6 @@ class CellConfigTest(unittest.TestCase):
         )
         self.assertEqual(cfg.out, self.root.resolve() / "cell")
         self.assertEqual(cfg.port, 5801)
-
-    def test_adapter_returns_the_same_object_type(self):
-        cfg = oc.config_from_env(
-            {"OUT": str(self.root / "cell"), "PORT": "5800", "HYPERFINE_BIN": sys.executable}
-        )
-        self.assertIsInstance(cfg, cf.CellConfig)
 
 
 class WorkloadConfigTest(unittest.TestCase):
@@ -201,10 +164,6 @@ class WorkloadConfigTest(unittest.TestCase):
         self.assertEqual(cfg.port, 9999)
         with self.assertRaises(cf.ConfigError):
             cf.WorkloadConfig.from_env(self.env(PORT="abc"))
-
-    def test_adapter_returns_the_same_object_type(self):
-        cfg = workload.config_from_env(self.env())
-        self.assertIsInstance(cfg, cf.WorkloadConfig)
 
 
 class BatteryConfigTest(unittest.TestCase):

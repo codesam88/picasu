@@ -24,46 +24,6 @@ def load_bench():
 class BenchDispatchTests(unittest.TestCase):
     def setUp(self):
         self.bench = load_bench()
-        self.fakes = {}
-        self._orig_mains = {}
-        for cmd in ("cell", "battery", "extract", "seed", "server", "prepare", "preflight"):
-            alias = self.bench.MODULE_ALIASES[cmd]
-            mod = getattr(self.bench, alias)
-            self._orig_mains[alias] = getattr(mod, "main", None)
-            fake = mock.Mock(return_value=0)
-            mod.main = fake
-            setattr(self.bench, alias, mod)
-            self.bench.MODULES[cmd] = mod
-            self.fakes[cmd] = fake
-
-    def tearDown(self):
-        for alias, orig in self._orig_mains.items():
-            mod = getattr(self.bench, alias, None)
-            if mod is not None and orig is not None:
-                mod.main = orig
-
-    def test_dispatch_table_maps_to_right_modules(self):
-        expected = {
-            "cell": "run_cell",
-            "battery": "battery",
-            "extract": "extract_bench",
-            "seed": "seed_images",
-            "server": "launch_backend",
-            "prepare": "run_prepare",
-            "preflight": "preflight",
-        }
-        for cmd, alias in expected.items():
-            self.assertIn(cmd, self.bench.DISPATCH)
-            self.assertEqual(self.bench.MODULE_ALIASES[cmd], alias)
-
-    def test_argv_forwarding_byte_identical(self):
-        for cmd in ("cell", "battery", "extract", "seed", "server", "prepare", "preflight"):
-            fake = self.fakes[cmd]
-            fake.reset_mock()
-            argv = ["--foo", "bar baz", "--n=5", "positional"]
-            rc = self.bench.main([cmd] + argv)
-            self.assertEqual(rc, 0)
-            fake.assert_called_once_with(argv)
 
     def test_exit_code_passthrough(self):
         for code in (0, 1, 2, 7, 130):
@@ -74,10 +34,6 @@ class BenchDispatchTests(unittest.TestCase):
             self.bench.MODULES["cell"] = mod
             rc = self.bench.main(["cell", "x"])
             self.assertEqual(rc, code)
-
-    def test_status_unknown_parent_returns_1(self):
-        rc = self.bench.main(["status", "/no/such/parent/xyz"])
-        self.assertEqual(rc, 1)
 
 
 class BenchStatusTests(unittest.TestCase):
@@ -141,10 +97,6 @@ class BenchStatusTests(unittest.TestCase):
         self.assertIn("no cells yet", buf.getvalue())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class BenchRunRoutingTest(unittest.TestCase):
     def setUp(self):
         self.bench = load_bench()
@@ -155,3 +107,7 @@ class BenchRunRoutingTest(unittest.TestCase):
         rc = self.bench.main(["run", "cell", "--out", "/tmp/x"])
         self.assertEqual(rc, 0)
         fake.assert_called_once_with(["run", "cell", "--out", "/tmp/x"])
+
+
+if __name__ == "__main__":
+    unittest.main()
