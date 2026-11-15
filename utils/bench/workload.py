@@ -26,6 +26,23 @@ parses either producer unchanged:
   hyperfine.json                   post-scan hyperfine export
   verify-row.json / verify-metadata.json
   probe-phase.log                  during-scan transcript
+  probe-phase.log                  during-scan transcript
+  events.jsonl                    structured JSONL event stream (schema v=1):
+                                    one JSON object per line, each carrying
+                                    {"v": 1, "type": ..., "t": <ISO wall clock>}.
+                                    v1 types and required keys:
+                                      probe_round: round, rows, state,
+                                        fetch_n, fetch_mean_ms (plus fetch min/max),
+                                        prefetch/edit hyperfine means
+                                      storm_sample: profile, client, op, latency_ms, code
+                                      storm_summary: profile, kind, done, total, median,
+                                        p95, max, failed, wall
+                                      upload_file: file, submit_ms, visible_ms
+                                      upload_summary: submit_p50, visible_p50
+                                      scan_state: run, state
+                                      verify_result: kind, matched, total
+                                    Incompatible schema changes bump v; readers switch on v.
+
 
 The module is importable and stdlib-only. Direct HTTP uses urllib with the
 launcher's cookie jar; hyperfine still receives the same curl command strings
@@ -105,6 +122,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -122,6 +140,7 @@ SETTLED_STATUS_STATES = (*TERMINAL_STATUS_STATES, "idle")
 
 ARTIFACT_FILES = (
     "harness-a.log",
+    "events.jsonl",
     "status-last.json",
     "status-final.json",
     "scan-walls.tsv",
@@ -522,6 +541,41 @@ def _status_state(out: Path) -> str:
     return doc.get("state", "unknown")
 
 
+_EVENTS_LOCKS: dict = {}
+
+
+def _events_path(out) -> Path:
+    path = Path(out)
+    if path.name == "events.jsonl":
+        return path
+    return path / "events.jsonl"
+
+
+def _events_lock(path: Path) -> threading.Lock:
+    key = str(path)
+    lock = _EVENTS_LOCKS.get(key)
+    if lock is None:
+        lock = threading.Lock()
+        _EVENTS_LOCKS[key] = lock
+    return lock
+
+
+def _wall_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def emit_event(out, event_type: str, **fields) -> None:
+    """Append one structured v=1 event to ``events.jsonl`` (additive)."""
+    path = _events_path(out)
+    event = {"v": 1, "type": event_type, "t": _wall_iso()}
+    event.update(fields)
+    lock = _events_lock(path)
+    with lock:
+        with open(path, "a", encoding="utf-8") as handle:  # noqa: PTH123
+            handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+            handle.flush()
+
+
 # --- hyperfine ---------------------------------------------------------------
 def cmd_prefetch(cfg: config.WorkloadConfig) -> str:
     return (
@@ -648,12 +702,38 @@ def random_fetch_round(
             code, elapsed = 0, 0.0
         records.append(f"{hash_value}\t{code}\t{elapsed:.6f}")
     sample.write_text("\n".join(records) + ("\n" if records else ""))
+    times = [float(record.split("\t")[2]) for record in records]
     if records:
-        times = [float(record.split("\t")[2]) for record in records]
         thumb = f"n={len(times)} mean={sum(times) / len(times):.4f}"
     else:
         thumb = "n=0"
     transcript.log(f"probe round={round_no} rows={rows} state={state} fetch: thumb: {thumb}")
+    fetch_mean_s = (sum(times) / len(times)) if times else 0.0
+    fetch_min_s = min(times) if times else 0.0
+    fetch_max_s = max(times) if times else 0.0
+    emit_event(
+        cfg.out,
+        "probe_round",
+        round=round_no,
+        rows=rows,
+        state=state,
+        fetch_n=len(times),
+        fetch_mean=fetch_mean_s,
+        fetch_mean_s=fetch_mean_s,
+        fetch_mean_ms=fetch_mean_s * 1000.0,
+        fetch_min=fetch_min_s,
+        fetch_min_s=fetch_min_s,
+        fetch_min_ms=fetch_min_s * 1000.0,
+        fetch_max=fetch_max_s,
+        fetch_max_s=fetch_max_s,
+        fetch_max_ms=fetch_max_s * 1000.0,
+        fetch_ms={
+            "n": len(times),
+            "mean": fetch_mean_s * 1000.0,
+            "min": fetch_min_s * 1000.0,
+            "max": fetch_max_s * 1000.0,
+        },
+    )
 
 
 def probe_round(
@@ -673,6 +753,15 @@ def probe_round(
         transcript.log(
             f"probe round={round_no} rows={rows} state={state} "
             "no prefetch timestamp; skipping round"
+        )
+        emit_event(
+            cfg.out,
+            "probe_round",
+            round=round_no,
+            rows=rows,
+            state=state,
+            skipped=True,
+            reason="no prefetch timestamp",
         )
         return False
 
@@ -698,14 +787,52 @@ def probe_round(
             f"probe round={round_no} rows={rows} state={state} hyperfine FAILED "
             f"(see {round_dir / f'hyperfine-round-{round_no}.out'})"
         )
+        emit_event(
+            cfg.out,
+            "probe_round",
+            round=round_no,
+            rows=rows,
+            state=state,
+            hyperfine_failed=True,
+            reason="hyperfine error",
+        )
         return False
     if len(results) != 2:
         transcript.log(
             f"probe round={round_no} rows={rows} state={state} hyperfine json has no results"
         )
+        emit_event(
+            cfg.out,
+            "probe_round",
+            round=round_no,
+            rows=rows,
+            state=state,
+            hyperfine_failed=True,
+            reason="no results",
+        )
         return False
     summary = _summary_line(results)
     transcript.log(f"probe round={round_no} rows={rows} state={state} hyperfine: {summary}")
+    prefetch_wall = _wall_clock(results[0])
+    edit_wall = _wall_clock(results[1])
+    emit_event(
+        cfg.out,
+        "probe_round",
+        round=round_no,
+        rows=rows,
+        state=state,
+        hyperfine_summary=summary,
+        prefetch_mean=prefetch_wall.get("mean"),
+        prefetch_median=prefetch_wall.get("median"),
+        prefetch_runs=prefetch_wall.get("count"),
+        prefetch_mean_ms=(prefetch_wall.get("mean") or 0) * 1000.0,
+        prefetch_median_ms=(prefetch_wall.get("median") or 0) * 1000.0,
+        edit_mean=edit_wall.get("mean"),
+        edit_median=edit_wall.get("median"),
+        edit_runs=edit_wall.get("count"),
+        edit_mean_ms=(edit_wall.get("mean") or 0) * 1000.0,
+        edit_median_ms=(edit_wall.get("median") or 0) * 1000.0,
+    )
     return True
 
 
@@ -864,6 +991,15 @@ def run_storm(
             elapsed = time.perf_counter() - start
             with results_lock:
                 results.append((op_index, client_index, elapsed, code))
+            emit_event(
+                cfg.out,
+                "storm_sample",
+                profile=profile,
+                client=client_index,
+                op=op_index,
+                latency_ms=elapsed * 1000.0,
+                code=code,
+            )
 
     logger.log(
         f"=== storm {profile} (run {run_index}): "
@@ -897,6 +1033,23 @@ def run_storm(
         f"storm: profile={profile} ops={summary['done']}/{total} "
         f"median={summary['median']:.3f}s p95={summary['p95']:.3f}s "
         f"max={summary['max']:.3f}s failed={failed} wall={wall:.1f}s kind={op_kind}"
+    )
+    emit_event(
+        cfg.out,
+        "storm_summary",
+        profile=profile,
+        kind=op_kind,
+        done=summary["done"],
+        total=total,
+        median=summary["median"],
+        p95=summary["p95"],
+        max=summary["max"],
+        failed=failed,
+        wall=wall,
+        median_ms=summary["median"] * 1000.0,
+        p95_ms=summary["p95"] * 1000.0,
+        max_ms=summary["max"] * 1000.0,
+        wall_ms=wall * 1000.0,
     )
     return summary
 
@@ -963,6 +1116,15 @@ def verify_storm_sample(
     bad = [c for c in checked if c["got"] != c["expected"]]
     matched = len(checked) - len(bad)
     logger.log(f"storm verify: matched {matched}/{len(checked)} canary writes (run {run_index})")
+    emit_event(
+        cfg.out,
+        "verify_result",
+        kind="storm",
+        run=run_index,
+        matched=matched,
+        total=len(checked),
+        failed=len(bad),
+    )
     if bad:
         detail = "; ".join(
             f"{c['asset']}[{c['index']}]: expected={c['expected']} got={c['got']}" for c in bad[:5]
@@ -1138,6 +1300,14 @@ def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) ->
         logger.log(
             f"scan run {run_index}/{cfg.scan_repeats}: state={state} "
             f"polls={polls} wall_ms={wall_ms}"
+        )
+        emit_event(
+            out,
+            "scan_state",
+            run=run_index,
+            state=state,
+            polls=polls,
+            wall_ms=wall_ms,
         )
         excerpt_path = out / "status-final.json"
         if not excerpt_path.is_file():
@@ -1342,6 +1512,16 @@ def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger
             f"write-probe verification FAILED: rating={shown} on {asset} (expected 3)"
         )
     logger.log(f"write-probe verification: asset {asset} rating={rating} (expected 3)")
+    emit_event(
+        cfg.out,
+        "verify_result",
+        kind="write_probe",
+        asset=asset,
+        rating=rating,
+        expected=3,
+        matched=1 if rating == 3 else 0,
+        total=1,
+    )
 
     logger.log("=== summary ===")
     logger.log(f"N={cfg.ncpu} image_count={cfg.image_count} image_bytes={cfg.image_bytes}")
@@ -1491,12 +1671,25 @@ def run_upload_stimulus(cfg: config.WorkloadConfig, client: HttpClient, logger: 
             )
         visible_ms = int((time.perf_counter() - started) * 1000)
         logger.log(f"upload file={stored_name} submit_ms={submit_ms} visible_ms={visible_ms}")
+        emit_event(
+            cfg.out,
+            "upload_file",
+            file=stored_name,
+            submit_ms=submit_ms,
+            visible_ms=visible_ms,
+        )
         submit_times.append(submit_ms)
         visible_times.append(visible_ms)
 
     submit_p50 = int(statistics.median(submit_times)) if submit_times else 0
     visible_p50 = int(statistics.median(visible_times)) if visible_times else 0
     logger.log(f"upload submit_p50={submit_p50} visible_p50={visible_p50}")
+    emit_event(
+        cfg.out,
+        "upload_summary",
+        submit_p50=submit_p50,
+        visible_p50=visible_p50,
+    )
 
 
 # --- main flow ---------------------------------------------------------------

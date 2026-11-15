@@ -1360,3 +1360,178 @@ class UploadProfileTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EventStreamTest(unittest.TestCase):
+    """Structured events land in events.jsonl alongside the transcript."""
+
+    def _read_events(self, cell):
+        path = cell / "events.jsonl"
+        self.assertTrue(path.is_file(), path)
+        events = []
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            events.append(json.loads(line))
+        return events
+
+    def test_probe_round_event(self):
+        server = StubOrigin(("127.0.0.1", 0))
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cell = Path(tmp.name) / "cell"
+        cell.mkdir()
+        make_cookie_jar(cell / "cookies.txt")
+        workload = load_workload()
+        client = workload.HttpClient(f"http://127.0.0.1:{port}", cell / "cookies.txt")
+        logger = workload.Logger(cell / "harness-a.log")
+        self.addCleanup(logger.close)
+        server.started_at = time.monotonic()
+        server.run_duration = 0.0
+        cfg = workload.config.WorkloadConfig(out=cell, probe_limit=4)
+        lines = workload.build_probe_list(cfg, client)
+        round_dir = cell / "rounds-run-1"
+        round_dir.mkdir()
+        transcript = workload.ProbeTranscript(logger, cell / "probe-phase.log")
+        self.addCleanup(transcript.close)
+        workload.random_fetch_round(cfg, client, transcript, 1, 4, "completed", lines, round_dir)
+
+        events = self._read_events(cell)
+        probe_events = [e for e in events if e["type"] == "probe_round"]
+        self.assertTrue(probe_events)
+        ev = probe_events[0]
+        self.assertEqual(ev["v"], 1)
+        self.assertIn("t", ev)
+        self.assertEqual(ev["round"], 1)
+        self.assertEqual(ev["rows"], 4)
+        self.assertEqual(ev["state"], "completed")
+        self.assertEqual(ev["fetch_n"], 4)
+        self.assertAlmostEqual(ev["fetch_mean_ms"], ev["fetch_mean"] * 1000.0)
+
+    def test_storm_sample_events(self):
+        server = StubOrigin(("127.0.0.1", 0))
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cell = Path(tmp.name) / "cell"
+        cell.mkdir()
+        make_cookie_jar(cell / "cookies.txt")
+        workload = load_workload()
+        client = workload.HttpClient(f"http://127.0.0.1:{port}", cell / "cookies.txt")
+        logger = workload.Logger(cell / "harness-a.log")
+        self.addCleanup(logger.close)
+        server.started_at = time.monotonic()
+        server.run_duration = 0.0
+        cfg = workload.config.WorkloadConfig(
+            out=cell, storm_clients=2, storm_ops=3, probe_page=1000, images=4
+        )
+        round_dir = cell / "rounds-run-1"
+        round_dir.mkdir()
+        summary = workload.run_storm(cfg, client, logger, round_dir, 1, None)
+        self.assertEqual(summary["done"], 6)
+
+        events = self._read_events(cell)
+        samples = [e for e in events if e["type"] == "storm_sample"]
+        self.assertEqual(len(samples), 6)
+        for ev in samples:
+            self.assertEqual(ev["v"], 1)
+            self.assertIn("t", ev)
+            self.assertEqual(ev["profile"], cfg.workload)
+            self.assertIn("client", ev)
+            self.assertIn("op", ev)
+            self.assertIn("latency_ms", ev)
+            self.assertIn("code", ev)
+        summaries = [e for e in events if e["type"] == "storm_summary"]
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0]["done"], 6)
+
+    def test_upload_file_events(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        cell = root / "cell"
+        cell.mkdir()
+        repo = root / "repo"
+        repo.mkdir()
+        for index in range(1, 4):
+            (repo / f"img_{index:04d}.jpg").write_bytes(b"x" * 100)
+        image_path = root / "images"
+        image_path.mkdir()
+        workload = load_workload()
+        logger = workload.Logger(cell / "harness-a.log")
+        self.addCleanup(logger.close)
+
+        class RecordingUploadClient:
+            def __init__(self, names):
+                self.names = list(names)
+                self.timeouts = []
+
+            def upload(self, path, file_path, timeout=60.0):
+                self.timeouts.append(timeout)
+                name = self.names[len(self.timeouts) - 1]
+                return 200, json.dumps({"files": [name]}).encode(), 0.01
+
+        client = RecordingUploadClient(["u1.jpg", "u2.jpg"])
+        cfg = workload.config.WorkloadConfig(
+            out=cell,
+            image_repo=repo,
+            image_path=image_path,
+            upload_files=2,
+            upload_timeout_s=0.1,
+            poll_interval_s=0.01,
+            upload_post_timeout_s=60.0,
+        )
+        with mock.patch.object(workload, "_uploaded_row_visible", return_value=True):
+            workload.run_upload_stimulus(cfg, client, logger)
+
+        events = self._read_events(cell)
+        files = [e for e in events if e["type"] == "upload_file"]
+        self.assertEqual(len(files), 2)
+        self.assertEqual(files[0]["file"], "u1.jpg")
+        self.assertEqual(files[1]["file"], "u2.jpg")
+        for ev in files:
+            self.assertEqual(ev["v"], 1)
+            self.assertIn("t", ev)
+            self.assertIn("submit_ms", ev)
+            self.assertIn("visible_ms", ev)
+        summaries = [e for e in events if e["type"] == "upload_summary"]
+        self.assertEqual(len(summaries), 1)
+
+    def test_scan_state_event_via_cli(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cell = Path(tmp.name) / "cell"
+        cell.mkdir()
+        srv = StubOrigin(("127.0.0.1", 0))
+        port = srv.server_address[1]
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(srv.shutdown)
+        self.addCleanup(srv.server_close)
+        make_cookie_jar(cell / "cookies.txt")
+        workload = load_workload()
+        client = workload.HttpClient(f"http://127.0.0.1:{port}", cell / "cookies.txt")
+        logger = workload.Logger(cell / "harness-a.log")
+        self.addCleanup(logger.close)
+        srv.started_at = None
+        srv.run_duration = 0.0
+        cfg = workload.config.WorkloadConfig(out=cell, scan_repeats=1, probe_page=1000, images=4)
+        median_ms, run_count = workload.run_scans(cfg, client, logger)
+        self.assertEqual(run_count, 1)
+        events = self._read_events(cell)
+        scan_events = [e for e in events if e["type"] == "scan_state"]
+        self.assertTrue(scan_events)
+        self.assertEqual(scan_events[0]["run"], 1)
+        self.assertEqual(scan_events[0]["state"], "completed")
+        for ev in scan_events:
+            self.assertEqual(ev["v"], 1)
+            self.assertIn("t", ev)
