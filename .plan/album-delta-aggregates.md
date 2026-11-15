@@ -100,10 +100,12 @@ sizes`, always (not quiescence). Tests:
   `album_member_write_keeps_aggregates_exact`. Model: the strengthened
   `AlbumStatsConsistentWhenDrained` → unconditional.
 - I2 delta atomicity: member row + delta commit atomically; an aborted
-  delta leaves both unchanged. Model: same-step discipline.
+  delta leaves both unchanged. Model: same-step discipline (membership
+  actions in asset-aspects.qnt).
 - I3 patch commutation: delta patches and edit_share RMWs compose in any
   interleaving. Test: `album_delta_and_share_list_patches_commute`.
-  Model: replaces the N10 race-absorption run.
+  Model: `aspectsAlbumDeltaThenShareEditTest` /
+  `aspectsShareEditThenAlbumDeltaTest`.
 - I4 range/cover under the unified rule (min/max timestamps, newest-member
   cover) after any member mutation, incl. boundary-holder removal.
 - I5 re-application idempotence: re-flush of an unchanged asset never
@@ -117,7 +119,8 @@ sizes`, always (not quiescence). Tests:
 - I9 batch prefix-consistency: per-path atomic batch removals — a crash
   mid-batch leaves completed paths fully applied, aggregates exact.
 - I10 error atomicity: a failed delta aborts the operation txn
-  (propagation policy, 2026-11-15).
+  (propagation policy, 2026-11-15). Model: atomic by construction (no
+  explicit modeling).
 
 I1–I3, I10 are the model-port targets for step 8.
 
@@ -165,7 +168,7 @@ I1–I3, I10 are the model-port targets for step 8.
    deleted_album_detach_drops_member_rows,
    membership_mutations_leave_members_and_aggregates_exact};
    tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact.
-8. [open] Model rework: `AlbumTaskApply`/cascade actions replaced by
+8. [done] Model rework: `AlbumTaskApply`/cascade actions replaced by
    delta actions on the album aggregate fields (separate commit for the
    action rename per the terminology rule); `AlbumStatsConsistentWhenDrained`
    strengthened to always-consistent; the staleness runs replaced by

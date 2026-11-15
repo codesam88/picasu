@@ -339,16 +339,19 @@ survey claim contradicts a done item — re-check the tree first.
 - N12 sweep hash-group cross-root reap. [guarded, re-verified
   2026-11-13: sweep_remove_batch is exact-path only with a path.exists
   skip; no hash-group reap.] Model the exact-path rule.
-- N13 cascade album stats vs concurrent member writes (from C11).
-  [modeled/guarded 2026-11-14: AlbumTaskApply(albumId) (OP-8) computes
-  itemCount/itemSize from a per-entry snapshot of the album's members
-  (assetById albumId linkage + metadataPayload fileSize), writes them into
-  the album's metadataPayload, drains albumPending; MemberWrite(p) (OP-7)
-  marks the containing album pending. Runs:
-  aspectsMemberWriteAlbumCascadeTest, aspectsAlbumCascadeCleanTest,
-  aspectsAlbumCascadeRaceAbsorbedTest, aspectsAlbumCascadeConcurrentMembersTest.
-  Invariants: AlbumStatsConsistentWhenDrained, AlbumStatsNoPhantom.
-  Bounded staleness, no lost update.]
+- N13 album stats vs member writes (from C11).
+  [reworked 2026-11-15 (album-delta): stats are maintained by deltas
+  applied in the same transaction as the member row (apply_album_delta,
+  OP-8); no cascade, no albumPending, no deferred recompute. Membership-
+  mutating actions (UploadIndexed, WorkerRemoveApply, SweepRemoveBatchApply,
+  TrashToggle, RemoveIdOnly) apply the delta in-step; MemberWrite is a pure
+  metadata write that leaves aggregates untouched. Invariant:
+  AlbumStatsConsistent (unconditional) plus AlbumStatsNoPhantom.
+  Runs: aspectsAlbumDeltaConsistentOnInitTest, aspectsAlbumDeltaTrashToggleTest,
+  aspectsAlbumDeltaThenShareEditTest, aspectsShareEditThenAlbumDeltaTest,
+  aspectsAlbumDeltaReapplyIdempotenceTest, aspectsAlbumDeltaHealCompositionTest,
+  aspectsAlbumDeltaMemberWritePureTest. I3 commutation run replaces the
+  N10 race-absorption run.]
 
 - 2026-11-13: step 11 stage A done — split `rows` into assetById/assetByPath/dupeIndex/metadataPayload/thumbPresent/albumPending; predicates/runs/invariants rewritten; new runs N5 split window, dupe-group delete, remove torn window, member-write album cascade. Code-semantics surprises: Remove paths (asset_store.rs::remove_asset) writes id/path/dupe tables in separate txns as verified; flush_tables writes all four tables in one txn per asset; Move (assign_album.rs::move_asset_into_album) writes ASSET_BY_ID separately from ASSET_BY_PATH (N5). No invariant failures found.
 
