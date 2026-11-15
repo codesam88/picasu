@@ -139,6 +139,22 @@ just bench lint
 Recipes live in `utils/bench/justfile`; the root justfile only
 carries `mod bench`, so there are no `bench-*` root aliases.
 
+## Test fixtures
+
+`tests/fixtures/` holds recorded cell artifacts, not hand-written log lines.
+A parser fixture is copied byte-for-byte from a real cell (or is an exact
+excerpt of one), and `tests/fixtures/README.md` records its source cell, date
+and excerpt reason. Synthetic inputs are allowed only for error shapes —
+unknown schema version, binary garbage, a stream cut mid-line — and stay
+inline in the test that needs them, marked as synthetic.
+
+The rule comes from the S2 miss: fabricated `observe drain:` lines in a
+`harness-a.log` fixture kept the extractor tests green while every real cell
+wrote its stage tables to `server.log` and extracted an empty `stages.json`.
+`tests/test_recorded_fixtures.py` pins each fixture to the parser output it
+must produce, so replacing a recording means updating the golden, never
+editing the fixture to match the parser.
+
 ## Events
 
 The workload writes `events.jsonl` in the cell outdir: one JSON object per

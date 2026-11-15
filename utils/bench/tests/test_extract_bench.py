@@ -3,18 +3,22 @@
 
 `fixtures/events-dual/` holds two cells recorded by the gate battery
 (`gate-upload-rep2` and `gate-storm-diff-rep1`, 2026-11-15). Each cell ships
-the recorded `harness-a.log`, `status-final.json`, `scan-walls.tsv` and — for
-the control cell — an excerpt of the recorded `server.log` holding its two
-`observe drain:` tables. `run-manifest.json` keeps the recorded identity
-values under the keys the extractor and the battery read. `events.jsonl` is
-the v1 stream the same run would have written: every event type that run
-produced (including the per-op `storm_sample` and per-file `upload_file`
-lines) was reconstructed from the cell's own artifacts — probe TSVs,
-hyperfine exports, storm TSVs — with the full-precision values
-`workload.emit_event` writes, rather than from the transcript text. Samples
-are grouped per run instead of interleaved as they were emitted. The cells
-predate the event stream, so this pair is what proves the event path reports
-the numbers the transcript records.
+the recorded `harness-a.log`, `status-final.json` and `scan-walls.tsv`; the
+control cell also holds an excerpt of the recorded `server.log` with its two
+`observe drain:` tables, and both cells hold the recorded per-round TSVs
+(`rounds-run-*/`) that the counts come from. `run-manifest.json` keeps the
+recorded identity values under the keys the extractor and the battery read.
+
+`events.jsonl` is derived, not recorded: the cells predate the stream, so
+each line is a replay of the cell's own artifacts — per-file `upload_file`
+and per-run `scan_state` from the transcript, fetch means from the probe
+TSVs, per-op `storm_sample` from the storm TSVs, summaries over the same
+TSVs — with the full-precision values `workload.emit_event` writes. Samples
+are grouped per run instead of interleaved as they were emitted, and their
+timestamps are order placeholders. `tests/test_recorded_fixtures.py`
+re-derives the stream from those artifacts; `fixtures/README.md` records
+each file's provenance. This pair is what proves the event path reports the
+numbers the transcript records.
 """
 
 import contextlib
