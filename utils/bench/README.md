@@ -101,33 +101,28 @@ standalone checklist and the in-cell guards cannot drift apart.
 ## Unified CLI
 
 `bench.py` is the single entry point; module mains are delegated to unchanged.
+Every subcommand below is reachable through its own `just bench` recipe;
+for anything else, run `bench.py` directly with python.
 
-```sh
-just bench cli <subcommand> [args...]
-# or
-just bench bench-cli <subcommand> [args...]
-```
-
-Command tree:
+Command tree (with the recipe that runs each):
 
 ```
-bench cell ...            # run-cell.py
-bench battery ...         # battery.py (run/check/extract/list)
-bench extract ...         # extract-bench.py
-bench seed ...            # seed_images.py
-bench server ...          # launch-backend.py
-bench prepare ...         # run-prepare.py
-bench preflight ...       # preflight.py
-bench status <parent>     # per-cell state (queued/running/finished/failed)
+bench run cell ...        # just bench run cell ... (battery.py cell level)
+bench battery ...         # just bench battery ...  (battery.py run/check/extract/list)
+bench extract ...         # just bench extract ...  (battery.py extract)
+bench seed ...            # just bench seed-images ... (seed_images.py)
+bench server ...          # just bench server ... (launch-backend.py)
+bench prepare ...         # just bench prepare ... (run-prepare.py)
+bench preflight ...       # just bench preflight ... (preflight.py)
+bench status <parent>     # just bench status ... (per-cell state)
 ```
 
 Examples:
 
 ```sh
-just bench status /tmp/picasu-battery-gate    # recipe alias
-just bench cli status /tmp/picasu-battery-gate
-just bench cli battery extract /tmp/picasu-battery-gate --out run.json
-just bench cli preflight --out /dev/shm/scratchpad/cell --port 5795
+just bench status /tmp/picasu-battery-gate
+just bench extract /tmp/picasu-battery-gate --out run.json
+just bench preflight --out /dev/shm/scratchpad/cell --port 5795
 ```
 
 ## Checks
@@ -136,6 +131,10 @@ just bench cli preflight --out /dev/shm/scratchpad/cell --port 5795
 just bench test
 just bench lint
 ```
+
+The suite is offline-only: no subprocesses, no sockets, no external
+binaries. Anything that needs a live server is verified by running
+batteries, not by unit tests — if a launch fails, debug that run.
 
 Recipes live in `utils/bench/justfile`; the root justfile only
 carries `mod bench`, so there are no `bench-*` root aliases.
@@ -218,24 +217,22 @@ The battery passes the profile of the cell it rebuilds.
 ```sh
 cargo build --release --bin picasu
 just bench seed-images ~/picasu-bench/set-100 100
-just bench workload /tmp/picasu-bench-N8-100-r1 ~/picasu-bench/set-100 100 8
-python3 utils/bench/extract-bench.py /tmp/picasu-bench-N8-100-r1
+OUT=/tmp/picasu-bench-N8-100-r1 IMAGE_REPO=~/picasu-bench/set-100 \
+  IMAGES=100 NCPU=8 BUILD_PROFILE=release PORT=5795 \
+  just bench run cell --out /tmp/picasu-bench-N8-100-r1
+just bench extract /tmp/picasu-bench-N8-100-r1
 ```
 
-`just bench workload <out> <image_repo> [images] [ncpu] [build] [port]`
-runs the canonical cell. Recipe parameters are positional — just 1.59
-has no `name=value` overrides — so `build` is the 5th argument
-(`debug`/`release`, default `release`) and `port` the 6th (default 5795):
-
-```sh
-just bench workload /tmp/c-r1 ~/picasu-bench/set-100 100 8 release 5801
-```
-
-`TIMEOUT` bounds the whole cell (default 3600 s), sized for a single
-scale cell (the measured 5650-row control cell needs ~1335 s). Binaries
-and the repo must exist; the stack fails with a build/seed hint
-otherwise. `just bench server` serves a backend without driving any
-workload.
+`just bench run cell` runs one cell via the battery cell level; everything
+is env-driven (`OUT`, `PORT`, `BUILD_PROFILE`, `NCPU`, `IMAGES`,
+`IMAGE_REPO`, `WORKLOAD`, ... — see `battery.py`, `_cell()` for the pinned
+defaults: `SCAN_REPEATS=2`, hyperfine `REPEATS=3`, `WARMUP=1`). An exported
+`IMAGE_HOME_SRC` selects a prepared sandbox (refused without a sandbox
+manifest by the launcher preflight); `WORKLOAD_TIMEOUT_S` bounds the whole
+cell (cell-level default 7200 s, sized for a single scale cell — the
+measured 5650-row control cell needs ~1335 s). Binaries and the repo must
+exist; the stack fails with a build/seed hint otherwise. `just bench
+server` serves a backend without driving any workload.
 
 An exported `IMAGE_HOME_SRC` selects a prepared sandbox: the recipe
 forwards it into the cell environment and runs the preflight
@@ -293,8 +290,8 @@ python3 utils/bench/battery.py run gate --out /tmp/my-gate-run --fresh
 Both levels pin `SCAN_REPEATS=2`, hyperfine `REPEATS=3`/`WARMUP=1`,
 `NCPU=8`, release builds, and storm `CLIENTS=8`/`OPS=10`/`MARGIN_S=0.5`.
 Image repos are seeded once (see below) and resolved from
-`BENCH_SETS_ROOT` (default `/tmp/sets`; point it at the canonical
-archive root when the repos live there). Each level also pins the
+`BENCH_SETS_ROOT` (defaults to the canonical archive root
+`~/picasu-bench`). Each level also pins the
 workload budget `battery run` hands to run-cell as `WORKLOAD_TIMEOUT_S`
 (gate 1800 s, scale 7200 s) — `battery run` invokes run-cell
 in-process, so no outer `timeout` bounds a cell. An exported
@@ -306,7 +303,7 @@ Each level also pins `BATTERY_REPEATS=3` (overridable via the exported
 ```sh
 just bench seed-images ~/picasu-bench/set-100 100
 just bench seed-images ~/picasu-bench/set-5650 5650
-export BENCH_SETS_ROOT=$HOME/picasu-bench    # battery repo root (default /tmp/sets)
+export BENCH_SETS_ROOT=$HOME/picasu-bench    # only if the archive lives elsewhere
 just bench battery gate                      # -> /tmp/picasu-battery-gate-<stamp>/report.tsv
 just bench battery gate /tmp/my-gate-run     # explicit outdir
 just bench battery-check /tmp/my-gate-run/report.tsv
@@ -449,9 +446,9 @@ replace the probe rounds with a concurrent burst and check it finished
 with margin before the scan ended:
 
 ```sh
-WORKLOAD=storm-diff STORM_CLIENTS=8 STORM_OPS=10 just bench workload /tmp/c-r1 ~/picasu-bench/set-100 100 8
-WORKLOAD=storm-read just bench workload /tmp/c-r2 ~/picasu-bench/set-100 100 8
-WORKLOAD=storm-idle just bench workload /tmp/c-r3 ~/picasu-bench/set-100 100 8
+WORKLOAD=storm-diff STORM_CLIENTS=8 STORM_OPS=10 just bench run cell --out /tmp/c-r1
+WORKLOAD=storm-read just bench run cell --out /tmp/c-r2
+WORKLOAD=storm-idle just bench run cell --out /tmp/c-r3
 ```
 
 `storm-diff` fires `STORM_CLIENTS × STORM_OPS` edit-rating PUTs at

@@ -14,7 +14,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 MODULE_FILES = {
-    "cell": "run-cell.py",
     "battery": "battery.py",
     "extract": "extract-bench.py",
     "seed": "seed_images.py",
@@ -24,7 +23,6 @@ MODULE_FILES = {
 }
 
 MODULE_ALIASES = {
-    "cell": "run_cell",
     "battery": "battery",
     "extract": "extract_bench",
     "seed": "seed_images",
@@ -35,7 +33,6 @@ MODULE_ALIASES = {
 
 SUBCOMMAND_NAMES = (
     "run",
-    "cell",
     "battery",
     "extract",
     "seed",
@@ -58,7 +55,6 @@ def _load_module(name: str, filename: str):
     return module
 
 
-run_cell = _load_module("run_cell", "run-cell.py")
 battery = _load_module("battery", "battery.py")
 extract_bench = _load_module("extract_bench", "extract-bench.py")
 seed_images = _load_module("seed_images", "seed_images.py")
@@ -292,7 +288,6 @@ def main(argv=None) -> int:
 
 
 MODULES = {
-    "cell": run_cell,
     "battery": battery,
     "extract": extract_bench,
     "seed": seed_images,
@@ -312,12 +307,8 @@ def _make_dispatcher(cmd: str):
 
 
 DISPATCH = {name: _make_dispatcher(name) for name in SUBCOMMAND_NAMES}
-SUBCOMMANDS = DISPATCH
-COMMANDS = DISPATCH
-SUBCOMMAND_TABLE = DISPATCH
 
 MAINS = {
-    "cell": run_cell.main,
     "battery": battery.main,
     "extract": extract_bench.main,
     "seed": seed_images.main,
@@ -331,7 +322,7 @@ for _name, _main in MAINS.items():
     if _name != "status":
         ORIGINAL_MAINS[_name] = _main
 
-for _cmd in ("cell", "battery", "extract", "seed", "server", "prepare", "preflight"):
+for _cmd in ("battery", "extract", "seed", "server", "prepare", "preflight"):
     ORIGINAL_MAINS[_cmd] = getattr(MODULES[_cmd], "main", None)
 
 
