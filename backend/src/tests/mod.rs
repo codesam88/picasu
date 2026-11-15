@@ -29,6 +29,9 @@ mod personal_reads;
 mod user_writes;
 
 #[cfg(test)]
+mod album_delta;
+
+#[cfg(test)]
 mod enroll_gate;
 
 #[cfg(test)]

@@ -1010,7 +1010,8 @@ fn upload_is_stored_without_row_and_survives_sweep_until_intake_indexes() {
     let row_before_sweep =
         crate::storage::asset_store::get_asset_id_by_path(&stored_path.to_string_lossy())
             .expect("read ASSET_BY_PATH before sweep");
-    crate::tasks::batcher::flush_tree::sweep_remove_batch(std::slice::from_ref(&stored_path));
+    crate::tasks::batcher::flush_tree::sweep_remove_batch(std::slice::from_ref(&stored_path))
+        .expect("sweep remove batch");
     assert!(
         stored_path.exists(),
         "sweep must not remove an uploaded file that is still present"

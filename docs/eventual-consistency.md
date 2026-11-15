@@ -22,7 +22,7 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
 - Proof: 33 convergence runs + 28 asset-aspect runs (61 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
-- Requirements: 13 verified, 3 open (REQ-1, REQ-8, REQ-16).
+- Requirements: 14 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
@@ -390,7 +390,7 @@ Derived from: G5. Owner: assign_album.rs::move_asset_into_album / move_album_int
 
 Gate: Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run aspectsMoveCrashHealsFromSidecarTest asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.
 
-### REQ-16: Delta-maintained album aggregates (status: open)
+### REQ-16: Delta-maintained album aggregates (status: verified)
 
 Album aggregates (item_count, item_size, last_modified_time, start/end time, cover) are maintained by field-level deltas applied in the same transaction as each membership-mutating write, rather than recomputed by a deferred cascade. Membership truth is ASSET_BY_ALBUM, keyed by album_id.
 
@@ -578,11 +578,29 @@ Tests:
 - `router::put::assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar`
 - `storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn`
 
-### REQ-16: Delta-maintained album aggregates (status: open)
+### REQ-16: Delta-maintained album aggregates (status: verified)
 
 Implementation: ASSET_BY_ALBUM member index plus apply_album_delta patching aggregates in-txn at flush, move, trash, and deletion sites.
 
-Tests: none yet.
+Tests:
+
+- `storage::asset_store::tests::album_member_rows_roundtrip_and_prefix_isolation`
+- `storage::asset_store::tests::apply_album_delta_add_updates_count_size_range_and_cover`
+- `storage::asset_store::tests::apply_album_delta_remove_recomputes_boundary_holders`
+- `storage::asset_store::tests::apply_album_delta_size_update_recomputes_range_and_cover`
+- `storage::asset_store::tests::apply_album_delta_empty_transition_uses_descendant_cover`
+- `storage::asset_store::tests::apply_album_delta_count_never_underflows`
+- `storage::asset_store::tests::album_delta_and_share_list_patches_commute`
+- `storage::asset_store::tests::move_asset_mapping_moves_membership_between_albums`
+- `tasks::batcher::flush_tree::tests::flush_album_insert_records_member_and_aggregates`
+- `tasks::batcher::flush_tree::tests::flush_album_size_change_updates_aggregate`
+- `tasks::batcher::flush_tree::tests::flush_remove_drops_member_and_aggregates`
+- `tasks::batcher::flush_tree::tests::sweep_remove_batch_drops_member_and_aggregates`
+- `router::put::assign_album::tests::dir_move_preserves_album_membership_and_aggregates`
+- `tests::album_delta::trash_toggle_adds_and_removes_member`
+- `tests::album_delta::deleted_album_detach_drops_member_rows`
+- `tests::album_delta::membership_mutations_leave_members_and_aggregates_exact`
+- `tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact`
 
 ## Events
 

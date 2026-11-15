@@ -85,8 +85,12 @@ keeps the exception safe while derived fields change around it.
   deletes, member-row changes, and album aggregate deltas in one txn.
   Unified range/cover rule (F6): any size/timestamp change recomputes
   time-range + cover from the member table. Cover rule unified to
-  newest-by-timestamp. Error discipline (F7) and dead interactive path +
-  doc cleanup (F8). Steps 7-9 progress.
+  newest-by-timestamp. Error discipline (F7): every delta/member/commit
+  failure propagates — the enclosing transaction aborts rather than
+  committing partial state; background sites log the failure at the
+  writer/batcher edge, request sites surface a 500. A failed delta aborts
+  the txn; a 500 beats silent drift. Dead interactive path + doc cleanup
+  (F8). Steps 7-9 progress.
 
 ## Steps
 
@@ -110,11 +114,28 @@ keeps the exception safe while derived fields change around it.
    properties re-linked; REQ-16 (delta-maintained album aggregates)
    derived from G5/G1; the old N10/REQ-15-era album_task framing
    updated. Model-to-code terminology table updated.
-7. [in-progress] Backend tests: per-site delta tests (add/remove/size
+7. [done] Backend tests: per-site delta tests (add/remove/size
    change/trash/move both sides/dir-move re-key/batch remove), boundary
    recompute, empty transition, patch commutation (delta txn + edit_share
    txn interleave → both survive), drift guard (a membership mutation
-   without its delta is a bug — test the enumerated sites).
+   without its delta is a bug — test the enumerated sites). Tests:
+   storage::asset_store::tests::{album_member_rows_roundtrip_and_prefix_isolation,
+   apply_album_delta_add_updates_count_size_range_and_cover,
+   apply_album_delta_remove_recomputes_boundary_holders,
+   apply_album_delta_size_update_recomputes_range_and_cover,
+   apply_album_delta_empty_transition_uses_descendant_cover,
+   apply_album_delta_count_never_underflows,
+   album_delta_and_share_list_patches_commute,
+   move_asset_mapping_moves_membership_between_albums};
+   tasks::batcher::flush_tree::tests::{flush_album_insert_records_member_and_aggregates,
+   flush_album_size_change_updates_aggregate,
+   flush_remove_drops_member_and_aggregates,
+   sweep_remove_batch_drops_member_and_aggregates};
+   router::put::assign_album::tests::dir_move_preserves_album_membership_and_aggregates;
+   tests::album_delta::{trash_toggle_adds_and_removes_member,
+   deleted_album_detach_drops_member_rows,
+   membership_mutations_leave_members_and_aggregates_exact};
+   tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact.
 8. [open] Model rework: `AlbumTaskApply`/cascade actions replaced by
    delta actions on the album aggregate fields (separate commit for the
    action rename per the terminology rule); `AlbumStatsConsistentWhenDrained`

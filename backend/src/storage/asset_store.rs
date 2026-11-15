@@ -1362,4 +1362,409 @@ mod tests {
 
         clear_tables();
     }
+
+    // ── Album membership index + delta-maintained aggregates ──────────────
+
+    use crate::model::album::Share;
+    use crate::model::metadata_record::MetadataRecord;
+    use crate::process::dir_album;
+
+    /// Reseed the shared store and create the dir album for a fresh test.
+    fn prepare_album(dir_name: &str) -> (ArrayString<64>, std::path::PathBuf) {
+        reset_backend_state();
+        let dir = test_image_home().join("album_delta").join(dir_name);
+        std::fs::create_dir_all(&dir).expect("create album test dir");
+        let album_id = dir_album::get_or_create_dir_album(dir.clone()).expect("create dir album");
+        (album_id, dir)
+    }
+
+    fn seed_member(
+        dir: &std::path::Path,
+        name: &str,
+        album_id: ArrayString<64>,
+        size: u64,
+        modified: i64,
+    ) -> ArrayString<64> {
+        let path = dir.join(name);
+        let record = AssetRecord {
+            asset_id: crate::process::hash::generate_random_hash(),
+            kind: AssetKind::Image,
+            path: path.to_string_lossy().into_owned(),
+            content_hash: None,
+            file_size: size,
+            ext: "jpg".into(),
+            modified,
+            scan_time: modified,
+            is_trashed: false,
+            album_id: Some(album_id),
+        };
+        put_asset_by_id(&record).expect("seed member record");
+        put_asset_by_path(&record.path, record.asset_id).expect("seed member path");
+        record.asset_id
+    }
+
+    fn add_delta(member: ArrayString<64>) -> AlbumDelta {
+        AlbumDelta {
+            count_delta: 1,
+            size_delta: 0,
+            member: Some(member),
+            is_add: true,
+            ..Default::default()
+        }
+    }
+
+    fn remove_delta(member: ArrayString<64>, size: u64) -> AlbumDelta {
+        AlbumDelta {
+            count_delta: -1,
+            size_delta: -size.cast_signed(),
+            member: Some(member),
+            is_add: false,
+            member_size_override: Some(size),
+            ..Default::default()
+        }
+    }
+
+    fn apply_in_txn(album_id: ArrayString<64>, delta: AlbumDelta) {
+        let txn = TREE.in_disk.begin_write().expect("begin delta txn");
+        apply_album_delta(&txn, album_id.as_str(), delta).expect("apply album delta");
+        txn.commit().expect("commit delta txn");
+    }
+
+    #[test]
+    fn album_member_rows_roundtrip_and_prefix_isolation() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let txn = TREE.in_disk.begin_write().expect("begin member txn");
+        add_album_member(&txn, "a1", "asset1").expect("add a1/asset1");
+        add_album_member(&txn, "a1", "asset2").expect("add a1/asset2");
+        add_album_member(&txn, "a10", "asset10").expect("add a10/asset10");
+
+        assert_eq!(
+            list_album_members(&txn, "a1").expect("list a1"),
+            vec!["asset1".to_string(), "asset2".to_string()],
+            "album a1 must hold only its own members"
+        );
+        assert_eq!(
+            list_album_members(&txn, "a10").expect("list a10"),
+            vec!["asset10".to_string()],
+            "the a10 prefix must not bleed into a1"
+        );
+
+        remove_album_member(&txn, "a1", "asset1").expect("remove asset1");
+        assert_eq!(
+            list_album_members(&txn, "a1").expect("list a1 after remove"),
+            vec!["asset2".to_string()]
+        );
+
+        drop_album_members(&txn, "a1").expect("drop a1 members");
+        assert!(
+            list_album_members(&txn, "a1")
+                .expect("list dropped a1")
+                .is_empty(),
+            "drop must remove every a1 row"
+        );
+        assert_eq!(
+            list_album_members(&txn, "a10").expect("list a10 after a1 drop"),
+            vec!["asset10".to_string()],
+            "dropping a1 must not touch a10"
+        );
+        drop(txn);
+    }
+
+    #[test]
+    fn apply_album_delta_add_updates_count_size_range_and_cover() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album("add");
+        let m1 = seed_member(&dir, "a.jpg", album_id, 10, 100);
+        let m2 = seed_member(&dir, "b.jpg", album_id, 20, 200);
+
+        apply_in_txn(album_id, add_delta(m1));
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 1);
+        assert_eq!(payload.item_size, 10);
+        assert_eq!(payload.start_time, Some(100));
+        assert_eq!(payload.end_time, Some(100));
+        assert_eq!(payload.cover, Some(m1));
+        assert_album_aggregates_exact(album_id.as_str());
+
+        apply_in_txn(album_id, add_delta(m2));
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 2);
+        assert_eq!(payload.item_size, 30);
+        assert_eq!(payload.start_time, Some(100));
+        assert_eq!(payload.end_time, Some(200));
+        assert_eq!(payload.cover, Some(m2), "cover is the newest member");
+        assert_album_aggregates_exact(album_id.as_str());
+    }
+
+    #[test]
+    fn apply_album_delta_remove_recomputes_boundary_holders() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album("remove");
+        let m1 = seed_member(&dir, "a.jpg", album_id, 10, 100);
+        let m2 = seed_member(&dir, "b.jpg", album_id, 20, 200);
+        let m3 = seed_member(&dir, "c.jpg", album_id, 30, 300);
+        for member in [m1, m2, m3] {
+            apply_in_txn(album_id, add_delta(member));
+        }
+        assert_album_aggregates_exact(album_id.as_str());
+
+        // Removing the newest boundary holder recomputes end time and cover.
+        apply_in_txn(album_id, remove_delta(m3, 30));
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 2);
+        assert_eq!(payload.item_size, 30);
+        assert_eq!(payload.start_time, Some(100));
+        assert_eq!(payload.end_time, Some(200));
+        assert_eq!(payload.cover, Some(m2));
+        assert_album_aggregates_exact(album_id.as_str());
+
+        // Removing the oldest boundary holder recomputes start time.
+        apply_in_txn(album_id, remove_delta(m1, 10));
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 1);
+        assert_eq!(payload.item_size, 20);
+        assert_eq!(payload.start_time, Some(200));
+        assert_eq!(payload.end_time, Some(200));
+        assert_eq!(payload.cover, Some(m2));
+        assert_album_aggregates_exact(album_id.as_str());
+    }
+
+    #[test]
+    fn apply_album_delta_size_update_recomputes_range_and_cover() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album("size_update");
+        let m1 = seed_member(&dir, "a.jpg", album_id, 10, 100);
+        let m2 = seed_member(&dir, "b.jpg", album_id, 20, 200);
+        apply_in_txn(album_id, add_delta(m1));
+        apply_in_txn(album_id, add_delta(m2));
+
+        // The member's bytes and timestamp change; the record is rewritten by
+        // the enclosing write path before the delta runs.
+        let mut updated = get_asset_by_id(m1.as_str())
+            .expect("read member")
+            .expect("member exists");
+        updated.file_size = 50;
+        updated.modified = 300;
+        put_asset_by_id(&updated).expect("rewrite member");
+
+        apply_in_txn(
+            album_id,
+            AlbumDelta {
+                count_delta: 0,
+                size_delta: 40,
+                member: Some(m1),
+                is_add: false,
+                member_size_override: Some(50),
+                is_update: true,
+                ..Default::default()
+            },
+        );
+
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 2, "a size update keeps membership");
+        assert_eq!(payload.item_size, 70, "size delta applies to the aggregate");
+        assert_eq!(payload.start_time, Some(200));
+        assert_eq!(payload.end_time, Some(300));
+        assert_eq!(
+            payload.cover,
+            Some(m1),
+            "cover follows the new newest member"
+        );
+        assert_album_aggregates_exact(album_id.as_str());
+    }
+
+    #[test]
+    fn apply_album_delta_empty_transition_uses_descendant_cover() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album("empty");
+        let member = seed_member(&dir, "a.jpg", album_id, 10, 100);
+
+        // A descendant file that is not a direct member of this album.
+        let subdir = dir.join("sub");
+        std::fs::create_dir_all(&subdir).expect("create descendant dir");
+        let child_path = subdir.join("child.jpg");
+        let child = AssetRecord {
+            asset_id: crate::process::hash::generate_random_hash(),
+            kind: AssetKind::Image,
+            path: child_path.to_string_lossy().into_owned(),
+            content_hash: None,
+            file_size: 5,
+            ext: "jpg".into(),
+            modified: 50,
+            scan_time: 50,
+            is_trashed: false,
+            album_id: None,
+        };
+        put_asset_by_id(&child).expect("seed descendant record");
+
+        apply_in_txn(album_id, add_delta(member));
+
+        // The removal path deletes the record before applying the delta.
+        remove_asset_by_id(member.as_str()).expect("delete member record");
+        apply_in_txn(album_id, remove_delta(member, 10));
+
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 0);
+        assert_eq!(payload.item_size, 0);
+        assert_eq!(payload.start_time, None);
+        assert_eq!(payload.end_time, None);
+        assert_eq!(
+            payload.cover,
+            Some(child.asset_id),
+            "an empty album takes its cover from a descendant"
+        );
+        assert_album_aggregates_exact(album_id.as_str());
+    }
+
+    #[test]
+    fn apply_album_delta_count_never_underflows() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, _dir) = prepare_album("underflow");
+
+        apply_in_txn(
+            album_id,
+            AlbumDelta {
+                count_delta: -1,
+                ..Default::default()
+            },
+        );
+
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 0, "count must clamp at zero");
+        assert_eq!(payload.item_size, 0);
+    }
+
+    /// Field-level patches commute: a delta txn and an edit-share-style RMW
+    /// txn read each other's committed fields, so the share list survives
+    /// aggregate patches and the aggregates survive the share RMW.
+    #[test]
+    fn album_delta_and_share_list_patches_commute() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        let (album_id, dir) = prepare_album("commute");
+        let m1 = seed_member(&dir, "a.jpg", album_id, 10, 100);
+        let m2 = seed_member(&dir, "b.jpg", album_id, 20, 200);
+
+        apply_in_txn(album_id, add_delta(m1));
+
+        // edit_share-shaped RMW: read the album payload, replace only the
+        // share list, write the whole payload back.
+        let share_key: ArrayString<64> = "share-key".parse().expect("share key fits");
+        let share = Share {
+            url: "share-token".parse().expect("share url fits"),
+            description: "commuting share".to_string(),
+            show_metadata: true,
+            show_download: false,
+            show_upload: false,
+            created_by: "owner".to_string(),
+            ..Default::default()
+        };
+        let txn = TREE.in_disk.begin_write().expect("begin share txn");
+        {
+            use redb::ReadableTable;
+            let mut table = txn
+                .open_table(crate::storage::db::METADATA_TABLE)
+                .expect("open metadata for share");
+            let stored = table
+                .get(album_id.as_str())
+                .expect("read album for share")
+                .expect("album payload exists")
+                .value();
+            let MetadataRecord::Album(mut album) = stored else {
+                panic!("album payload expected");
+            };
+            album.share_list.insert(share_key, share);
+            table
+                .insert(album_id.as_str(), MetadataRecord::Album(album))
+                .expect("write share list");
+        }
+        txn.commit().expect("commit share txn");
+
+        apply_in_txn(album_id, add_delta(m2));
+
+        let payload = read_album_payload(album_id.as_str());
+        assert!(
+            payload.share_list.contains_key(&share_key),
+            "the share list must survive aggregate deltas"
+        );
+        assert_eq!(
+            payload.item_count, 2,
+            "aggregates must survive the share RMW"
+        );
+        assert_eq!(payload.item_size, 30);
+        assert_album_aggregates_exact(album_id.as_str());
+    }
+
+    /// A move between albums performs the source remove and target add in the
+    /// same transaction as the record/path rewrite; both albums' aggregates
+    /// and member rows stay exact.
+    #[test]
+    fn move_asset_mapping_moves_membership_between_albums() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        let root = test_image_home().join("album_delta").join("move");
+        let dir_a = root.join("a");
+        let dir_b = root.join("b");
+        std::fs::create_dir_all(&dir_a).expect("create album a");
+        std::fs::create_dir_all(&dir_b).expect("create album b");
+        let album_a = dir_album::get_or_create_dir_album(dir_a.clone()).expect("create album a");
+        let album_b = dir_album::get_or_create_dir_album(dir_b.clone()).expect("create album b");
+
+        let member = seed_member(&dir_a, "photo.jpg", album_a, 42, 100);
+        apply_in_txn(album_a, add_delta(member));
+
+        let mut moved = get_asset_by_id(member.as_str())
+            .expect("read member")
+            .expect("member exists");
+        let old_path = moved.path.clone();
+        let new_path = dir_b.join("photo.jpg").to_string_lossy().into_owned();
+        moved.path.clone_from(&new_path);
+        moved.album_id = Some(album_b);
+
+        move_asset_mapping(&old_path, &new_path, &moved).expect("move member between albums");
+
+        assert_eq!(
+            album_member_ids(album_a.as_str()),
+            Vec::<String>::new(),
+            "source album must lose the member row"
+        );
+        assert_eq!(
+            album_member_ids(album_b.as_str()),
+            vec![member.to_string()],
+            "target album must gain the member row"
+        );
+        let payload_a = read_album_payload(album_a.as_str());
+        assert_eq!(payload_a.item_count, 0);
+        assert_eq!(payload_a.item_size, 0);
+        let payload_b = read_album_payload(album_b.as_str());
+        assert_eq!(payload_b.item_count, 1);
+        assert_eq!(payload_b.item_size, 42);
+        assert_album_aggregates_exact(album_a.as_str());
+        assert_album_aggregates_exact(album_b.as_str());
+    }
 }
