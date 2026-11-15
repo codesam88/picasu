@@ -855,7 +855,8 @@ mod tests {
     use super::*;
     use crate::process::dir_album;
     use crate::tests::bootstrap::{
-        TEST_ENV, TEST_SERIAL_GUARD, reset_backend_state, test_image_home,
+        TEST_ENV, TEST_SERIAL_GUARD, album_member_ids, assert_album_aggregates_exact,
+        reset_backend_state, test_image_home,
     };
     use std::fs;
     use std::time::{Duration, Instant};
@@ -1790,6 +1791,74 @@ mod tests {
         assert_eq!(removed, 1, "sweep must remove the residue");
         assert!(!tmp_path.exists(), "residue must be gone after sweep");
 
+        reset_backend_state();
+    }
+
+    /// Reset (DbLoss-style clear) followed by a rescan re-seeds asset rows,
+    /// member rows and album aggregates exactly (I1 under ASS-3).
+    #[test]
+    fn reset_rescan_reseeds_album_member_rows_and_aggregates() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let album_dir = image_home.join("reset_reseed");
+        fs::create_dir_all(&album_dir).expect("create album dir");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album_dir.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        // First pass seeds asset + member rows.
+        index_album_with_root("/", false, None).expect("initial index accepted");
+        wait_for_index_completion();
+
+        let album_id = dir_album::get_album_id_for_dir(&album_dir)
+            .expect("album must exist after initial index")
+            .to_string();
+        let members_before = album_member_ids(&album_id);
+        assert_eq!(members_before.len(), 1, "one member before reset");
+        assert_album_aggregates_exact(&album_id);
+
+        // DbLoss-style clear: drop all asset tables (incl. ASSET_BY_ALBUM) and
+        // caches, simulating derived-store loss.
+        clear_asset_tables_and_caches().expect("clear asset tables and caches");
+
+        // Rescan from the filesystem (backstop-style, clear=false).
+        index_album_with_root("/", false, None).expect("rescan accepted");
+        wait_for_index_completion();
+
+        let new_album_id = dir_album::get_album_id_for_dir(&album_dir)
+            .expect("album must be recreated after rescan")
+            .to_string();
+
+        // Asset row must exist for the photo.
+        let photo_path = album_dir.join("photo.jpg");
+        let asset_id =
+            crate::storage::asset_store::get_asset_id_by_path(&photo_path.to_string_lossy())
+                .expect("read asset id after rescan")
+                .expect("asset row must exist after rescan");
+
+        // Member row must be re-seeded.
+        let members_after = album_member_ids(&new_album_id);
+        assert_eq!(
+            members_after,
+            vec![asset_id.to_string()],
+            "member row must be re-seeded after rescan"
+        );
+        assert_album_aggregates_exact(&new_album_id);
+
+        fs::remove_dir_all(&album_dir).ok();
         reset_backend_state();
     }
 }
