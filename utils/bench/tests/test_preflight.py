@@ -502,7 +502,7 @@ class CallerReuseTest(unittest.TestCase):
         delegated = pf.Check("hyperfine", True, "/opt/bin/hyperfine")
         with mock.patch.object(pf, "check_hyperfine", return_value=delegated):
             cfg = workload.config_from_env(env)
-        self.assertEqual(cfg["hyperfine"], "/opt/bin/hyperfine")
+        self.assertEqual(cfg.hyperfine, "/opt/bin/hyperfine")
 
 
 if __name__ == "__main__":

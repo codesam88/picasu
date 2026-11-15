@@ -104,35 +104,18 @@ import sys
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent.parent
 
-# The preflight checklist owns the shared environment guards (hyperfine).
+# The preflight checklist owns the shared environment guards (hyperfine);
+# config.py owns the typed config and its defaults.
 sys.path.insert(0, str(SCRIPT_DIR))
+import config  # noqa: E402
 import preflight  # noqa: E402
+from config import ConfigError  # noqa: E402
 
-DEFAULT_IMAGES = 100
-DEFAULT_REPEATS = 3
-DEFAULT_WARMUP = 1
-DEFAULT_RUNS_DURING = 3
-DEFAULT_SCAN_REPEATS = 3
-DEFAULT_FETCHES = 10
-DEFAULT_PROBE_PAGE = 1000
-DEFAULT_INDEX_SETTLE_TIMEOUT_S = 600.0
-DEFAULT_UPLOAD_TIMEOUT_S = 30.0
-DEFAULT_UPLOAD_POST_TIMEOUT_S = 60.0
-DEFAULT_STORM_CLIENTS = 8
-DEFAULT_STORM_OPS = 10
-DEFAULT_STORM_MARGIN_S = 0.5
-WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle", "upload")
-DEFAULT_POLL_INTERVAL_S = 0.2
-DEFAULT_PROBE_INTERVAL_S = 0.5
-DEFAULT_BUILD_PROFILE = "debug"
-DEFAULT_PORT = 5713
 TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
 # `idle` means no album-index job has run, so there is nothing to wait for.
 SETTLED_STATUS_STATES = (*TERMINAL_STATUS_STATES, "idle")
@@ -157,50 +140,11 @@ ARTIFACT_FILES = (
 ARTIFACT_GLOBS = ("rounds-run-*", "status-final-run-*.json")
 
 
-class ConfigError(Exception):
-    """Invalid or unsafe workload configuration."""
-
-
 class WorkloadError(Exception):
     """Runtime failure after the cell started."""
 
 
 # --- configuration -----------------------------------------------------------
-def load_launcher_info(path: Path) -> dict:
-    try:
-        info = json.loads(path.read_text())
-    except OSError as err:
-        raise ConfigError(f"cannot read launcher info {path}: {err}")
-    except json.JSONDecodeError as err:
-        raise ConfigError(f"invalid launcher info {path}: {err}")
-    for key in ("base_url", "cookie_jar", "out"):
-        if not info.get(key):
-            raise ConfigError(f"launcher info missing '{key}': {path}")
-    return info
-
-
-def _int_env(environ: dict, name: str, default: int, minimum: int = 0) -> int:
-    raw = environ.get(name, str(default))
-    try:
-        value = int(raw)
-    except ValueError:
-        raise ConfigError(f"{name} must be an integer, got '{raw}'")
-    if value < minimum:
-        raise ConfigError(f"{name} must be >= {minimum}, got {value}")
-    return value
-
-
-def _float_env(environ: dict, name: str, default: float, minimum: float = 0.0) -> float:
-    raw = environ.get(name, str(default))
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ConfigError(f"{name} must be a number, got '{raw}'")
-    if value < minimum:
-        raise ConfigError(f"{name} must be >= {minimum}, got {value}")
-    return value
-
-
 HYPERFINE_INSTALL_HINT = f"hyperfine is required ({preflight.HYPERFINE_HINT})"
 
 
@@ -212,143 +156,9 @@ def resolve_hyperfine(environ: dict) -> str:
     return check.detail
 
 
-def _validate_out(raw: str) -> Path:
-    if raw == "":
-        raise ConfigError("OUT is required")
-    out = Path(os.path.realpath(raw))
-    if str(out) == "/":
-        raise ConfigError("refusing to use OUT='/'")
-    if out == REPO_ROOT or REPO_ROOT in out.parents:
-        raise ConfigError(f"OUT must not be inside the repo: {out}")
-    return out
-
-
-def config_from_env(environ: dict) -> dict:
-    for old, new in (
-        ("N", "NCPU"),
-        ("COUNT", "IMAGES"),
-        ("REUSE_IMAGES", "IMAGE_REPO"),
-        ("SKIP_GENERATE", None),
-        ("GEN_JOBS", None),
-        ("SNAPFAB_BIN", None),
-        ("MANIFEST", None),
-    ):
-        if old in environ:
-            hint = f"use {new} instead" if new else "seeding moved to `just bench seed-images`"
-            raise ConfigError(f"{old} was removed ({hint})")
-
-    if not environ.get("IMAGE_REPO", ""):
-        raise ConfigError("IMAGE_REPO is required (seed a repo with `just bench seed-images`)")
-
-    info_path = environ.get("LAUNCHER_INFO", "")
-    if not info_path:
-        raise ConfigError("LAUNCHER_INFO is required")
-    info = load_launcher_info(Path(info_path))
-
-    base_url = str(info["base_url"]).rstrip("/")
-    cookie_jar = Path(info["cookie_jar"])
-    if not cookie_jar.is_file():
-        raise ConfigError(f"cookie jar not found: {cookie_jar}")
-
-    out = _validate_out(environ.get("OUT") or str(info["out"]))
-
-    try:
-        port = urllib.parse.urlsplit(base_url).port or DEFAULT_PORT
-    except ValueError:
-        raise ConfigError(f"invalid base_url: {base_url}")
-
-    ncpu = _int_env(environ, "NCPU", 4, minimum=0)
-
-    build_profile = environ.get("BUILD_PROFILE", DEFAULT_BUILD_PROFILE)
-    if build_profile not in ("debug", "release"):
-        raise ConfigError(f"BUILD_PROFILE must be debug or release, got '{build_profile}'")
-
-    images = _int_env(environ, "IMAGES", DEFAULT_IMAGES, minimum=1)
-    workload = environ.get("WORKLOAD", "control")
-    if workload not in WORKLOADS:
-        raise ConfigError(f"WORKLOAD must be one of {WORKLOADS}, got '{workload}'")
-    storm_clients = _int_env(environ, "STORM_CLIENTS", DEFAULT_STORM_CLIENTS, minimum=1)
-    storm_ops = _int_env(environ, "STORM_OPS", DEFAULT_STORM_OPS, minimum=1)
-    storm_margin = _float_env(environ, "STORM_MARGIN_S", DEFAULT_STORM_MARGIN_S, minimum=0.0)
-    idle_profile = environ.get("IDLE_PROFILE", "read")
-    if idle_profile not in ("diff", "read", "thumb"):
-        raise ConfigError(f"IDLE_PROFILE must be diff|read|thumb, got '{idle_profile}'")
-    scan_repeats = _int_env(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
-    upload_files = _int_env(environ, "UPLOAD_FILES", images, minimum=1)
-    upload_timeout = _float_env(environ, "UPLOAD_TIMEOUT_S", DEFAULT_UPLOAD_TIMEOUT_S, minimum=0.1)
-    upload_post_timeout = _float_env(
-        environ, "UPLOAD_POST_TIMEOUT_S", DEFAULT_UPLOAD_POST_TIMEOUT_S, minimum=0.1
-    )
-    index_settle_timeout = _float_env(
-        environ, "INDEX_SETTLE_TIMEOUT_S", DEFAULT_INDEX_SETTLE_TIMEOUT_S, minimum=0.1
-    )
-    repeats = _int_env(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
-    warmup = _int_env(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
-    runs_during = _int_env(environ, "RUNS_DURING", DEFAULT_RUNS_DURING, minimum=1)
-    fetches = _int_env(environ, "FETCHES", DEFAULT_FETCHES, minimum=0)
-    probe_limit = _int_env(environ, "PROBE_LIMIT", images, minimum=1)
-    probe_page = _int_env(environ, "PROBE_PAGE", DEFAULT_PROBE_PAGE, minimum=1)
-    scan_timeout = _float_env(environ, "SCAN_TIMEOUT_S", 0.0, minimum=0.0)
-    scan_stall_timeout = _float_env(environ, "SCAN_STALL_TIMEOUT_S", 120.0, minimum=0.0)
-    poll_interval = _float_env(environ, "POLL_INTERVAL_S", DEFAULT_POLL_INTERVAL_S, minimum=0.001)
-    probe_interval = _float_env(
-        environ, "PROBE_INTERVAL_S", DEFAULT_PROBE_INTERVAL_S, minimum=0.001
-    )
-
-    repo_path = Path(environ["IMAGE_REPO"])
-    if not repo_path.is_dir():
-        raise ConfigError(f"IMAGE_REPO not a directory: {environ['IMAGE_REPO']}")
-
-    image_home_raw = info.get("image_home")
-    if environ.get("IMAGE_PATH", ""):
-        image_path = Path(environ["IMAGE_PATH"])
-    elif image_home_raw:
-        image_path = Path(image_home_raw)
-    else:
-        image_path = out / "images"
-
-    dataset_id = environ.get("DATASET_ID", "")
-    if not dataset_id:
-        if image_home_raw:
-            dataset_id = Path(image_home_raw).name
-        else:
-            dataset_id = "out-local"
-
-    return {
-        "launcher_info": info,
-        "base_url": base_url,
-        "cookie_jar": cookie_jar,
-        "out": out,
-        "ncpu": ncpu,
-        "port": port,
-        "images": images,
-        "workload": workload,
-        "storm_clients": storm_clients,
-        "storm_ops": storm_ops,
-        "storm_margin_s": storm_margin,
-        "idle_profile": idle_profile,
-        "scan_repeats": scan_repeats,
-        "upload_files": upload_files,
-        "upload_timeout_s": upload_timeout,
-        "upload_post_timeout_s": upload_post_timeout,
-        "index_settle_timeout_s": index_settle_timeout,
-        "repeats": repeats,
-        "warmup": warmup,
-        "runs_during": runs_during,
-        "fetches": fetches,
-        "probe_limit": probe_limit,
-        "probe_page": probe_page,
-        "scan_timeout_s": scan_timeout,
-        "scan_stall_timeout_s": scan_stall_timeout,
-        "poll_interval_s": poll_interval,
-        "probe_interval_s": probe_interval,
-        "image_repo": repo_path,
-        "image_path": image_path,
-        "image_home": image_home_raw,
-        "dataset_id": dataset_id,
-        "build_profile": build_profile,
-        "hyperfine": resolve_hyperfine(environ),
-    }
+def config_from_env(environ: dict) -> config.WorkloadConfig:
+    """Build workload config once; consumers read attributes."""
+    return config.WorkloadConfig.from_env(environ, hyperfine_lookup=resolve_hyperfine)
 
 
 # --- logging -----------------------------------------------------------------
@@ -491,8 +301,8 @@ def _compressed_path(hash_value: str) -> str:
 # repo can serve any cell size deterministically.
 
 
-def prepare_images(cfg: dict, logger: Logger) -> tuple:
-    img_dir = cfg["image_path"]
+def prepare_images(cfg: config.WorkloadConfig, logger: Logger) -> tuple:
+    img_dir = cfg.image_path
     img_dir.mkdir(parents=True, exist_ok=True)
 
     # Prepared sandbox: manifest present means the sandbox was built by
@@ -519,15 +329,15 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
 
     # Deprecated: unprepared dirs still materialise by copy/link. New cells
     # should point at a prepared sandbox instead of relying on this path.
-    available = sorted(cfg["image_repo"].glob("*.jpg"), key=lambda path: path.name)
-    if len(available) < cfg["images"]:
+    available = sorted(cfg.image_repo.glob("*.jpg"), key=lambda path: path.name)
+    if len(available) < cfg.images:
         raise ConfigError(
-            f"IMAGE_REPO holds {len(available)} images, need IMAGES={cfg['images']}: "
-            f"seed more with `just bench seed-images` (repo: {cfg['image_repo']})"
+            f"IMAGE_REPO holds {len(available)} images, need IMAGES={cfg.images}: "
+            f"seed more with `just bench seed-images` (repo: {cfg.image_repo})"
         )
-    wanted = available[: cfg["images"]]
+    wanted = available[: cfg.images]
 
-    logger.log(f"=== seeding images (repo={cfg['image_repo']} path={img_dir}) ===")
+    logger.log(f"=== seeding images (repo={cfg.image_repo} path={img_dir}) ===")
     started = time.perf_counter()
     linked_count = 0
     copied_count = 0
@@ -561,12 +371,12 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
     jpgs = list(img_dir.glob("*.jpg"))
     image_count = len(jpgs)
     image_bytes = sum(path.stat().st_size for path in jpgs)
-    if image_count < cfg["images"]:
-        raise WorkloadError(f"expected at least {cfg['images']} images, found {image_count}")
-    logger.log(f"seeded {len(wanted)} images from {cfg['image_repo']} (source untouched)")
+    if image_count < cfg.images:
+        raise WorkloadError(f"expected at least {cfg.images} images, found {image_count}")
+    logger.log(f"seeded {len(wanted)} images from {cfg.image_repo} (source untouched)")
     logger.log(
         f"generated={image_count} bytes={image_bytes} wall_ms={wall_ms} "
-        f"mode={mode}({cfg['image_repo']})"
+        f"mode={mode}({cfg.image_repo})"
     )
     return image_count, image_bytes
 
@@ -578,10 +388,10 @@ def prepare_images(cfg: dict, logger: Logger) -> tuple:
 ROW_SPACE_SLACK = 1000
 
 
-def row_space_cap(cfg: dict) -> int:
+def row_space_cap(cfg: config.WorkloadConfig) -> int:
     """Upper bound on one cell's snapshot row space for a paged lookup."""
-    images = int(cfg.get("images", DEFAULT_IMAGES))
-    uploads = int(cfg.get("upload_files", 0))
+    images = int(cfg.images)
+    uploads = int(cfg.upload_files)
     return images + uploads + ROW_SPACE_SLACK
 
 
@@ -623,7 +433,7 @@ def page_get_data(
 
 
 # --- probe list --------------------------------------------------------------
-def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
+def build_probe_list(cfg: config.WorkloadConfig, client: HttpClient) -> list | None:
     """Build `hash<TAB>token` rows from the snapshot, paging the row window.
 
     get-data returns at most one page per request, so a single `0..1000`
@@ -632,7 +442,7 @@ def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
     snapshot. `get-data.json` keeps the raw body for a single-page window
     and the concatenated rows when the window spans several pages.
     """
-    out = cfg["out"]
+    out = cfg.out
     code, body, _ = client.post("/get/prefetch", {})
     (out / "prefetch.json").write_bytes(body)
     if code != 200:
@@ -645,8 +455,8 @@ def build_probe_list(cfg: dict, client: HttpClient) -> list | None:
     if timestamp is None or token is None:
         return None
 
-    page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
-    limit = cfg["probe_limit"]
+    page_size = cfg.probe_page
+    limit = cfg.probe_limit
     cap = max(row_space_cap(cfg), limit)
     lines = []
     collected_rows = []
@@ -713,29 +523,29 @@ def _status_state(out: Path) -> str:
 
 
 # --- hyperfine ---------------------------------------------------------------
-def cmd_prefetch(cfg: dict) -> str:
+def cmd_prefetch(cfg: config.WorkloadConfig) -> str:
     return (
-        f"curl -s -o /dev/null -b {cfg['cookie_jar']} -X POST "
+        f"curl -s -o /dev/null -b {cfg.cookie_jar} -X POST "
         f"-H 'Content-Type: application/json' -d '{{}}' "
-        f"-w '%{{http_code}} %{{time_total}}\\n' {cfg['base_url']}/get/prefetch"
+        f"-w '%{{http_code}} %{{time_total}}\\n' {cfg.base_url}/get/prefetch"
     )
 
 
-def cmd_compressed(cfg: dict, hash_value: str, token: str) -> str:
+def cmd_compressed(cfg: config.WorkloadConfig, hash_value: str, token: str) -> str:
     return (
-        f"curl -s -o /dev/null -b {cfg['cookie_jar']} "
+        f"curl -s -o /dev/null -b {cfg.cookie_jar} "
         f"-H 'Authorization: Bearer {token}' "
         f"-w '%{{http_code}} %{{time_total}}\\n' "
-        f"{cfg['base_url']}{_compressed_path(hash_value)}"
+        f"{cfg.base_url}{_compressed_path(hash_value)}"
     )
 
 
-def cmd_edit_rating(cfg: dict, timestamp) -> str:
+def cmd_edit_rating(cfg: config.WorkloadConfig, timestamp) -> str:
     return (
-        f"curl -s -o /dev/null -b {cfg['cookie_jar']} -X PUT "
+        f"curl -s -o /dev/null -b {cfg.cookie_jar} -X PUT "
         f"-H 'Content-Type: application/json' "
         f'-d \'{{"indexArray":[0],"timestamp":{timestamp},"rating":3}}\' '
-        f"-w '%{{http_code}} %{{time_total}}\\n' {cfg['base_url']}/put/edit_rating"
+        f"-w '%{{http_code}} %{{time_total}}\\n' {cfg.base_url}/put/edit_rating"
     )
 
 
@@ -778,7 +588,7 @@ def _wall_clock(result: dict) -> dict:
 
 
 def run_hyperfine(
-    cfg: dict,
+    cfg: config.WorkloadConfig,
     warmup: int,
     runs: int,
     export_json: Path,
@@ -786,7 +596,7 @@ def run_hyperfine(
     logger: Logger,
     output_path: Path | None = None,
 ) -> list:
-    binary = cfg["hyperfine"]
+    binary = cfg.hyperfine
     if not binary:
         raise WorkloadError(HYPERFINE_INSTALL_HINT)
     command = [binary, "--warmup", str(warmup), "-r", str(runs), "--export-json", str(export_json)]
@@ -816,7 +626,7 @@ def _summary_line(results: list) -> str:
 
 # --- during-scan probes ------------------------------------------------------
 def random_fetch_round(
-    cfg: dict,
+    cfg: config.WorkloadConfig,
     client: HttpClient,
     transcript: ProbeTranscript,
     round_no: int,
@@ -827,8 +637,8 @@ def random_fetch_round(
 ) -> None:
     sample = round_dir / f"probe-round-{round_no}.tsv"
     picks = []
-    if lines and cfg["fetches"]:
-        picks = random.sample(lines, min(cfg["fetches"], len(lines)))
+    if lines and cfg.fetches:
+        picks = random.sample(lines, min(cfg.fetches, len(lines)))
     records = []
     for line in picks:
         hash_value, token = line.split("\t", 1)
@@ -847,7 +657,7 @@ def random_fetch_round(
 
 
 def probe_round(
-    cfg: dict,
+    cfg: config.WorkloadConfig,
     client: HttpClient,
     logger: Logger,
     transcript: ProbeTranscript,
@@ -857,7 +667,7 @@ def probe_round(
     lines: list,
     round_dir: Path,
 ) -> bool:
-    out = cfg["out"]
+    out = cfg.out
     timestamp = _prefetch_timestamp(out)
     if timestamp is None:
         transcript.log(
@@ -877,7 +687,7 @@ def probe_round(
         results = run_hyperfine(
             cfg,
             warmup=0,
-            runs=cfg["runs_during"],
+            runs=cfg.runs_during,
             export_json=json_path,
             benches=benches,
             logger=logger,
@@ -900,9 +710,9 @@ def probe_round(
 
 
 def probe_phase(
-    cfg: dict, client: HttpClient, logger: Logger, expected: int, round_dir: Path
+    cfg: config.WorkloadConfig, client: HttpClient, logger: Logger, expected: int, round_dir: Path
 ) -> None:
-    out = cfg["out"]
+    out = cfg.out
     transcript = ProbeTranscript(logger, out / "probe-phase.log")
     marker = out / "scan-done.marker"
     waited = 0.0
@@ -936,14 +746,14 @@ def probe_phase(
                 break
             if rows >= expected:
                 break
-            if cfg["scan_timeout_s"] > 0 and waited >= cfg["scan_timeout_s"]:
+            if cfg.scan_timeout_s > 0 and waited >= cfg.scan_timeout_s:
                 transcript.log(
                     f"probe phase: rows={rows} state={state} waited~{waited:g}s "
                     "(explicit SCAN_TIMEOUT_S), probing what exists"
                 )
                 break
-            time.sleep(cfg["probe_interval_s"])
-            waited += cfg["probe_interval_s"]
+            time.sleep(cfg.probe_interval_s)
+            waited += cfg.probe_interval_s
         if rounds == 0:
             transcript.log(f"probe phase: no image rows before the scan settled (state={state})")
         else:
@@ -982,7 +792,10 @@ def _percentile(sorted_vals: list, pct: float) -> float:
 
 
 def _wait_for_rows(
-    cfg: dict, client: HttpClient, logger: Logger, scan_active: threading.Event | None
+    cfg: config.WorkloadConfig,
+    client: HttpClient,
+    logger: Logger,
+    scan_active: threading.Event | None,
 ) -> list:
     """Poll the probe list until rows appear or the scan goes terminal."""
     for _ in range(150):  # ~30 s cap; the poll loop clears active on settle
@@ -996,7 +809,7 @@ def _wait_for_rows(
 
 
 def run_storm(
-    cfg: dict,
+    cfg: config.WorkloadConfig,
     client: HttpClient,
     logger: Logger,
     round_dir: Path,
@@ -1008,9 +821,9 @@ def run_storm(
     `scan_active` cleared stops issuing new ops (in-flight ops run out
     under their own timeout). None means no concurrent scan (storm-idle).
     """
-    profile = cfg["workload"]
-    op_kind = cfg["idle_profile"] if profile == "storm-idle" else profile.removeprefix("storm-")
-    total = cfg["storm_clients"] * cfg["storm_ops"]
+    profile = cfg.workload
+    op_kind = cfg.idle_profile if profile == "storm-idle" else profile.removeprefix("storm-")
+    total = cfg.storm_clients * cfg.storm_ops
 
     code, body, _ = client.post("/get/prefetch", {})
     if code != 200:
@@ -1054,12 +867,10 @@ def run_storm(
 
     logger.log(
         f"=== storm {profile} (run {run_index}): "
-        f"{cfg['storm_clients']} clients x {cfg['storm_ops']} ops on {len(rows)} rows ==="
+        f"{cfg.storm_clients} clients x {cfg.storm_ops} ops on {len(rows)} rows ==="
     )
-    with concurrent.futures.ThreadPoolExecutor(max_workers=cfg["storm_clients"]) as pool:
-        futures = [
-            pool.submit(one_op, client_index) for client_index in range(cfg["storm_clients"])
-        ]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=cfg.storm_clients) as pool:
+        futures = [pool.submit(one_op, client_index) for client_index in range(cfg.storm_clients)]
         for future in concurrent.futures.as_completed(futures):
             future.result()
     wall = time.perf_counter() - started_all
@@ -1094,7 +905,7 @@ CANARY_CHECKS = 8
 
 
 def verify_storm_sample(
-    cfg: dict, client: HttpClient, logger: Logger, out: Path, run_index: int
+    cfg: config.WorkloadConfig, client: HttpClient, logger: Logger, out: Path, run_index: int
 ) -> None:
     """Round-trip spot check for storm-diff writes: PUT distinct ratings on
     spread-out assets, read each back by stable assetId. PUTs commit
@@ -1110,7 +921,7 @@ def verify_storm_sample(
     timestamp, token = payload.get("prefetch", {}).get("timestamp"), payload.get("token")
     if timestamp is None or token is None:
         raise WorkloadError("storm verify: no prefetch timestamp/token")
-    page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
+    page_size = cfg.probe_page
     collected = []
     for start, page, _body in page_get_data(
         client, timestamp, token, page_size=page_size, cap=row_space_cap(cfg), timeout=30.0
@@ -1160,7 +971,7 @@ def verify_storm_sample(
 
 
 def check_storm_margin(
-    cfg: dict, logger: Logger, summary: dict, scan_start: float, scan_end: float
+    cfg: config.WorkloadConfig, logger: Logger, summary: dict, scan_start: float, scan_end: float
 ) -> None:
     """Require the storm to have finished with margin before scan end."""
     scan_wall = scan_end - scan_start
@@ -1170,18 +981,18 @@ def check_storm_margin(
         need = summary["wall"] / summary["done"] * summary["total"]
     else:
         need = float("inf")
-    if summary["end"] + cfg["storm_margin_s"] <= scan_end:
+    if summary["end"] + cfg.storm_margin_s <= scan_end:
         logger.log(
             f"storm margin ok: storm ended {scan_end - summary['end']:.1f}s "
-            f"before scan end (margin {cfg['storm_margin_s']:g}s)"
+            f"before scan end (margin {cfg.storm_margin_s:g}s)"
         )
         return
-    factor = 1.0 if scan_wall <= 0 else (need + cfg["storm_margin_s"]) / scan_wall
+    factor = 1.0 if scan_wall <= 0 else (need + cfg.storm_margin_s) / scan_wall
     factor = max(1.5, math.ceil(factor * 10) / 10)
     raise WorkloadError(
         f"storm outran the scan: storm_wall={summary['wall']:.1f}s "
         f"ops={summary['done']}/{summary['total']} scan_wall={scan_wall:.1f}s "
-        f"margin={cfg['storm_margin_s']:g}s — increase scantime by factor ~{factor:g} "
+        f"margin={cfg.storm_margin_s:g}s — increase scantime by factor ~{factor:g} "
         f"(more IMAGES, slower scan, or fewer STORM_OPS)"
     )
 
@@ -1209,17 +1020,17 @@ def _write_status_final(out: Path, run_index: int) -> None:
     (out / f"status-final-run-{run_index}.json").write_bytes(body)
 
 
-def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
-    out = cfg["out"]
+def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) -> float:
+    out = cfg.out
     walls = []
     walls_path = out / "scan-walls.tsv"
     walls_path.write_text("")
-    scan_repeats = cfg["scan_repeats"]
-    if cfg["workload"] == "storm-idle" and scan_repeats != 1:
+    scan_repeats = cfg.scan_repeats
+    if cfg.workload == "storm-idle" and scan_repeats != 1:
         logger.log(f"storm-idle: forcing SCAN_REPEATS=1 (was {scan_repeats})")
         scan_repeats = 1
     for run_index in range(1, scan_repeats + 1):
-        logger.log(f"=== triggering index scan (run {run_index}/{cfg['scan_repeats']}) ===")
+        logger.log(f"=== triggering index scan (run {run_index}/{cfg.scan_repeats}) ===")
         started = time.perf_counter()
         start_ms = int(time.time() * 1000)
         code, body, _ = client.post("/post/index/album", {"album": "/"})
@@ -1232,7 +1043,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
         round_dir = out / f"rounds-run-{run_index}"
         round_dir.mkdir(parents=True, exist_ok=True)
 
-        profile = cfg["workload"]
+        profile = cfg.workload
         scan_active = threading.Event()
         scan_active.set()
         storm_result: dict | None = None
@@ -1248,7 +1059,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
         if profile in ("control", "upload"):
             probe_thread = threading.Thread(
                 target=probe_phase,
-                args=(cfg, client, logger, cfg["expected_entries"], round_dir),
+                args=(cfg, client, logger, cfg.expected_entries, round_dir),
                 daemon=True,
             )
             storm_thread = None
@@ -1262,13 +1073,13 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
             storm_thread = None
 
         logger.log("=== polling /get/index/status ===")
-        if cfg["scan_timeout_s"] > 0:
-            logger.log(f"scan poll budget: {cfg['scan_timeout_s']:g}s (explicit SCAN_TIMEOUT_S)")
+        if cfg.scan_timeout_s > 0:
+            logger.log(f"scan poll budget: {cfg.scan_timeout_s:g}s (explicit SCAN_TIMEOUT_S)")
         else:
             logger.log(
                 "scan poll budget: none — waiting for a terminal state (completed/failed/canceled)"
             )
-        deadline = time.monotonic() + cfg["scan_timeout_s"] if cfg["scan_timeout_s"] > 0 else None
+        deadline = time.monotonic() + cfg.scan_timeout_s if cfg.scan_timeout_s > 0 else None
         polls = 0
         poll_started = time.monotonic()
         last_signature = None
@@ -1302,19 +1113,19 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
                     f"elapsed={int(time.monotonic() - poll_started)}s"
                 )
             if (
-                cfg["scan_stall_timeout_s"] > 0
-                and time.monotonic() - last_progress >= cfg["scan_stall_timeout_s"]
+                cfg.scan_stall_timeout_s > 0
+                and time.monotonic() - last_progress >= cfg.scan_stall_timeout_s
             ):
                 stalled = True
                 logger.log(
                     f"scan stalled: no counter movement for "
-                    f"{cfg['scan_stall_timeout_s']:g}s state={state} polls={polls} "
+                    f"{cfg.scan_stall_timeout_s:g}s state={state} polls={polls} "
                     f"counters={signature}"
                 )
                 break
             if deadline is not None and time.monotonic() >= deadline:
                 break
-            time.sleep(cfg["poll_interval_s"])
+            time.sleep(cfg.poll_interval_s)
 
         wall_ms = int((time.perf_counter() - started) * 1000)
         scan_active.clear()
@@ -1325,7 +1136,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
         with open(walls_path, "a", encoding="utf-8") as handle:  # noqa: PTH123
             handle.write(f"{run_index}\t{wall_ms}\n")
         logger.log(
-            f"scan run {run_index}/{cfg['scan_repeats']}: state={state} "
+            f"scan run {run_index}/{cfg.scan_repeats}: state={state} "
             f"polls={polls} wall_ms={wall_ms}"
         )
         excerpt_path = out / "status-final.json"
@@ -1368,7 +1179,7 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
         def is_diff_writes() -> bool:
             if profile == "storm-diff":
                 return True
-            return profile == "storm-idle" and cfg["idle_profile"] == "diff"
+            return profile == "storm-idle" and cfg.idle_profile == "diff"
 
         if profile == "storm-idle":
             run_storm(cfg, client, logger, round_dir, run_index, None)
@@ -1397,8 +1208,8 @@ def run_scans(cfg: dict, client: HttpClient, logger: Logger) -> float:
 
 
 # --- post-scan ---------------------------------------------------------------
-def run_sequential_probes(cfg: dict, client: HttpClient, lines: list) -> None:
-    path = cfg["out"] / "probe-seq.tsv"
+def run_sequential_probes(cfg: config.WorkloadConfig, client: HttpClient, lines: list) -> None:
+    path = cfg.out / "probe-seq.tsv"
     records = []
     for line in lines:
         hash_value, token = line.split("\t", 1)
@@ -1435,7 +1246,7 @@ def probe_stats(path: Path, label: str) -> str:
     )
 
 
-def _pick_first_servable(cfg: dict, client: HttpClient, lines: list) -> tuple:
+def _pick_first_servable(cfg: config.WorkloadConfig, client: HttpClient, lines: list) -> tuple:
     for line in lines[:8]:
         hash_value, token = line.split("\t", 1)
         try:
@@ -1451,8 +1262,8 @@ def _redact(command: str) -> str:
     return re.sub(r"Bearer [A-Za-z0-9._-]+", "Bearer <redacted>", command)
 
 
-def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
-    out = cfg["out"]
+def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) -> None:
+    out = cfg.out
     logger.log("=== final sweep (sequential, post-scan) ===")
     lines = build_probe_list(cfg, client)
     if lines is None:
@@ -1475,11 +1286,11 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
         ("edit-rating", cmd_edit_rating(cfg, timestamp)),
     ]
 
-    logger.log(f"=== hyperfine (warmup={cfg['warmup']} runs={cfg['repeats']}) ===")
+    logger.log(f"=== hyperfine (warmup={cfg.warmup} runs={cfg.repeats}) ===")
     results = run_hyperfine(
         cfg,
-        warmup=cfg["warmup"],
-        runs=cfg["repeats"],
+        warmup=cfg.warmup,
+        runs=cfg.repeats,
         export_json=out / "hyperfine.json",
         benches=benches,
         logger=logger,
@@ -1533,10 +1344,9 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
     logger.log(f"write-probe verification: asset {asset} rating={rating} (expected 3)")
 
     logger.log("=== summary ===")
-    logger.log(f"N={cfg['ncpu']} image_count={cfg['image_count']} image_bytes={cfg['image_bytes']}")
+    logger.log(f"N={cfg.ncpu} image_count={cfg.image_count} image_bytes={cfg.image_bytes}")
     logger.log(
-        f"scan_wall_ms={cfg['scan_wall_ms']:g} scan_state=completed "
-        f"(median of {cfg['scan_runs']} run(s))"
+        f"scan_wall_ms={cfg.scan_wall_ms:g} scan_state=completed (median of {cfg.scan_runs} run(s))"
     )
     logger.log(probe_stats(seq_path, "final-sweep"))
     logger.log(f"artifacts: {out}")
@@ -1544,27 +1354,27 @@ def run_post_scan(cfg: dict, client: HttpClient, logger: Logger) -> None:
 
 
 # --- upload profile ----------------------------------------------------------
-def _select_upload_sources(cfg: dict) -> list:
-    available = sorted(cfg["image_repo"].glob("*.jpg"), key=lambda path: path.name)
+def _select_upload_sources(cfg: config.WorkloadConfig) -> list:
+    available = sorted(cfg.image_repo.glob("*.jpg"), key=lambda path: path.name)
     cell_names = set()
-    image_path = cfg.get("image_path")
+    image_path = cfg.image_path
     if image_path is not None:
         try:
             cell_names = {path.name for path in Path(image_path).glob("*.jpg")}
         except OSError:
             cell_names = set()
     sources = [path for path in available if path.name not in cell_names]
-    if len(sources) < cfg["upload_files"]:
+    if len(sources) < cfg.upload_files:
         for path in available:
-            if len(sources) >= cfg["upload_files"]:
+            if len(sources) >= cfg.upload_files:
                 break
             sources.append(path)
     if not sources:
         raise WorkloadError("upload: no images available in IMAGE_REPO")
-    return sources[: cfg["upload_files"]]
+    return sources[: cfg.upload_files]
 
 
-def _uploaded_row_visible(cfg: dict, client: HttpClient, stored_name: str) -> bool:
+def _uploaded_row_visible(cfg: config.WorkloadConfig, client: HttpClient, stored_name: str) -> bool:
     """True once `stored_name` appears in the snapshot row space.
 
     The lookup pages the snapshot in PROBE_PAGE windows up to the cell's
@@ -1581,7 +1391,7 @@ def _uploaded_row_visible(cfg: dict, client: HttpClient, stored_name: str) -> bo
     token = doc.get("token")
     if timestamp is None or token is None:
         return False
-    page_size = cfg.get("probe_page", DEFAULT_PROBE_PAGE)
+    page_size = cfg.probe_page
     for _start, rows, _body in page_get_data(
         client, timestamp, token, page_size=page_size, cap=row_space_cap(cfg)
     ):
@@ -1602,7 +1412,7 @@ def _uploaded_row_visible(cfg: dict, client: HttpClient, stored_name: str) -> bo
     return False
 
 
-def wait_for_index_settled(cfg: dict, client: HttpClient, logger: Logger) -> str:
+def wait_for_index_settled(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) -> str:
     """Block until no album index is running, then return the observed state.
 
     A cell that materialises its image set can leave a full-library album
@@ -1610,7 +1420,7 @@ def wait_for_index_settled(cfg: dict, client: HttpClient, logger: Logger) -> str
     that index has settled, so the stimulus waits for a terminal state or
     `idle` (no job has run) and fails the cell when the budget expires.
     """
-    budget = cfg["index_settle_timeout_s"]
+    budget = cfg.index_settle_timeout_s
     logger.log(f"=== waiting for library index to settle (budget {budget:g}s) ===")
     started = time.monotonic()
     deadline = started + budget
@@ -1644,17 +1454,17 @@ def wait_for_index_settled(cfg: dict, client: HttpClient, logger: Logger) -> str
                 "idle server; wait for the initial index to finish or raise "
                 "INDEX_SETTLE_TIMEOUT_S"
             )
-        time.sleep(cfg["poll_interval_s"])
+        time.sleep(cfg.poll_interval_s)
 
 
-def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
+def run_upload_stimulus(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) -> None:
     sources = _select_upload_sources(cfg)
     logger.log(f"=== upload stimulus: {len(sources)} files ===")
     submit_times = []
     visible_times = []
-    poll_interval = cfg.get("poll_interval_s", 0.2)
-    timeout = cfg.get("upload_timeout_s", DEFAULT_UPLOAD_TIMEOUT_S)
-    post_timeout = cfg.get("upload_post_timeout_s", DEFAULT_UPLOAD_POST_TIMEOUT_S)
+    poll_interval = cfg.poll_interval_s
+    timeout = cfg.upload_timeout_s
+    post_timeout = cfg.upload_post_timeout_s
     for source in sources:
         started = time.perf_counter()
         status, body, elapsed = client.upload("/post/upload", source, timeout=post_timeout)
@@ -1690,8 +1500,8 @@ def run_upload_stimulus(cfg: dict, client: HttpClient, logger: Logger) -> None:
 
 
 # --- main flow ---------------------------------------------------------------
-def prepare_out(cfg: dict) -> None:
-    out = cfg["out"]
+def prepare_out(cfg: config.WorkloadConfig) -> None:
+    out = cfg.out
     out.mkdir(parents=True, exist_ok=True)
     for name in ARTIFACT_FILES:
         (out / name).unlink(missing_ok=True)
@@ -1703,43 +1513,43 @@ def prepare_out(cfg: dict) -> None:
                 path.unlink(missing_ok=True)
 
 
-def run_workload(cfg: dict) -> int:
+def run_workload(cfg: config.WorkloadConfig) -> int:
     prepare_out(cfg)
-    logger = Logger(cfg["out"] / "harness-a.log")
+    logger = Logger(cfg.out / "harness-a.log")
     try:
         logger.log("=== workload preflight ===")
         logger.log(
-            f"base_url={cfg['base_url']} out={cfg['out']} "
-            f"scan_repeats={cfg['scan_repeats']} repeats={cfg['repeats']} "
-            f"warmup={cfg['warmup']} runs_during={cfg['runs_during']} "
-            f"fetches={cfg['fetches']} images={cfg['images']}"
+            f"base_url={cfg.base_url} out={cfg.out} "
+            f"scan_repeats={cfg.scan_repeats} repeats={cfg.repeats} "
+            f"warmup={cfg.warmup} runs_during={cfg.runs_during} "
+            f"fetches={cfg.fetches} images={cfg.images}"
         )
-        logger.log(f"tool hyperfine: {cfg['hyperfine'] or 'MISSING'}")
+        logger.log(f"tool hyperfine: {cfg.hyperfine or 'MISSING'}")
 
         image_count, image_bytes = prepare_images(cfg, logger)
-        cfg["image_count"] = image_count
-        cfg["image_bytes"] = image_bytes
-        cfg["expected_entries"] = image_count
+        cfg.image_count = image_count
+        cfg.image_bytes = image_bytes
+        cfg.expected_entries = image_count
 
         logger.log("=== run parameters ===")
-        logger.log(f"N={cfg['ncpu']} out={cfg['out']}")
+        logger.log(f"N={cfg.ncpu} out={cfg.out}")
         logger.log(f"image_count={image_count} image_bytes={image_bytes}")
         logger.log(
-            f"hyperfine={cfg['hyperfine']} warmup={cfg['warmup']} "
-            f"repeats={cfg['repeats']} runs_during={cfg['runs_during']} "
-            f"scan_repeats={cfg['scan_repeats']} build_profile={cfg['build_profile']} "
-            f"port={cfg['port']}"
+            f"hyperfine={cfg.hyperfine} warmup={cfg.warmup} "
+            f"repeats={cfg.repeats} runs_during={cfg.runs_during} "
+            f"scan_repeats={cfg.scan_repeats} build_profile={cfg.build_profile} "
+            f"port={cfg.port}"
         )
-        logger.log(f"scan repeats: {cfg['scan_repeats']} (median wall time reported)")
+        logger.log(f"scan repeats: {cfg.scan_repeats} (median wall time reported)")
 
-        client = HttpClient(cfg["base_url"], cfg["cookie_jar"])
-        if cfg["workload"] == "upload":
+        client = HttpClient(cfg.base_url, cfg.cookie_jar)
+        if cfg.workload == "upload":
             wait_for_index_settled(cfg, client, logger)
             run_upload_stimulus(cfg, client, logger)
-            cfg["expected_entries"] = cfg["image_count"] + cfg["upload_files"]
+            cfg.expected_entries = cfg.image_count + cfg.upload_files
         median_ms, run_count = run_scans(cfg, client, logger)
-        cfg["scan_wall_ms"] = median_ms
-        cfg["scan_runs"] = run_count
+        cfg.scan_wall_ms = median_ms
+        cfg.scan_runs = run_count
         run_post_scan(cfg, client, logger)
         return 0
     except WorkloadError as err:
