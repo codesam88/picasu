@@ -25,6 +25,12 @@ step 13) as not a modeling fit.
   `#[quint::operation("OP-N")]` / `#[quint::event("NAME")]`. Known
   constraint: a proc-macro crate cannot export ordinary Rust items; a
   runtime library facet would need a second crate.
+- 2026-11-15: the crate moved WITHIN the `utils/quint` container to
+  `utils/quint/quint-annotate`. Package name stays `quint`, so the
+  attribute path `#[quint::operation(...)]` / `#[quint::event(...)]` is
+  untouched; catalog reads shifted one level to
+  `CARGO_MANIFEST_DIR/../pipeline` (build.rs rerun-if-changed likewise).
+  The TS validation tool moved to `utils/quint/coverage`.
 - 2026-11-13 (rung 0): compile-time id validation, not a registry. The
   macro parses the attribute argument, checks it against the catalog
   (serde_json), and emits `compile_error!` on an unknown id; `build.rs`

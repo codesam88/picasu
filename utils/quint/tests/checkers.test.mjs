@@ -87,7 +87,12 @@ function seedMarkers(root, ops = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
 }
 
 function runScript(script, args) {
-  return spawnSync("node", [join(quintDir, script), ...args], { encoding: "utf8" });
+  const sub = script === "events-check.mjs" ? "events"
+    : script === "catalog-check.mjs" ? "catalog"
+    : script === "operations-check.mjs" ? "ops"
+    : script === "specs-check.mjs" ? "specs"
+    : script;
+  return spawnSync("node", [join(quintDir, "coverage", "bin", "check.ts"), sub, ...args], { encoding: "utf8" });
 }
 
 // --- operations-check ---
@@ -142,6 +147,36 @@ test("operations-check accepts a property whose model declaration exists", () =>
   writeFileSync(join(pipeline, "operations.json"), JSON.stringify(ops, null, 2));
   const r = runScript("operations-check.mjs", [root]);
   assert.equal(r.status, 0, r.stderr);
+});
+
+// --- docs / doc-check subcommands (explicit file args are required) ---
+
+test("docs subcommand requires an output file argument", () => {
+  const root = fixtureRoot();
+  const pipeline = seedRealPipeline(root);
+  const r = runScript("docs", [pipeline]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /missing required output file/);
+});
+
+test("docs subcommand writes to the given output file", () => {
+  const root = fixtureRoot();
+  const pipeline = seedRealPipeline(root);
+  const out = join(root, "custom", "out.md");
+  const r = runScript("docs", [pipeline, out]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(readFileSync(out, "utf8").includes("Requirements:"));
+});
+
+test("doc-check reports drift against the given committed file", () => {
+  const root = fixtureRoot();
+  const pipeline = seedRealPipeline(root);
+  const committed = join(root, "custom", "committed.md");
+  mkdirSync(dirname(committed), { recursive: true });
+  writeFileSync(committed, "stale content\n");
+  const r = runScript("doc-check", [pipeline, committed]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /out of date with the generator/);
 });
 
 // --- events-check (real catalog as the positive fixture) ---

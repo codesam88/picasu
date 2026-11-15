@@ -24,7 +24,6 @@ graph LR
   openapi-check --> openapi-breakcheck
   openapi-check --> openapi-lint
   openapi-check --> openapi-sanity
-  quint::check --> quint::doc-check
   utils-check --> zizmor-check
   zizmor-check --> install
   openapi-breakcheck --> install
@@ -47,19 +46,19 @@ graph LR
 
 | Orphan                  | Orphan                |
 | ----------------------- | --------------------- |
-| `backend-build`         | `docs-format`         |
-| `backend-build-release` | `docs-openapi`        |
-| `backend-format`        | `docs-serve`          |
-| `bench::battery`        | `format`              |
-| `bench::battery-check`  | `frontend-format`     |
-| `bench::clean`          | `fuzz-run`            |
-| `bench::extract`        | `fuzz-serve`          |
-| `bench::format`         | `gates-docs`          |
-| `bench::lint`           | `install-dev`         |
-| `bench::preflight`      | `install-plan`        |
-| `bench::prepare`        | `openapi-gen`         |
-| `bench::run`            | `plan`                |
-| `bench::seed-images`    | `plan-format`         |
+| `backend-build`         | `docs-openapi`        |
+| `backend-build-release` | `docs-serve`          |
+| `backend-format`        | `format`              |
+| `bench::battery`        | `frontend-format`     |
+| `bench::battery-check`  | `fuzz-run`            |
+| `bench::clean`          | `fuzz-serve`          |
+| `bench::extract`        | `gates-docs`          |
+| `bench::format`         | `install-dev`         |
+| `bench::lint`           | `install-plan`        |
+| `bench::preflight`      | `openapi-gen`         |
+| `bench::prepare`        | `plan`                |
+| `bench::run`            | `plan-format`         |
+| `bench::seed-images`    | `quint::doc-check`    |
 | `bench::server`         | `quint::docs`         |
 | `bench::status`         | `quint::format`       |
 | `bench::test`           | `quint::fulltest`     |
@@ -70,6 +69,7 @@ graph LR
 | `clean`                 | `test-release`        |
 | `distclean`             | `utils-format`        |
 | `docs-build`            | `zizmor-check-online` |
+| `docs-format`           |                       |
 
 ## Rules by group
 
@@ -322,17 +322,15 @@ graph TD
   quint__lint["quint::lint"]
   quint__selftest["quint::selftest"]
   quint__test["quint::test"]
-  quint__check --> quint__doc-check
-  quint__doc-check ~~~ quint__docs & quint__format & quint__fulltest & quint__lint & quint__selftest & quint__test
 ```
 
-| Rule (justfile)    | Description                                                         | CI Workflow | Trigger |
-| ------------------ | ------------------------------------------------------------------- | ----------- | ------- |
-| `quint::check`     | runs on any code change; no model executions.                       | ❌️          | local   |
-| `quint::doc-check` | Generated-doc drift gate: regenerate into a tempdir and diff.       | ❌️          | local   |
-| `quint::docs`      | Regenerate docs/eventual-consistency.md from the JSON catalogs.     | ❌️          | -       |
-| `quint::format`    | Apply formatting.                                                   | ❌️          | -       |
-| `quint::fulltest`  | expect tens of minutes).                                            | ❌️          | -       |
-| `quint::lint`      | Static self-checks: prettier over the layer + typecheck both specs. | ❌️          | local   |
-| `quint::selftest`  | should (hermetic; no repo state touched).                           | ❌️          | -       |
-| `quint::test`      | Run both model entries at the standard sample count (10k per run).  | ❌️          | local   |
+| Rule (justfile)    | Description                                                            | CI Workflow | Trigger |
+| ------------------ | ---------------------------------------------------------------------- | ----------- | ------- |
+| `quint::check`     | Fast spec gates: run on any code change (no model runs).               | ❌️          | local   |
+| `quint::doc-check` | Generated-doc drift gate: regenerate + diff against the committed doc. | ❌️          | -       |
+| `quint::docs`      | Regenerate docs/eventual-consistency.md from the catalogs.             | ❌️          | -       |
+| `quint::format`    | Apply formatting.                                                      | ❌️          | -       |
+| `quint::fulltest`  | Deep model runs, elevated sample counts (nightly; tens of minutes).    | ❌️          | -       |
+| `quint::lint`      | Static self-checks: prettier over the layer + typecheck both specs.    | ❌️          | local   |
+| `quint::selftest`  | Checker self-tests: fixtures prove the gates fail when they should.    | ❌️          | -       |
+| `quint::test`      | Run both model entries at the standard sample count (10k per run).     | ❌️          | local   |

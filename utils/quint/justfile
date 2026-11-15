@@ -4,6 +4,7 @@
 
 root := source_directory() / ".." / ".."
 pipeline_dir := source_directory() / "pipeline"
+docs_report  := source_directory() / ".." / ".." / "docs" / "eventual-consistency.md"
 
 # List quint recipes.
 [private]
@@ -20,7 +21,8 @@ _install-quint:
 # Static self-checks: prettier over the layer + typecheck both specs.
 [group('quint')]
 lint: _install-quint
-    cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
+    cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md' '../utils/quint/coverage/**/*.ts'
+    cd "{{ root }}/frontend" && npx --no-install tsc --noEmit -p ../utils/quint/coverage/tsconfig.json
     quint typecheck "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint typecheck "{{ pipeline_dir }}/asset-aspects.qnt"
 
@@ -29,15 +31,10 @@ lint: _install-quint
 format:
     cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
 
-# Basic spec checks: catalog shapes, marker coverage, property refs,
-# event ownership, tag discipline, generated-doc freshness. Fast —
-# runs on any code change; no model executions.
+# Fast spec gates: run on any code change (no model runs).
 [group('quint')]
-check: doc-check
-    node "{{ source_directory() }}/events-check.mjs" "{{ pipeline_dir }}"
-    node "{{ source_directory() }}/catalog-check.mjs" "{{ pipeline_dir }}"
-    node "{{ source_directory() }}/operations-check.mjs" "{{ root }}"
-    node "{{ source_directory() }}/specs-check.mjs" "{{ pipeline_dir }}"
+check:
+    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}"
 
 # Run both model entries at the standard sample count (10k per run).
 [group('quint')]
@@ -45,8 +42,7 @@ test: _install-quint
     quint test "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint test "{{ pipeline_dir }}/asset-aspects.qnt"
 
-# Extensive model runs: elevated sample counts (deep/nightly lane;
-# expect tens of minutes).
+# Deep model runs, elevated sample counts (nightly; tens of minutes).
 [group('quint')]
 fulltest: _install-quint
     #!/usr/bin/env bash
@@ -54,32 +50,18 @@ fulltest: _install-quint
     quint test --max-samples 100000 "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint test --max-samples 100000 "{{ pipeline_dir }}/asset-aspects.qnt"
 
-# Regenerate docs/eventual-consistency.md from the JSON catalogs.
+# Regenerate docs/eventual-consistency.md from the catalogs.
 [group('quint')]
 docs:
-    node "{{ source_directory() }}/gen-eventual-consistency-doc.mjs" "{{ pipeline_dir }}" "{{ root }}"
-    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern '../docs/eventual-consistency.md'
+    node "{{ source_directory() }}/coverage/bin/check.ts" docs "{{ pipeline_dir }}" "{{ docs_report }}"
+    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "{{ docs_report }}"
 
-# Generated-doc drift gate: regenerate into a tempdir and diff.
+# Generated-doc drift gate: regenerate + diff against the committed doc.
 [group('quint')]
 doc-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' EXIT
-    mkdir -p "$tmpdir/docs"
-    node "{{ source_directory() }}/gen-eventual-consistency-doc.mjs" "{{ pipeline_dir }}" "$tmpdir"
-    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "$tmpdir/docs/eventual-consistency.md" >/dev/null
-    if ! diff -u "{{ root }}/docs/eventual-consistency.md" "$tmpdir/docs/eventual-consistency.md"; then
-        echo ""
-        echo "docs/eventual-consistency.md is out of date with the generator."
-        echo "Run 'just quint docs' and commit the result."
-        exit 1
-    fi
-    echo "docs/eventual-consistency.md matches the generated output"
+    node "{{ source_directory() }}/coverage/bin/check.ts" doc-check "{{ pipeline_dir }}" "{{ docs_report }}"
 
-# Checker self-tests: fixture catalogs prove the gates fail when they
-# should (hermetic; no repo state touched).
+# Checker self-tests: fixtures prove the gates fail when they should.
 [group('quint')]
 selftest:
     node --test "{{ source_directory() }}/tests/checkers.test.mjs"

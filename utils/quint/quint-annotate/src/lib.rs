@@ -10,7 +10,7 @@
 //! What this does not enforce (rung 1+): that the marker sits on a real
 //! item rather than a comment/string mention, that a valid-but-wrong id
 //! maps to the right function, or aspect/order drift between model and code.
-//! `utils/quint/operations-check.mjs` stays as the catalog-side backstop.
+//! `utils/quint/coverage/bin/check.ts` (ops subcommand) stays as the catalog-side backstop.
 
 extern crate proc_macro;
 

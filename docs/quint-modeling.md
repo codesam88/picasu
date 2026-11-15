@@ -49,7 +49,7 @@ premises. Classifying a new element:
    reason. No → hidden assumption: classify before merge.
 
 Implemented as `just quint check` over committed files (the
-`utils/quint/events-check.mjs` pattern): machine-readable `@assumes` /
+`utils/quint/coverage/bin/check.ts` pattern): machine-readable `@assumes` /
 `@requires` / `@scope` tags on every spec definition, registries in
 `utils/quint/pipeline/assumptions.json`, `utils/quint/pipeline/requirements.json` and
 `utils/quint/pipeline/scope.json`, and a generated traceability map
