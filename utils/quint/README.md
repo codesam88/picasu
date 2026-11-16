@@ -112,6 +112,12 @@ never silent.
 
 - `coverage/bin/check.ts specs` — closed-world tag audit and the generated
   `pipeline/traceability.json` map.
+- `coverage/bin/check.ts steps` — branch-completeness audit for step
+  actions: every `action` declaration reachable through a `step*` module's
+  imports must appear in its `any { ... }` list (`init` and the step actions
+  themselves are exempt). A forgotten branch fails the gate instead of
+  silently narrowing the verified reachable set; stutter (`Skip`) presence is
+  not required.
 - `coverage/bin/check.ts events`, `coverage/bin/check.ts catalog` — catalog
   validation against `pipeline/catalog.schema.json`.
 - `coverage/bin/check.ts ops` — validates `pipeline/operations.json` and the
