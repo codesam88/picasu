@@ -205,6 +205,12 @@ module asset_aspects {
     // re-resolved by path under the move lease; a missing record (N5) aborts
     // the move, so the step is not enabled.
     assetById.keys().contains(assetByPath.get(p)),
+    // SCOPE-10: the move lease is held across this rewrite and released here;
+    // the row follows the FS rename, so an acquired-but-unmoved lease cannot.
+    leasedPaths.contains(p),
+    leasedPaths.contains(q),
+    not(files.get(p).present),
+    files.get(q).present,
     leasedPaths' = leasedPaths.exclude(Set(p, q)),
     assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
     assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
