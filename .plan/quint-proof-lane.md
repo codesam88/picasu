@@ -73,8 +73,30 @@ modifications applied in generation order, none lost.
      (incomplete drain set, e.g. an uncompletable lease), its traces
      silently never reach a checked state — review the drain-set table
      for exhaustiveness.
-     Status: implementation in progress (background worker); sanity ladder
-     and gates next.
+     Status: implementation landed (fdfc816a): one `stepCompletion` action
+     (1507 branches, phase-guarded via `Stay` wrappers for var-update-set
+     uniformity), `Quiescent` with the sweepPending conjunct, checker
+     extended to exempt `init*` entry actions (selftest 17). `stepAspects`
+     superseded and removed. Drain-set reclassifications: `RemoveIdOnly`
+     is crash-window residue (phases 0+1; its only repair is a scan);
+     `IntakePickupFileGone` is a consumer; `MemberWrite` is a pure
+     stutter. Measurement note: uniform sampling essentially never
+     reaches phase 2 (~250 enabled branches vs a ~12-branch completion
+     path), so `quint run` sampling is weak for this invariant — Apalache
+     BMC is the operative check (a violating trace at 10k samples/30
+     steps is found in seconds).
+     Counterexample-driven refinement loop so far (each finding verified
+     against code before fixing): (1) ghost row after unobserved
+     ExternalDelete -> motivated the completion machine itself;
+     (2) `MoveRowRewrite` released the move lease it never required ->
+     fixed (ee5adc95): guard requires the held lease on both endpoints
+     plus the FS post-move state (rewrite follows the rename); (3)
+     `RotateFinish` same lease omission, and `WorkerSkipUnchanged`
+     compared only the metadata projection while the code always
+     rewrites the identity record on apply (flush_tree.rs; no
+     unchanged-skip exists at worker level, hash short-circuit deferred
+     per REQ-1) -> fixes in progress (skip is sound only when
+     reprocessing would be a full no-op).
 3. Scope entry: SCOPE-13 "Nondeterministic scheduling" — any action (FS
    event, API call, fault, pipeline step, Skip) may fire per tick; no
    fairness. API calls are environment events like FS events; the model's
