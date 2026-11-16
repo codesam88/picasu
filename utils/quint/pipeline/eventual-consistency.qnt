@@ -35,16 +35,20 @@ module eventual_consistency {
   // Derived view of the old `rows` map, reconstructed from the split
   // aspect tables. Kept as a read-only projection so existing run
   // assertions and guards that reference `rows` keep their meaning.
+  // The projection is total: guards evaluate `rows.keys()` in torn states,
+  // where a path entry outlives its record (RemoveIdOnly drops ASSET_BY_ID
+  // and METADATA_TABLE before ASSET_BY_PATH, N5), so the record reads fall
+  // back to the no-metadata values instead of raising on a missing key.
   // @exempt observer
   val rows = assetByPath.keys().mapBy(p =>
     {
       assetId: assetByPath.get(p),
-      assetHash: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).assetHash } else { assetById.get(assetByPath.get(p)).contentHash },
+      assetHash: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).assetHash } else { if (assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).contentHash } else { 0 } },
       modified: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).modified } else { 0 },
       fileSize: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 },
       sidecar: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).sidecar } else { 0 },
       converged: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).converged } else { false },
-      thumb: (assetById.get(assetByPath.get(p)).contentHash >= 0 and thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))
+      thumb: (assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).contentHash >= 0 and thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))
     }
   )
 
@@ -114,6 +118,10 @@ module eventual_consistency {
   // @scope SCOPE-7
   action ExternalRenameDir: bool = all {
     SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and files.get(pr.src).present and not(files.get(pr.dst).present)),
+    // collect_dir_move_plans re-reads each descendant record and rejects the
+    // whole move when a path row has no record (N5 residue), so this branch is
+    // not enabled in that state.
+    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (not(assetByPath.keys().contains(pr.src)) or assetById.keys().contains(assetByPath.get(pr.src)))),
     files' = SUBTREE_PAIRS.foldl(files, (acc, pr) =>
       acc.set(pr.src, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
@@ -302,6 +310,11 @@ module eventual_consistency {
     p.in(PATHS),
     files.get(p).present,
     rows.keys().contains(p),
+    // The edit path composes the current record from ASSET_BY_ID and
+    // METADATA_TABLE and skips an asset that does not compose, so a torn path
+    // row (N5) cannot apply an edit.
+    assetById.keys().contains(assetByPath.get(p)),
+    metadataPayload.keys().contains(assetByPath.get(p)),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: 1 }),
     generations' = generations.set(p, generations.get(p) + 1),
     metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: 1, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
@@ -341,6 +354,10 @@ module eventual_consistency {
     files.get(p).present,
     rows.keys().contains(p),
     files.get(p).sidecar != rows.get(p).sidecar,
+    // rotate_image resolves the composed record and answers 404 when either
+    // table row is gone, so a torn path row (N5) cannot finish a rotation.
+    assetById.keys().contains(assetByPath.get(p)),
+    metadataPayload.keys().contains(assetByPath.get(p)),
     metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: files.get(p).sidecar, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
     assetById' = assetById,
     assetByPath' = assetByPath,
@@ -381,6 +398,9 @@ module eventual_consistency {
     p.in(PATHS),
     files.get(p).present,
     rows.keys().contains(p),
+    // process_deletes resolves the record by asset id and answers 404 when it
+    // is gone, so a path row without its record (N5) cannot be deleted.
+    assetById.keys().contains(assetByPath.get(p)),
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }),
     generations' = generations,
     intake' = intake,
@@ -405,6 +425,10 @@ module eventual_consistency {
     files.get(p).present,
     not(files.get(q).present),
     rows.keys().contains(p),
+    // move_asset_into_album resolves the record by path and re-reads it under
+    // the lease ("Asset not found" when it is gone), so a torn path row (N5)
+    // cannot move.
+    assetById.keys().contains(assetByPath.get(p)),
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }).set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
     generations' = generations,
     intake' = intake,
@@ -425,6 +449,9 @@ module eventual_consistency {
   // @scope SCOPE-7
   action ApiAssignDirMove: bool = all {
     SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and files.get(pr.src).present and not(files.get(pr.dst).present)),
+    // Same re-resolve as ExternalRenameDir: collect_dir_move_plans rejects a
+    // descendant path row whose record is gone.
+    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (not(assetByPath.keys().contains(pr.src)) or assetById.keys().contains(assetByPath.get(pr.src)))),
     files' = SUBTREE_PAIRS.foldl(files, (acc, pr) =>
       acc.set(pr.src, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
@@ -509,6 +536,10 @@ module eventual_consistency {
   // @scope SCOPE-4
   action WorkerApplySuccess: bool = {
     nondet it = oneOf(if (intake.size() > 0) intake else Set({ path: "p1", generation: 0, kind: "scan", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
+    // Re-index re-resolves the row by path (flush_tree.rs::existing_id) and,
+    // when the path key outlived its record (N5), reuses the id with
+    // old_record = None: the carried fields are empty rather than missing. The
+    // record reads below therefore test resolvability instead of raising.
     all {
       intake.size() > 0,
       it.generation == generations.get(it.path),
@@ -517,23 +548,23 @@ module eventual_consistency {
       assetById' = (if (assetByPath.keys().contains(it.path)) { assetById } else { assetById }).put(
         if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
         { assetId: if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
-          kind: if (assetByPath.keys().contains(it.path)) { assetById.get(assetByPath.get(it.path)).kind } else { "media" },
+          kind: if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).kind } else { "media" },
           path: it.path,
           contentHash: it.assetHash,
-          albumId: if (assetByPath.keys().contains(it.path)) { assetById.get(assetByPath.get(it.path)).albumId } else { 0 },
-          isTrashed: if (assetByPath.keys().contains(it.path)) { assetById.get(assetByPath.get(it.path)).isTrashed } else { false } }),
+          albumId: if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).albumId } else { 0 },
+          isTrashed: if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).isTrashed } else { false } }),
       assetByPath' = assetByPath.put(it.path, if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }),
       metadataPayload' = metadataPayload.put(
         if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
-        { kind: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).kind } else { "media" },
+        { kind: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).kind } else { "media" },
           assetHash: it.assetHash,
           modified: it.mtime,
           fileSize: it.len,
           sidecar: it.sidecar,
           converged: true,
-          itemCount: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
-          itemSize: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
-          hasShareList: if (assetByPath.keys().contains(it.path)) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
+          itemCount: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
+          itemSize: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
+          hasShareList: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
       dupeIndex' = (if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path)) and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
@@ -642,6 +673,8 @@ module eventual_consistency {
       it.kind == "remove",
       it.generation == generations.get(it.path),
       not(files.get(it.path).present),
+      // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+      metadataPayload.keys().contains(0),
       assetById' = if (assetByPath.keys().contains(it.path)) { assetById.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => assetById.get(k)) } else { assetById },
       assetByPath' = if (assetByPath.keys().contains(it.path)) { assetByPath.keys().exclude(Set(it.path)).mapBy(k => assetByPath.get(k)) } else { assetByPath },
       metadataPayload' = if (assetByPath.keys().contains(it.path)) { metadataPayload.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => metadataPayload.get(k)).put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { 1 } else { 0 }), itemSize: metadataPayload.get(0).itemSize - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { (if (metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).fileSize } else { 0 }) } else { 0 }), hasShareList: metadataPayload.get(0).hasShareList }) } else { metadataPayload },

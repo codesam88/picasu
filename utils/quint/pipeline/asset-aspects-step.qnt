@@ -135,11 +135,11 @@ module asset_aspects_step {
   // reachable state are asserted here; convergence is asserted at the
   // settled initial state, not after arbitrary steps.
   //
-  // The composed runs surface a totality gap: arbitrary interleavings reach
-  // states the base and aspect action bodies do not expect (a path-map entry
-  // whose record was removed by RemoveIdOnly, or no album record after
-  // DbLoss), where an unguarded record read raises a runtime error instead
-  // of disabling the branch.
+  // Arbitrary interleavings reach states the base and aspect action bodies
+  // must stay defined on (a path-map entry whose record was removed by
+  // RemoveIdOnly, or no album record after DbLoss). Totality there is carried
+  // by action preconditions, never by locks: a branch that cannot resolve its
+  // record is not enabled, so it never half-applies.
 
   // The settled premise is satisfiable and the invariant holds on it.
   // @assumes ASS-6
