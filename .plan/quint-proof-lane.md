@@ -16,7 +16,7 @@ modeled bounds.
 Correction to the earlier framing: the shared prerequisite largely exists.
 `eventual-consistency.qnt` already defines `action init` (state module) and
 `action step = any { ... }` (~100 argument-enumerated branches). The gaps:
-the 14 asset-aspects actions are in no step; no `Skip`/stutter branch; no
+the 16 asset-aspects actions are in no step; no `Skip`/stutter branch; no
 `Settled`-conditional invariant form; no branch-completeness enforcement;
 no scope entry for scheduler nondeterminism; nothing wired to
 `quint verify`.
@@ -58,6 +58,9 @@ modifications applied in generation order, none lost.
    (S6-style staleness). Then decide between (a) an additive per-root
    scan-completion watermark variable or (b) a documented-stale-shapes
    disjunction; (a) is the lean.
+   Status: step module landed (248 branches, base + 16 aspects actions ×
+   parameter ranges + Skip); `Settled`/`ConvergenceInvariant` defined;
+   sanity runs pass at 10k after totality guards.
 3. Scope entry: SCOPE-13 "Nondeterministic scheduling" — any action (FS
    event, API call, fault, pipeline step, Skip) may fire per tick; no
    fairness. API calls are environment events like FS events; the model's
@@ -112,3 +115,16 @@ modifications applied in generation order, none lost.
 - 2026-11-15: `Settled` needs the completed-scan premise (G1); lean
   option (a) additive scan watermark, decided after the spike shows the
   plain quiescence-invariant violation shapes.
+- 2026-11-16: step module landed (63e843ea, 3cfba474, 9135e7ca). Totality
+  guards accepted as two classes: projection totalization (torn states must
+  be representable) and resolvability/liveness preconditions mirroring code
+  re-checks (REQ-7, SCOPE-11/12). `WorkerApplySuccess`/`UploadIndexed` use
+  resolvability-conditioned reads instead of disabling guards, mirroring
+  flush_tree.rs `existing_id`/`old_record = None` re-use-or-heal — a
+  disabling guard would deadlock the dangling-path-key + present-file shape
+  (sweeps only enumerate absent files). Album aggregate row id 0 confirmed.
+- 2026-11-16: open fidelity question flagged (not changed): on torn
+  re-index, the model's album itemCount delta keys off
+  `assetByPath.contains(p)` while flush_tables decides add-vs-update from
+  `old_album_id` (None → re-add member, +1). No assertion covers aggregates
+  on torn states.
