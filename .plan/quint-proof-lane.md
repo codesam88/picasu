@@ -137,6 +137,31 @@ modifications applied in generation order, none lost.
 7. Deferred: eventual-consistency full-model bake-off, inductive invariants,
    liveness/temporal properties.
 
+## Parameterization spike (2026-11-16, branch invest/quint-param)
+
+Verdict: **mechanism B (generated instance copy)**. Quint 0.33.1 has module
+instances (`import M(PATHS = ...).* from "..."`) that bind correctly per
+instance, but instances are copies, not shared bindings: a state variable
+instantiated twice in one module graph becomes two distinct variables
+(QNT502 "Variable not set" when another module reads it), and `export` of an
+instance re-resolves the prototype, losing the substitution (QNT500).
+Qualified access (`import M(...) as C`, `C::x`) works as one coherent
+instance but would require rewriting ~2,000 state-reference sites to
+`C::name`. Applied to a copy of the real pipeline, the star-import route
+fails the canonical-behavior constraint (goal predicate reads a different
+instance's variable). Flattener source confirms: imports/exports flatten
+before instances. Checker note: step.ts's import regex does not see
+instance imports (B needs no checker change).
+
+Reduction surface is wider than the four constants — hardcoded to canonical
+bounds: state `init` maps, `initialId`, `rootOf`'s p5 branch,
+`dupeIndex`/`thumbPresent` key maps, `nextAssetId' = 6`, `SUBTREE_PAIRS`
+literals, and the step enumerations naming p1..p5. A generated instance must
+regenerate these, so the recommended sequence is: (1) make the canonical
+specs bound-agnostic where cheap (derived init maps, rootOf, SUBTREE_PAIRS),
+(2) decide the step-branch form (literal enumeration vs nondet-parameterized
+wrappers), (3) generator + staleness gate for the instance.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
