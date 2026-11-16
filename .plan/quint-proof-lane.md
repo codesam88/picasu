@@ -48,19 +48,33 @@ modifications applied in generation order, none lost.
    variants coexist deliberately (both code-faithful at different
    resolutions; the fine ones expose the lease/torn-window intermediate
    states). The base specs and all 33 runs stay untouched.
-2. Invariant re-expression: `val Settled = ...` (quiescence conditions) and
-   `val inv = Settled implies (Converged and AspectsAligned)`. Design risk:
-   quiescence alone is insufficient — the FS_MODIFY_INFLIGHT gap pins
-   permanent staleness at a settle point (`skipStaleTest`), and G1 requires
-   "changes stopped AND a full scan completed". Spike path: check with a
-   plain quiescence `Settled` first; the violation shapes the checker
-   reports are expected to be exactly the documented open-fault cases
-   (S6-style staleness). Then decide between (a) an additive per-root
-   scan-completion watermark variable or (b) a documented-stale-shapes
-   disjunction; (a) is the lean.
-   Status: step module landed (248 branches, base + 16 aspects actions ×
-   parameter ranges + Skip); `Settled`/`ConvergenceInvariant` defined;
-   sanity runs pass at 10k after totality guards.
+2. Invariant re-expression — resolved by the phased completion machine
+   (replaces the plain `Settled implies Converged` approach, which a first
+   Apalache run falsified with a documented ghost shape):
+   - Phases in the step module (base modules untouched; `--init initCompletion`
+     wrapper): 0 free (any action + BeginDrain) → 1 draining (drain-set +
+     ProcessCrash/LoseThumbs/DbLoss + untracked ScanRoot) → 2 scanning
+     (tracked `CompleteScan(r)` per root, mandatory, then resolution of what
+     scans create; fault-free — the one uninterrupted cycle).
+   - `CompletionInvariant = (phase = 2 ∧ scannedRoots = ROOTS ∧ Quiescent)
+⇒ (Converged ∧ AspectsAligned)`.
+   - Ordering rationale (user-confirmed): scan triggers mix with events,
+     API calls and crashes in phases 0–1; only the final cycle is assumed
+     uninterrupted. `ScanRoot` creates work (submits intake, sets
+     sweepPending unconditionally), so the scan is last and its findings
+     drain inside phase 2 — G2's "first backstop cycle that starts" shape.
+   - Crash resilience: crashes destroy pending work (ProcessCrash clears
+     intake/batch/leases; DbLoss clears the DB projection); whatever the
+     drain loses, the final scan cycle restores. Crash-heal stays covered
+     because completion can be entered from any reachable state.
+   - `Quiescent` includes ∀r: not sweepPending(r) (a set flag is pending
+     work — SweepRoot is enabled whenever it holds).
+   - Known caveat: if quiescence is unreachable from some phase-1 state
+     (incomplete drain set, e.g. an uncompletable lease), its traces
+     silently never reach a checked state — review the drain-set table
+     for exhaustiveness.
+     Status: implementation in progress (background worker); sanity ladder
+     and gates next.
 3. Scope entry: SCOPE-13 "Nondeterministic scheduling" — any action (FS
    event, API call, fault, pipeline step, Skip) may fire per tick; no
    fairness. API calls are environment events like FS events; the model's
@@ -81,6 +95,15 @@ modifications applied in generation order, none lost.
    full intake-set universe — one measurement on reduced bounds to confirm).
    Sanity ladder first: `quint typecheck` → step-composed `run` scenarios →
    `quint run --invariant` → only then verify.
+   Datapoints so far (on the pre-completion-machine invariant, still
+   informative for runtime): Apalache 0.62.4 auto-downloaded by quint into
+   `~/.quint/`; needs a JRE (no system java — a portable Temurin 21 JRE
+   unpacked to `~/.quint/jre` works: `PATH=~/.quint/jre/bin:$PATH`);
+   depth-6 BMC on the 248-branch step ≈ 58 s and it found the expected
+   ghost-row counterexample (ExternalDelete with no watcher delivery →
+   quiescent but not converged) — exactly the shape that motivated the
+   completion machine. TLC not yet measured (no JRE needed; postponed
+   until the invariant is final).
 6. Run on a nightly lane only; `quint run` stays the merge gate. Claims quote
    the SCOPE register and the step bound.
 7. Deferred: eventual-consistency full-model bake-off, inductive invariants,
