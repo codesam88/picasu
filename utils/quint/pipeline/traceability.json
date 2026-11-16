@@ -8,8 +8,7 @@
       "refs": [
         "asset-aspects-step.qnt:AssetIdKeyCoherent",
         "asset-aspects-step.qnt:WithinBounds",
-        "asset-aspects-step.qnt:stepAspectsFourStepTest",
-        "asset-aspects-step.qnt:stepAspectsTwoStepTest",
+        "asset-aspects-step.qnt:completionTwoStepTest",
         "eventual-consistency.qnt:ApiAssignDirMove",
         "eventual-consistency.qnt:ApiMove",
         "eventual-consistency.qnt:ExternalRenameDir",
@@ -33,7 +32,11 @@
       "kind": "ASS",
       "title": "filesystem first: external FS modifications are authoritative and adopted by convergence",
       "refs": [
+        "asset-aspects-step.qnt:CompleteScan",
+        "asset-aspects-step.qnt:CompletionInvariant",
         "asset-aspects-step.qnt:ConvergenceInvariant",
+        "asset-aspects-step.qnt:completionCrashScanHealsTest",
+        "asset-aspects-step.qnt:completionScanTest",
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
         "asset-aspects.qnt:DupeIndexBijective",
@@ -110,10 +113,15 @@
       "kind": "ASS",
       "title": "quiescence (safety invariants asserted at settled state)",
       "refs": [
+        "asset-aspects-step.qnt:BeginScan",
+        "asset-aspects-step.qnt:CompleteScan",
+        "asset-aspects-step.qnt:CompletionInvariant",
         "asset-aspects-step.qnt:ConvergenceInvariant",
-        "asset-aspects-step.qnt:Settled",
-        "asset-aspects-step.qnt:stepAspects",
-        "asset-aspects-step.qnt:stepAspectsSettledInitTest",
+        "asset-aspects-step.qnt:Quiescent",
+        "asset-aspects-step.qnt:completionCrashScanHealsTest",
+        "asset-aspects-step.qnt:completionInitTest",
+        "asset-aspects-step.qnt:completionScanTest",
+        "asset-aspects-step.qnt:stepCompletion",
         "asset-aspects.qnt:AlbumShareEdit",
         "asset-aspects.qnt:AlbumStatsConsistent",
         "asset-aspects.qnt:AlbumStatsNoPhantom",
@@ -201,6 +209,7 @@
       "kind": "SCOPE",
       "title": "Initial converged state",
       "refs": [
+        "asset-aspects-step.qnt:initCompletion",
         "eventual-consistency-state.qnt:init",
         "eventual-consistency-state.qnt:initialAlbumAssetRecord",
         "eventual-consistency-state.qnt:initialAlbumMetadataRecord",
@@ -294,6 +303,7 @@
       "kind": "SCOPE",
       "title": "Completed-write crash abstraction",
       "refs": [
+        "asset-aspects-step.qnt:completionCrashScanHealsTest",
         "asset-aspects.qnt:DirMoveFsOnly",
         "asset-aspects.qnt:aspectsDirMoveCrashHealsTest",
         "asset-aspects.qnt:aspectsUploadCrashHealsTest",
@@ -386,13 +396,19 @@
       "kind": "SCOPE",
       "title": "Nondeterministic scheduling",
       "refs": [
+        "asset-aspects-step.qnt:BeginDrain",
+        "asset-aspects-step.qnt:BeginScan",
+        "asset-aspects-step.qnt:CompleteScan",
+        "asset-aspects-step.qnt:CompletionInvariant",
         "asset-aspects-step.qnt:ConvergenceInvariant",
-        "asset-aspects-step.qnt:Settled",
+        "asset-aspects-step.qnt:Quiescent",
         "asset-aspects-step.qnt:Skip",
-        "asset-aspects-step.qnt:stepAspects",
-        "asset-aspects-step.qnt:stepAspectsFourStepTest",
-        "asset-aspects-step.qnt:stepAspectsSettledInitTest",
-        "asset-aspects-step.qnt:stepAspectsTwoStepTest"
+        "asset-aspects-step.qnt:Stay",
+        "asset-aspects-step.qnt:completionCrashScanHealsTest",
+        "asset-aspects-step.qnt:completionInitTest",
+        "asset-aspects-step.qnt:completionScanTest",
+        "asset-aspects-step.qnt:completionTwoStepTest",
+        "asset-aspects-step.qnt:stepCompletion"
       ]
     }
   ]

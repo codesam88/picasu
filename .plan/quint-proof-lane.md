@@ -128,3 +128,9 @@ modifications applied in generation order, none lost.
   `assetByPath.contains(p)` while flush_tables decides add-vs-update from
   `old_album_id` (None → re-add member, +1). No assertion covers aggregates
   on torn states.
+- 2026-11-16: phased completion machine landed in `asset-aspects-step.qnt`
+  (replaces `stepAspects`/`Settled`): `phase` 0 free → 1 draining (crashes,
+  untracked scans) → 2 scanning (one tracked `CompleteScan` per root), with
+  `CompletionInvariant` claimed at phase-2 quiescence. Scan triggers mix with
+  the drain and crashes by design; only the final tracked cycle is assumed
+  clean. The steps checker exempts `init<Name>` entry actions.

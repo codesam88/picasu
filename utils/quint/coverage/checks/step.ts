@@ -12,8 +12,9 @@
 // - Imports are resolved from `import M.* from "./file"` (whole module) and
 //   `import M.name from "./file"` (that one action only). Module-qualified
 //   references (`M.name(...)`) are not scanned; no current model uses them.
-// - Excluded from the required set: `init` (the `--init` operand, not a step
-//   branch) and any name matching the step pattern (`step`, `stepAspects`),
+// - Excluded from the required set: `init` and `init<Name>` entry actions
+//   (the `--init` operands of a run or verify invocation, not scheduler
+//   branches) and any name matching the step pattern (`step`, `stepAspects`),
 //   which are the step actions themselves rather than branches.
 // - A missing `Skip`-style stutter branch is not reported: stutter is a
 //   modeling policy, not a completeness fact.
@@ -44,6 +45,12 @@ const IMPORT_RE =
 
 function isStepName(name: string): boolean {
   return /^step\w*$/.test(name);
+}
+
+// `init` and `init<Name>` are run/verify entry points (an `--init` operand),
+// not branches the scheduler may pick.
+function isInitName(name: string): boolean {
+  return /^init\w*$/.test(name);
 }
 
 // Replace comments (and, unless `keepStrings`, double-quoted strings) with
@@ -231,7 +238,7 @@ export function run(args: string[]): number {
     const reachable = collectReachable(join(base, sa.file));
     const required: [string, ActionDecl][] = [];
     for (const [name, decl] of reachable) {
-      if (name === "init" || isStepName(name)) continue;
+      if (isInitName(name) || isStepName(name)) continue;
       required.push([name, decl]);
     }
     for (const [name, decl] of required) {
