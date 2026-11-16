@@ -265,9 +265,9 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-13: Nondeterministic scheduling
 
-Bound: Any action may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints (stepAspects in utils/quint/pipeline/asset-aspects-step.qnt).
+Bound: Within a phase, any action classified for that phase may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints inside a phase. The completion phases are the only sequencing: free (every action, untracked scans included), draining (work-consuming branches, crashes, untracked scans, then BeginScan at quiescence), scanning (one tracked CompleteScan per root, then work-consuming branches) — see stepCompletion in utils/quint/pipeline/asset-aspects-step.qnt. The phases encode the G1/G2 observation premise (changes stopped and a tracked scan completed), not pipeline inter-locking.
 
-Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
+Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. The phase machine narrows the observation window deliberately: the invariant is claimed only at phase-2 quiescence, after the tracked scan of each root has drained. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
 
 Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness properties.
 

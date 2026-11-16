@@ -44,11 +44,16 @@ Current contents of `pipeline/`:
   thumbnail/derived, DB asset row): alignment predicates and
   conflicting-pair runs over the same state; imports
   `eventual-consistency.qnt`.
-- `asset-aspects-step.qnt` — the proof-lane entry: `stepAspects`
-  enumerates the base step branches, all 16 asset-aspect actions over
-  their parameter ranges, and a stutter branch; `Settled` and
-  `ConvergenceInvariant` restate the goal as settled-state safety. Its
-  sanity runs are simulation-only and are not part of `just quint test`.
+- `asset-aspects-step.qnt` — the proof-lane entry: `stepCompletion`
+  enumerates every base and asset-aspect action over its parameter
+  ranges in a three-phase completion machine (`phase` 0 free, 1
+  draining, 2 scanning; `scannedRoots` watermark). Phase 0 admits every
+  action; phase 1 freezes the environment and admits the work-consuming
+  branches, crashes, and untracked rescans; phase 2 takes one tracked
+  `CompleteScan` per root and drains the work it creates.
+  `Quiescent` is the drained-state predicate and `CompletionInvariant`
+  claims the goal at phase-2 quiescence. Its sanity runs are
+  simulation-only and are not part of `just quint test`.
 - `operations.json` — internal mutation operations OP-1..OP-12 with
   events, aspect reads/writes, guards, status and interaction nodes;
   validated by `just operations-check` against backend annotations.
@@ -114,10 +119,10 @@ never silent.
   `pipeline/traceability.json` map.
 - `coverage/bin/check.ts steps` — branch-completeness audit for step
   actions: every `action` declaration reachable through a `step*` module's
-  imports must appear in its `any { ... }` list (`init` and the step actions
-  themselves are exempt). A forgotten branch fails the gate instead of
-  silently narrowing the verified reachable set; stutter (`Skip`) presence is
-  not required.
+  imports must appear in its `any { ... }` list (`init`/`init<Name>` entry
+  actions and the step actions themselves are exempt). A forgotten branch
+  fails the gate instead of silently narrowing the verified reachable set;
+  stutter (`Skip`) presence is not required.
 - `coverage/bin/check.ts events`, `coverage/bin/check.ts catalog` — catalog
   validation against `pipeline/catalog.schema.json`.
 - `coverage/bin/check.ts ops` — validates `pipeline/operations.json` and the
@@ -242,6 +247,7 @@ names, catalogs or docs; name the entity
 | `sweepPending`                                                                                                                      | per-root sweep pending flag set by `ScanRoot`/the scan job in `tasks/actor/album_index.rs`                                                    |
 | `nextAssetId`                                                                                                                       | asset-id allocation via `generate_random_hash` in `model/asset.rs` (`AssetRecord::new_media`/`new_album`) and `flush_tree.rs`                 |
 | `unprocessable`                                                                                                                     | model-only; ingest failures are logged via `note_file_failed`/`handle_error`, not a stored set                                                |
+| `phase` / `scannedRoots`                                                                                                            | model-only proof-lane completion machine (free → draining → scanning); no backend counterpart                                                 |
 | `SweepEnumerate`                                                                                                                    | enumeration loop of `tasks/actor/album_index.rs::sweep_stale_asset_paths`                                                                     |
 | `SweepRecheck`                                                                                                                      | inline re-check loop of `sweep_stale_asset_paths` (generation, `is_busy`, `path.exists`, pre-submit)                                          |
 | `SweepRemoveBatchApply`                                                                                                             | `flush_tree.rs::sweep_remove_batch`, submitted as `WriteOp::SweepRemoveBatch` via `tasks/queue/writer.rs::submit`; exists-skip + resolve only |

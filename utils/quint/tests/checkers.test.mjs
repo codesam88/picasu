@@ -286,8 +286,29 @@ test("steps accepts a complete branch list and skips init and step itself", () =
   assert.match(r.stdout, /2 branches/);
 });
 
-test("steps passes trivially when no step module exists", () => {
+test("steps excludes init<Name> entry actions from the required set", () => {
   const root = fixtureRoot();
+  const pipeline = seedStepFixture(root, { complete: true });
+  writeFileSync(
+    join(pipeline, "step.qnt"),
+    [
+      "module step_fixture {",
+      '  import actions.* from "./actions"',
+      "  action initPhase: bool = all { n' = 0 }",
+      "  action step: bool = any {",
+      "    Alpha,",
+      "    Beta,",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  const r = runScript("steps", [pipeline]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /2 branches/);
+});
+
+test("steps passes trivially when no step module exists", () => {  const root = fixtureRoot();
   const pipeline = seedStepFixture(root, { withStep: false });
   const r = runScript("steps", [pipeline]);
   assert.equal(r.status, 0, r.stderr);
