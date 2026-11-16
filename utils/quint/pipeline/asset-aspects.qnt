@@ -137,6 +137,8 @@ module asset_aspects {
   // @operation OP-8
   action SweepRemoveBatchApply: bool = all {
     sweepBatch.keys().size() > 0,
+    // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+    metadataPayload.keys().contains(0),
     assetByPath' = assetByPath.keys().filter(p =>
       not (sweepBatch.keys().contains(p) and
            assetByPath.keys().contains(p) and
@@ -199,6 +201,10 @@ module asset_aspects {
     q.in(PATHS),
     not(p == q),
     rows.keys().contains(p),
+    // Resolve-then-validate (REQ-7): the row rewrite reads the record it
+    // re-resolved by path under the move lease; a missing record (N5) aborts
+    // the move, so the step is not enabled.
+    assetById.keys().contains(assetByPath.get(p)),
     leasedPaths' = leasedPaths.exclude(Set(p, q)),
     assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
     assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
@@ -497,17 +503,22 @@ module asset_aspects {
   // UploadIndexed maps to tasks/queue/worker.rs intake application running workflow::process_file (index path).
   action UploadIndexed(p: str): bool = {
     nondet it = oneOf(if (intake.exists(i => i.path == p)) intake.filter(i => i.path == p) else Set({ path: p, generation: 0, kind: "watcher", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }))
+    // Re-index re-resolves the row by path (flush_tree.rs::existing_id) and
+    // reuses the id with old_record = None when the path key outlived its
+    // record (N5); the record reads test resolvability instead of raising.
     all {
       p.in(PATHS),
+      // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+      metadataPayload.keys().contains(0),
       intake.exists(i => i.path == p),
       it.path == p,
       it.generation == generations.get(p),
       files.get(p).present,
       snapshotMatches(files.get(p), it),
-      assetById' = assetById.put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { assetId: if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, kind: if (assetByPath.keys().contains(p)) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if (assetByPath.keys().contains(p)) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if (assetByPath.keys().contains(p)) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
+      assetById' = assetById.put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { assetId: if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, kind: if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
       assetByPath' = assetByPath.put(p, if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }),
       metadataPayload' = metadataPayload
-        .put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { kind: if (assetByPath.keys().contains(p)) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
+        .put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { kind: if (assetByPath.keys().contains(p) and metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
         .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount + (if (assetByPath.keys().contains(p)) { 0 } else { 1 }), itemSize: metadataPayload.get(0).itemSize + (it.len - (if (assetByPath.keys().contains(p) and metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })), hasShareList: metadataPayload.get(0).hasShareList }),
       dupeIndex' = dupeIndex.put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
@@ -655,6 +666,8 @@ module asset_aspects {
   // RemoveIdOnly models a remove that commits ASSET_BY_ID (and metadata)
   // but crashes before ASSET_BY_PATH is rewritten (N5 torn window).
   action RemoveIdOnly(p: str): bool = all {
+    // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+    metadataPayload.keys().contains(0),
     p.in(PATHS),
     assetByPath.keys().contains(p),
     assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
@@ -737,6 +750,8 @@ module asset_aspects {
     p.in(PATHS),
     assetByPath.keys().contains(p),
     assetById.keys().contains(assetByPath.get(p)),
+    // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+    metadataPayload.keys().contains(0),
     assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: assetById.get(assetByPath.get(p)).path, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: not(assetById.get(assetByPath.get(p)).isTrashed) }),
     assetByPath' = assetByPath,
     dupeIndex' = dupeIndex,
