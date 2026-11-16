@@ -7,7 +7,6 @@ launcher, the cell orchestrator and the workload reject the same bad
 environment value through the same rule, with the same message.
 """
 
-import importlib.util
 import json
 import sys
 import tempfile
@@ -15,23 +14,23 @@ import unittest
 from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 
 
 def load_module(name: str, filename: str):
-    """Load one bench module under its canonical name, once per process."""
+    """Import one bench module by name."""
     module = sys.modules.get(name)
     if module is not None:
         return module
-    spec = importlib.util.spec_from_file_location(name, BENCH / filename)
-    module = importlib.util.module_from_spec(spec)
+    module = __import__(name)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
     return module
 
 
 cf = load_module("config", "config.py")
 bl = load_module("backend_launcher", "backend_launcher.py")
-oc = load_module("run_cell", "run-cell.py")
+oc = load_module("run_cell", "run_cell.py")
 workload = load_module("workload", "workload.py")
 pf = load_module("preflight", "preflight.py")
 

@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """Tests for prepare.py. Stdlib only."""
 
-import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 
 
 def load_prepare():
-    spec = importlib.util.spec_from_file_location("prepare", BENCH / "prepare.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    import prepare
+
+    return prepare
 
 
 class PrepareTest(unittest.TestCase):

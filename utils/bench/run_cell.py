@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Orchestrate one benchmark cell: launcher + workload + shutdown.
 
-`launch-backend.py` owns the server half and `run-workload.py` the measurement
+`backend_launcher.py` owns the server half and `workload.py` the measurement
 half. This module runs them in the order a cell requires and guarantees the
 server is stopped even when the workload fails.
 
 Sequence:
 
-  1. start `launch-backend.py` in its own process group with the cell env;
+  1. start `backend_launcher.py` in its own process group with the cell env;
   2. wait (bounded) for `OUT/launcher-info.json` and a live
      `/get/server-info` probe (default 150 s);
-  3. run `run-workload.py` with `LAUNCHER_INFO`, `OUT`, and the rest of the
+  3. run `workload.py` with `LAUNCHER_INFO`, `OUT`, and the rest of the
      environment unchanged;
   4. on a workload failure or timeout, freeze diagnostics into
      `OUT/diag-orchestrator/` while the server is still alive: server tail,

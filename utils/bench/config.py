@@ -6,7 +6,7 @@ consumes attributes from then on:
 
     LauncherConfig   backend_launcher.py  server process half of a cell
     WorkloadConfig   workload.py          measurement half of a cell
-    CellConfig       run-cell.py          one cell: launcher + workload
+    CellConfig       run_cell.py          one cell: launcher + workload
     BatteryConfig    battery.py           one battery run (knobs + budgets)
     PrepareConfig    prepare.py           `bench prepare` inputs
     PreflightConfig  preflight.py         `bench preflight` inputs
@@ -49,7 +49,7 @@ BATTERY_BASE_PORT = 5795
 BATTERY_REPEATS_DEFAULT = 3
 BATTERY_REPEATS_BY_LEVEL = {"cell": 3, "gate": 3, "scale": 3}
 BATTERY_REPEATS_MIN = 1
-# Per-level workload budget handed to run-cell as WORKLOAD_TIMEOUT_S. The
+# Per-level workload budget handed to run_cell as WORKLOAD_TIMEOUT_S. The
 # scale figure covers the measured ~1335 s single control cell at 5650 rows.
 WORKLOAD_TIMEOUT_S_BY_LEVEL = {"cell": 7200, "gate": 1800, "scale": 7200}
 
@@ -564,8 +564,8 @@ class CellConfig:
             workload_timeout=number(environ, "WORKLOAD_TIMEOUT_S", 0.0),
             gdb=environ.get("GDB", "1") != "0",
             poll_interval=POLL_INTERVAL_S,
-            launcher_script=SCRIPT_DIR / "launch-backend.py",
-            workload_script=SCRIPT_DIR / "run-workload.py",
+            launcher_script=SCRIPT_DIR / "backend_launcher.py",
+            workload_script=SCRIPT_DIR / "workload.py",
         )
 
 
@@ -581,7 +581,7 @@ class BatteryConfig:
     build_profile: str
     fresh: bool
     repeats: int
-    # Forwarded verbatim to run-cell, which owns its validation.
+    # Forwarded verbatim to run_cell, which owns its validation.
     workload_timeout_s: str
 
     @classmethod

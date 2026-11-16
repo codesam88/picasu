@@ -3,9 +3,9 @@
 
 Owns the server-management half of a benchmark cell: state setup, the
 preflight checklist, spawn, readiness, bootstrap/login, supervision, and
-diagnostics. The workload stays with the caller (run-cell.py drives
-workload.py). The module is importable and stdlib-only; the
-CLI in `utils/bench/launch-backend.py` is a thin wrapper, and
+diagnostics. The workload stays with the caller (run_cell.py drives
+workload.py). The module is importable and stdlib-only; its own `main()`
+is the CLI, and
 `preflight.py` reuses this module's port, OUT, binary and sandbox rules.
 
 Environment contract:
@@ -778,3 +778,27 @@ def run_backend(cfg: config.LauncherConfig, environ: dict, spawn=None) -> int:
         if proc is not None and proc.poll() is None:
             kill_group(proc)
         logf.close()
+
+
+def main(argv=None) -> int:
+    # SIGTERM unwinds through run_backend's finally so the server's process
+    # group is stopped instead of orphaned.
+    def _interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _interrupt)
+    environ = dict(os.environ)
+    try:
+        cfg = config_from_env(environ)
+    except ConfigError as err:
+        print(f"ERROR: {err}", file=sys.stderr)
+        return 1
+    try:
+        return run_backend(cfg, environ)
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())

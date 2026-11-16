@@ -9,7 +9,6 @@ and that the launcher runs the checklist before it spawns the server.
 """
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -20,17 +19,17 @@ from pathlib import Path
 from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 
 
 def load_module(name: str, filename: str):
-    """Load one bench module under its canonical name, once per process."""
+    """Import one bench module by name."""
     module = sys.modules.get(name)
     if module is not None:
         return module
-    spec = importlib.util.spec_from_file_location(name, BENCH / filename)
-    module = importlib.util.module_from_spec(spec)
+    module = __import__(name)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
     return module
 
 

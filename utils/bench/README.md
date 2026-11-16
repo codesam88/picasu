@@ -6,13 +6,11 @@ Python; it is not part of the server binary.
 | Path                  | Role                                                                              |
 | --------------------- | --------------------------------------------------------------------------------- |
 | `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`  |
-| `launch-backend.py`   | Env-driven CLI wrapper around `backend_launcher.py`                               |
 | `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts           |
-| `run-workload.py`     | Env-driven CLI wrapper around `workload.py`                                       |
-| `run-cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown              |
+| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown              |
 | `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON + report extract |
 | `baselines.tsv`       | Checked-in accepted bands for the gate battery                                    |
-| `extract-bench.py`    | Summarise one or more harness output directories                                  |
+| `extract_bench.py`    | Summarise one or more harness output directories                                  |
 | `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                |
 | `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT      |
 | `config.py`           | Typed, validated per-layer configuration shared by every module                   |
@@ -32,7 +30,7 @@ attributes:
 | ----------------- | ----------- | ------------------------------------- |
 | `LauncherConfig`  | `from_env`  | `backend_launcher.py`: server half    |
 | `WorkloadConfig`  | `from_env`  | `workload.py`: measurement half       |
-| `CellConfig`      | `from_env`  | `run-cell.py`: launcher + workload    |
+| `CellConfig`      | `from_env`  | `run_cell.py`: launcher + workload    |
 | `BatteryConfig`   | `from_env`  | `battery.py`: repeats, budgets, knobs |
 | `PrepareConfig`   | `from_args` | `prepare.py`: sandbox preparation     |
 | `PreflightConfig` | `from_env`  | `preflight.py`: checklist inputs      |
@@ -107,22 +105,41 @@ for anything else, run `bench.py` directly with python.
 Command tree (with the recipe that runs each):
 
 ```
-bench run cell ...        # just bench run cell ... (battery.py cell level)
-bench battery ...         # just bench battery ...  (battery.py run/check/extract/list)
-bench extract ...         # just bench extract ...  (battery.py extract)
-bench seed ...            # just bench seed-images ... (seed_images.py)
-bench server ...          # just bench server ... (launch-backend.py)
-bench prepare ...         # just bench prepare ... (run-prepare.py)
-bench preflight ...       # just bench preflight ... (preflight.py)
-bench status <parent>     # just bench status ... (per-cell state)
+just bench run ...        # bench.py run cell ... (battery.py cell level)
+just bench battery ...    # bench.py battery ... (battery.py run/check/extract/list)
+just bench extract ...    # bench.py battery extract ... (battery parent)
+just bench seed-images ...# bench.py seed ... (seed_images.py)   [recipe: seed-images]
+just bench server ...     # bench.py server ... (backend_launcher.py)
+just bench prepare ...    # bench.py prepare ... (prepare.py)
+just bench preflight ...  # bench.py preflight ... (preflight.py)
+just bench status ...     # bench.py status ... (per-cell state)
+bench extract ...         # bench.py extract ... (extract_bench.py, single cell)
 ```
+
+`just bench run` injects the `cell` subcommand, so the recipe is invoked as
+`just bench run --out ...` (no second `cell` token). `just bench extract`
+operates on a battery parent directory; the direct `bench.py extract`
+invocation operates on a single cell directory. `bench battery-check` exists
+only as a recipe (`just bench battery-check`), not as a `bench.py`
+subcommand.
 
 Examples:
 
 ```sh
 just bench status /tmp/picasu-battery-gate
-just bench extract /tmp/picasu-battery-gate --out run.json
+just bench extract /tmp/picasu-battery-gate /tmp/picasu-battery-gate/run.json
+just bench battery gate --out /tmp/picasu-battery-gate
+just bench battery-check /tmp/picasu-battery-gate/report.tsv
 just bench preflight --out /dev/shm/scratchpad/cell --port 5795
+```
+
+Direct (flag-form) invocations, for options the recipes do not expose:
+
+```sh
+python backend_launcher.py                       # env-driven server
+python battery.py extract /tmp/picasu-battery-gate --out run.json --format both --matrix-only
+python bench.py seed --repo ~/picasu-bench/set-100 --count 100 --template manifests/foo.json --jobs 4 --large
+python extract_bench.py /tmp/picasu-bench-N8-100-r1
 ```
 
 ## Checks
@@ -164,7 +181,7 @@ line with schema version `v` (currently 1). Event types: `probe_round`,
 (wall-clock ISO timestamp). Incompatible schema changes bump `v`; readers
 switch on `v`.
 
-`extract-bench.py` reads that stream first: `read_events` returns one typed
+`extract_bench.py` reads that stream first: `read_events` returns one typed
 list per event type and `parse_log` takes its measurement fields from it.
 Without a usable stream the same fields come from the per-round artifacts
 (hyperfine exports, probe/storm TSVs, scan walls) that the workload writes
@@ -196,7 +213,7 @@ without an event stream.
 ## Extractor drain tables
 
 When `PICASU_OBSERVER_STATS=1` (default in bench mode), the backend writes
-an `observe drain:` table per scan into `server.log`. `extract-bench.py`
+an `observe drain:` table per scan into `server.log`. `extract_bench.py`
 parses these into `stages.json` in each cell outdir (one flat row per
 stage per scan: scan index, stage, n, p50_us, p95_us, max_us, context) and
 adds `tree_refresh_build_*` / `filter_snapshot_clone_*` summary columns to
@@ -206,10 +223,10 @@ still parse unchanged; their `stages.json` is an empty list.
 The battery parses the same tables in process: `build_row` runs the
 extractor's functions over `server.log`, so the report's stage columns and
 `battery extract`'s per-rep `stages` come from one parse. A separate
-`extract-bench.py` run is not required, and building a row writes nothing
+`extract_bench.py` run is not required, and building a row writes nothing
 into the cell outdir.
 
-`extract-bench.py --profile upload <out>` labels a cell's during-scan
+`extract_bench.py --profile upload <out>` labels a cell's during-scan
 probes as the `uscan` background; without `--profile` they land in `scan`.
 The battery passes the profile of the cell it rebuilds.
 
@@ -293,8 +310,8 @@ Both levels pin `SCAN_REPEATS=2`, hyperfine `REPEATS=3`/`WARMUP=1`,
 Image repos are seeded once (see below) and resolved from
 `BENCH_SETS_ROOT` (defaults to the canonical archive root
 `~/picasu-bench`). Each level also pins the
-workload budget `battery run` hands to run-cell as `WORKLOAD_TIMEOUT_S`
-(gate 1800 s, scale 7200 s) — `battery run` invokes run-cell
+workload budget `battery run` hands to run_cell as `WORKLOAD_TIMEOUT_S`
+(gate 1800 s, scale 7200 s) — `battery run` invokes run_cell
 in-process, so no outer `timeout` bounds a cell. An exported
 `WORKLOAD_TIMEOUT_S` overrides the level default.
 

@@ -3,31 +3,20 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
-import types
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-MODULE_FILES = {
-    "battery": "battery.py",
-    "extract": "extract-bench.py",
-    "seed": "seed_images.py",
-    "server": "launch-backend.py",
-    "prepare": "run-prepare.py",
-    "preflight": "preflight.py",
-}
-
 MODULE_ALIASES = {
     "battery": "battery",
     "extract": "extract_bench",
     "seed": "seed_images",
-    "server": "launch_backend",
-    "prepare": "run_prepare",
+    "server": "backend_launcher",
+    "prepare": "prepare",
     "preflight": "preflight",
 }
 
@@ -43,81 +32,26 @@ SUBCOMMAND_NAMES = (
 )
 
 
-def _load_module(name: str, filename: str):
-    if name in sys.modules:
-        existing = sys.modules[name]
-        if getattr(existing, "__file__", None) == str(SCRIPT_DIR / filename):
-            return existing
-    spec = importlib.util.spec_from_file_location(name, SCRIPT_DIR / filename)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+import backend_launcher  # noqa: E402
+import battery  # noqa: E402
+import extract_bench  # noqa: E402
+import preflight  # noqa: E402
+import prepare  # noqa: E402
+import seed_images  # noqa: E402
 
+launch_backend = backend_launcher
+run_prepare = prepare
 
-battery = _load_module("battery", "battery.py")
-extract_bench = _load_module("extract_bench", "extract-bench.py")
-seed_images = _load_module("seed_images", "seed_images.py")
-launch_backend = _load_module("launch_backend", "launch-backend.py")
-run_prepare = _load_module("run_prepare", "run-prepare.py")
-preflight = _load_module("preflight", "preflight.py")
+MODULES = {
+    "battery": battery,
+    "extract": extract_bench,
+    "seed": seed_images,
+    "server": backend_launcher,
+    "prepare": prepare,
+    "preflight": preflight,
+}
 
 ORIGINAL_MAINS = {}
-
-
-def _resolve_module(cmd: str):
-    alias = MODULE_ALIASES[cmd]
-    original = ORIGINAL_MAINS.get(cmd)
-    candidates = []
-    modules_dict = globals().get("MODULES")
-    if isinstance(modules_dict, dict) and cmd in modules_dict:
-        candidates.append(modules_dict[cmd])
-    global_mod = globals().get(alias)
-    if global_mod is not None:
-        candidates.append(global_mod)
-    sys_mod = sys.modules.get(alias)
-    if sys_mod is not None:
-        candidates.append(sys_mod)
-    for candidate in candidates:
-        if isinstance(candidate, types.ModuleType) and hasattr(candidate, "main"):
-            main = getattr(candidate, "main")
-            if original is None or main is not original:
-                return candidate
-    for candidate in candidates:
-        if isinstance(candidate, types.ModuleType) and hasattr(candidate, "main"):
-            return candidate
-        if hasattr(candidate, "main"):
-            return candidate
-    return _load_module(alias, MODULE_FILES[cmd])
-
-
-def _invoke_delegate(cmd: str, argv: list) -> int:
-    module = _resolve_module(cmd)
-    func = getattr(module, "main")
-    script = str(SCRIPT_DIR / MODULE_FILES[cmd])
-    try:
-        result = func(list(argv))
-    except TypeError:
-        saved = sys.argv
-        sys.argv = [script] + list(argv)
-        try:
-            result = func()
-        finally:
-            sys.argv = saved
-    except SystemExit as exc:
-        code = exc.code
-        if code is None:
-            return 0
-        try:
-            return int(code)
-        except TypeError, ValueError:
-            return 0 if code is None else 1
-    if result is None:
-        return 0
-    try:
-        return int(result)
-    except TypeError, ValueError:
-        return 0
 
 
 def _read_json(path: Path):
@@ -254,76 +188,28 @@ def main(argv=None) -> int:
         return _status(rest)
 
     if cmd == "run":
-        try:
-            return battery.main(["run"] + list(rest))
-        except SystemExit as exc:
-            code = exc.code
-            if code is None:
-                return 0
-            try:
-                return int(code)
-            except TypeError, ValueError:
-                return 0 if code is None else 1
+        return battery.main(["run"] + list(rest))
 
-    handler = DISPATCH.get(cmd) if isinstance(DISPATCH, dict) else None
-    if callable(handler):
-        try:
-            result = handler(rest)
-        except SystemExit as exc:
-            code = exc.code
-            if code is None:
-                return 0
-            try:
-                return int(code)
-            except TypeError, ValueError:
-                return 0 if code is None else 1
-        if result is None:
-            return 0
-        try:
-            return int(result)
-        except TypeError, ValueError:
-            return 0
+    if cmd == "battery":
+        return battery.main(list(rest))
 
-    return _invoke_delegate(cmd, rest)
+    if cmd == "extract":
+        return extract_bench.main(list(rest))
 
+    if cmd == "seed":
+        return seed_images.main(list(rest))
 
-MODULES = {
-    "battery": battery,
-    "extract": extract_bench,
-    "seed": seed_images,
-    "server": launch_backend,
-    "prepare": run_prepare,
-    "preflight": preflight,
-}
+    if cmd == "server":
+        return backend_launcher.main(list(rest))
 
+    if cmd == "prepare":
+        return prepare.main(list(rest))
 
-def _make_dispatcher(cmd: str):
-    def _run(argv):
-        if cmd == "status":
-            return _status(argv)
-        return _invoke_delegate(cmd, list(argv))
+    if cmd == "preflight":
+        return preflight.main(list(rest))
 
-    return _run
-
-
-DISPATCH = {name: _make_dispatcher(name) for name in SUBCOMMAND_NAMES}
-
-MAINS = {
-    "battery": battery.main,
-    "extract": extract_bench.main,
-    "seed": seed_images.main,
-    "server": launch_backend.main,
-    "prepare": run_prepare.main,
-    "preflight": preflight.main,
-    "status": _status,
-}
-
-for _name, _main in MAINS.items():
-    if _name != "status":
-        ORIGINAL_MAINS[_name] = _main
-
-for _cmd in ("battery", "extract", "seed", "server", "prepare", "preflight"):
-    ORIGINAL_MAINS[_cmd] = getattr(MODULES[_cmd], "main", None)
+    _print_usage()
+    return 2
 
 
 if __name__ == "__main__":
