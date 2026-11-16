@@ -3,12 +3,14 @@ import { run as runEvents } from "../checks/events.ts";
 import { run as runCatalog } from "../checks/catalog.ts";
 import { run as runOps } from "../checks/ops.ts";
 import { run as runSpecs } from "../checks/specs.ts";
+import { run as runSteps } from "../checks/step.ts";
 import { docs as runDocs, docCheck as runDocCheck } from "../checks/doc.ts";
 
 const USAGE = `Usage: check.ts <subcommand> [root-or-specs-dir] [args]
 Subcommands:
   events|catalog|ops [root-or-specs-dir] [source-dir?]
   specs [root-or-specs-dir] [--generate]
+  steps <pipeline-dir-or-root>
   doc-check [root-or-specs-dir] <committed-file>
   docs    [root-or-specs-dir] <out-file>
   all     [root-or-specs-dir] [committed-file?]   # doc-check skipped when no file given`;
@@ -27,6 +29,8 @@ async function main(): Promise<number> {
       return runOps(rest);
     case "specs":
       return runSpecs(rest);
+    case "steps":
+      return runSteps(rest);
     case "doc-check":
       return runDocCheck(rest);
     case "docs":
@@ -40,6 +44,7 @@ async function main(): Promise<number> {
         { name: "catalog", fn: runCatalog },
         { name: "ops", fn: runOps },
         { name: "specs", fn: runSpecs },
+        { name: "steps", fn: runSteps },
       ];
       if (docFile) steps.push({ name: "doc-check", fn: runDocCheck });
       else

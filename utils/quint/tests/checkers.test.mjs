@@ -95,6 +95,41 @@ function runScript(script, args) {
   return spawnSync("node", [join(quintDir, "coverage", "bin", "check.ts"), sub, ...args], { encoding: "utf8" });
 }
 
+// A step module importing one actions module: `init` and the step action
+// live outside the branch list, `Beta` is the branch the step may omit.
+function seedStepFixture(root, { complete = false, withStep = true } = {}) {
+  const pipeline = join(root, "utils", "quint", "pipeline");
+  mkdirSync(pipeline, { recursive: true });
+  writeFileSync(
+    join(pipeline, "actions.qnt"),
+    [
+      "module actions {",
+      "  var n: int",
+      "  action init: bool = all { n' = 0 }",
+      "  action Alpha: bool = all { n' = n }",
+      "  action Beta: bool = all { n' = n + 1 }",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  if (withStep) {
+    writeFileSync(
+      join(pipeline, "step.qnt"),
+      [
+        "module step_fixture {",
+        '  import actions.* from "./actions"',
+        "  action step: bool = any {",
+        "    Alpha,",
+        ...(complete ? ["    Beta,"] : []),
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+  }
+  return pipeline;
+}
+
 // --- operations-check ---
 
 test("operations-check accepts a fixture with every operation marked", () => {
@@ -228,4 +263,39 @@ test("catalog-check fails when a committed goal derives no requirements", () => 
   const r = runScript("catalog-check.mjs", [pipeline]);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /G9/);
+});
+
+// --- steps (branch completeness) ---
+
+test("steps fails when the branch list omits a declared action", () => {
+  const root = fixtureRoot();
+  const pipeline = seedStepFixture(root);
+  const r = runScript("steps", [pipeline]);
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(
+    r.stderr,
+    /step 'step' in step\.qnt is missing declared action 'Beta'/,
+  );
+});
+
+test("steps accepts a complete branch list and skips init and step itself", () => {
+  const root = fixtureRoot();
+  const pipeline = seedStepFixture(root, { complete: true });
+  const r = runScript("steps", [pipeline]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /2 branches/);
+});
+
+test("steps passes trivially when no step module exists", () => {
+  const root = fixtureRoot();
+  const pipeline = seedStepFixture(root, { withStep: false });
+  const r = runScript("steps", [pipeline]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /no step actions/);
+});
+
+test("steps requires a pipeline-dir argument", () => {
+  const r = runScript("steps", []);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /missing required pipeline-dir argument/);
 });
