@@ -2,7 +2,7 @@
 """Extract benchmark summary from one or more bench output dirs.
 
 Usage:
-    utils/bench/extract-bench.py /tmp/.../bench-after-N4-100 [...]
+    utils/bench/extract_bench.py /tmp/.../bench-after-N4-100 [...]
 
 Reads events.jsonl, harness-a.log, status-final.json and hyperfine.json
 from each OUT dir (as produced by the bench workload) and prints one
@@ -1069,14 +1069,14 @@ def _ms(value) -> object:
     return round(value * 1000, 1) if value is not None else "n/a"
 
 
-def main() -> None:
+def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("outdirs", nargs="+", help="bench OUT dirs")
     parser.add_argument(
         "--profile",
         help="WORKLOAD profile of the cell(s); decides scan vs uscan probe bucket (default: scan)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     parsed = []
     for raw in args.outdirs:

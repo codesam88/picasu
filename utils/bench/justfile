@@ -36,7 +36,7 @@ format: _venv
 
 # Serve a backend cell.
 server: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/launch-backend.py"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" server
 
 # Run one cell (env-driven; see README).
 run *args: _venv
@@ -44,28 +44,28 @@ run *args: _venv
 
 # Prepare a sandbox from a canonical archive.
 prepare *args: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/prepare.py" {{ args }}
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" prepare {{ args }}
 
 # Run the preflight checklist.
 preflight *args: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/preflight.py" {{ args }}
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" preflight {{ args }}
 
 # Seed an image repo.
 seed-images image_repo images="100" template="" jobs="4": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/seed_images.py" --repo "{{ image_repo }}" \
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" seed --repo "{{ image_repo }}" \
         --count "{{ images }}" --template "{{ template }}" --jobs "{{ jobs }}"
 
 # Extract a battery parent as JSON + report.
 extract parent out="": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/battery.py" extract "{{ parent }}" --out "{{ out }}"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery extract "{{ parent }}" --out "{{ out }}"
 
-# Run a pinned battery (gate|scale) and write its report.
+# Run a pinned battery and write its report.
 battery level="gate" out="": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/battery.py" run "{{ level }}" --out "{{ out }}"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run "{{ level }}" --out "{{ out }}"
 
 # Compare a battery report against the checked-in baseline bands.
 battery-check report baselines="": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/battery.py" check "{{ report }}" --baselines "{{ baselines }}"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery check "{{ report }}" --baselines "{{ baselines }}"
 
 # Report per-cell state under a battery parent.
 status *args: _venv

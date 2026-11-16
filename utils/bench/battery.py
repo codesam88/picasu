@@ -2,7 +2,7 @@
 """Battery runner and baseline checker.
 
 A battery is an ordered, pinned set of benchmark cells for one scale. Each
-cell runs through `run-cell.py` unchanged; after the cell finishes the
+cell runs through `run_cell.py`; after the cell finishes the
 extractor's parsed values become one row in a TSV run report. The report is
 compared against `baselines.tsv`, where every accepted metric carries a
 tolerance band.
@@ -31,8 +31,8 @@ Environment:
     OUT                  battery directory for `run` when --out is absent
     BENCH_SETS_ROOT      image repo root (default ~/picasu-bench)
     BENCH_PORT           first cell port (default 5795); cells increment
-    IMAGE_PATH           passed through to each cell by run-cell.py
-    WORKLOAD_TIMEOUT_S   per-cell workload budget handed to run-cell
+    IMAGE_PATH           passed through to each cell by run_cell.py
+    WORKLOAD_TIMEOUT_S   per-cell workload budget handed to run_cell
                          (default: gate 1800, scale 7200); an exported
                          value overrides the level default
 
@@ -53,7 +53,6 @@ its band fails until the move is explained and the row is re-recorded.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import math
 import os
@@ -70,6 +69,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import config  # noqa: E402
+import extract_bench  # noqa: E402
+import run_cell  # noqa: E402
 from config import DEFAULT_SETS_ROOT, ConfigError  # noqa: E402
 
 DEFAULT_BASE_PORT = config.BATTERY_BASE_PORT
@@ -94,32 +95,11 @@ BASELINE_HEADER = "\t".join(BASELINE_COLUMNS)
 
 _UPLOAD_P50 = re.compile(r"upload submit_p50=(\d+) visible_p50=(\d+)")
 
-_MODULE_CACHE: dict = {}
-
-
-def _load_module(name: str, path: Path):
-    if name not in _MODULE_CACHE:
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-        _MODULE_CACHE[name] = module
-    return _MODULE_CACHE[name]
-
-
-def _extractor():
-    return _load_module("extract_bench", SCRIPT_DIR / "extract-bench.py")
-
-
-def _run_cell():
-    return _load_module("run_cell", SCRIPT_DIR / "run-cell.py")
-
 
 # The extractor owns the matrix column names; the report is that scheme plus
 # the scan walls and the server-side stage cost columns.
-_EXTRACTOR = _extractor()
-LATENCY_COLUMNS = list(_EXTRACTOR.LATENCY_COLUMNS)
-STORM_FAILED_COLUMNS = list(_EXTRACTOR.STORM_FAILED_COLUMNS)
+LATENCY_COLUMNS = list(extract_bench.LATENCY_COLUMNS)
+STORM_FAILED_COLUMNS = list(extract_bench.STORM_FAILED_COLUMNS)
 REPORT_COLUMNS = (
     IDENTITY_COLUMNS
     + ["scan_wall_s", "scan_walls_s"]
@@ -317,7 +297,7 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
     iterate `REPORT_COLUMNS`, so none of those helper keys reaches the TSV.
     """
     outdir = Path(outdir)
-    extractor = _extractor()
+    extractor = extract_bench
     parsed = extractor.parse_log(outdir, profile=profile)
     status = extractor.parse_status(outdir)
     cell = extractor._cell(parsed, status)
@@ -395,13 +375,13 @@ def _storm_runs(rows: list, column: str) -> list:
     if match is None:
         return []
     background, report_kind, stat = match.groups()
-    kind = _EXTRACTOR.STORM_OP_KIND[report_kind]
+    kind = extract_bench.STORM_OP_KIND[report_kind]
     values = []
     for row in rows:
         for storm in row.get("storms") or []:
             if (
-                _EXTRACTOR.storm_background(storm) == background
-                and _EXTRACTOR.storm_kind(storm) == kind
+                extract_bench.storm_background(storm) == background
+                and extract_bench.storm_kind(storm) == kind
             ):
                 values.append(storm[_STORM_STAT_FIELD[stat]] * 1000.0)
     return values
@@ -473,7 +453,9 @@ def _build_median_row(rows: list) -> dict:
                 pooled.extend((row.get("samples") or {}).get(_sample_key(column), []))
             if pooled:
                 value = (
-                    max(pooled) if column.endswith("_max_ms") else _EXTRACTOR.percentile(pooled, 95)
+                    max(pooled)
+                    if column.endswith("_max_ms")
+                    else extract_bench.percentile(pooled, 95)
                 )
                 result[column] = _fmt(round(value, 1))
                 continue
@@ -654,7 +636,7 @@ def _manifest_identity(outdir: Path) -> dict:
 def _read_stages(outdir: Path) -> list:
     """Parsed `stages.json` content; an absent or corrupt file yields [].
 
-    `stages.json` is written by a standalone `extract-bench.py` run, so it
+    `stages.json` is written by a standalone `extract_bench.py` run, so it
     only exists for cells that were extracted by hand; the extract entry
     prefers the drain rows `build_row` parsed from `server.log` and uses
     this as the fallback for the rest.
@@ -749,9 +731,9 @@ def _json_safe(value):
 # the document's `medians` carry everything they recompute from.
 # `matrix.tsv` is the spreadsheet-readable variant of the same values;
 # `report.md` is the human report built on top of them.
-MATRIX_BACKGROUNDS = tuple(_EXTRACTOR.BACKGROUNDS)
-MATRIX_ACCESSES = tuple(_EXTRACTOR.ACCESSES)
-MATRIX_STATS = tuple(_EXTRACTOR.STATS)
+MATRIX_BACKGROUNDS = tuple(extract_bench.BACKGROUNDS)
+MATRIX_ACCESSES = tuple(extract_bench.ACCESSES)
+MATRIX_STATS = tuple(extract_bench.STATS)
 MATRIX_FILE = "matrix.tsv"
 REPORT_FILE = "report.md"
 
@@ -1294,7 +1276,7 @@ def _cell_env(
 def _reuse_row(level: str, cell: Cell, cell_out: Path) -> dict | None:
     """Return the report row of a completed rep, or None when it must run.
 
-    run-cell writes `status-final.json` only for a terminal server state;
+    run_cell writes `status-final.json` only for a terminal server state;
     a rep without that marker, or whose artifacts no longer parse
     (missing log, corrupt status), is incomplete and runs again.
     """
@@ -1356,7 +1338,7 @@ def run_battery(
     cells = battery_cells(level, environ)
     report = outdir / "report.tsv"
     report.unlink(missing_ok=True)
-    orchestrator = _run_cell()
+    orchestrator = run_cell
 
     for index, cell in enumerate(cells):
         repeat_rows = []
@@ -1458,7 +1440,7 @@ def main(argv=None) -> int:
         raw_out = args.out or os.environ.get("OUT", "")
         if raw_out == "":
             raw_out = f"/tmp/picasu-battery-{args.level}-{datetime.now():%Y%m%d-%H%M%S}"
-        # SIGTERM unwinds through run-cell's finally so the launcher and its
+        # SIGTERM unwinds through run_cell's finally so the launcher and its
         # server are stopped instead of orphaned between cells.
         signal.signal(signal.SIGTERM, _interrupt)
         try:

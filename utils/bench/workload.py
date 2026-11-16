@@ -8,7 +8,7 @@ image-set materialisation, repeated album-index scans, during-scan random
 compressed fetches plus hyperfine prefetch/edit-rating probes, a post-scan
 sequential sweep, post-scan hyperfine baselines, and write-probe verification.
 
-Artifacts are written in the bench transcript format so `utils/bench/extract-bench.py`
+Artifacts are written in the bench transcript format so `utils/bench/extract_bench.py`
 parses either producer unchanged:
 
   harness-a.log                    run transcript (harness line formats)

@@ -8,15 +8,17 @@ running batteries, not by this suite.
 
 import contextlib
 import http.cookiejar
-import importlib.util
 import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 
 
 def make_cookie_jar(path: Path) -> None:
@@ -45,10 +47,9 @@ def make_cookie_jar(path: Path) -> None:
 
 
 def load_workload():
-    spec = importlib.util.spec_from_file_location("workload", BENCH / "workload.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    import workload
+
+    return workload
 
 
 class ImageSetTest(unittest.TestCase):

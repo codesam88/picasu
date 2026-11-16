@@ -6,7 +6,6 @@ requirements, manifest identity, and preflight rules. Startup and
 supervision paths run live cells instead of test doubles.
 """
 
-import importlib.util
 import json
 import sys
 import tempfile
@@ -14,19 +13,14 @@ import unittest
 from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
+
+import backend_launcher  # noqa: E402
 
 
 def load_launcher():
-    # One module instance per process: preflight.py imports this module to
-    # reuse its rules, so tests patch the object the callers actually use.
-    module = sys.modules.get("backend_launcher")
-    if module is not None:
-        return module
-    spec = importlib.util.spec_from_file_location("backend_launcher", BENCH / "backend_launcher.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["backend_launcher"] = module
-    spec.loader.exec_module(module)
-    return module
+    return backend_launcher
 
 
 bl = load_launcher()

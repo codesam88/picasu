@@ -11,7 +11,6 @@ See `fixtures/README.md` for the rule and each file's provenance.
 """
 
 import contextlib
-import importlib.util
 import io
 import json
 import re
@@ -20,9 +19,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 DUAL = FIXTURES / "events-dual"
 
@@ -31,16 +31,19 @@ _LOADED: dict = {}
 
 def load(name: str, filename: str):
     if name not in _LOADED:
-        spec = importlib.util.spec_from_file_location(name, BENCH / filename)
-        module = importlib.util.module_from_spec(spec)
+        if "extract_bench" in filename:
+            import extract_bench as module
+        elif "battery" in filename:
+            import battery as module
+        else:
+            module = __import__(name)
         sys.modules[name] = module
-        spec.loader.exec_module(module)
         _LOADED[name] = module
     return _LOADED[name]
 
 
 def extractor():
-    return load("extract_bench_golden", "extract-bench.py")
+    return load("extract_bench_golden", "extract_bench.py")
 
 
 def battery():
@@ -180,7 +183,7 @@ class BatteryStageSourceTest(unittest.TestCase):
 class InProcessRowStagesTest(unittest.TestCase):
     """A row built in-process carries the stages a standalone extract writes.
 
-    The battery never runs `extract-bench.py`, so `battery extract` cannot
+    The battery never runs `extract_bench.py`, so `battery extract` cannot
     depend on the `stages.json` only that script writes: the row sources
     its stages from the same `server.log` parse, without writing anything
     into the cell.
@@ -204,12 +207,11 @@ class InProcessRowStagesTest(unittest.TestCase):
         shutil.copytree(cell, copy)
         out, err = io.StringIO(), io.StringIO()
         with (
-            mock.patch.object(sys, "argv", ["extract-bench.py", str(copy)]),
             contextlib.redirect_stdout(out),
             contextlib.redirect_stderr(err),
         ):
             try:
-                extractor().main()
+                extractor().main([str(copy)])
             except SystemExit as exc:
                 rc = exc.code if isinstance(exc.code, int) else 1
             else:
@@ -297,8 +299,12 @@ class DerivedEventStreamTest(unittest.TestCase):
 
 def _write_cell(outdir: Path) -> None:
     """The battery tests' cell builder, loaded once from `test_battery`."""
-    module = sys.modules.get("test_battery") or load("test_battery", "tests/test_battery.py")
-    module.write_cell(outdir)
+    tests_dir = BENCH / "tests"
+    if str(tests_dir) not in sys.path:
+        sys.path.insert(0, str(tests_dir))
+    import test_battery
+
+    test_battery.write_cell(outdir)
 
 
 if __name__ == "__main__":

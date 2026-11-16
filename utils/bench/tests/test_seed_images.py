@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Tests for seed_images.py. Stdlib only; no real snapfab required."""
 
-import importlib.util
 import json
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 
 FAKE_SNAPFAB = (
     "#!/usr/bin/env python3\n"
@@ -21,10 +23,9 @@ FAKE_SNAPFAB = (
 
 
 def load_seed():
-    spec = importlib.util.spec_from_file_location("seed_images", BENCH / "seed_images.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    import seed_images
+
+    return seed_images
 
 
 def write_executable(path: Path, text: str) -> Path:

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for bench.py unified CLI shell. Stdlib only."""
 
-import importlib.util
 import os
 import sys
 import tempfile
@@ -11,14 +10,14 @@ from pathlib import Path
 from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 
 
 def load_bench():
-    spec = importlib.util.spec_from_file_location("bench_cli_test", BENCH / "bench.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    import bench
+
+    return bench
 
 
 class BenchDispatchTests(unittest.TestCase):
@@ -26,14 +25,20 @@ class BenchDispatchTests(unittest.TestCase):
         self.bench = load_bench()
 
     def test_exit_code_passthrough(self):
-        for code in (0, 1, 2, 7, 130):
-            fake = mock.Mock(return_value=code)
-            alias = self.bench.MODULE_ALIASES["extract"]
-            mod = getattr(self.bench, alias)
-            mod.main = fake
-            self.bench.MODULES["extract"] = mod
-            rc = self.bench.main(["extract", "x"])
-            self.assertEqual(rc, code)
+        alias = self.bench.MODULE_ALIASES["extract"]
+        mod = getattr(self.bench, alias)
+        original_main = mod.main
+        original_modules_extract = self.bench.MODULES.get("extract")
+        try:
+            for code in (0, 1, 2, 7, 130):
+                fake = mock.Mock(return_value=code)
+                mod.main = fake
+                self.bench.MODULES["extract"] = mod
+                rc = self.bench.main(["extract", "x"])
+                self.assertEqual(rc, code)
+        finally:
+            mod.main = original_main
+            self.bench.MODULES["extract"] = original_modules_extract
 
 
 class BenchStatusTests(unittest.TestCase):

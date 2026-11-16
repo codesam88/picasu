@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for extract-bench.py: the v1 event reader and its transcript fallback.
+"""Tests for extract_bench.py: the v1 event reader and its transcript fallback.
 
 `fixtures/events-dual/` holds two cells recorded by the gate battery
 (`gate-upload-rep2` and `gate-storm-diff-rep1`, 2026-11-15). Each cell ships
@@ -22,7 +22,6 @@ numbers the transcript records.
 """
 
 import contextlib
-import importlib.util
 import io
 import json
 import shutil
@@ -30,9 +29,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "events-dual"
 CELLS = ("control", "storm-diff")
 
@@ -41,16 +41,14 @@ _LOADED: dict = {}
 
 def load(name: str, filename: str):
     if name not in _LOADED:
-        spec = importlib.util.spec_from_file_location(name, BENCH / filename)
-        module = importlib.util.module_from_spec(spec)
+        module = __import__(name)
         sys.modules[name] = module
-        spec.loader.exec_module(module)
         _LOADED[name] = module
     return _LOADED[name]
 
 
 def extractor():
-    return load("extract_bench", "extract-bench.py")
+    return load("extract_bench", "extract_bench.py")
 
 
 def battery():
@@ -294,12 +292,11 @@ class DualFixtureGateTest(FixtureCase):
 
         out, err = io.StringIO(), io.StringIO()
         with (
-            mock.patch.object(sys, "argv", ["extract-bench.py", str(cell)]),
             contextlib.redirect_stdout(out),
             contextlib.redirect_stderr(err),
         ):
             try:
-                extractor().main()
+                extractor().main([str(cell)])
             except SystemExit as exc:
                 rc = exc.code if isinstance(exc.code, int) else 1
             else:

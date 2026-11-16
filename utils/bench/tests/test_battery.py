@@ -7,7 +7,6 @@ baseline check mode are exercised without launching a backend or workload.
 
 import contextlib
 import datetime
-import importlib.util
 import io
 import json
 import os
@@ -20,15 +19,15 @@ from pathlib import Path
 from unittest import mock
 
 BENCH = Path(__file__).resolve().parent.parent
+if str(BENCH) not in sys.path:
+    sys.path.insert(0, str(BENCH))
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def load_battery():
-    spec = importlib.util.spec_from_file_location("battery", BENCH / "battery.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    import battery
+
+    return battery
 
 
 def write_cell(
@@ -461,9 +460,9 @@ class BatteryDefaultOutTest(unittest.TestCase):
 
 
 class BatteryWorkloadTimeoutTest(unittest.TestCase):
-    """`run_battery` pins the per-level workload budget for run-cell.
+    """`run_battery` pins the per-level workload budget for run_cell.
 
-    `battery run` invokes run-cell in-process, so no outer `timeout(1)`
+    `battery run` invokes run_cell in-process, so no outer `timeout(1)`
     bounds a cell the way the justfile recipe does; the budget rides in
     as `WORKLOAD_TIMEOUT_S` (env-overridable).
     """
@@ -488,7 +487,7 @@ class BatteryWorkloadTimeoutTest(unittest.TestCase):
         row = {column: self.battery.NA for column in self.battery.REPORT_COLUMNS}
         with (
             mock.patch.dict(os.environ, {}, clear=False),
-            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            mock.patch.object(self.battery, "run_cell", FakeOrchestrator()),
             mock.patch.object(self.battery, "build_row", return_value=row),
             contextlib.redirect_stdout(io.StringIO()),
         ):
@@ -608,7 +607,7 @@ class BatteryExpansionTest(unittest.TestCase):
         row.update({"cell": "gate-control", "profile": "control", "level": "gate"})
         with (
             mock.patch.dict(os.environ, {}, clear=False),
-            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            mock.patch.object(self.battery, "run_cell", FakeOrchestrator()),
             mock.patch.object(self.battery, "build_row", return_value=dict(row)),
             mock.patch.object(
                 self.battery, "_build_median_row", return_value={"cell": "gate-control:median"}
@@ -999,7 +998,7 @@ class BatteryResumeTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"BATTERY_REPEATS": str(repeats)}, clear=False),
             mock.patch.object(self.battery, "battery_cells", return_value=(self.cell,)),
-            mock.patch.object(self.battery, "_run_cell", return_value=FakeOrchestrator()),
+            mock.patch.object(self.battery, "run_cell", FakeOrchestrator()),
             contextlib.redirect_stdout(stdout),
             contextlib.redirect_stderr(io.StringIO()),
         ):
