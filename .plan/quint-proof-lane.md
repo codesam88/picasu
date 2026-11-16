@@ -95,8 +95,14 @@ modifications applied in generation order, none lost.
      compared only the metadata projection while the code always
      rewrites the identity record on apply (flush_tree.rs; no
      unchanged-skip exists at worker level, hash short-circuit deferred
-     per REQ-1) -> fixes in progress (skip is sound only when
-     reprocessing would be a full no-op).
+     per REQ-1) -> fixed (dbd9f0e8): skip guard requires the identity
+     record's contentHash (idempotence abstraction: skipping is sound
+     only when applying would write nothing new); RotateFinish requires
+     the held lease. Class-A/B audit clean beyond these; WorkerSkipStale
+     noted as an over-approximate drop (broader snapshot than the code's
+     mtime/len) — can only delay convergence, documented, unchanged.
+     Probes confirm both falsifiers are disabled at the added conjuncts;
+     sim search (10k samples, 30 steps) clean.
 3. Scope entry: SCOPE-13 "Nondeterministic scheduling" — any action (FS
    event, API call, fault, pipeline step, Skip) may fire per tick; no
    fairness. API calls are environment events like FS events; the model's
