@@ -354,6 +354,13 @@ module eventual_consistency {
     files.get(p).present,
     rows.keys().contains(p),
     files.get(p).sidecar != rows.get(p).sidecar,
+    // REQ-11: rotate persists the sidecar, then the thumbnail, then the DB
+    // record, holding one path lease for the request's write phase. A crash
+    // before finish drops the lease and the next scan heals. Finish therefore
+    // requires the lease it releases; the sidecar marker above is also
+    // produced by environment sidecar events, so it cannot stand in for the
+    // lease.
+    leasedPaths.contains(p),
     // rotate_image resolves the composed record and answers 404 when either
     // table row is gone, so a torn path row (N5) cannot finish a rotation.
     assetById.keys().contains(assetByPath.get(p)),
@@ -632,6 +639,12 @@ module eventual_consistency {
       rows.get(it.path).sidecar == it.sidecar,
       rows.get(it.path).converged,
       rows.get(it.path).thumb,
+      // The skip is an idempotence abstraction, not a worker branch: the worker
+      // has no unchanged-skip and the hash short-circuit is deferred (REQ-1),
+      // so intake applies and flush_tree.rs rewrites ASSET_BY_ID on every
+      // apply. Skipping is sound only when applying would write nothing new,
+      // which includes the identity record's content hash.
+      assetById.get(assetByPath.get(it.path)).contentHash == it.assetHash,
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
