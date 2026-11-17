@@ -262,6 +262,47 @@ Steps 1-2 of the A-merged sequence landed:
   invariant (TypeOK-style strengthening); the shallow-depth TLC lane is
   the practical nightly claim.
 
+## Spike: prefix-partition verification (2026-11-17, next)
+
+Direction (user-confirmed): shallow-depth exhaustive checking is vacuous —
+free events + drain + the scan cycle need ~10-20 steps, so depth-5/6 BMC
+never reaches a checked state. Instead: partition the free-phase event
+prefix (phase 0), bake each partition element into a per-prefix init
+(`initCompletion.then(e1)...then(BeginDrain)`), and verify the suffix
+(drain + mandatory scan cycle) exhaustively per prefix with TLC — unbounded
+depth over everything that happens after the events. The phase machine
+already supports this: phase-0 branches are `phase == 0`-guarded, so an
+init assigning `phase = 1` (or ending in BeginDrain) IS the suffix-only
+machine; no new step action is needed.
+
+Claim shape: "for every prefix in the partition Pi, every completion
+converges" — stronger than depth-bounded BMC (vacuous here) and MBT
+(sampled prefix, no exhaustive suffix). Pi is machine-generated and
+auditable; a violation names its exact event prefix.
+
+Partition policy (user-selected): all singletons (every free-phase branch
+once), pairwise event-CLASS combinations (systematic over ~28 classes with
+representative argument instances, not all ~250^2), and hand-listed
+adversarial triples from the events-catalog fault interactions. No seeded
+random batches.
+
+Next steps:
+
+1. Harness: prefix generator (from the action inventory the steps checker
+   already computes) emitting per-prefix init actions into a module chained
+   on the reduced entry; runner looping `quint verify --backend=tlc` per
+   prefix with outcome/runtime/states aggregation; harness committed as
+   proof-lane infrastructure (file args, no hardcoded paths, house TS/mjs
+   patterns).
+2. Measurement subset (~90 prefixes): ~30 singletons (one per class),
+   ~50 pairwise class pairs, ~8 adversarial triples. TLC first; then
+   Apalache on a smaller subset for the symbolic column.
+3. Verdict: per-backend feasibility and runtime distribution; violations
+   become refinement-round findings; SCOPE-15 (prefix partition policy)
+   lands when the lane becomes a real target.
+4. Lane home: nightly/manual-dispatch CI job; free-tier 6 h/job is ample
+   at measured runtimes (fits devops-cleanup's CI-lane item).
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
