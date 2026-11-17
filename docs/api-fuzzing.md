@@ -120,15 +120,15 @@ asserts non-empty snapshot rows before completing.
 ## Distribution
 
 One deterministic pass per role with a fixed seed, not one run with random
-identity rotation. Admin traffic is a small band (around 20%); member, guest,
-snapshot, and anonymous passes cover the rest. Per-role runs are reproducible
+identity rotation. Admin, member, guest, snapshot, and anonymous passes get
+equal run time and effort. Per-role runs are reproducible
 and attribute findings to the identity that produced them; random rotation is
 neither reproducible nor attributable.
 
 WFC escalation (ordered try-first-user, then anonymous, then remaining users
 until a 2xx/3xx, then locking that identity) is useful for mapping which
 identity can call an operation, but it locks on first success and offers no
-traffic-weight knob, so proportional splits are built in hooks or by separate
+traffic-share knob, so equal per-role splits are built by separate
 per-role runs. Peer-replay covers read-only cross-tenant BOLA on GETs with
 two real accounts but is read-only by design and cannot replay writes.
 
