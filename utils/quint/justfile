@@ -24,6 +24,8 @@ lint: _install-quint
     cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md' '../utils/quint/coverage/**/*.ts'
     cd "{{ root }}/frontend" && npx --no-install tsc --noEmit -p ../utils/quint/coverage/tsconfig.json
     quint typecheck "{{ pipeline_dir }}/entry-canonical.qnt"
+    quint typecheck "{{ pipeline_dir }}/entry-reduced-paths.qnt"
+    quint typecheck "{{ pipeline_dir }}/entry-reduced.qnt"
 
 # Apply formatting.
 [group('quint')]

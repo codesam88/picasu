@@ -224,11 +224,7 @@
       "kind": "SCOPE",
       "title": "Finite bounds",
       "refs": [
-        "merged.qnt:HASHES",
-        "merged.qnt:PATHS",
         "merged.qnt:ROOTS",
-        "merged.qnt:SECOND_ROOT_PATHS",
-        "merged.qnt:SMALL",
         "merged.qnt:WithinBounds",
         "merged.qnt:rootOf"
       ]
@@ -323,7 +319,6 @@
       "refs": [
         "merged.qnt:ApiAssignDirMove",
         "merged.qnt:ExternalRenameDir",
-        "merged.qnt:SUBTREE_PAIRS",
         "merged.qnt:assignDirMoveTest",
         "merged.qnt:subtreeMoveTest"
       ]

@@ -21,18 +21,18 @@ module pipeline_merged {
   // The assumption predicates and the protocol actions below build on it.
 
   // @scope SCOPE-2: finite bounds; every run stays inside them.
-  pure val PATHS = Set("p1", "p2", "p3", "p4", "p5")
+  const PATHS: Set[str]
   // @scope SCOPE-2
-  pure val HASHES = 0.to(2)
+  const HASHES: Set[int]
   // @scope SCOPE-2
-  pure val SMALL = 0.to(2)
+  const SMALL: Set[int]
 
   // @scope SCOPE-2
   pure val ROOTS = Set("r1", "r2")
   // Instance data: which paths belong to the second root (r2). Not derivable
   // from unordered sets; override this val for a reduced instance.
   // @scope SCOPE-2
-  pure val SECOND_ROOT_PATHS: Set[str] = Set("p5")
+  const SECOND_ROOT_PATHS: Set[str]
   // @scope SCOPE-2
   pure def rootOf(p: str): str = if (p.in(SECOND_ROOT_PATHS)) "r2" else "r1"
 
@@ -183,7 +183,7 @@ module pipeline_merged {
     assetByPath' = PATHS.mapBy(p => initialId(p)),
     dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
-    thumbPresent' = Map(0 -> true, 1 -> false, 2 -> false),
+    thumbPresent' = HASHES.mapBy(h => h == 0),
 
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = Map(),
@@ -379,7 +379,7 @@ module pipeline_merged {
 
   // @scope SCOPE-7
   // Instance data: which subtrees the dir-move action moves; override for a reduced instance.
-  pure val SUBTREE_PAIRS = [{ src: "p1", dst: "p3" }, { src: "p2", dst: "p4" }]
+  const SUBTREE_PAIRS: List[{ src: str, dst: str }]
 
   // Derived view of the old `rows` map, reconstructed from the split
   // aspect tables. Kept as a read-only projection so existing run
