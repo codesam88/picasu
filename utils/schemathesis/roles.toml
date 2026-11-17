@@ -1,0 +1,24 @@
+# Per-role Schemathesis pass: one deterministic run per role, equal budget.
+# Reduced settings for fast test/debug runs; full-budget values are noted
+# in run-roles.sh (MAX_EXAMPLES / DEADLINE).
+base-url = "http://127.0.0.1:8899"
+seed = 42
+hooks = "utils/schemathesis/hooks_roles.py"
+
+[generation]
+max-examples = 3
+mode = "all"
+database = ":memory:"
+
+[cache]
+enabled = false
+
+# Destructive operations disabled to protect the seeded instance (mirrors
+# check.toml).
+[[operations]]
+include-operation-id = "update_admin_config_handler"
+enabled = false
+
+[[operations]]
+include-operation-id = "reset_auth_key_handler"
+enabled = false

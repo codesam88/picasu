@@ -1,0 +1,5938 @@
+{
+  "version": 1,
+  "roles": [
+    "admin0",
+    "admin1",
+    "memberA",
+    "memberB",
+    "sharingDisabled",
+    "disabledUser",
+    "shareGuest",
+    "snapshotBearer",
+    "anonymous"
+  ],
+  "entries": [
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/",
+      "operationId": "redirect_to_photo",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/albums",
+      "operationId": "albums",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/albums/view/{path}",
+      "operationId": "albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/config",
+      "operationId": "config",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "DELETE",
+      "path": "/delete/delete-data",
+      "operationId": "delete_data",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "DELETE",
+      "path": "/delete/invites/{invite_id}",
+      "operationId": "delete_invite",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "DELETE",
+      "path": "/delete/users/{user_id}",
+      "operationId": "delete_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/favicon.ico",
+      "operationId": "favicon",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/admin/config",
+      "operationId": "get_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/admin/config/export",
+      "operationId": "get_admin_config_export_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/config",
+      "operationId": "get_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/config/export",
+      "operationId": "export_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/get-albums",
+      "operationId": "get_albums",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/get-data",
+      "operationId": "get_data",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/get-export",
+      "operationId": "get_export",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/get-rows",
+      "operationId": "get_rows",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/get-scroll-bar",
+      "operationId": "get_scroll_bar",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/get-tags",
+      "operationId": "get_tags",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/index/status",
+      "operationId": "get_album_index_status",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/invites",
+      "operationId": "list_invites_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/invites/limits",
+      "operationId": "invite_limits_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "scope-dependent"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "scope-dependent"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "scope-dependent"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/metadata/{asset_id}",
+      "operationId": "get_metadata",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/path-completion",
+      "operationId": "get_fs_completion",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/get/prefetch",
+      "operationId": "prefetch",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/self/profile",
+      "operationId": "get_self_profile_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/server-info",
+      "operationId": "server_info_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/share/token",
+      "operationId": "get_share_token",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/get/users",
+      "operationId": "list_users_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/login",
+      "operationId": "login",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/my-albums",
+      "operationId": "my_albums",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/my-albums/view/{path}",
+      "operationId": "my_albums_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/object/compressed/{file_path}",
+      "operationId": "compressed_file",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/object/imported/{file_path}",
+      "operationId": "imported_file",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/admin/config/disable-read-only",
+      "operationId": "disable_read_only_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/config/auth-key/reset",
+      "operationId": "reset_auth_key_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/create_dir_album",
+      "operationId": "create_dir_album",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/create_share",
+      "operationId": "create_share",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/index/album",
+      "operationId": "index_album_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/index/cancel",
+      "operationId": "cancel_album_index_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/invites",
+      "operationId": "create_invite_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/logout",
+      "operationId": "logout",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/renew-hash-token",
+      "operationId": "renew_hash_token",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/renew-timestamp-token",
+      "operationId": "renew_timestamp_token",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/upload",
+      "operationId": "upload",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/users/authenticate",
+      "operationId": "authenticate",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/users/bootstrap",
+      "operationId": "bootstrap_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "POST",
+      "path": "/post/users/register",
+      "operationId": "register_user_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/admin/config",
+      "operationId": "update_admin_config_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/assign_album",
+      "operationId": "assign_album",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/delete_share",
+      "operationId": "delete_share",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/edit_flags",
+      "operationId": "edit_flags",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/edit_rating",
+      "operationId": "edit_rating",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/edit_share",
+      "operationId": "edit_share",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/edit_tag",
+      "operationId": "edit_tag",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/regenerate-thumbnail-with-frame",
+      "operationId": "regenerate_thumbnail_with_frame",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/rotate-image",
+      "operationId": "rotate_image",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/set_album_cover",
+      "operationId": "set_album_cover",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/set_album_title",
+      "operationId": "set_album_title",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/set_user_defined_description",
+      "operationId": "set_user_defined_description",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/users/admin",
+      "operationId": "set_user_admin_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/users/disabled",
+      "operationId": "set_user_disabled_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/users/password",
+      "operationId": "set_user_password_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "memberB",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "disabledUser",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "shareGuest",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "anonymous",
+      "method": "PUT",
+      "path": "/put/users/sharing",
+      "operationId": "set_user_sharing_handler",
+      "expected": "deny"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/redirect-to-login",
+      "operationId": "redirect_to_login",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/register",
+      "operationId": "register",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/registerSW.js",
+      "operationId": "sregister_sw",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/serviceWorker.js",
+      "operationId": "service_worker",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/setting",
+      "operationId": "setting",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/share/{path}",
+      "operationId": "share",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/shares",
+      "operationId": "shares",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/tags",
+      "operationId": "tags",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/timeline",
+      "operationId": "timeline",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/timeline/view/{path}",
+      "operationId": "timeline_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/trashed",
+      "operationId": "trashed",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/trashed/view/{path}",
+      "operationId": "trashed_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/unauthorized",
+      "operationId": "unauthorized",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/videos",
+      "operationId": "videos",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/videos/view/{path}",
+      "operationId": "videos_view",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/{dynamic_album_id}",
+      "operationId": "album_page",
+      "expected": "allow"
+    },
+    {
+      "role": "admin0",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "admin1",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "memberA",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "memberB",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "sharingDisabled",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "disabledUser",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "shareGuest",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "snapshotBearer",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    },
+    {
+      "role": "anonymous",
+      "method": "GET",
+      "path": "/{path}",
+      "operationId": "spa_fallback",
+      "expected": "allow"
+    }
+  ],
+  "matrix": {
+    "GET /": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /albums": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /albums/view/{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /config": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "DELETE /delete/delete-data": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "DELETE /delete/invites/{invite_id}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "DELETE /delete/users/{user_id}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /favicon.ico": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /get/admin/config": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/admin/config/export": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/config": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "allow",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/config/export": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/get-albums": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/get-data": {
+      "admin0": "deny",
+      "admin1": "deny",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "allow",
+      "anonymous": "deny"
+    },
+    "GET /get/get-export": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/get-rows": {
+      "admin0": "deny",
+      "admin1": "deny",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "allow",
+      "anonymous": "deny"
+    },
+    "GET /get/get-scroll-bar": {
+      "admin0": "deny",
+      "admin1": "deny",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "allow",
+      "anonymous": "deny"
+    },
+    "GET /get/get-tags": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/index/status": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/invites": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/invites/limits": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/metadata/{asset_id}": {
+      "admin0": "scope-dependent",
+      "admin1": "scope-dependent",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "scope-dependent",
+      "anonymous": "deny"
+    },
+    "GET /get/path-completion": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /get/prefetch": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "allow",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/self/profile": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/server-info": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /get/share/token": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /get/users": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /login": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /my-albums": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /my-albums/view/{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /object/compressed/{file_path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "allow",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /object/imported/{file_path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "allow",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/admin/config/disable-read-only": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/config/auth-key/reset": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/create_dir_album": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/create_share": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/index/album": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/index/cancel": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/invites": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/logout": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "POST /post/renew-hash-token": {
+      "admin0": "deny",
+      "admin1": "deny",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "allow",
+      "anonymous": "deny"
+    },
+    "POST /post/renew-timestamp-token": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "allow",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/upload": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/users/authenticate": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "POST /post/users/bootstrap": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "POST /post/users/register": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/admin/config": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/assign_album": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/delete_share": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/edit_flags": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/edit_rating": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/edit_share": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/edit_tag": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/regenerate-thumbnail-with-frame": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/rotate-image": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/set_album_cover": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/set_album_title": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/set_user_defined_description": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/users/admin": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/users/disabled": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/users/password": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "PUT /put/users/sharing": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "deny",
+      "memberB": "deny",
+      "sharingDisabled": "deny",
+      "disabledUser": "deny",
+      "shareGuest": "deny",
+      "snapshotBearer": "deny",
+      "anonymous": "deny"
+    },
+    "GET /redirect-to-login": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /register": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /registerSW.js": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /serviceWorker.js": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /setting": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /share/{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /shares": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /tags": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /timeline": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /timeline/view/{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /trashed": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /trashed/view/{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /unauthorized": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /videos": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /videos/view/{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /{dynamic_album_id}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    },
+    "GET /{path}": {
+      "admin0": "allow",
+      "admin1": "allow",
+      "memberA": "allow",
+      "memberB": "allow",
+      "sharingDisabled": "allow",
+      "disabledUser": "allow",
+      "shareGuest": "allow",
+      "snapshotBearer": "allow",
+      "anonymous": "allow"
+    }
+  }
+}

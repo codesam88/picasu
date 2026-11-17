@@ -108,14 +108,48 @@ Principles:
 - Reseed by deleting the state directory; the next run recreates it.
 
 Current target inventory (high level, exact counts may change with
-`seed.sh`): admin, member, disabled, and sharing-disabled accounts; global,
-nested, and personal albums; open, password-protected, expired, upload,
-dead, and nested shares; invites.
+`seed.sh`): admin0/admin1, memberA/memberB, sharing-disabled, and disabled
+accounts; global alpha/beta/gamma, nested alpha/sub, and personal home
+albums; open, nodownload, upload, password-protected, expired, member,
+dead, and nested shares; valid, bound, and used invites.
 
 The `seed.env` contract exposes the seeded state to other tools:
 `PICASU_JWT`, `PICASU_BASE_URL`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`,
 `FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, and `FUZZ_PASSWORD`. Fail-closed seeding
 asserts non-empty snapshot rows before completing.
+
+## Seed assumptions
+
+Mechanics confirmed against backend (read-only, 2026-11-17):
+
+- Expired invites: `POST /post/invites` accepts only `expiresInHours` `0`
+  (never expires) or `1`–`8760`; negative and over-limit values are
+  rejected. No API path yields a past deadline, so the expired-invite
+  target is dropped (would require a direct redb insert).
+- Personal homes: `PICASU_USERS_HOME` defaults to `<data>/users`;
+  `ensure_personal_home` creates the directory plus its dir-album on user
+  creation; indexing with `root: "personal"` (or the default `"auto"`)
+  walks the users root and personal albums surface as `root: "personal"`
+  filtered by owner.
+- Nested albums: a global index creates dir-album records for every
+  subdirectory, so `IMAGE_HOME/alpha/sub` gains its own `albumId` with
+  `parentAlbumId` set to the parent album.
+- Trash/rating: `PUT /put/edit_flags` body
+  `{indexArray, timestamp, isTrashed?}`; `PUT /put/edit_rating` body
+  `{indexArray, timestamp, rating}` (`0`–`5` or `null`). `timestamp`
+  must be a snapshot id from `POST /get/prefetch`
+  (`prefetch.timestamp`).
+- PNG metadata: EXIF is read from the embedded eXIf chunk and XMP from
+  embedded iTXt plus sidecar; PNG is not XMP-only.
+- Share expiry: `exp: 0` never expires; `POST /post/create_share` stores
+  `exp` verbatim with no bounds, so past values create already-expired
+  shares.
+- Disabled sharing: `PUT /put/users/sharing` toggles `shares_enabled`;
+  shares whose creator is later disabled fail revalidation ("Share no
+  longer exists"), i.e. dead shares. Seed by creating then disabling.
+- Second admin: `POST /post/users/register` always creates a non-admin;
+  elevate with `PUT /put/users/admin` `{userId, admin: true}` plus the
+  `X-Picasu-Password` re-auth header.
 
 ## Distribution
 

@@ -114,6 +114,22 @@ The exit status is the baseline comparison — known findings pass, new ones fai
 
 Fixture/env requirements: `PICASU_JWT`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`, `FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, `FUZZ_PASSWORD`, `PICASU_BASE_URL` (all provided by `seed.env`, which also points the recipe at the seeded port). The campaign targets a running instance, so destructive operations are disabled in `campaign.toml` (`update_admin_config_handler`, `reset_auth_key_handler`, `disable_read_only_handler`, index rebuild, logout, user password/admin mutations) and the hooks' poison guards null config fields, protect the admin, and redirect share/delete operations to nonexistent fixtures.
 
+### Per-role runner (`just fuzz-roles`)
+
+Runs one deterministic pass per role (admin0, admin1, memberA, memberB,
+sharingDisabled, disabledUser, shareGuest, snapshotBearer, anonymous) with
+identical budget, writing `report-<role>.json`. The role hooks
+(`hooks_roles.py`) inject per-role credentials (session cookie, a
+runtime-minted snapshot bearer, share-guest headers with an optional
+share password, or no auth for the anonymous pass), refresh an
+invalidated credential with a single re-login/re-prefetch on a 401 and
+replay the request once (attempt/success/failure counters are printed
+at run end; disabled credentials exhaust after one failed attempt so
+refresh never loops), and apply poison guards that null config fields
+and redirect logout, password, admin, disable, sharing, delete, index
+rebuild, read-only toggle and signing-key reset operations to
+nonexistent fixtures.
+
 ### Auth knowledge derivation (`backend/auth-matrix.json`)
 
 The hooks do not carry hand lists of auth knowledge. `auth_rules.py` derives it from `backend/auth-matrix.json` (the committed machine contract of the per-operation `x-picasu-auth` annotation, regenerated and diffed by `openapi-check`):
@@ -137,6 +153,14 @@ What A1-A5 assert (probe targets are generated from the matrix, not hand-picked)
 Budget: default `--max-time 900s`, overridable via pass-through args. Stateful phase uses up to 8 steps per sequence.
 
 The campaign runs in three env-gated modes controlled by `FUZZ_SHARE_HEADERS`, `FUZZ_MARKERS`, `FUZZ_READONLY`. The first two default on (set by `campaign.sh`); `FUZZ_READONLY` stays off unless exported and the target instance has read-only mode enabled.
+
+### Differential diff (`just fuzz-diff`)
+
+Compares the per-role reports produced by `just fuzz-roles` and fails on NEW
+cross-role diffs only. Uses `matrix.json` (per-(role,operation) expected
+class) and `baseline-roles.json` (triaged diffs):
+
+    just fuzz-diff
 
 ### Fundamental commands
 
