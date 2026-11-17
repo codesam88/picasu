@@ -17,6 +17,7 @@
 # Testing
 
 - [Test Strategy](test-strategy.md)
+- [API Fuzzing](api-fuzzing.md)
 - [Quint Modeling](quint-modeling.md)
 - [Eventual Consistency](eventual-consistency.md)
 - [Playwright Generator](playwright_generator.md)
