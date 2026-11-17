@@ -95,6 +95,28 @@ Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
    reads become multi-second. Solve space: incremental/streaming rebuild,
    serve-previous-snapshot-while-rebuilding, query-scoped view (item 4).
    Needs a scaled rig (item 5) before choosing.
+   **Blocked (2026-11-17 verification).** `04fc9d18` is not merged into the
+   retention branch: Playwright duplicate-files fails 5/5 and the quint check
+   drifts against the spec. The measured result below stands; the change is
+   parked until those failures are resolved.
+   **Leading-edge miss resolved** in `04fc9d18`: staleness is now classified
+   as background-only or request-path. A reader whose view was built before
+   only background writes keeps the published view and the rebuild runs on
+   the bulk pool — single-flight, `try_lock` (never blocking a reader), one
+   rebuild per freshness window, retrying until it catches up. Request-path
+   bumps and scan terminal transitions still rebuild synchronously; the
+   watcher's removal lookup keeps a forced-fresh read. The prefetch query key
+   includes the view generation, so a result computed from the served-stale
+   view is a miss after the rebuild (without it the cached result kept the
+   view stale indefinitely).
+   Micro-measured (release, synthetic `ASSET_BY_ID` rows, 20 iterations after
+   warmup, median/p95): request-path stale read 4.64/5.91 ms at 2000 rows and
+   9.20/15.57 ms at 5650 rows, versus 79 ns / 65 ns for the background-stale
+   read — the fresh-read floor. The O(rows) rebuild itself is unchanged, so
+   incremental rebuild and the query-scoped view stay open, and item 5's
+   scale rig is still needed before scaling claims. End-to-end prefetch
+   p95/max under a scan was not measured (set-100 gate cell is below
+   resolution for this stage).
 2. **Rebuild-cost discrepancy unexplained.** Same 2000-row library:
    main 454 ms build vs impose 14–48 ms (~10–30×). The earlier
    "0.23 ms/row identical on both branches" record does not extrapolate.
@@ -105,9 +127,20 @@ Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
    pre-fix measurements. Cascade already shares snapshots via `Arc`
    (C11); the read-path clone does not. Sharing/COW across reads is the
    candidate direction.
+   **Resolved** in `d0499623`: the tree view is published as
+   `Arc<Vec<DatabaseTimestamp>>` and the prefetch filter takes
+   `snapshot_tree_arc()` (O(1)); tag counting uses the same handle.
+   Micro-measured release clone cost on synthetic rows (path + 2 tags +
+   10 EXIF fields, 20 iterations after warmup): 7.1 ms at 2000 rows and
+   16.7 ms at 5650 rows (3.6 / 3.0 µs per row) versus 25–26 ns for the
+   `Arc` clone. The 2000-row figure matches this item's 8 ms floor.
+   End-to-end re-measurement is still open: the gate set-100 cell is
+   below resolution for this stage and the 2000-row rig needs a bench
+   cell.
 4. **Query-scoped view / full redb scan+sort on the requesting thread.**
    Open optimisation recorded in impose review notes; overlaps item 1's
-   solve space.
+   solve space. The lazy-fetch direction for items 1/3/4 waits on the
+   deferred option table under item 9.
 5. **Large-set benchmark effort.** C9 residual + 3a decision: scale the
    verify rig (5650-row library, then 50k+) with observer
    instrumentation; define bounded-latency targets for scan, loaded
@@ -127,6 +160,40 @@ Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
    edit-rating probes) vs 8.4 MB in storm-diff (no probe rounds).
    Dominates per-cell disk. Worth a look before 50k: what the probe
    path writes that the storm path does not.
+   **Cause** (measured 2026-11-17 on the surviving 5650 control cell):
+   one whole-view table per prefetch cache miss. That cell held 2006
+   tree tables / 8.46M rows / 1.4 GiB for 998 probe requests — the probe
+   prefetch runs after the round's edit moved the tree version, so it
+   misses, and a miss wrote the entire 5653-row view to its own redb
+   table. Tables are deleted only when the version they belong to
+   expires (~1 h), so the steady state is one table per miss in the
+   last hour, not a function of the storm path.
+   **Partial fix** (`ebc51874`, view-cache eviction bound): the newest
+   views stay in memory under `PICASU_TREE_SNAPSHOT_MEMORY_MB` (default
+   64 MiB) and only overflow is written to disk, which takes the
+   resident budget out of the steady-state disk size. On 200 miss-per-
+   round rounds (5653 rows): 201 tables / 269 MB before, 131 tables /
+   135 MB at the default budget, 0 at 512 MiB. It does not touch the
+   retention term, which is what scales with miss rate.
+   **Open:** snapshot retention is the ~1 h query-cache expiry, while a
+   prefetch token is valid for 300 s. Shortening tree-table retention to
+   the token lifetime (or deleting a table when its last referencing
+   query cache row is replaced) is the lever for the 2 GiB.
+   **Deferred (2026-11-17).** `ebc51874` (P3, view-cache eviction bound)
+   is deferred pending a verdict on the lazy-fetch options below. No
+   further `temp_db` fixes until the option (b) verdict.
+
+   | option | shape                                          |
+   | ------ | ---------------------------------------------- |
+   | a1     | ordinal list + pinned `Arc` snapshot           |
+   | a2     | id list, no pin                                |
+   | b      | query-scoped range scan, no snapshot           |
+   | c      | virtual scrollbar buckets computed at prefetch |
+
+   Analysis basis: scroll is an absolute-index model (a page implies a
+   fixed row offset), the view is frozen for the 300 s prefetch-token
+   lifetime, auth is evaluated at token mint rather than per read, and
+   no date-ordered index exists.
 
 Not perf (kept for separation): main rescan hang — pre-existing
 terminal-transition correctness bug, recorded in
