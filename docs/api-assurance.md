@@ -100,6 +100,9 @@ behavioral tests. Each rule lives where its inputs live.
    and the fuzz matrix is rebuilt from the model and executed
    deterministically by `just fuzz-matrix`; the stateful campaign
    (`just fuzz-run`) stays advisory because its phases are time-budgeted.
+
+   Fuzzing strategy and oracles: `docs/api-fuzzing.md`.
+
 3. **Generated negatives (implemented, role layer).** `backend/src/tests/matrix_negatives.rs`
    reads the published document and asserts, per operation and principal,
    that the model's exclusions hold: anonymous is refused on every

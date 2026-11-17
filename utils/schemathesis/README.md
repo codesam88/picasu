@@ -1,5 +1,7 @@
 # Schemathesis fuzz harness
 
+Strategy and threat model: `docs/api-fuzzing.md`. This file covers operations only.
+
 ## Tier 1 — check
 
 Runs a bounded single-operation sweep against a throwaway seeded backend and compares findings to `baseline.yaml`.

@@ -66,6 +66,8 @@ Locations and runners: `backend/tests/scenarios/*.yaml` driven by `build.rs`-gen
 
 The OpenAPI document plus the `x-picasu-auth` extension is the contract; correspondence rules (S1–S12) state each claim, what checks it, and whether it gates. Generators derive tests and fuzzing configuration from the contract (Schemathesis suites, generated negatives, auth matrix), so the handwritten suites pin flows while derived suites cover the cross-product. See the api-assurance doc for the full strategy, including its limits section — the honest-boundary convention this document follows.
 
+Fuzzing strategy and oracles: `docs/api-fuzzing.md`.
+
 ### Formal models with enforced contracts (`docs/quint-modeling.md`)
 
 Quint specs model one subsystem protocol at a time on finite bounds. Invariants state what must hold; the simulator explores interleavings and every violating trace becomes a regression test or a classified transient. Contracts are enforced where their inputs live: typestate and constructor-checked bundles at compile time, proptest properties for decision logic, stateful tests against the real backend for convergence. See [Quint Modeling](quint-modeling.md).
