@@ -90,9 +90,14 @@ Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
 `/tmp/opencode/perf-p1-retention-scale/<step>-<cmd>-<ts>.log` plus a `.exit`
 code, and are inspected from that file; never rely on a live pipe's tail,
 because a timeout then leaves no evidence. `just backend-test` hung twice in
-`random_op_sequences_converge` (>840 s) while the test alone passes in ~7 s
-and the full suite passed twice afterwards (56.5 s / 58.5 s); treat a repeat
-as interference until a rerun reproduces it.
+`random_op_sequences_converge` (the logged rerun aborted in
+`cancel_and_wait_index_idle` after 864 s: index job never idle, scanned=0)
+while the test alone passes in ~7 s and the full suite passed twice
+afterwards (56.5 s / 58.5 s); treat a repeat as interference until a rerun
+reproduces it. Check `/proc/cpuinfo` MHz
+before trusting absolute bands: the 2026-11-17 gate run sat at 900 MHz
+(`powersave`) and missed the idle bands by ~1.8x while the base/current A/B
+stayed within 0.4 ms.
 
 ## Items (added 2026-11-13)
 
@@ -165,6 +170,25 @@ as interference until a rerun reproduces it.
    The rig now records, per cell: every rebuild and filter stage as
    p50/max, exact `snapshot_memory_hit` / `snapshot_disk_fallback` counts,
    peak RSS (`vm_hwm_mb`) and `temp_db.redb` size (`temp_db_mb`).
+   **Scale result (2026-11-17, release, set-5650, 3 reps, host at
+   900 MHz powersave).** `storm-diff` completed: scan wall median 524.6 s
+   (prior single cell 648 s; host state differs), `temp_db` 8.4 MB /
+   8 tables in every rep (prior cell identical), VmHWM 448 MB. Stage p50
+   medians: `filter_snapshot_clone` 53.6 ms, `filter_par_iter` 25.9 ms,
+   `tree_refresh_build` 35.7 ms, `tree_refresh_total` 53.6 ms,
+   `prefetch_total` 83.0 ms. `control` did not complete: two runs froze
+   with the writer/cascade sequences stuck and all worker threads idle
+   (counters `(5391,5390,4357)` and `(4887,4885,3852)`), after the
+   during-scan `/get/prefetch` probe timed out (>30 s). Logs:
+   `step2-scale-prefix-*.log` and the cell `diag-orchestrator/stacks.txt`.
+   No 50k seed exists; at the 5650 set's 3.1 GB it is ~27 GB of images,
+   and a 524 s scan extrapolates to ~77 min/scan. Not attempted.
+   **Gate (set-100) A/B:** base `d0499623` vs this branch, two control
+   rounds each, idle p50 within 0.4 ms (prefetch 6.9/7.0 vs 7.3/7.1,
+   thumb 7.4/7.8 vs 7.6/7.6, edit 7.5/7.4 vs 7.8/7.5). The absolute gate
+   battery missed `baselines.tsv` by ~1.8x on idle edit/prefetch while
+   `/proc/cpuinfo` reported 900 MHz (governor `powersave`, no turbo);
+   the A/B shows no code effect, so the bands are not re-recorded.
 6. **Edit-path slowness at scale.** Fast at 2000 rows (102 ms), slow at
    5650 rows pre-fix on both branches (barrier/flush path). Unresolved
    at larger libraries; item 5's rig re-measures it.
@@ -199,6 +223,13 @@ as interference until a rerun reproduces it.
    prefetch token is valid for 300 s. Shortening tree-table retention to
    the token lifetime (or deleting a table when its last referencing
    query cache row is replaced) is the lever for the 2 GiB.
+   **Scale re-check (2026-11-17):** the probe-free `storm-diff` cell still
+   ends at 8 tables / 8.4 MB (both before and after the P1 base), so it
+   does not exercise this item. The `control` cell that produces the
+   growth could not complete twice (cascade stall, item 5), so the
+   post-retention delta at 5650 is unmeasured; the surviving pre-fix cell
+   is 2006 tables / 2,155,876,352 B. Retention is unchanged in this
+   branch.
    **Deferred (2026-11-17).** `ebc51874` (P3, view-cache eviction bound)
    is deferred pending a verdict on the lazy-fetch options below. No
    further `temp_db` fixes until the option (b) verdict.
