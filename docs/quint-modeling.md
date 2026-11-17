@@ -62,16 +62,17 @@ review of each classification.
 
 ## Components
 
-- `utils/quint/pipeline/<subsystem>.qnt`: the model — actors, shared state, actions
+- `utils/quint/pipeline/merged.qnt`: the model — actors, shared state, actions
   with enabling conditions, invariants (`NoLostUpload`-style safety
   properties on finite bounds), and `quint test` runs asserting
-  settled states. Run `quint typecheck` and `quint test`; explore
+  settled states. Entry points are thin sibling modules
+  (`entry-canonical.qnt` imports the merged model at its canonical
+  bounds). Run `quint typecheck` and `quint test`; explore
   with `quint run`.
 - `scripts/deps/quint.sh` + `QUINT_VERSION`: pinned toolchain,
   installed via `just install quint`, no JDK required.
-- `just quint test`: typecheck (via `lint`) plus model runs over both pipeline specs
-  (`utils/quint/pipeline/eventual-consistency.qnt` and
-  `utils/quint/pipeline/asset-aspects.qnt`), wired into the `check`
+- `just quint test`: typecheck (via `lint`) plus model runs through
+  `utils/quint/pipeline/entry-canonical.qnt`, wired into the `check`
   aggregate so every precommit runs it. The operations layer
   (`pipeline/operations.json` and backend markers) is validated by
   `just quint check`.

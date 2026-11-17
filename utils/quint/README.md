@@ -1,9 +1,8 @@
 # utils/quint
 
-Checkable models of subsystem protocols, one file per subsystem:
-`utils/quint/pipeline/<subsystem>.qnt`. Each spec is exercised by `just quint-check`
-(typecheck plus `quint test`); exploratory simulation is `quint run`
-and never gates.
+Checkable models of subsystem protocols in `utils/quint/pipeline/`. Each
+model is exercised by `just quint test` (typecheck plus `quint test`);
+exploratory simulation is `quint run` and never gates.
 
 ## Assumption rules
 
@@ -19,48 +18,50 @@ by components out of scope here.
 
 Current contents of `pipeline/`:
 
-- `eventual-consistency.qnt` — the pipeline protocol as prescribed
-  event handling: watcher/API boundary events, recovery events
-  (watcher gap, crash, derived-store loss, DB loss), intake submits,
-  worker steps, and per-root scan/sweep. Invariants: no lost intake
-  work, no permanent stale rows; the convergence goal is `Converged`
-  (every processable asset path has exactly one correct row; every
-  row's asset exists; nothing queued), pinned per diverged shape by
-  the runs. Unprocessable paths are logged, never indexed, and are
-  excluded from the goal.
+- `merged.qnt` — the pipeline model in one module: shared state and finite
+  bounds (five paths, two roots), the snapshot matcher and the
+  `NoLostUpload` / `NoPermanentStale` safety predicates, the `Converged`
+  goal, the protocol as prescribed event handling (watcher/API boundary
+  events, recovery events, intake submits, worker steps, per-root
+  scan/sweep), the four-aspect slice (asset file, sidecar,
+  thumbnail/derived, DB asset row), and the proof-lane completion machine.
+  Invariants: no lost intake work, no permanent stale rows; the
+  convergence goal is `Converged` (every processable asset path has
+  exactly one correct row; every row's asset exists; nothing queued),
+  pinned per diverged shape by the runs. Unprocessable paths are logged,
+  never indexed, and are excluded from the goal.
 
-  The spec is split across modules that import each other (native
-  Quint modules, no preprocessor): `eventual-consistency-state.qnt` holds shared
-  types, variables, finite bounds (five paths, two roots), and the
-  initial state; `eventual-consistency-assumptions.qnt` holds the snapshot matcher
-  plus the `NoLostUpload` / `NoPermanentStale` safety predicates,
-  each beside its prose and ASS tag;
-  `eventual-consistency-goal.qnt` holds the `Converged` goal
-  predicate — the subsystem-specific part;
-  `eventual-consistency.qnt` holds the actions, the `step`
-  interleaving, and the runs.
+  Sections are marked with `// ---------- section: ... ----------`
+  comments; declarations share one namespace, so the file is the unit of
+  scoping. Because `step` and `stepCompletion` live side by side, each
+  carries a `@step-universe` tag naming the actions it must cover; the
+  steps gate checks universe membership, branch presence, and that no
+  declared action falls outside every universe.
 
-- `asset-aspects.qnt` — the four-aspect slice (asset file, sidecar,
-  thumbnail/derived, DB asset row): alignment predicates and
-  conflicting-pair runs over the same state; imports
-  `eventual-consistency.qnt`.
-- `asset-aspects-step.qnt` — the proof-lane entry: `stepCompletion`
-  enumerates every base and asset-aspect action over its parameter
-  ranges in a three-phase completion machine (`phase` 0 free, 1
-  draining, 2 scanning; `scannedRoots` watermark). Phase 0 admits every
-  action; phase 1 freezes the environment and admits the work-consuming
+- `entry-canonical.qnt` — the canonical-bounds entry: a plain
+  `import pipeline_merged.* from "./merged"`, executed by
+  `just quint test`. The bounds are the module's own `PATHS`, `HASHES`,
+  `SMALL`, and `ROOTS` values.
+
+  `stepCompletion` enumerates every base and asset-aspect action over its
+  parameter ranges in a three-phase cycle (`phase` 0 free, 1 draining,
+  2 scanning; `scannedRoots` watermark). Phase 0 admits every action;
+  phase 1 freezes the environment and admits the work-consuming
   branches, crashes, and untracked rescans; phase 2 takes one tracked
-  `CompleteScan` per root and drains the work it creates.
-  `Quiescent` is the drained-state predicate and `CompletionInvariant`
-  claims the goal at phase-2 quiescence. Its sanity runs are
-  simulation-only and are not part of `just quint test`.
+  `CompleteScan` per root and drains the work it creates. `Quiescent` is
+  the drained-state predicate and `CompletionInvariant` claims the goal
+  at phase-2 quiescence. Its sanity runs are simulation-only: they assert
+  per-tick properties or walk one deterministic path, so they run with
+  the suite without claiming the invariant over all paths.
+
 - `operations.json` — internal mutation operations OP-1..OP-12 with
   events, aspect reads/writes, guards, status and interaction nodes;
   validated by `just operations-check` against backend annotations.
   Out of scope by design: the read-model invalidation advance
   (`mark_tree_dirty_background`) and the dir-album sweep lane
   (`handle_sweep_dir_albums`); tree-epoch modeling is deferred
-  (node N5 / the full aspect boundary).- `events.json` — boundary and recovery events with their settled
+  (node N5 / the full aspect boundary).
+- `events.json` — boundary and recovery events with their settled
   effects and known faults, validated by `just events-check`.
 - `goals.json` — goals G0–G4 with decision (`committed`, `queued`,
   `dropped`), anchors and assumptions; only committed goals source

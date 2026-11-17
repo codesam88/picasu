@@ -32,7 +32,7 @@
         },
         {
           "fault": "create+delete race",
-          "consequence": "generation order decides; modeled in eventual-consistency.qnt",
+          "consequence": "generation order decides; modeled in merged.qnt",
           "status": "covered"
         }
       ],

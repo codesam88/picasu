@@ -17,10 +17,10 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 
 ## Status
 
-Computed from the catalog statuses and the `run` declarations in `eventual-consistency.qnt`, `asset-aspects.qnt` and `asset-aspects-step.qnt`;
+Computed from the catalog statuses and the `run` declarations in `merged.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 68 scenario runs across 3 spec files (eventual-consistency.qnt: 33, asset-aspects.qnt: 31, asset-aspects-step.qnt: 4); `just quint test` executes the entries and the runs they import; simulator traces are advisory.
+- Proof: 68 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
 - Requirements: 14 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
@@ -51,7 +51,7 @@ After changes stop and a full scan completes, every asset path has exactly one c
 
 Anchors:
 
-- predicate: `eventual-consistency-goal.qnt:Converged`
+- predicate: `merged.qnt:Converged`
 
 Holds under: ASS-3, ASS-6.
 
@@ -63,7 +63,7 @@ After changes stop, convergence by the end of the first backstop scan cycle that
 
 Anchors:
 
-- test: `eventual-consistency.qnt:boundedConvergenceTest`
+- test: `merged.qnt:boundedConvergenceTest`
 
 Holds under: ASS-3, ASS-6, ASS-7.
 
@@ -153,7 +153,7 @@ Source: `utils/quint/pipeline/scope.json`.
 
 ### SCOPE-1: Initial converged state
 
-Bound: Every run starts from fully matching files and rows (initialFile, initialRow, init in utils/quint/pipeline/eventual-consistency-state.qnt).
+Bound: Every run starts from fully matching files and rows (initialFile, initialRow, init in utils/quint/pipeline/merged.qnt).
 
 Why safe: Convergence is about healing divergence, so runs introduce divergence explicitly before asserting the heal.
 
@@ -161,7 +161,7 @@ Lifting: Start runs from arbitrary states (not yet modeled).
 
 ### SCOPE-2: Finite bounds
 
-Bound: Five paths, three content hashes, three small mtime/len values (PATHS, HASHES, SMALL in utils/quint/pipeline/eventual-consistency-state.qnt).
+Bound: Five paths, three content hashes, three small mtime/len values (PATHS, HASHES, SMALL in utils/quint/pipeline/merged.qnt).
 
 Why safe: The properties checked (identity match, no lost intake, no permanent staleness) are per-path and pairwise; bounds are sized to exhibit every guard outcome (match, mismatch, superseded, stale, missing) and to hold one two-asset subtree move plus a second sweep root.
 
@@ -169,7 +169,7 @@ Lifting: Bound-escalation runs at larger sizes (not yet modeled).
 
 ### SCOPE-3: Collapsed intake lanes
 
-Bound: The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in utils/quint/pipeline/eventual-consistency.qnt).
+Bound: The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in utils/quint/pipeline/merged.qnt).
 
 Why safe: No checked property depends on lane order — guards are per-item (generation, snapshot), never positional.
 
@@ -187,7 +187,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-5: Synchronous direct writes
 
-Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.
+Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/merged.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.
 
 Why safe: The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.
 
@@ -207,7 +207,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-7: Flat directory paths
 
-Bound: Path IDs carry no directory hierarchy. A directory rename is a fixed finite set of path pairs (SUBTREE_PAIRS in utils/quint/pipeline/eventual-consistency.qnt) moved atomically; arbitrary subtrees are not modeled.
+Bound: Path IDs carry no directory hierarchy. A directory rename is a fixed finite set of path pairs (SUBTREE_PAIRS in utils/quint/pipeline/merged.qnt) moved atomically; arbitrary subtrees are not modeled.
 
 Why safe: The property under proof is per-descendant row/path consistency plus all-or-nothing row updates, which a fixed two-asset pair set exhibits at the model's bounds.
 
@@ -265,7 +265,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-13: Nondeterministic scheduling
 
-Bound: Within a phase, any action classified for that phase may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints inside a phase. The completion phases are the only sequencing: free (every action, untracked scans included), draining (work-consuming branches, crashes, untracked scans, then BeginScan at quiescence), scanning (one tracked CompleteScan per root, then work-consuming branches) — see stepCompletion in utils/quint/pipeline/asset-aspects-step.qnt. The phases encode the G1/G2 observation premise (changes stopped and a tracked scan completed), not pipeline inter-locking.
+Bound: Within a phase, any action classified for that phase may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints inside a phase. The completion phases are the only sequencing: free (every action, untracked scans included), draining (work-consuming branches, crashes, untracked scans, then BeginScan at quiescence), scanning (one tracked CompleteScan per root, then work-consuming branches) — see stepCompletion in utils/quint/pipeline/merged.qnt. The phases encode the G1/G2 observation premise (changes stopped and a tracked scan completed), not pipeline inter-locking.
 
 Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. The phase machine narrows the observation window deliberately: the invariant is claimed only at phase-2 quiescence, after the tracked scan of each root has drained. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
 
@@ -636,7 +636,7 @@ Faults:
 
 - event missed (open): file undiscovered until the next scan
 - decode/scan failure (covered): event logged, no row added (unprocessable paths are never indexed)
-- create+delete race (covered): generation order decides; modeled in eventual-consistency.qnt
+- create+delete race (covered): generation order decides; modeled in merged.qnt
 
 Notes: Watcher-debounced create; the submit step is tracked separately as SUBMIT. Decode/scan failure: event logged, no row added (unprocessable paths are never indexed). A create for just the .xmp of an existing asset resubmits the sibling media path (never the xmp path itself, which fails the media-extension gate) so the row is augmented with sidecar metadata; covers delayed sidecar arrival via background transfer. The xmp-to-media mapping is specified, not yet implemented.
 

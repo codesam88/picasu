@@ -6,7 +6,7 @@
 //! filesystem + redb) and asserts the converged state against a tiny
 //! in-test model: present/absent per path plus row-exists.
 //!
-//! Contract mapping (model predicates: `utils/quint/pipeline/eventual-consistency-assumptions.qnt`;
+//! Contract mapping (model predicates: `utils/quint/pipeline/merged.qnt`;
 //! implementation obligations: `utils/quint/pipeline/requirements.json`):
 //! - `upload_modify_rescan_converges`: `[NoLostUpload]` inline upload bumps
 //!   generation; `[NoPermanentStale]` external content change is reflected

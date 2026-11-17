@@ -18,13 +18,12 @@ default:
 _install-quint:
     just -d "{{ root }}" install quint
 
-# Static self-checks: prettier over the layer + typecheck both specs.
+# Static self-checks: prettier over the layer + typecheck the model entry.
 [group('quint')]
 lint: _install-quint
     cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md' '../utils/quint/coverage/**/*.ts'
     cd "{{ root }}/frontend" && npx --no-install tsc --noEmit -p ../utils/quint/coverage/tsconfig.json
-    quint typecheck "{{ pipeline_dir }}/eventual-consistency.qnt"
-    quint typecheck "{{ pipeline_dir }}/asset-aspects.qnt"
+    quint typecheck "{{ pipeline_dir }}/entry-canonical.qnt"
 
 # Apply formatting.
 [group('quint')]
@@ -35,32 +34,30 @@ format:
 # named here feed the doc status line; they are the files `test` executes.
 [group('quint')]
 check:
-    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}" eventual-consistency.qnt asset-aspects.qnt asset-aspects-step.qnt
+    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}" merged.qnt
 
-# Run both model entries at the standard sample count (10k per run).
+# Run the model entry at the standard sample count (10k per run).
 [group('quint')]
 test: _install-quint
-    quint test "{{ pipeline_dir }}/eventual-consistency.qnt"
-    quint test "{{ pipeline_dir }}/asset-aspects.qnt"
+    quint test "{{ pipeline_dir }}/entry-canonical.qnt"
 
 # Deep model runs, elevated sample counts (nightly; tens of minutes).
 [group('quint')]
 fulltest: _install-quint
     #!/usr/bin/env bash
     set -euo pipefail
-    quint test --max-samples 100000 "{{ pipeline_dir }}/eventual-consistency.qnt"
-    quint test --max-samples 100000 "{{ pipeline_dir }}/asset-aspects.qnt"
+    quint test --max-samples 100000 "{{ pipeline_dir }}/entry-canonical.qnt"
 
 # Regenerate docs/eventual-consistency.md from the catalogs.
 [group('quint')]
 docs:
-    node "{{ source_directory() }}/coverage/bin/check.ts" docs "{{ pipeline_dir }}" "{{ docs_report }}" eventual-consistency.qnt asset-aspects.qnt asset-aspects-step.qnt
+    node "{{ source_directory() }}/coverage/bin/check.ts" docs "{{ pipeline_dir }}" "{{ docs_report }}" merged.qnt
     cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "{{ docs_report }}"
 
 # Generated-doc drift gate: regenerate + diff against the committed doc.
 [group('quint')]
 doc-check:
-    node "{{ source_directory() }}/coverage/bin/check.ts" doc-check "{{ pipeline_dir }}" "{{ docs_report }}" eventual-consistency.qnt asset-aspects.qnt asset-aspects-step.qnt
+    node "{{ source_directory() }}/coverage/bin/check.ts" doc-check "{{ pipeline_dir }}" "{{ docs_report }}" merged.qnt
 
 # Checker self-tests: fixtures prove the gates fail when they should.
 [group('quint')]

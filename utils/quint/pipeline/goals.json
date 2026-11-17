@@ -32,7 +32,7 @@
       "anchors": [
         {
           "kind": "predicate",
-          "ref": "eventual-consistency-goal.qnt:Converged"
+          "ref": "merged.qnt:Converged"
         }
       ],
       "assumptions": [
@@ -49,7 +49,7 @@
       "anchors": [
         {
           "kind": "test",
-          "ref": "eventual-consistency.qnt:boundedConvergenceTest"
+          "ref": "merged.qnt:boundedConvergenceTest"
         }
       ],
       "assumptions": [
