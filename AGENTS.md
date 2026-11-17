@@ -47,6 +47,12 @@ The `.plan/` directory tracks pending and completed work. Run `plan list` to vie
   unavailable. Successful test suite run does not replace quality checks.
 - When done, provide a summary of the change. When on a feature branch,
   commit in reasonable steps.
+- Long-running background commands and any command with a `timeout`
+  prefix must redirect stdout/stderr to tmpfiles
+  (e.g. `/tmp/opencode/logs/<date-time>-<cmd>.log`), then inspect
+  via `tail`/`grep` on the file. Do not pipe directly to `tail`/`grep`
+  in a way that discards diagnostics; keep the file path and exit code
+  for resume instead of blind re-runs.
 - Commit messages should include a summary of what was changed and why.
   Do not include verbose examples or documentation.
 - Update code-level documentation where applicable.
