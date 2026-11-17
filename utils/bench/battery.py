@@ -82,12 +82,9 @@ NA = "n/a"
 # is comparable only through a column another profile fills. The failed
 # columns count ops a storm kind could not complete, pooled across reps.
 IDENTITY_COLUMNS = ["cell", "profile", "level", "scale", "build", "commit"]
-STAGE_COLUMNS = [
-    "tree_refresh_build_p50_us",
-    "tree_refresh_build_max_us",
-    "filter_snapshot_clone_p50_us",
-    "filter_snapshot_clone_max_us",
-]
+STAGE_COLUMNS = list(extract_bench.STAGE_COLUMNS)
+COUNTER_COLUMNS = list(extract_bench.COUNTER_COLUMNS)
+METRICS_COLUMNS = list(extract_bench.METRICS_COLUMNS)
 UPLOAD_COLUMNS = ["upload_submit_p50_ms", "upload_visible_p50_ms"]
 
 BASELINE_COLUMNS = ["cell", "metric", "baseline", "rel_tol", "abs_tol", "recorded", "note"]
@@ -107,6 +104,8 @@ REPORT_COLUMNS = (
     + STORM_FAILED_COLUMNS
     + UPLOAD_COLUMNS
     + STAGE_COLUMNS
+    + COUNTER_COLUMNS
+    + METRICS_COLUMNS
 )
 
 
@@ -321,7 +320,9 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
         "upload_submit_p50_ms": upload_submit,
         "upload_visible_p50_ms": upload_visible,
     }
-    for column in LATENCY_COLUMNS + STORM_FAILED_COLUMNS + STAGE_COLUMNS:
+    for column in (
+        LATENCY_COLUMNS + STORM_FAILED_COLUMNS + STAGE_COLUMNS + COUNTER_COLUMNS + METRICS_COLUMNS
+    ):
         row[column] = _fmt(cell.get(column))
     # The drain parse behind the stage columns, kept whole for the extract
     # document: it comes from the same server.log read, so a cell carries

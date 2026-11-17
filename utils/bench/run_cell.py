@@ -73,6 +73,8 @@ PROBE_TIMEOUT_S = 2.0
 SERVER_INFO_PATH = "/get/server-info"
 LAUNCHER_INTERRUPT_RC = 130
 TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
+CELL_METRICS_FILE = "cell-metrics.json"
+TEMP_DB_RELATIVE = Path("data") / "db" / "temp_db.redb"
 
 EXIT_CONFIG = 1
 
@@ -230,6 +232,45 @@ def _server_pid(cfg: config.CellConfig):
     info = _read_json(cfg.out / "launcher-info.json")
     pid = info.get("pid") if isinstance(info, dict) else None
     return pid if isinstance(pid, int) and pid > 0 else None
+
+
+def _vm_hwm_mb(pid: int):
+    """Peak resident set of `pid` in MiB, from `/proc/<pid>/status`."""
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmHWM:"):
+                parts = line.split()
+                return round(int(parts[1]) / 1024.0, 1)
+    except OSError, ValueError, IndexError:
+        return None
+    return None
+
+
+def record_cell_metrics(cfg: config.CellConfig) -> None:
+    """Freeze process and snapshot-store cost into `cell-metrics.json`.
+
+    Captured while the server is still alive so VmHWM (the peak, not the
+    current RSS) is readable. `temp_db.redb` is the on-disk snapshot store;
+    its apparent size is the per-cell disk cost the flush task produced.
+    """
+    metrics = {}
+    pid = _server_pid(cfg)
+    if pid is not None:
+        hwm = _vm_hwm_mb(pid)
+        if hwm is not None:
+            metrics["vm_hwm_mb"] = hwm
+    temp_db = cfg.out / TEMP_DB_RELATIVE
+    try:
+        size = temp_db.stat().st_size
+    except OSError:
+        pass
+    else:
+        metrics["temp_db_bytes"] = size
+        metrics["temp_db_mb"] = round(size / 1e6, 1)
+    try:
+        (cfg.out / CELL_METRICS_FILE).write_text(json.dumps(metrics, indent=2) + "\n")
+    except OSError as err:
+        log_line(f"metrics: could not write {CELL_METRICS_FILE}: {err}")
 
 
 def _status_state(cfg: config.CellConfig) -> str:
@@ -466,6 +507,7 @@ def run_cell(cfg: config.CellConfig, environ: dict) -> int:
         result = EXIT_INTERRUPTED
     finally:
         if launcher is not None:
+            record_cell_metrics(cfg)
             shutdown_rc = stop_launcher(launcher, cfg.stop_timeout)
             log_line(f"launcher stopped rc={shutdown_rc}")
         launcher_output.unlink(missing_ok=True)

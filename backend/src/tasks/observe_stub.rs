@@ -113,6 +113,32 @@ impl Stage {
     }
 }
 
+/// A monotonic event count reported next to the stage table. The stub keeps
+/// the shape without recording anything.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum Counter {
+    SnapshotMemoryHit = 0,
+    SnapshotDiskFallback,
+}
+
+/// Number of counters, must match [`Counter`]'s variants.
+pub const COUNTER_COUNT: usize = 2;
+
+impl Counter {
+    /// Every counter in report order.
+    pub const ALL: [Self; COUNTER_COUNT] = [Self::SnapshotMemoryHit, Self::SnapshotDiskFallback];
+
+    /// Stable snake-case name used in the drain report.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::SnapshotMemoryHit => "snapshot_memory_hit",
+            Self::SnapshotDiskFallback => "snapshot_disk_fallback",
+        }
+    }
+}
+
 /// Aggregated view of one stage; always empty without the feature.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StageSummary {
@@ -172,6 +198,15 @@ pub fn timed<T>(_stage: Stage, _context: u64, f: impl FnOnce() -> T) -> T {
 
 /// Record a completed sample (no-op).
 pub fn record(_stage: Stage, _duration_us: u64, _context: u64) {}
+
+/// Increment an event counter (no-op).
+pub fn count(_counter: Counter) {}
+
+/// Value of an event counter; always zero without the feature.
+#[must_use]
+pub fn counter(_counter: Counter) -> u64 {
+    0
+}
 
 /// Rate-limit gate (no-op build: never claims, so callers stay silent).
 pub(crate) fn claim_report(_last: &std::sync::atomic::AtomicU64, _now: u64) -> bool {

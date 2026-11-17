@@ -539,3 +539,54 @@ class TranscriptFormatTest(unittest.TestCase):
         (self.cell / "events.jsonl").unlink()
         without_events = extractor().parse_log(self.cell)
         self.assertEqual(with_events, without_events)
+
+
+class ObserverCounterTest(unittest.TestCase):
+    """`observe counters:` lines and process metrics in the cell row."""
+
+    def test_counters_line_parses_into_exact_counts(self):
+        log = (
+            "observe drain: scan job=1 state=Completed\n"
+            "  stage                     n   p50_us   p95_us    max_us\n"
+            "  prefetch_total           71       29    10350    18300\n"
+            "observe counters: snapshot_memory_hit=41 snapshot_disk_fallback=3\n"
+        )
+        self.assertEqual(
+            extractor().parse_counters(log),
+            [{"snapshot_memory_hit": 41, "snapshot_disk_fallback": 3}],
+        )
+
+    def test_absent_counters_line_is_empty(self):
+        self.assertEqual(extractor().parse_counters("no observer output here\n"), [])
+
+    def test_cell_carries_counters_and_process_metrics(self):
+        row = {
+            "benchmark": "cell",
+            "observer_counters": [
+                {"snapshot_memory_hit": 5, "snapshot_disk_fallback": 2},
+                {"snapshot_memory_hit": 7, "snapshot_disk_fallback": 0},
+            ],
+            "vm_hwm_mb": 120.5,
+            "temp_db_mb": 3.2,
+        }
+
+        cell = extractor()._cell(row, {})
+
+        self.assertEqual(cell["snapshot_memory_hit"], "5,7")
+        self.assertEqual(cell["snapshot_disk_fallback"], "2,0")
+        self.assertEqual(cell["vm_hwm_mb"], 120.5)
+        self.assertEqual(cell["temp_db_mb"], 3.2)
+
+    def test_cell_metrics_file_fills_the_row(self):
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        shutil.copytree(FIXTURES / "control", directory / "control")
+        target = directory / "control"
+        (target / "cell-metrics.json").write_text(
+            json.dumps({"vm_hwm_mb": 99.5, "temp_db_mb": 12.25}) + "\n"
+        )
+
+        row = extractor().parse_log(target)
+
+        self.assertEqual(row["vm_hwm_mb"], 99.5)
+        self.assertEqual(row["temp_db_mb"], 12.25)

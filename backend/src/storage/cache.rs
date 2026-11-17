@@ -2,6 +2,7 @@ use crate::constant::ROW_BATCH_NUMBER;
 use crate::error::{AppError, ErrorKind};
 use crate::model::response::DisplayElement;
 use crate::model::response::Row;
+use crate::tasks::observe::{Counter, count};
 use redb::ReadableTable;
 use std::error::Error;
 use std::sync::LazyLock;
@@ -18,7 +19,19 @@ pub struct TreeSnapshot {
     pub in_memory: &'static DashMap<i64, Vec<ReducedData>>,
 }
 
-pub static TREE_SNAPSHOT: LazyLock<TreeSnapshot> = LazyLock::new(TreeSnapshot::new);
+pub static TREE_SNAPSHOT: LazyLock<TreeSnapshot> = LazyLock::new(|| {
+    if crate::tasks::observe::observer_stats() {
+        // Anchor the per-row memory model: resident snapshot rows are
+        // `ReducedData`, and a full tree view is one `DatabaseTimestamp` per
+        // row before filtering.
+        log::info!(
+            "observe rows: DatabaseTimestamp={}B ReducedData={}B",
+            std::mem::size_of::<crate::model::response::DatabaseTimestamp>(),
+            std::mem::size_of::<ReducedData>()
+        );
+    }
+    TreeSnapshot::new()
+});
 
 use crate::storage::files::get_data_path;
 
@@ -288,9 +301,11 @@ impl TreeSnapshot {
     /// [`SnapshotReadError::Storage`].
     pub fn read_tree_snapshot(&'static self, timestamp: i64) -> Result<MyCow, SnapshotReadError> {
         if let Some(data) = self.in_memory.get(&timestamp) {
+            count(Counter::SnapshotMemoryHit);
             return Ok(MyCow::DashMap(data));
         }
 
+        count(Counter::SnapshotDiskFallback);
         let read_txn = self
             .in_disk
             .begin_read()
@@ -742,6 +757,24 @@ mod expire_tests {
         assert!(
             !expire.expired_check(timestamp),
             "a timestamp with no recorded expiry must not be treated as already expired"
+        );
+    }
+}
+
+#[cfg(test)]
+mod row_size_tests {
+    use super::*;
+
+    /// Pin the per-row memory model quoted in `docs/database.md`: a resident
+    /// view row is `ReducedData`, the tree view a rebuild walks is
+    /// `DatabaseTimestamp`. A struct change that moves these must update the
+    /// budget documentation instead of silently shrinking the store's bound.
+    #[test]
+    fn snapshot_row_sizes_match_the_documented_anchors() {
+        assert_eq!(std::mem::size_of::<ReducedData>(), 168);
+        assert_eq!(
+            std::mem::size_of::<crate::model::response::DatabaseTimestamp>(),
+            584
         );
     }
 }
