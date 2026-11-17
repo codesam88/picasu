@@ -237,6 +237,31 @@ Steps 1-2 of the A-merged sequence landed:
   reassignment). Reduced entries are verify vehicles, not regression
   vehicles.
 
+## TLC round: totality gap + state-space reality (2026-11-17)
+
+- Bake-off ladder at reduced bounds: TLC d12 failed in 5 s at 630k
+  states/min with an out-of-domain application; Apalache d8 was killed at
+  38 min still at depth 3 — the bounds reduction did not move Apalache's
+  per-state cost (dominated by the 1,648-branch transition relation, not
+  the bound universe). Ladder short-circuited.
+- Backend-semantics asymmetry (recorded): TLC does NOT short-circuit `or`
+  around function application and ERRORS on out-of-domain application;
+  Apalache's SMT encoding proceeds with an unconstrained value. TLC is
+  the stricter oracle; canonical bounds masked the gap.
+- Refinement round 4 (391eee9c): the gap was the dir-move resolvability
+  foldl (`not(contains) or contains(get)` evaluated eagerly) in
+  ExternalRenameDir/ApiAssignDirMove; fixed with a lazy conditional.
+  Sibling audit fixed four more unguarded reads (dupeIndex/thumbPresent/
+  assetById keys in WorkerApplySuccess, WorkerSkipUnchanged,
+  WorkerRemoveApply, ApiRemove). 68 runs green; all gates green.
+- Post-fix TLC: no model error; 19M distinct states at depth 5, 65M at
+  depth 6 (5.2 min, then quint's internal timeout). The reduced state
+  space explodes with depth (nondet content draws multiply it) —
+  exhaustive deep verification is infeasible for BOTH backends at any
+  practical bound configuration. The principled escape is an inductive
+  invariant (TypeOK-style strengthening); the shallow-depth TLC lane is
+  the practical nightly claim.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
