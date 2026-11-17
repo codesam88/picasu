@@ -1,0 +1,20 @@
+{
+  "findings": [
+    {
+      "id": "role-error::anonymous::Network Error",
+      "note": "triaged: anonymous role run hit connection refused (server down during reduced run)"
+    },
+    {
+      "id": "role-error::shareGuest::Server Unavailable",
+      "note": "triaged: shareGuest role run hit server unavailable mid-run"
+    },
+    {
+      "id": "role-error::snapshotBearer::Network Error",
+      "note": "triaged: snapshotBearer role run hit connection refused (server down during reduced run)"
+    },
+    {
+      "id": "op-diff::POST /post/create_dir_album",
+      "note": "triaged: create_dir_album returns 500 on directory collision (admin roles only; see .plan/api-fuzzer-auth.md)"
+    }
+  ]
+}

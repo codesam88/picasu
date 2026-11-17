@@ -242,6 +242,21 @@ fuzz-run *args: (install "schemathesis")
     FUZZ_STATE_DIR="${FUZZ_STATE_DIR:-{{justfile_directory()}}/sandbox/fuzz}" \
     utils/schemathesis/campaign.sh {{ args }}
 
+# per-role runner (equal budget, separate report-<role>.json)
+[group('utils')]
+fuzz-roles *args: (install "schemathesis")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/deps-install.sh --tool schemathesis --check
+    utils/schemathesis/run-roles.sh {{ args }}
+
+# differential diff across per-role reports (fails on NEW diffs only)
+[group('utils')]
+fuzz-diff *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 utils/schemathesis/diff.py {{ args }}
+
 
 # audit workflows/deps offline (no GH_TOKEN)
 [group('utils')]
