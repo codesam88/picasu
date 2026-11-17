@@ -92,11 +92,10 @@ static ACTIVE_INDEX: LazyLock<Mutex<Option<ActiveIndex>>> = LazyLock::new(|| Mut
 pub fn clear_asset_tables_and_caches() -> AppResult<()> {
     crate::storage::db::clear_all_asset_tables_drop()
         .map_err(|e| AppError::new(ErrorKind::Internal, format!("{e:#}")))?;
-    crate::storage::db::TREE
+    *crate::storage::db::TREE
         .in_memory
         .write()
-        .expect("TREE in_memory lock")
-        .clear();
+        .expect("TREE in_memory lock") = Arc::new(vec![]);
     crate::storage::tree_view::invalidate_tree_view();
     crate::process::dir_album::reset_dir_album_cache();
     Ok(())

@@ -14,7 +14,7 @@ use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::cache::next_snapshot_id;
 use crate::storage::db::INVALIDATION_VERSION;
-use crate::storage::db::snapshot_tree;
+use crate::storage::db::snapshot_tree_arc;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::observe::{self, Stage, Timer, claim_report, mono_ms};
 
@@ -128,11 +128,11 @@ fn filter_items(
 ) -> Vec<ReducedData> {
     let filter_items_start_time = Instant::now();
 
-    // Clone under a short guard, then drop the guard before any Rayon work.
-    // Holding the guard across `par_iter` lets a stolen cascade job block on
-    // the tree-refresh write while this join waits for that pool worker.
+    // The prefetch filter is the hot read path: take a shared `Arc` handle so
+    // no rows are copied and no tree guard is held across `par_iter`. Bumping
+    // the epoch publishes a new view; in-flight readers keep their snapshot.
     let clone_timer = Timer::start(Stage::FilterSnapshotClone);
-    let tree_snapshot = snapshot_tree();
+    let tree_snapshot = snapshot_tree_arc();
     let source_rows = u64::try_from(tree_snapshot.len()).unwrap_or(u64::MAX);
     clone_timer.finish(source_rows);
 

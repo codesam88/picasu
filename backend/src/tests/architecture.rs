@@ -6,8 +6,8 @@
 /// A live `TREE.in_memory` read guard held across `par_iter` can deadlock the
 /// shared pool: a worker participating in the join can steal the cascade's
 /// tree-refresh job, whose `write()` blocks on that guard while the join waits
-/// for the same worker. The fix is `snapshot_tree()`, which clones under a
-/// short guard and returns owned rows.
+/// for the same worker. The fix is `snapshot_tree_arc()`, which takes an
+/// `Arc` handle to the rows under a short guard and returns them owned.
 #[test]
 fn tree_readers_snapshot_before_parallel_work() {
     // (module path, source). The readers run on request paths or inside
@@ -39,7 +39,8 @@ fn tree_readers_snapshot_before_parallel_work() {
         );
     }
 
-    // The designated request-path reader must actually use the helper.
+    // The designated request-path reader must actually use the helper, and
+    // must use the O(1) `Arc` variant: a per-request row clone is O(rows).
     // `post_upload` is intentionally absent: since the store-and-return
     // rework it never reads the tree (files are stored, indexing is
     // enqueued), so there is no snapshot call to pin — only the no-live-
@@ -51,8 +52,9 @@ fn tree_readers_snapshot_before_parallel_work() {
         .expect("source registered");
     let compact: String = source.split_whitespace().collect();
     assert!(
-        compact.contains("snapshot_tree()"),
-        "router/get/get_prefetch.rs must read the in-memory tree through snapshot_tree()"
+        compact.contains("snapshot_tree_arc()"),
+        "router/get/get_prefetch.rs must read the in-memory tree through \
+         snapshot_tree_arc()"
     );
 }
 
