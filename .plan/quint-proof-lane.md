@@ -303,6 +303,46 @@ Next steps:
 4. Lane home: nightly/manual-dispatch CI job; free-tier 6 h/job is ample
    at measured runtimes (fits devops-cleanup's CI-lane item).
 
+## Prefix-partition spike results (2026-11-17, commit 10b99b03)
+
+Harness landed: `coverage/bin/prefixes.ts gen|run` (gen emits per-prefix
+init actions ending in BeginDrain from the phase-0 branch inventory, class
+grouping with representative instances, adversarial triples from a
+hand-listed file; run loops quint verify per prefix with
+outcome/runtime aggregation). Selftest 26; all gates green; model
+untouched.
+
+- **TLC: blocked for this pattern, hard.** TLC rejects action composition
+  in init outright ("The current version of TLC does not support action
+  composition"), and QNT409 blocks helper actions shared between multiple
+  init actions in one module even when inlined under fresh names. No
+  measurement obtainable; a model-level per-prefix refactor cannot remove
+  the composition itself. TLC is not the backend for prefix-partition
+  verification.
+- **Apalache: works — 12/12 prefixes converge** (empty prefix, 4
+  singletons, 2 pairs, 6 adversarial triples incl. unobserved delete +
+  crash during drain, move-lease + crash + scan, upload + DbLoss +
+  rescan). Runtime distribution: min 201 s / median 206 s / max 208 s —
+  essentially constant regardless of prefix content, i.e. dominated by
+  per-invocation overhead (JVM + server startup), not exploration.
+
+Feasibility: full partition policy ≈ 630+ prefixes x ~206 s ≈ 35 h
+single-job — exceeds the 6 h CI budget as-invoked. The lever is Apalache
+server-mode amortization (one long-lived server, per ADR008
+--server-endpoint): startup is ~all of the 206 s, so amortized per-prefix
+cost is plausibly seconds-to-tens-of-seconds; measure before sizing the
+lane.
+
+First genuine convergence claims for the model: the completion machine
+converges under the adversarial event set at reduced bounds (scoped:
+subset partition, reduced instance, bounded invariant).
+
+Next: (1) measure server-mode amortized per-prefix cost; (2) size the
+full-policy lane against the CI budget (shard by partition class if
+needed); (3) land SCOPE-15 + the nightly/manual-dispatch lane
+(devops-cleanup CI item); (4) violations from the full run become
+refinement rounds.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
