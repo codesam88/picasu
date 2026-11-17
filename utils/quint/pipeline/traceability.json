@@ -227,6 +227,7 @@
         "merged.qnt:HASHES",
         "merged.qnt:PATHS",
         "merged.qnt:ROOTS",
+        "merged.qnt:SECOND_ROOT_PATHS",
         "merged.qnt:SMALL",
         "merged.qnt:WithinBounds",
         "merged.qnt:rootOf"

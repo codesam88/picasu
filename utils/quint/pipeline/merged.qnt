@@ -29,8 +29,12 @@ module pipeline_merged {
 
   // @scope SCOPE-2
   pure val ROOTS = Set("r1", "r2")
+  // Instance data: which paths belong to the second root (r2). Not derivable
+  // from unordered sets; override this val for a reduced instance.
   // @scope SCOPE-2
-  pure def rootOf(p: str): str = if (p == "p5") "r2" else "r1"
+  pure val SECOND_ROOT_PATHS: Set[str] = Set("p5")
+  // @scope SCOPE-2
+  pure def rootOf(p: str): str = if (p.in(SECOND_ROOT_PATHS)) "r2" else "r1"
 
   type FileState = {
     present: bool,
@@ -165,7 +169,7 @@ module pipeline_merged {
     fileSize: 0,
     sidecar: 0,
     converged: true,
-    itemCount: 5,
+    itemCount: PATHS.size(),
     itemSize: 0,
     hasShareList: false
   }
@@ -175,16 +179,16 @@ module pipeline_merged {
     files' = PATHS.mapBy(p => initialFile(p)),
     generations' = PATHS.mapBy(_ => 0),
     intake' = Set(),
-    assetById' = Map(0 -> initialAlbumAssetRecord, 1 -> initialAssetRecord("p1"), 2 -> initialAssetRecord("p2"), 3 -> initialAssetRecord("p3"), 4 -> initialAssetRecord("p4"), 5 -> initialAssetRecord("p5")),
-    assetByPath' = Map("p1" -> 1, "p2" -> 2, "p3" -> 3, "p4" -> 4, "p5" -> 5),
-    dupeIndex' = Map(0 -> Set(1, 2, 3, 4, 5), 1 -> Set(), 2 -> Set()),
-    metadataPayload' = Map(0 -> initialAlbumMetadataRecord, 1 -> initialMetadataRecord("p1"), 2 -> initialMetadataRecord("p2"), 3 -> initialMetadataRecord("p3"), 4 -> initialMetadataRecord("p4"), 5 -> initialMetadataRecord("p5")),
+    assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+    assetByPath' = PATHS.mapBy(p => initialId(p)),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
+    metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = Map(0 -> true, 1 -> false, 2 -> false),
 
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = Map(),
     leasedPaths' = Set(),
-    nextAssetId' = 6,
+    nextAssetId' = PATHS.size() + 1,
     unprocessable' = Set(),
   }
   // ---------- section: assumptions ----------
@@ -374,6 +378,7 @@ module pipeline_merged {
   // @requires tag resolving against utils/quint/pipeline/requirements.json.
 
   // @scope SCOPE-7
+  // Instance data: which subtrees the dir-move action moves; override for a reduced instance.
   pure val SUBTREE_PAIRS = [{ src: "p1", dst: "p3" }, { src: "p2", dst: "p4" }]
 
   // Derived view of the old `rows` map, reconstructed from the split
@@ -499,7 +504,7 @@ module pipeline_merged {
   // @exempt environment
   // @assumes ASS-6
   action ExternalSidecarCreate(p: str): bool = {
-    nondet sc = Set(1, 2).oneOf()
+    nondet sc = SMALL.exclude(Set(0)).oneOf()
     all {
       p.in(PATHS),
       files.get(p).present,
@@ -518,7 +523,7 @@ module pipeline_merged {
   // @exempt environment
   // @assumes ASS-6
   action ExternalSidecarModify(p: str): bool = {
-    nondet sc = Set(1, 2).oneOf()
+    nondet sc = SMALL.exclude(Set(0)).oneOf()
     all {
       p.in(PATHS),
       files.get(p).present,
