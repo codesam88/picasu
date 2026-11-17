@@ -1,5 +1,18 @@
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+// Eventual-consistency review doc: renders the catalogs plus a status line
+// derived from the run declarations of the spec files named on the command
+// line (`docs <specs-dir> <out-file> <run-source.qnt>...`). No model file
+// name is hardcoded: the caller names the files `just quint test` runs, so a
+// layout change (merged or per-subsystem modules) only changes the justfile
+// argument list, and a new or removed run changes the generated line — the
+// regenerate-and-diff gate reports drift in both cases.
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { join, dirname, resolve, isAbsolute, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { resolveBase } from "../lib/common.ts";
@@ -8,7 +21,51 @@ function load(name: string, specsDir: string): any {
   return JSON.parse(readFileSync(join(specsDir, name), "utf8"));
 }
 
-function render(specsDir: string): string {
+interface RunSource {
+  name: string; // basename, as shown in the generated doc
+  count: number;
+}
+
+// Resolve a run-source argument against the specs dir first, then as given.
+function resolveRunSource(specsDir: string, arg: string): string {
+  const inDir = join(specsDir, arg);
+  if (existsSync(inDir)) return inDir;
+  return isAbsolute(arg) ? arg : resolve(arg);
+}
+
+function readRunSources(
+  specsDir: string,
+  args: string[],
+): { sources: RunSource[]; error?: string } {
+  if (args.length === 0)
+    return {
+      sources: [],
+      error:
+        "missing run-source argument (name the .qnt files whose run counts the status line reports)",
+    };
+  const sources: RunSource[] = [];
+  for (const arg of args) {
+    const path = resolveRunSource(specsDir, arg);
+    let text: string;
+    try {
+      text = readFileSync(path, "utf8");
+    } catch {
+      return { sources: [], error: `cannot read run source ${path}` };
+    }
+    sources.push({
+      name: basename(path),
+      count: (text.match(/^\s+run\s+\w+/gm) ?? []).length,
+    });
+  }
+  return { sources };
+}
+
+function listNames(names: string[]): string {
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+function render(specsDir: string, runSources: RunSource[]): string {
   const goals = load("goals.json", specsDir);
   const assumptions = load("assumptions.json", specsDir);
   const scope = load("scope.json", specsDir);
@@ -46,16 +103,6 @@ function render(specsDir: string): string {
   add("`just spec-check`.");
   add();
 
-  const modelSource = readFileSync(
-    join(specsDir, "eventual-consistency.qnt"),
-    "utf8",
-  );
-  const runCount = (modelSource.match(/^\s+run\s+\w+/gm) ?? []).length;
-  const aspectSource = readFileSync(
-    join(specsDir, "asset-aspects.qnt"),
-    "utf8",
-  );
-  const aspectRunCount = (aspectSource.match(/^\s+run\s+\w+/gm) ?? []).length;
   const goalDecisions = new Map<string, number>();
   for (const g of goals.goals)
     goalDecisions.set(g.decision, (goalDecisions.get(g.decision) ?? 0) + 1);
@@ -78,12 +125,19 @@ function render(specsDir: string): string {
   add("## Status");
   add();
   add(
-    "Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;",
+    `Computed from the catalog statuses and the \`run\` declarations in ${listNames(runSources.map((s) => `\`${s.name}\``))};`,
   );
   add("the modeled-scope line comes from `utils/quint/pipeline/scope.json`.");
   add();
+  const runTotal = runSources.reduce((n, s) => n + s.count, 0);
+  const runDetail =
+    runSources.length === 1
+      ? `${runTotal} scenario runs in ${runSources[0].name}`
+      : `${runTotal} scenario runs across ${runSources.length} spec files (${runSources
+          .map((s) => `${s.name}: ${s.count}`)
+          .join(", ")})`;
   add(
-    `- Proof: ${runCount} convergence runs + ${aspectRunCount} asset-aspect runs (${runCount + aspectRunCount} executed including imported runs; \`just quint-check\`); simulator traces are advisory.`,
+    `- Proof: ${runDetail}; \`just quint test\` executes the entries and the runs they import; simulator traces are advisory.`,
   );
   add(
     `- Goals: ${goalDecisions.get("committed") ?? 0} committed, ${goalDecisions.get("queued") ?? 0} queued, ${goalDecisions.get("dropped") ?? 0} dropped.`,
@@ -271,8 +325,13 @@ export function docs(args: string[]): number {
     console.error("docs: missing required output file argument");
     return 2;
   }
+  const { sources, error } = readRunSources(base, args.slice(2));
+  if (error) {
+    console.error(`docs: ${error}`);
+    return 2;
+  }
   const outPath = resolve(outFile);
-  const md = render(base);
+  const md = render(base, sources);
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, md, "utf8");
   console.log(`gen-eventual-consistency-doc: wrote ${outPath}`);
@@ -286,10 +345,15 @@ export function docCheck(args: string[]): number {
     console.error("doc-check: missing required committed-file argument");
     return 2;
   }
+  const { sources, error } = readRunSources(base, args.slice(2));
+  if (error) {
+    console.error(`doc-check: ${error}`);
+    return 2;
+  }
   const target = resolve(committedFile);
   const tmpdir = mkdtemp();
   const generatedPath = join(tmpdir, "regenerated.md");
-  const md = render(base);
+  const md = render(base, sources);
   writeFileSync(generatedPath, md, "utf8");
 
   // prettier formatting: invoke the frontend's prettier on the temp file

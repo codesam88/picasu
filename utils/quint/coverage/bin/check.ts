@@ -11,9 +11,9 @@ Subcommands:
   events|catalog|ops [root-or-specs-dir] [source-dir?]
   specs [root-or-specs-dir] [--generate]
   steps <pipeline-dir-or-root>
-  doc-check [root-or-specs-dir] <committed-file>
-  docs    [root-or-specs-dir] <out-file>
-  all     [root-or-specs-dir] [committed-file?]   # doc-check skipped when no file given`;
+  doc-check [root-or-specs-dir] <committed-file> <run-source.qnt>...
+  docs    [root-or-specs-dir] <out-file> <run-source.qnt>...
+  all     [root-or-specs-dir] [committed-file? [run-source.qnt...]]   # doc-check skipped when no file given`;
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
@@ -38,6 +38,7 @@ async function main(): Promise<number> {
     case "all": {
       const base = rest[0] ?? ".";
       const docFile = rest[1];
+      const runSources = rest.slice(2);
       let code = 0;
       const steps: { name: string; fn: (a: string[]) => number }[] = [
         { name: "events", fn: runEvents },
@@ -53,7 +54,8 @@ async function main(): Promise<number> {
         );
       for (const s of steps) {
         console.log(`===== ${s.name} =====`);
-        const a = s.name === "doc-check" ? [base, docFile] : [base];
+        const a =
+          s.name === "doc-check" ? [base, docFile, ...runSources] : [base];
         const c = s.fn(a);
         if (c !== 0) code = 1;
       }

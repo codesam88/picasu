@@ -6,9 +6,25 @@
 // check derives the list of declared actions from the step module's import
 // graph and fails for each one the branch list omits.
 //
+// Action universe. By default a step action must cover every declared action
+// in its module's reachable graph. When several step actions share one module
+// (a merged file), that union rule would let one step's list cover for
+// another's. Such steps carry `// @step-universe A, B, C` (repeatable;
+// consecutive lines merge) naming exactly the actions that step must cover.
+// Then:
+// - every name in the tag must be an action declared in the reachable graph
+//   (`init`/`init<Name>` and step actions cannot be universe members: they
+//   are entry points and schedulers, not branches);
+// - every name in the tag must appear in that step's branch list (the same
+//   missing-branch failure as the default rule);
+// - every declared action in the file must appear in at least one step
+//   universe of that file (an action in no universe fails: coverage is
+//   opt-in per step, never silently dropped).
+//
 // Scope and limitations:
 // - Only declarations matching `action <step...>: bool = any { ... }` are
-//   treated as step actions; other `any`-valued declarations are ignored.
+//   treated as step actions; other `any`-valued declarations are ignored, and
+//   a universe tag on anything else is an error.
 // - Imports are resolved from `import M.* from "./file"` (whole module) and
 //   `import M.name from "./file"` (that one action only). Module-qualified
 //   references (`M.name(...)`) are not scanned; no current model uses them.
@@ -31,15 +47,24 @@ interface ActionDecl {
   line: number;
 }
 
+interface UniverseTag {
+  names: string[];
+  line: number;
+}
+
 interface StepAction {
   file: string;
   name: string;
+  line: number;
   branches: number;
   refs: Set<string>;
+  universe: UniverseTag | null;
 }
 
-const STEP_RE = /^\s*action\s+(step\w*)\s*:\s*bool\s*=\s*any\s*\{/gm;
-const ACTION_RE = /^\s*action\s+([A-Za-z_]\w*)/gm;
+const STEP_RE =
+  /^[ \t]*action[ \t]+(step\w*)[ \t]*:[ \t]*bool[ \t]*=[ \t]*any[ \t]*\{/gm;
+const ACTION_RE = /^[ \t]*action[ \t]+([A-Za-z_]\w*)/gm;
+const UNIVERSE_RE = /^\s*\/\/\s*@step-universe\b\s*(.*)$/;
 const IMPORT_RE =
   /^\s*import\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.(\*|[A-Za-z_]\w*)\s+from\s+"([^"]+)"/gm;
 
@@ -207,51 +232,173 @@ export function run(args: string[]): number {
     return found;
   };
 
+  const failMsg = (msg: string): void => {
+    fail(msg);
+    failed = true;
+  };
+
+  // `@step-universe` tags attach to the action declaration that follows the
+  // contiguous comment block, matching the annotation convention the specs
+  // check uses. Returns the tags keyed by the declaration's 1-based line.
+  const collectUniverseTags = (
+    abs: string,
+    text: string,
+  ): Map<number, UniverseTag> => {
+    const tags = new Map<number, UniverseTag>();
+    const lines = text.split("\n");
+    let pending: UniverseTag[] = [];
+    const attach = (declLine: number, declText: string): void => {
+      if (pending.length === 0) return;
+      const decl = declText.match(/^[ \t]*action[ \t]+([A-Za-z_]\w*)/);
+      if (!decl) {
+        for (const p of pending)
+          failMsg(
+            `${display(abs)}:${p.line}: @step-universe must directly precede an action declaration`,
+          );
+      } else if (!isStepName(decl[1])) {
+        for (const p of pending)
+          failMsg(
+            `${display(abs)}:${p.line}: @step-universe is only valid on a step action ('${decl[1]}' is not one)`,
+          );
+      } else {
+        tags.set(declLine, {
+          names: [...new Set(pending.flatMap((p) => p.names))],
+          line: pending[0].line,
+        });
+      }
+      pending = [];
+    };
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*\/\//.test(line)) {
+        const m = line.match(UNIVERSE_RE);
+        if (m)
+          pending.push({
+            names: m[1]
+              .split(",")
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0),
+            line: i + 1,
+          });
+        continue;
+      }
+      if (line.trim() === "") {
+        pending = [];
+        continue;
+      }
+      attach(i + 1, line);
+    }
+    for (const p of pending)
+      failMsg(
+        `${display(abs)}:${p.line}: @step-universe must directly precede an action declaration`,
+      );
+    return tags;
+  };
+
   const stepActions: StepAction[] = [];
   for (const f of listQntFiles(base)) {
     const abs = join(base, f);
     const text = readText(abs);
     if (text === null) continue;
     const stripped = stripNoise(text);
+    const universeTags = collectUniverseTags(abs, text);
+    const fileSteps: StepAction[] = [];
     for (const m of stripped.matchAll(STEP_RE)) {
+      const line = lineAt(text, m.index ?? 0);
       const open = (m.index ?? 0) + m[0].length - 1;
       const body = blockBody(stripped, open);
       if (body === null) {
-        fail(
-          `${display(abs)}:${lineAt(text, m.index ?? 0)}: step '${m[1]}' has an unbalanced \`any\` block`,
+        failMsg(
+          `${display(abs)}:${line}: step '${m[1]}' has an unbalanced \`any\` block`,
         );
-        failed = true;
         continue;
       }
       const { refs, count } = branchReferences(body);
-      stepActions.push({
+      fileSteps.push({
         file: display(abs),
         name: m[1],
+        line,
         branches: count,
         refs: new Set(refs),
+        universe: universeTags.get(line) ?? null,
       });
     }
+    for (const [declLine, tag] of universeTags) {
+      if (fileSteps.some((sa) => sa.line === declLine)) continue;
+      failMsg(
+        `${display(abs)}:${tag.line}: @step-universe is on a step action without an \`any\` block`,
+      );
+    }
+    stepActions.push(...fileSteps);
+  }
+
+  // Group by file: reachability and universe coverage are per module graph.
+  const byFile = new Map<string, StepAction[]>();
+  for (const sa of stepActions) {
+    if (!byFile.has(sa.file)) byFile.set(sa.file, []);
+    byFile.get(sa.file)!.push(sa);
   }
 
   let totalBranches = 0;
-  for (const sa of stepActions) {
-    const reachable = collectReachable(join(base, sa.file));
-    const required: [string, ActionDecl][] = [];
+  for (const [file, actions] of byFile) {
+    const reachable = collectReachable(join(base, file));
+    const allRequired: [string, ActionDecl][] = [];
     for (const [name, decl] of reachable) {
       if (isInitName(name) || isStepName(name)) continue;
-      required.push([name, decl]);
+      allRequired.push([name, decl]);
     }
-    for (const [name, decl] of required) {
-      if (sa.refs.has(name)) continue;
-      fail(
-        `step '${sa.name}' in ${sa.file} is missing declared action '${name}' (declared in ${decl.file}:${decl.line})`,
+
+    const covered = new Set<string>();
+    let untagged = false;
+    for (const sa of actions) {
+      if (sa.universe === null) {
+        untagged = true;
+        continue;
+      }
+      for (const name of sa.universe.names) {
+        const decl = reachable.get(name);
+        if (decl === undefined) {
+          failMsg(
+            `${file}:${sa.universe.line}: step '${sa.name}' universe names undeclared action '${name}'`,
+          );
+          continue;
+        }
+        if (isInitName(name) || isStepName(name)) {
+          failMsg(
+            `${file}:${sa.universe.line}: step '${sa.name}' universe names '${name}', which is an entry point or step action, not a branch`,
+          );
+          continue;
+        }
+        covered.add(name);
+      }
+    }
+    if (!untagged) {
+      for (const [name, decl] of allRequired) {
+        if (covered.has(name)) continue;
+        failMsg(
+          `${file}: action '${name}' is not covered by any step universe (declared in ${decl.file}:${decl.line})`,
+        );
+      }
+    }
+
+    for (const sa of actions) {
+      const required: [string, ActionDecl][] =
+        sa.universe === null
+          ? allRequired
+          : sa.universe.names
+              .filter((name) => reachable.has(name))
+              .map((name) => [name, reachable.get(name)!]);
+      for (const [name, decl] of required) {
+        if (sa.refs.has(name)) continue;
+        failMsg(
+          `step '${sa.name}' in ${sa.file} is missing declared action '${name}' (declared in ${decl.file}:${decl.line})`,
+        );
+      }
+      totalBranches += sa.branches;
+      console.log(
+        `steps-check: step '${sa.name}' in ${sa.file}: ${sa.branches} branches, ${required.length} ${sa.universe === null ? "declared" : "universe"} actions`,
       );
-      failed = true;
     }
-    totalBranches += sa.branches;
-    console.log(
-      `steps-check: step '${sa.name}' in ${sa.file}: ${sa.branches} branches, ${required.length} declared actions`,
-    );
   }
 
   if (failed) {

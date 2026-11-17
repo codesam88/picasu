@@ -120,15 +120,23 @@ never silent.
 - `coverage/bin/check.ts steps` — branch-completeness audit for step
   actions: every `action` declaration reachable through a `step*` module's
   imports must appear in its `any { ... }` list (`init`/`init<Name>` entry
-  actions and the step actions themselves are exempt). A forgotten branch
-  fails the gate instead of silently narrowing the verified reachable set;
-  stutter (`Skip`) presence is not required.
+  actions and the step actions themselves are exempt). When several step
+  actions share one module, each names its own universe with
+  `// @step-universe A, B, C` (repeatable; lines merge): the tag must list
+  only declared actions, each listed name must appear in that step's branch
+  list, and every declared action of the module must appear in at least one
+  step universe — coverage is per step, never silently dropped. A forgotten
+  branch or an uncovered action fails the gate instead of silently narrowing
+  the verified reachable set; stutter (`Skip`) presence is not required.
 - `coverage/bin/check.ts events`, `coverage/bin/check.ts catalog` — catalog
   validation against `pipeline/catalog.schema.json`.
 - `coverage/bin/check.ts ops` — validates `pipeline/operations.json` and the
   `#[quint::operation(...)]` / `#[quint::event(...)]`
   markers in `backend/src/**/*.rs`.
-- `coverage/bin/check.ts docs` — writes `docs/eventual-consistency.md`.
+- `coverage/bin/check.ts docs` — writes `docs/eventual-consistency.md`. The
+  run sources named after the output file (the files `just quint test`
+  executes) supply the status line's run counts, so the generator hardcodes
+  no model file name.
 
 ## Operations and annotations
 

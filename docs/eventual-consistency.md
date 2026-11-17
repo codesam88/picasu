@@ -17,10 +17,10 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 
 ## Status
 
-Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;
+Computed from the catalog statuses and the `run` declarations in `eventual-consistency.qnt`, `asset-aspects.qnt` and `asset-aspects-step.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 33 convergence runs + 31 asset-aspect runs (64 executed including imported runs; `just quint-check`); simulator traces are advisory.
+- Proof: 68 scenario runs across 3 spec files (eventual-consistency.qnt: 33, asset-aspects.qnt: 31, asset-aspects-step.qnt: 4); `just quint test` executes the entries and the runs they import; simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
 - Requirements: 14 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.

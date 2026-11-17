@@ -31,10 +31,11 @@ lint: _install-quint
 format:
     cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
 
-# Fast spec gates: run on any code change (no model runs).
+# Fast spec gates: run on any code change (no model runs). The run sources
+# named here feed the doc status line; they are the files `test` executes.
 [group('quint')]
 check:
-    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}"
+    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}" eventual-consistency.qnt asset-aspects.qnt asset-aspects-step.qnt
 
 # Run both model entries at the standard sample count (10k per run).
 [group('quint')]
@@ -53,13 +54,13 @@ fulltest: _install-quint
 # Regenerate docs/eventual-consistency.md from the catalogs.
 [group('quint')]
 docs:
-    node "{{ source_directory() }}/coverage/bin/check.ts" docs "{{ pipeline_dir }}" "{{ docs_report }}"
+    node "{{ source_directory() }}/coverage/bin/check.ts" docs "{{ pipeline_dir }}" "{{ docs_report }}" eventual-consistency.qnt asset-aspects.qnt asset-aspects-step.qnt
     cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "{{ docs_report }}"
 
 # Generated-doc drift gate: regenerate + diff against the committed doc.
 [group('quint')]
 doc-check:
-    node "{{ source_directory() }}/coverage/bin/check.ts" doc-check "{{ pipeline_dir }}" "{{ docs_report }}"
+    node "{{ source_directory() }}/coverage/bin/check.ts" doc-check "{{ pipeline_dir }}" "{{ docs_report }}" eventual-consistency.qnt asset-aspects.qnt asset-aspects-step.qnt
 
 # Checker self-tests: fixtures prove the gates fail when they should.
 [group('quint')]
