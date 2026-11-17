@@ -122,3 +122,23 @@ Done pattern (2026-11-15): utils/quint now carries two subfolders —
 `coverage/` (TS validation tool, dispatcher `coverage/bin/check.ts`) —
 alongside `pipeline/` and `tests/`, validating the utils-tool-as-submodule
 layout.
+
+## Appendix 2026-11-17 — dead_code / unsafe survey (folded into lint hygiene scope)
+
+dead_code:
+
+- Stale `#[allow(dead_code)]` (~15, item now used): error.rs Serialization/with_context; db.rs:242 clear_all_asset_tables_drop; asset_store.rs:35 list_asset_paths_under; cache.rs:379; files.rs:153/250/264 get_resolved_users_home/users_dir_for/classify_path; config.rs:258; asset.rs:86; intake.rs:55; auth.rs:5; snapfab/test_image.rs:474.
+- Test-only unconditional allows (~14) → `cfg_attr(not(test), allow(dead_code))`: asset_store 380/433; asset.rs 131/137/148/160; album.rs 23/31/46/52; format.rs 206/214/233; workflow/mod.rs:113; router/get/mod.rs:22/35.
+- Intentional keeps: observe_stub.rs:13; feature-gated unused_* (get_metadata.rs, get_page.rs, builder.rs).
+- True dead fn: workflow/mod.rs:72 index_media_file (zero callers, retired per unify-index-rebuild).
+- Decision needed: GuardReauth.claims router/auth.rs:1105 never read.
+- Zero-caller removals: OptionExt error.rs:231; MyCow::get_hash cache.rs:360.
+- Mechanism: `cargo clippy --all-targets -- -D warnings` promotes dead_code to error, so allows mask failures.
+
+unsafe:
+
+- lib.rs:1 `#![deny(unsafe_code)]` (lib only); main.rs:72/80/88 env::set_var single-threaded keep; init.rs:156 pid_is_alive libc::kill(pid,0) keep fn-level; tasks/runtime.rs:79 lower_this_thread_priority syscall+setpriority keep fn-level.
+- auth/user_store.rs:1 module-level allow(unsafe_code) too broad for single test call :1034 libc::kill SIGKILL → narrow + SAFETY comment.
+- utils dylint `#[unsafe(no_mangle)]` required keep; frontend 2 eslint-disable no-unsafe-* (serviceWorker.ts:42, axiosInterceptor.ts:54) low priority; docs only test-strategy.md:32 mentions unsafe.
+
+Note: minimal lint-hygiene fix (remove ~15 stale allows; narrow user_store.rs allow + SAFETY) verifiable by `just backend-check` + `just utils-check`. Test-only gating, index_media_file removal, GuardReauth.claims, and deny-parity are separate decisions.
