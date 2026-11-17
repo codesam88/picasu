@@ -162,6 +162,55 @@ specs bound-agnostic where cheap (derived init maps, rootOf, SUBTREE_PAIRS),
 (2) decide the step-branch form (literal enumeration vs nondet-parameterized
 wrappers), (3) generator + staleness gate for the instance.
 
+## A-merged spike, round 2 (2026-11-17, scratch only — repo unchanged)
+
+Tested the merged-one-module design at scale (scripted merge of all six
+pipeline files into one 3,005-line module, 182 declarations, 0 collisions;
+typed consts `const PATHS: Set[str]` bound via
+`import pipeline_merged(PATHS = ...).* from "./merged"`; typecheck passes
+with consts unbound).
+
+Results:
+
+- Canonical equivalence: 68/68 runs pass, run-name set identical to the
+  modular layout, wall time 314 s vs 317 s, seeded trace state-for-state
+  identical, typecheck 15.7 s (vs 19.8 s for the two files). Merging does
+  not slow the simulator.
+- Reduced instance: only 8 derived-content sites need patching (rootOf,
+  SUBTREE_PAIRS, album itemCount, init assetById/assetByPath/dupeIndex/
+  metadataPayload/nextAssetId). initialId, thumbPresent/dupeIndex key
+  domains and the intake fallback item need no patch at 3-path bounds.
+- Run suites are bound-specific in three dimensions: 24/68 runs fail at
+  reduced bounds — 8 by out-of-bounds path literals, 15 by per-root
+  cardinality (fixed-length drain blocks sized to canonical root
+  membership), 1 by root reassignment. This couples the reduction impact
+  to run-suite regeneration regardless of layout choice.
+- Checker impact: `steps` needs a per-step action-universe notion (the
+  merge puts `step` (33 actions) and `stepCompletion` (54) in one file;
+  a union rule would weaken the gate — rejected; per-step annotation is
+  the fix). `docs` hardcodes two filenames + a run-count line and needs
+  entry parameterization. `specs` traceability regenerates mechanically,
+  but const declarations escape the declaration regex, so a scope cited
+  only by a const would become unreferenced (SCOPE-2 keeps 3 refs — OK
+  today).
+- Correction: the checker's "1507 branches" figure is an identifier-token
+  count, not branch entries. Actual branch entries: 141 (`step`) and 381
+  (`stepCompletion`), 170 of which name p4/p5 and are inert at reduced
+  bounds (guards disable them).
+- Bonus: one merged entry executes 68 runs where today's two entries
+  execute 97 (the 33 base runs run twice today).
+- Co-importing two instances of the merged module fails hard (QNT101) —
+  the round-1 silent cross-instance hazard is tool-enforced away.
+
+Decision: A-merged recommended, sequenced: (1) bound-agnostic derived
+content (8 sites, required under either option), (2) merge + thin
+entries, (3) `steps` per-step universe annotation, (4) `docs` entry
+parameterization, (5) reduced run-suite regeneration only where a
+reduced verify target needs it. B in reserve only if multiple bound
+variants are needed before (1) lands. Unmeasured: HASHES/SMALL
+const-binding generality (their seed maps hardcode 0..2); git-blame
+flattening across 3,157 lines is a real review cost.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
