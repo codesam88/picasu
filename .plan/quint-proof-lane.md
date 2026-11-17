@@ -211,6 +211,32 @@ variants are needed before (1) lands. Unmeasured: HASHES/SMALL
 const-binding generality (their seed maps hardcode 0..2); git-blame
 flattening across 3,157 lines is a real review cost.
 
+## Reduction implementation (2026-11-17, branch invest/quint-param)
+
+Steps 1-2 of the A-merged sequence landed:
+
+- 0f8551f0: merge cutover — one 3,174-line `pipeline_merged` module +
+  `entry-canonical.qnt`; six modular files removed; `@step-universe`
+  annotations (step: 33, stepCompletion: 54, union covers all declared
+  actions); `docs` run counts derive from named sources; selftest 25;
+  `just quint test` now 68 runs (the 33 base runs ran twice before).
+- 90572afc: bound-agnostic derived content — init maps/dupeIndex/
+  metadataPayload fold over PATHS via the existing initial* defs,
+  nextAssetId = PATHS.size()+1, itemCount = PATHS.size(), rootOf via a
+  single instance-data val SECOND_ROOT_PATHS, sidecar draws
+  SMALL.exclude(Set(0)); SUBTREE_PAIRS isolated as instance data;
+  initialId left explicit (future const). Equivalence verified by REPL
+  against canonical maps; 68 runs green.
+- 01925365: consts (PATHS/HASHES/SMALL/SECOND_ROOT_PATHS/SUBTREE_PAIRS) +
+  entry-reduced-paths (PATHS only) + entry-reduced (full: HASHES=SMALL=
+  0.to(1)); thumbPresent seed was a hardcoded straggler, now
+  HASHES.mapBy(h => h == 0). Generality: no other stragglers; purity
+  clean. Reduced run counts: 44/24 pass/fail IDENTICAL under both
+  reductions — no run depends on hash/snapshot value 2 beyond the path
+  failures (8 path literals, 15 per-root cardinality, 1 root
+  reassignment). Reduced entries are verify vehicles, not regression
+  vehicles.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
