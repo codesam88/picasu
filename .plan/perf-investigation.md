@@ -86,6 +86,14 @@ compare medians across cells, not within one.
 
 Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
 
+**Run hygiene (2026-11-17).** Long or timed commands write full output to
+`/tmp/opencode/perf-p1-retention-scale/<step>-<cmd>-<ts>.log` plus a `.exit`
+code, and are inspected from that file; never rely on a live pipe's tail,
+because a timeout then leaves no evidence. `just backend-test` hung twice in
+`random_op_sequences_converge` (>840 s) while the test alone passes in ~7 s
+and the full suite passed twice afterwards (56.5 s / 58.5 s); treat a repeat
+as interference until a rerun reproduces it.
+
 ## Items (added 2026-11-13)
 
 1. **Tree rebuild is O(rows) and the leading-edge miss pays it in full.**
@@ -122,6 +130,15 @@ Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
    "0.23 ms/row identical on both branches" record does not extrapolate.
    Root-cause before trusting any scaling extrapolation from old
    measurements.
+   **Instrumented** (2026-11-17): the extractor and battery report now carry
+   every rebuild term (`tree_refresh_total/build/sort/write_wait`) and the
+   filter path (`filter_snapshot_clone`, `filter_par_iter`,
+   `compute_locate`, `prefetch_total`) as per-scan p50/max columns, so a
+   rebuild can be attributed to iteration, sort, or the write guard instead
+   of one aggregate. Row sizes are pinned for the memory model:
+   `DatabaseTimestamp` 584 B, `ReducedData` 168 B (test + `observe rows:`
+   line). A 5650-row scale cell with this breakdown is the next evidence;
+   the root cause stays open until it runs.
 3. **`filter_snapshot_clone` is O(rows) per cache miss.** 8–127 ms at
    2003 rows under rescan CPU contention; co-dominant with rebuild in
    pre-fix measurements. Cascade already shares snapshots via `Arc`
@@ -145,6 +162,9 @@ Order: S1, S2, S3 (any order, S3 independent), then S4, then S5, then S6.
    verify rig (5650-row library, then 50k+) with observer
    instrumentation; define bounded-latency targets for scan, loaded
    reads, and edits at scale. Prerequisite for deciding items 1/3/4.
+   The rig now records, per cell: every rebuild and filter stage as
+   p50/max, exact `snapshot_memory_hit` / `snapshot_disk_fallback` counts,
+   peak RSS (`vm_hwm_mb`) and `temp_db.redb` size (`temp_db_mb`).
 6. **Edit-path slowness at scale.** Fast at 2000 rows (102 ms), slow at
    5650 rows pre-fix on both branches (barrier/flush path). Unresolved
    at larger libraries; item 5's rig re-measures it.

@@ -24,6 +24,11 @@
 //! lifetime history, so they describe recent behaviour and reset at phase
 //! boundaries.
 //!
+//! Event counts that must stay exact are separate [`Counter`]s: they record a
+//! monotonic total instead of a ring sample and print on one
+//! `observe counters:` line next to the per-scan table. Both reset together at
+//! a phase boundary.
+//!
 //! A second, rate-limited guard watches the ring itself: when a push evicts
 //! the oldest sample (a wrap), one `info!` line reports high event volume
 //! for that stage as a single line (no table). This is the safety net for
@@ -234,6 +239,41 @@ impl Stage {
             Self::PrefetchTotal => PREFETCH_TOTAL_US,
             Self::BlockingQueueWait => BLOCKING_QUEUE_WAIT_US,
             Self::InteractiveExec => INTERACTIVE_EXEC_US,
+        }
+    }
+
+    const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// A monotonic event count reported next to the stage table.
+///
+/// A stage answers "how long", a counter answers "how often". Counters are
+/// cumulative since the last [`reset`] and carry no duration, so they stay
+/// exact where a ring would saturate at [`RING_CAPACITY`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum Counter {
+    /// `read_tree_snapshot` served the row buffer from the resident map.
+    SnapshotMemoryHit = 0,
+    /// `read_tree_snapshot` missed the resident map and opened the disk table.
+    SnapshotDiskFallback,
+}
+
+/// Number of counters, must match [`Counter`]'s variants.
+pub const COUNTER_COUNT: usize = 2;
+
+impl Counter {
+    /// Every counter in report order.
+    pub const ALL: [Self; COUNTER_COUNT] = [Self::SnapshotMemoryHit, Self::SnapshotDiskFallback];
+
+    /// Stable snake-case name used in the drain report.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::SnapshotMemoryHit => "snapshot_memory_hit",
+            Self::SnapshotDiskFallback => "snapshot_disk_fallback",
         }
     }
 
@@ -503,6 +543,29 @@ impl Recorder {
 
 static OBSERVE: LazyLock<Recorder> = LazyLock::new(Recorder::new);
 
+static COUNTERS: LazyLock<[AtomicU64; COUNTER_COUNT]> =
+    LazyLock::new(|| std::array::from_fn(|_| AtomicU64::new(0)));
+
+/// Increment `counter`. A no-op while the observer-stats opt-in is off, so
+/// normal operation carries no counting cost beyond the flag check.
+pub fn count(counter: Counter) {
+    if observer_stats() {
+        COUNTERS[counter.index()].fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Value of `counter` since the last reset.
+#[must_use]
+pub fn counter(counter: Counter) -> u64 {
+    COUNTERS[counter.index()].load(Ordering::Relaxed)
+}
+
+fn reset_counters() {
+    for slot in COUNTERS.iter() {
+        slot.store(0, Ordering::Relaxed);
+    }
+}
+
 /// Environment variable selecting the observer-stats opt-in. Only the
 /// literal value `1` enables it; unset, empty, or any other value keeps
 /// it disabled. Env-only.
@@ -647,13 +710,14 @@ pub fn snapshot() -> Snapshot {
     OBSERVE.snapshot()
 }
 
-/// Clear retained samples and counters at a phase boundary. In-flight
-/// counters are preserved.
+/// Clear retained samples, counters and event counts at a phase boundary.
+/// In-flight counters are preserved.
 pub fn reset() {
     OBSERVE.reset();
+    reset_counters();
 }
 
-/// Emit the once-per-scan table and reset for the next scan.
+/// Emit the once-per-scan table and counters, then reset for the next scan.
 ///
 /// `context` is a one-line description embedded in the table header; the
 /// scan terminal transition passes a summary of the finished job
@@ -663,9 +727,16 @@ pub fn reset() {
 pub fn drain_report(context: &str) {
     if observer_stats() {
         let table = snapshot().table();
+        let counts = Counter::ALL
+            .iter()
+            .map(|entry| format!("{}={}", entry.name(), counter(*entry)))
+            .collect::<Vec<_>>()
+            .join(" ");
         info!("observe drain: {context}\n{table}");
+        info!("observe counters: {counts}");
     }
     OBSERVE.reset();
+    reset_counters();
 }
 
 /// Render a microsecond duration in human units: seconds (one decimal) above a
@@ -1192,6 +1263,31 @@ mod tests {
         assert_eq!(snapshot().stage(Stage::CpuExec).recorded, 0);
 
         // Restore default.
+        set_observer_stats(false);
+    }
+
+    #[test]
+    fn counters_count_only_with_stats_enabled_and_reset_with_drain() {
+        set_observer_stats(false);
+        reset();
+        count(Counter::SnapshotMemoryHit);
+        assert_eq!(
+            counter(Counter::SnapshotMemoryHit),
+            0,
+            "counters must stay inert while observer stats are off"
+        );
+
+        set_observer_stats(true);
+        count(Counter::SnapshotMemoryHit);
+        count(Counter::SnapshotMemoryHit);
+        count(Counter::SnapshotDiskFallback);
+        assert_eq!(counter(Counter::SnapshotMemoryHit), 2);
+        assert_eq!(counter(Counter::SnapshotDiskFallback), 1);
+
+        drain_report("counters");
+        assert_eq!(counter(Counter::SnapshotMemoryHit), 0);
+        assert_eq!(counter(Counter::SnapshotDiskFallback), 0);
+
         set_observer_stats(false);
     }
 }

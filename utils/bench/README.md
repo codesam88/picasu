@@ -213,12 +213,22 @@ without an event stream.
 ## Extractor drain tables
 
 When `PICASU_OBSERVER_STATS=1` (default in bench mode), the backend writes
-an `observe drain:` table per scan into `server.log`. `extract_bench.py`
+an `observe drain:` table per scan into `server.log` and one
+`observe counters:` line with the exact event counts that saturate a ring
+(`snapshot_memory_hit`, `snapshot_disk_fallback`). `extract_bench.py`
 parses these into `stages.json` in each cell outdir (one flat row per
 stage per scan: scan index, stage, n, p50_us, p95_us, max_us, context) and
-adds `tree_refresh_build_*` / `filter_snapshot_clone_*` summary columns to
-the printed table. Cells without drain tables (stats off or older logs)
-still parse unchanged; their `stages.json` is an empty list.
+adds the prefetch filter/locate path and the tree-view rebuild breakdown
+(`filter_snapshot_clone`, `filter_par_iter`, `compute_locate`,
+`tree_refresh_total`/`build`/`sort`/`write_wait`, `prefetch_total`) as
+p50/max summary columns, plus the counter and process-metric columns.
+Cells without drain tables (stats off or older logs) still parse
+unchanged; their `stages.json` is an empty list.
+
+The orchestrator writes `cell-metrics.json` in each cell while the server
+is still alive: `vm_hwm_mb` (peak resident set from `/proc/<pid>/status`)
+and `temp_db_mb` (apparent size of the snapshot store). Both are `n/a` for
+cells recorded before the metrics existed.
 
 The battery parses the same tables in process: `build_row` runs the
 extractor's functions over `server.log`, so the report's stage columns and
@@ -329,9 +339,10 @@ just bench battery-check /tmp/my-gate-run/report.tsv
 
 `report.tsv` carries identity (`cell`, profile, level, scale, build,
 git commit from `run-manifest.json`), scan walls, the full request-latency
-matrix, and the extractor's `tree_refresh_build` /
-`filter_snapshot_clone` p50/max columns (`n/a` when the drain table is
-absent). Upload submit/visible p50s come from the `upload ...` log lines.
+matrix, the extractor's stage p50/max columns for the filter/locate path
+and tree-view rebuild breakdown (`n/a` when the drain table is absent), the
+`observe counters` totals, and the per-cell process metrics (`vm_hwm_mb`,
+`temp_db_mb`). Upload submit/visible p50s come from the `upload ...` log lines.
 
 The matrix is one column per background × access condition × statistic:
 

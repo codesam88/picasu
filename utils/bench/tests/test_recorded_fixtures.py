@@ -178,6 +178,15 @@ class BatteryStageSourceTest(unittest.TestCase):
         self.assertEqual(row["tree_refresh_build_max_us"], "1997,6069")
         self.assertEqual(row["filter_snapshot_clone_p50_us"], "419,1493")
         self.assertEqual(row["filter_snapshot_clone_max_us"], "1778,5236")
+        # The rebuild breakdown and the filter/locate path are reported, not
+        # just the two historical stages: total = build + sort + write-wait.
+        self.assertEqual(row["filter_par_iter_p50_us"], "2397,2014")
+        self.assertEqual(row["filter_par_iter_max_us"], "16993,2643")
+        self.assertEqual(row["compute_locate_p50_us"], "0,0")
+        self.assertEqual(row["tree_refresh_total_p50_us"], "690,1301")
+        self.assertEqual(row["tree_refresh_sort_p50_us"], "14,20")
+        self.assertEqual(row["tree_refresh_write_wait_max_us"], "0,0")
+        self.assertEqual(row["prefetch_total_p50_us"], "29,24")
 
 
 class InProcessRowStagesTest(unittest.TestCase):

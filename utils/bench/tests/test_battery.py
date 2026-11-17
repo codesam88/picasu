@@ -1830,6 +1830,18 @@ class BatteryReportViewTest(unittest.TestCase):
         "gate-storm-thumb:median: tree_refresh_build_max_us = n/a",
         "gate-storm-thumb:median: filter_snapshot_clone_p50_us = n/a",
         "gate-storm-thumb:median: filter_snapshot_clone_max_us = n/a",
+        "gate-storm-thumb:median: filter_par_iter_p50_us = n/a",
+        "gate-storm-thumb:median: filter_par_iter_max_us = n/a",
+        "gate-storm-thumb:median: compute_locate_p50_us = n/a",
+        "gate-storm-thumb:median: compute_locate_max_us = n/a",
+        "gate-storm-thumb:median: tree_refresh_total_p50_us = n/a",
+        "gate-storm-thumb:median: tree_refresh_total_max_us = n/a",
+        "gate-storm-thumb:median: tree_refresh_sort_p50_us = n/a",
+        "gate-storm-thumb:median: tree_refresh_sort_max_us = n/a",
+        "gate-storm-thumb:median: tree_refresh_write_wait_p50_us = n/a",
+        "gate-storm-thumb:median: tree_refresh_write_wait_max_us = n/a",
+        "gate-storm-thumb:median: prefetch_total_p50_us = n/a",
+        "gate-storm-thumb:median: prefetch_total_max_us = n/a",
     ]
 
     def setUp(self):

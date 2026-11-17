@@ -79,6 +79,49 @@ STAGE_NAMES = [
     "interactive_exec",
 ]
 
+# Stages surfaced as one p50/max pair per scan in the report: the prefetch
+# filter/locate path plus the tree-view rebuild breakdown. The rebuild
+# stages are the discrepancy instrumentation: a full rebuild is total =
+# build + sort + write-wait, so the split says which term moved.
+STAGE_REPORT_NAMES = (
+    "filter_snapshot_clone",
+    "filter_par_iter",
+    "compute_locate",
+    "tree_refresh_total",
+    "tree_refresh_build",
+    "tree_refresh_sort",
+    "tree_refresh_write_wait",
+    "prefetch_total",
+)
+
+# Report column names, in report order. The four historical columns keep
+# their position so recorded baselines line up by name.
+STAGE_COLUMNS = (
+    "tree_refresh_build_p50_us",
+    "tree_refresh_build_max_us",
+    "filter_snapshot_clone_p50_us",
+    "filter_snapshot_clone_max_us",
+    "filter_par_iter_p50_us",
+    "filter_par_iter_max_us",
+    "compute_locate_p50_us",
+    "compute_locate_max_us",
+    "tree_refresh_total_p50_us",
+    "tree_refresh_total_max_us",
+    "tree_refresh_sort_p50_us",
+    "tree_refresh_sort_max_us",
+    "tree_refresh_write_wait_p50_us",
+    "tree_refresh_write_wait_max_us",
+    "prefetch_total_p50_us",
+    "prefetch_total_max_us",
+)
+
+# Exact event counters from the observer's `observe counters:` line.
+COUNTER_COLUMNS = ("snapshot_memory_hit", "snapshot_disk_fallback")
+
+# Process-level cost recorded by the cell orchestrator while the server is
+# alive: peak resident set and the snapshot store's apparent size.
+METRICS_COLUMNS = ("vm_hwm_mb", "temp_db_mb")
+
 
 def _drain_scan_index(context: str, ordinal: int) -> int:
     for pattern in (r"scan job=(\d+)", r"\bjob=(\d+)", r"scan=(\d+)", r"run=(\d+)"):
@@ -181,6 +224,40 @@ parse_drain = parse_drain_rows
 parse_drain_table_rows = parse_drain_rows
 parse_stage_rows = parse_drain_rows
 parse_drain_stages = parse_drain_rows
+
+
+_COUNTERS_LINE = re.compile(r"observe counters:\s*(.*)")
+
+
+def parse_counters(log) -> list:
+    """Parse ``observe counters:`` lines into one dict per drain table.
+
+    Each dict maps a counter name to its exact count for that scan. A cell
+    without the line (observer stats off) yields an empty list.
+    """
+    if isinstance(log, (str, bytes)):
+        text = log.decode() if isinstance(log, bytes) else log
+    else:
+        try:
+            text = Path(log).read_text()
+        except OSError, TypeError:
+            text = str(log)
+    counts: list = []
+    for line in text.splitlines():
+        match = _COUNTERS_LINE.search(line)
+        if match is None:
+            continue
+        values = {}
+        for part in match.group(1).split():
+            name, _, raw = part.partition("=")
+            if not raw:
+                continue
+            try:
+                values[name] = int(raw)
+            except ValueError:
+                continue
+        counts.append(values)
+    return counts
 
 
 # --- structured events -------------------------------------------------------
@@ -847,6 +924,23 @@ def _apply_stage_rows(row: dict, outdir: Path, log: str) -> None:
     row["stages"] = row["drain_stages"]
     row["stage_rows"] = row["drain_stages"]
     row["observer_drain_tables"] = _drains
+    row["observer_counters"] = parse_counters(drain_source)
+
+
+def _apply_cell_metrics(row: dict, outdir: Path) -> None:
+    """Process-level cell metrics written by the orchestrator.
+
+    `cell-metrics.json` is absent for cells recorded before the metrics
+    existed; both report columns then stay `n/a`.
+    """
+    try:
+        document = json.loads((outdir / "cell-metrics.json").read_text())
+    except OSError, json.JSONDecodeError, ValueError:
+        document = {}
+    if not isinstance(document, dict):
+        document = {}
+    for column in METRICS_COLUMNS:
+        row[column] = document.get(column)
 
 
 _POST_SCAN_BENCH = {"prefetch": "prefetch", "thumb": "compressed-get", "edit": "edit-rating"}
@@ -922,6 +1016,7 @@ def parse_log(outdir: Path, profile=None) -> dict:
     _apply_post_scan(row, log, outdir)
     _apply_matrix_samples(row, outdir, profile)
     _apply_stage_rows(row, outdir, log)
+    _apply_cell_metrics(row, outdir)
     return row
 
 
@@ -1016,6 +1111,8 @@ def _cell(row: dict, status: dict) -> dict:
         "processed": status.get("processed", "?"),
         "failed": status.get("failed", "?"),
         "scan_runs_s": ",".join(f"{w:.0f}" for w in row.get("scan_runs_ms", [])) or "n/a",
+        "vm_hwm_mb": row["vm_hwm_mb"] if row.get("vm_hwm_mb") is not None else "n/a",
+        "temp_db_mb": row["temp_db_mb"] if row.get("temp_db_mb") is not None else "n/a",
     }
     for background in BACKGROUNDS:
         for access in ACCESSES:
@@ -1043,7 +1140,7 @@ def _cell(row: dict, status: dict) -> dict:
             return "n/a"
         return ",".join(str(v) for v in values)
 
-    for stage_name in ("tree_refresh_build", "filter_snapshot_clone"):
+    for stage_name in STAGE_REPORT_NAMES:
         for field in ("p50_us", "max_us"):
             key_us = f"{stage_name}_{field}"
             cell[key_us] = _stage_values(stage_name, field)
@@ -1062,6 +1159,10 @@ def _cell(row: dict, status: dict) -> dict:
                 cell[f"{stage_name}_{field}_ms"] = "n/a"
             # alias without unit suffix
             cell[f"{stage_name}_{field.replace('_us', '')}"] = cell[key_us]
+    counters = row.get("observer_counters") or []
+    for name in COUNTER_COLUMNS:
+        values = [str(table[name]) for table in counters if name in table]
+        cell[name] = ",".join(values) if values else "n/a"
     return cell
 
 
@@ -1106,10 +1207,9 @@ def main(argv=None) -> None:
         "scan_runs_s",
         *LATENCY_COLUMNS,
         *STORM_FAILED_COLUMNS,
-        "tree_refresh_build_p50_us",
-        "tree_refresh_build_max_us",
-        "filter_snapshot_clone_p50_us",
-        "filter_snapshot_clone_max_us",
+        *STAGE_COLUMNS,
+        *COUNTER_COLUMNS,
+        *METRICS_COLUMNS,
         "storm_verify",
     ]
     width = max([len(label) for label in labels] + [8])

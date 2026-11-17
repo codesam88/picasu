@@ -116,3 +116,42 @@ class BenchRunRoutingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CellMetricsTest(unittest.TestCase):
+    """`cell-metrics.json` records process peak and snapshot-store size."""
+
+    def test_record_cell_metrics_reads_vm_hwm_and_temp_db(self):
+        import json
+        from types import SimpleNamespace
+
+        import run_cell
+
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(out, ignore_errors=True))
+        (out / "data" / "db").mkdir(parents=True)
+        payload = b"x" * 2_048_000
+        (out / "data" / "db" / "temp_db.redb").write_bytes(payload)
+        (out / "launcher-info.json").write_text(json.dumps({"pid": os.getpid()}))
+
+        run_cell.record_cell_metrics(SimpleNamespace(out=out))
+
+        document = json.loads((out / "cell-metrics.json").read_text())
+        self.assertEqual(document["temp_db_bytes"], len(payload))
+        self.assertEqual(document["temp_db_mb"], 2.0)
+        self.assertGreater(document["vm_hwm_mb"], 0)
+
+    def test_missing_temp_db_leaves_the_size_unrecorded(self):
+        import json
+        from types import SimpleNamespace
+
+        import run_cell
+
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(out, ignore_errors=True))
+
+        run_cell.record_cell_metrics(SimpleNamespace(out=out))
+
+        document = json.loads((out / "cell-metrics.json").read_text())
+        self.assertNotIn("temp_db_mb", document)
+        self.assertNotIn("temp_db_bytes", document)
