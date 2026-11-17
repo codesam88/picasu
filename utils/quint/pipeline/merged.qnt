@@ -470,7 +470,7 @@ module pipeline_merged {
     // collect_dir_move_plans re-reads each descendant record and rejects the
     // whole move when a path row has no record (N5 residue), so this branch is
     // not enabled in that state.
-    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (not(assetByPath.keys().contains(pr.src)) or assetById.keys().contains(assetByPath.get(pr.src)))),
+    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (if (assetByPath.keys().contains(pr.src)) { assetById.keys().contains(assetByPath.get(pr.src)) } else { true })),
     files' = SUBTREE_PAIRS.foldl(files, (acc, pr) =>
       acc.set(pr.src, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
@@ -763,8 +763,8 @@ module pipeline_merged {
     assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
     assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)),
     metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k)),
-    dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
-    thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
+    dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
+    thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -807,7 +807,7 @@ module pipeline_merged {
     SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and files.get(pr.src).present and not(files.get(pr.dst).present)),
     // Same re-resolve as ExternalRenameDir: collect_dir_move_plans rejects a
     // descendant path row whose record is gone.
-    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (not(assetByPath.keys().contains(pr.src)) or assetById.keys().contains(assetByPath.get(pr.src)))),
+    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (if (assetByPath.keys().contains(pr.src)) { assetById.keys().contains(assetByPath.get(pr.src)) } else { true })),
     files' = SUBTREE_PAIRS.foldl(files, (acc, pr) =>
       acc.set(pr.src, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
@@ -921,7 +921,7 @@ module pipeline_merged {
           itemCount: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
           itemSize: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
           hasShareList: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
-      dupeIndex' = (if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path)) and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }))),
+      dupeIndex' = (if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path)) and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and dupeIndex.keys().contains(metadataPayload.get(assetByPath.get(it.path)).assetHash)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
@@ -993,6 +993,7 @@ module pipeline_merged {
       // so intake applies and flush_tree.rs rewrites ASSET_BY_ID on every
       // apply. Skipping is sound only when applying would write nothing new,
       // which includes the identity record's content hash.
+      assetById.keys().contains(assetByPath.get(it.path)),
       assetById.get(assetByPath.get(it.path)).contentHash == it.assetHash,
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
@@ -1040,8 +1041,8 @@ module pipeline_merged {
       assetById' = if (assetByPath.keys().contains(it.path)) { assetById.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => assetById.get(k)) } else { assetById },
       assetByPath' = if (assetByPath.keys().contains(it.path)) { assetByPath.keys().exclude(Set(it.path)).mapBy(k => assetByPath.get(k)) } else { assetByPath },
       metadataPayload' = if (assetByPath.keys().contains(it.path)) { metadataPayload.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => metadataPayload.get(k)).put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { 1 } else { 0 }), itemSize: metadataPayload.get(0).itemSize - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { (if (metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).fileSize } else { 0 }) } else { 0 }), hasShareList: metadataPayload.get(0).hasShareList }) } else { metadataPayload },
-      dupeIndex' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
-      thumbPresent' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
+      dupeIndex' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
+      thumbPresent' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
