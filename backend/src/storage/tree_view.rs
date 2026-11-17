@@ -24,8 +24,8 @@
 
 use chrono::Utc;
 use rayon::prelude::ParallelSliceMut;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::model::response::DatabaseTimestamp;
@@ -107,11 +107,18 @@ fn bg_now_ms() -> u64 {
         .map_or(0u64, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// Clone the current asset tree, rebuilding first when writes moved the
-/// epoch since the last build.
-pub fn snapshot_tree() -> Vec<DatabaseTimestamp> {
+/// Shared snapshot of the current asset tree. Rebuilds first when writes
+/// moved the epoch since the last rebuild, then returns an `Arc` handle.
+/// The cost is O(1) for callers: the rows are never copied.
+pub fn snapshot_tree_arc() -> Arc<Vec<DatabaseTimestamp>> {
     refresh_if_stale();
-    TREE.in_memory.read().expect("lock poisoned").clone()
+    Arc::clone(&TREE.in_memory.read().expect("lock poisoned"))
+}
+
+/// Owned copy of the current asset tree. Hot paths should prefer
+/// [`snapshot_tree_arc`], which shares the rows instead of copying them.
+pub fn snapshot_tree() -> Vec<DatabaseTimestamp> {
+    (*snapshot_tree_arc()).clone()
 }
 
 /// Invalidate the view after a request-path write and schedule expiry
@@ -173,7 +180,9 @@ fn rebuild(epoch: u64) {
     let write_timer = Timer::start(Stage::TreeRefreshWriteWait);
     let mut tree_guard = TREE.in_memory.write().expect("lock poisoned");
     write_timer.finish(rows);
-    *tree_guard = database_timestamp_vec;
+    // The write guard publishes a fresh shared view; readers that already
+    // hold an older `Arc` keep iterating their own snapshot unaffected.
+    *tree_guard = Arc::new(database_timestamp_vec);
     drop(tree_guard);
 
     // Query cache keys and snapshot expiry compare this against wall-clock

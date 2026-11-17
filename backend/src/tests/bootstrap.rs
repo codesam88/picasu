@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 use redb::ReadableDatabase;
 use redb::ReadableTable;
@@ -275,7 +275,7 @@ pub fn reset_backend_state() {
 
     // Clear in-memory caches.
     TREE_SNAPSHOT.in_memory.clear();
-    TREE.in_memory.write().expect("TREE in_memory lock").clear();
+    *TREE.in_memory.write().expect("TREE in_memory lock") = Arc::new(vec![]);
     crate::storage::tree_view::invalidate_tree_view();
 
     // Clear on-disk query snapshot cache tables.

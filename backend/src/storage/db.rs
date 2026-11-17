@@ -12,12 +12,12 @@ use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64, atomic::AtomicU64};
 
 pub struct Tree {
     pub in_disk: &'static redb::Database,
-    pub in_memory: &'static Arc<RwLock<Vec<DatabaseTimestamp>>>,
+    pub in_memory: &'static Arc<RwLock<Arc<Vec<DatabaseTimestamp>>>>,
 }
 
 pub static TREE: LazyLock<Tree> = LazyLock::new(Tree::new);
 
-pub use crate::storage::tree_view::snapshot_tree;
+pub use crate::storage::tree_view::{snapshot_tree, snapshot_tree_arc};
 
 pub static VERSION_COUNT_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 
@@ -29,8 +29,8 @@ pub static VERSION_COUNT_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
 /// millisecond. Hashed into prefetch cache keys so a bump always changes them.
 pub static INVALIDATION_VERSION: AtomicU64 = AtomicU64::new(0);
 
-static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Vec<DatabaseTimestamp>>>> =
-    LazyLock::new(|| Arc::new(RwLock::new(vec![])));
+static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Arc<Vec<DatabaseTimestamp>>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(Arc::new(vec![]))));
 
 static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     let path = get_data_path().join("db/index_v5.redb");
@@ -70,7 +70,7 @@ pub fn read_tags(caller: &str) -> Vec<TagInfo> {
     // bulk pool: tag enumeration is a request-path join and must not
     // queue behind scan work. Snapshot first so no tree guard is held
     // across pool work and a stale view is rebuilt once.
-    let tree = snapshot_tree();
+    let tree = snapshot_tree_arc();
     crate::tasks::runtime::INTERACTIVE_POOL.install(|| {
         tree.iter().par_bridge().for_each(|database_timestamp| {
             let abstract_data = &database_timestamp.abstract_data;
