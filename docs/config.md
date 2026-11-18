@@ -196,7 +196,7 @@ changed. The tier table is the single source of truth in
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
 | runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration`                                           | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
 | host     | `address`, `port`, `data_home`, `image_home`, `users_home`, `index_backstop_interval_secs`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root` | env var, CLI flag, or `config.toml`                       | yes      |
-| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`, `PICASU_OBSERVER_STATS`                                                                                                                                       | env var only                                              | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_WEAK_PWHASH`, `PICASU_RATE_LIMITS`, `PICASU_OBSERVER_STATS`, `PICASU_CASCADE_CAPACITY`                                                                                                            | env var only                                              | yes      |
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
@@ -248,6 +248,7 @@ The following env vars override the config file on every launch:
 | `PICASU_LOGIN_USER_LONG_MAX_BAN_SECS`  | `server.login_user_long_max_ban_secs`                                                             |
 | `PICASU_RATE_LIMITS`                   | env-only kill switch (exact `false` disables all login throttling)                                |
 | `PICASU_OBSERVER_STATS`                | env-only opt-in (exact `1` enables per-scan drain table + wrap lines; breach warnings unaffected) |
+| `PICASU_CASCADE_CAPACITY`              | env-only repro aid (positive integer overrides cascade channel bound; unset keeps 1024)           |
 
 ## Runtime changes via the API
 

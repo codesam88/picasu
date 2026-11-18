@@ -27,10 +27,15 @@ pub(crate) fn update_expire_task() -> bool {
     let last_timestamp = VERSION_COUNT_TIMESTAMP.swap(current_timestamp, Ordering::SeqCst);
 
     if last_timestamp > 0 {
+        let slot_guard = crate::tasks::txn_probe::slot_guard(
+            crate::tasks::txn_probe::Db::Expire,
+            "update_expire:30",
+        );
         let expire_write_txn = EXPIRE
             .in_disk
             .begin_write()
             .expect("failed to begin write transaction");
+        slot_guard.acquired();
         let new_expire_time = current_timestamp.saturating_add(
             i64::try_from(Duration::from_secs(3600).as_millis())
                 .expect("value out of range for i64"),
