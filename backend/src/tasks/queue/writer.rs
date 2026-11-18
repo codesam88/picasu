@@ -109,6 +109,26 @@ const WRITER_CAPACITY: usize = 1024;
 /// backpressure holds across both stages.
 const CASCADE_CAPACITY: usize = 1024;
 
+/// Repro aid: `PICASU_CASCADE_CAPACITY` overrides [`CASCADE_CAPACITY`] once at
+/// startup, so the cascade stall can be reproduced at a smaller image count.
+/// Unset keeps the compiled default.
+fn cascade_capacity() -> usize {
+    static OVERRIDE: LazyLock<Option<usize>> = LazyLock::new(|| {
+        let raw = std::env::var("PICASU_CASCADE_CAPACITY").ok()?;
+        match raw.parse::<usize>() {
+            Ok(value) if value > 0 => {
+                log::warn!("PICASU_CASCADE_CAPACITY={value} overrides the cascade bound");
+                Some(value)
+            }
+            _ => {
+                log::warn!("ignoring invalid PICASU_CASCADE_CAPACITY={raw:?}");
+                None
+            }
+        }
+    });
+    OVERRIDE.unwrap_or(CASCADE_CAPACITY)
+}
+
 /// One background write request. `Barrier` is a marker only: completing it
 /// proves every earlier-submitted op (plus its cascade) finished.
 pub enum WriteOp {
@@ -132,6 +152,7 @@ pub enum WriteOp {
 /// Follow-up work for one completed writer op, in writer-completion order.
 /// Each entry carries the completion seq of the writer op it follows, so the
 /// cascade watermark advances over the same clock the writer advances.
+#[derive(Debug)]
 enum CascadeOp {
     /// Pending album self-updates plus expiry bookkeeping. The asset view is
     /// not rebuilt here: writers only advance its epoch.
@@ -200,7 +221,7 @@ async fn ensure_cascade() -> mpsc::Sender<(u64, CascadeOp)> {
     if let Some(endpoint) = slot.as_ref() {
         return endpoint.tx.clone();
     }
-    let (tx, rx) = mpsc::channel(CASCADE_CAPACITY);
+    let (tx, rx) = mpsc::channel(cascade_capacity());
     let handle = spawn(cascade_loop(rx));
     let endpoint = CascadeEndpoint {
         tx: tx.clone(),
@@ -442,7 +463,7 @@ async fn cascade_loop(mut rx: mpsc::Receiver<(u64, CascadeOp)>) {
         // `.expect` in `update_expire_task`) must not kill the loop or freeze
         // `CASCADE_COMPLETED_SEQ`, otherwise barriers stall forever. Log and
         // skip, then advance the watermark for this entry.
-        let result = std::panic::AssertUnwindSafe(handle_cascade(op))
+        let result = std::panic::AssertUnwindSafe(handle_cascade(seq, op))
             .catch_unwind()
             .await;
         if let Err(panic) = result {
@@ -458,12 +479,13 @@ async fn cascade_loop(mut rx: mpsc::Receiver<(u64, CascadeOp)>) {
     }
 }
 
-async fn handle_cascade(op: CascadeOp) {
+async fn handle_cascade(seq: u64, op: CascadeOp) {
     #[cfg(test)]
     assert!(
         !FORCE_CASCADE_PANIC.swap(false, Ordering::SeqCst),
         "injected cascade panic (test)"
     );
+    log::debug!("handle_cascade op={op:?} seq={seq}");
     match op {
         CascadeOp::AfterWrite => cascade_after_write().await,
         CascadeOp::ExpireRound => cascade_expire_round().await,

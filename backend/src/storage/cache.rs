@@ -556,11 +556,16 @@ impl Expire {
         {
             // If an expiration time exists and the current time has surpassed it
             Some(expire_time) if Utc::now().timestamp_millis() > expire_time => {
+                let slot_guard = crate::tasks::txn_probe::slot_guard(
+                    crate::tasks::txn_probe::Db::Expire,
+                    "storage/cache.rs:560",
+                );
                 // Begin a write transaction to modify the expiration table
                 let write_transaction = self
                     .in_disk
                     .begin_write()
                     .expect("failed to begin write transaction for expire cleanup");
+                slot_guard.acquired();
                 {
                     // Open the expiration table for writing
                     let mut write_table = write_transaction

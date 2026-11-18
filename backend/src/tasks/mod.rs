@@ -13,6 +13,7 @@ pub mod path_epoch;
 pub mod observe;
 pub mod queue;
 pub mod runtime;
+pub mod txn_probe;
 
 pub static BATCH_COORDINATOR: LazyLock<TaskExecutor> =
     LazyLock::new(|| TaskExecutor::new(&RUNTIME));

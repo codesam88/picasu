@@ -4,10 +4,13 @@ use redb::TableDefinition;
 
 /// Removes a tree cache table by its timestamp.
 pub(crate) fn remove_task(timestamp: i64) {
+    let slot_guard =
+        crate::tasks::txn_probe::slot_guard(crate::tasks::txn_probe::Db::Tree, "remove_task:7");
     let write_txn = TREE_SNAPSHOT
         .in_disk
         .begin_write()
         .expect("failed to begin write transaction");
+    slot_guard.acquired();
     let binding = timestamp.to_string();
     let table_definition: TableDefinition<u64, ReducedData> = TableDefinition::new(&binding);
 

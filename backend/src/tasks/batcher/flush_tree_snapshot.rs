@@ -23,6 +23,9 @@ pub(crate) fn flush_tree_snapshot_task() {
 
         // Narrow scope for the DashMap reference
         let timestamp = {
+            // Probe the shard read guard held across the disk write below.
+            let _shard_probe = crate::tasks::txn_probe::guard_probe("flush_tree_snapshot:27");
+
             // Attempt to get a reference to one entry:
             let Some(entry_ref) = TREE_SNAPSHOT.in_memory.iter().next() else {
                 break;
@@ -32,6 +35,10 @@ pub(crate) fn flush_tree_snapshot_task() {
             let timestamp_str = timestamp.to_string();
 
             let timer_start = Instant::now();
+            let slot_guard = crate::tasks::txn_probe::slot_guard(
+                crate::tasks::txn_probe::Db::Tree,
+                "flush_tree_snapshot:35",
+            );
             let txn = match TREE_SNAPSHOT.in_disk.begin_write() {
                 Ok(t) => t,
                 Err(e) => {
@@ -41,6 +48,7 @@ pub(crate) fn flush_tree_snapshot_task() {
                     break;
                 }
             };
+            slot_guard.acquired();
             let table_definition: TableDefinition<u64, ReducedData> =
                 TableDefinition::new(&timestamp_str);
 

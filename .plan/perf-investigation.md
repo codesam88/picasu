@@ -249,3 +249,20 @@ stayed within 0.4 ms.
 Not perf (kept for separation): main rescan hang — pre-existing
 terminal-transition correctness bug, recorded in
 `.plan/observer-baseline.md` open items.
+
+10. **Cache-DB write-slot stall (found 2026-11-18, P1-only).**
+    5650 `control` freezes with `writer-cascade = cap+1` (1025 @1024,
+    129 @128) while cascade blocks in `expire_check_task:27`
+    `take_write_slot` and batch `ExpireCheckTask:34` holds the
+    `QUERY_SNAPSHOT` write txn across `par_bridge` to `:98`;
+    `flush_query_snapshot:39` waits on the same slot holding the
+    DashMap shard guard (`:28`), prefetch `get_prefetch.rs:302` waits
+    on the shard. No `try_begin_write` in redb 4.4.0; batch bodies
+    park `tokio-core`; `par_bridge` from non-pool needs bulk worker.
+    Small-cap repro: 2000 images cap 128 freezes 178.5s lag 129,
+    same triple frames; serial single cell, no concurrent cells.
+    Agreed sequence: (i) txn/guard probe + cascade op+seq line
+    (zero behavior, permanent), (ii) minimal ordering (split sweep,
+    drop guard before begin_write), (iii) 2a single sweeper
+    (`UpdateExpire` batch → `WriteOp::ExpireCheck`); defer 2b full
+    single-writer until (ii) numbers show residual waits.

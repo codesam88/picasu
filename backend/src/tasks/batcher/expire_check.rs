@@ -22,10 +22,13 @@ impl BatchTask for ExpireCheckTask {
 }
 
 pub(crate) fn expire_check_task() {
+    let slot_guard =
+        crate::tasks::txn_probe::slot_guard(crate::tasks::txn_probe::Db::Cache, "expire_check:27");
     let write_txn = QUERY_SNAPSHOT
         .in_disk
         .begin_write()
         .expect("failed to begin write transaction");
+    slot_guard.acquired();
 
     write_txn
         .list_tables()

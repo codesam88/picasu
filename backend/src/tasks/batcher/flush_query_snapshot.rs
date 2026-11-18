@@ -26,6 +26,9 @@ pub(crate) fn flush_query_snapshot_task() {
 
         // Narrow scope for the DashMap reference
         let expression_hashed = {
+            // Probe the shard read guard held across the disk write below.
+            let _shard_probe = crate::tasks::txn_probe::guard_probe("flush_query_snapshot:28");
+
             // Attempt to get a reference to one entry:
             let Some(entry_ref) = QUERY_SNAPSHOT.in_memory.iter().next() else {
                 break;
@@ -36,6 +39,10 @@ pub(crate) fn flush_query_snapshot_task() {
 
             // Save to disk
             let timer_start = Instant::now();
+            let slot_guard = crate::tasks::txn_probe::slot_guard(
+                crate::tasks::txn_probe::Db::Cache,
+                "flush_query_snapshot:39",
+            );
             let txn = match QUERY_SNAPSHOT.in_disk.begin_write() {
                 Ok(t) => t,
                 Err(e) => {
@@ -45,6 +52,7 @@ pub(crate) fn flush_query_snapshot_task() {
                     break;
                 }
             };
+            slot_guard.acquired();
             let count_version = &VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
             let table_definition: TableDefinition<u64, Prefetch> =
                 TableDefinition::new(count_version);
