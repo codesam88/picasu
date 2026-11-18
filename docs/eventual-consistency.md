@@ -20,12 +20,12 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 Computed from the catalog statuses and the `run` declarations in `merged.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 69 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
+- Proof: 70 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
 - Requirements: 14 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
-- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply, with batches accumulating across roots; move lease window is visible.
+- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes, the request phase is crash-free, and the drain admits one budgeted fault per attempt that reboots into the request phase; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply, with batches accumulating across roots; move lease window is visible.
 
 ## Goals
 
@@ -265,11 +265,11 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-13: Nondeterministic scheduling
 
-Bound: Within a phase, any action classified for that phase may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints inside a phase. The completion phases are the only sequencing: free (every action, untracked scans included), draining (work-consuming branches, crashes, untracked scans, then BeginScan at quiescence), scanning (one tracked CompleteScan per root, then work-consuming branches) — see stepCompletion in utils/quint/pipeline/merged.qnt. The phases encode the G1/G2 observation premise (changes stopped and a tracked scan completed), not pipeline inter-locking.
+Bound: Within a phase, any action classified for that phase may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints inside a phase. The completion phases are the only sequencing: free (every environment and pipeline branch, untracked scans included, no faults), draining (work-consuming branches, at most one budgeted fault, untracked scans, then BeginScan at quiescence), scanning (one tracked CompleteScan per root, then work-consuming branches, no faults) — see stepCompletion in utils/quint/pipeline/merged.qnt. A drain fault restarts the machine in the free phase (unclean restart: requests resume and the drain is retried) and the fault budget (faults < K, K=1) bounds crash churn per attempt, so the heal cycle between faults runs uninterrupted. The phases encode the G1/G2 observation premise (changes stopped and a tracked scan completed), not pipeline inter-locking.
 
-Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. The phase machine narrows the observation window deliberately: the invariant is claimed only at phase-2 quiescence, after the tracked scan of each root has drained. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
+Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. The request phase needs no fault branches: a crash there clears only volatile state (intake, sweep batch, path leases) that the heal scan regenerates, while durable rows and filesystem bytes survive; the one observable difference is dropped generation bumps, which moves work between queued and scan-rediscovered, and the claim already admits the scan rediscovery. The phase machine narrows the observation window deliberately: the invariant is claimed only at phase-2 quiescence, after the tracked scan of each root has drained. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
 
-Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness properties.
+Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness properties; a fault budget above one per attempt.
 
 ## Requirements
 
