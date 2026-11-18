@@ -9,13 +9,13 @@ demoted identity.
 The check list is rebuilt from ``backend/auth-matrix.json`` on every run, so
 guards and token types reach the checks through the contract instead of a hand
 list, and no committed copy can go stale. The generative campaign
-(``campaign.sh``) keeps the random and sequence-based role.
+(``fuzz.sh run``) keeps the random and sequence-based role.
 
-Requires a seeded instance (`seed.sh`, or `just fuzz-serve`), exporting
+Requires a seeded instance (``seed.sh``, run by ``fuzz.sh matrix``), exporting
 ``PICASU_BASE_URL``, ``PICASU_JWT``, ``FUZZ_ALBUM_A``, ``FUZZ_SHARE_A``,
 ``FUZZ_ALBUM_B``, ``FUZZ_SHARE_B`` and ``FUZZ_PASSWORD``.
 
-Usage: python3 utils/schemathesis/fuzz_matrix.py [repo-root]
+Usage: python3 utils/fuzz/fuzz_matrix.py [repo-root]
 """
 
 import json

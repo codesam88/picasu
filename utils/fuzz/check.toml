@@ -1,7 +1,7 @@
 # Schemathesis tier-1 check config: bounded single-operation sweep.
 base-url = "http://127.0.0.1:8899"
 seed = 1
-hooks = "utils/schemathesis/hooks_check.py"
+hooks = "utils/fuzz/hooks_check.py"
 headers = { Cookie = "jwt=${PICASU_JWT}" }
 
 [generation]

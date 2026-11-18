@@ -31,14 +31,14 @@ fail-closed liveness.
   patterns, per-role runs over rotation, refresh bounds, oracles).
 - Strategy doc: `docs/api-fuzzing.md` (threat model, A1-A5 plus
   differential, seed principles, equal-effort distribution, gates);
-  ops stay in `utils/schemathesis/README.md`.
-- Step 2: `utils/schemathesis/seed.sh` extended to full target matrix
+  ops stay in `utils/fuzz/README.md`.
+- Step 2: `utils/fuzz/seed.sh` extended to full target matrix
   (admin0/admin1, memberA/memberB, sharing-disabled, disabled user;
   global/nested/personal albums; open/nodownload/upload/password/expired/
   member/dead/nested shares; valid/bound/used invites) with fail-closed
-  verify. Fresh seed run and `just fuzz-check` pass (0 findings).
-- Step 3: per-role runner `utils/schemathesis/run-roles.sh` plus
-  `roles.toml` and `hooks_roles.py`, `just fuzz-roles` recipe. One
+  verify. Fresh seed run and `just fuzz check` pass (0 findings).
+- Step 3: per-role runner (`just fuzz roles`) plus `roles.toml` and
+  `hooks_roles.py`. One
   deterministic pass per role (admin0, admin1, memberA, memberB,
   sharingDisabled, disabledUser, shareGuest, snapshotBearer, anonymous)
   with identical reduced budget (max-examples=3, deadline=15s, seed=42);
@@ -52,21 +52,49 @@ fail-closed liveness.
   probe shows 3 attempts/3 successes and self-heal), and poison guards
   covering logout, password/admin/disable/sharing, delete, index
   rebuild, read-only toggle, signing-key reset, config nulling. Reduced
-  `just fuzz-roles`: 9 reports, generated counts 1600-1945, no
+  `just fuzz roles`: 9 reports, generated counts 1600-1945, no
   rate/limit errors; disabledUser 1 attempt/0 successes/1 failure,
   snapshotBearer 0 attempts.
 - Step 5: differential diff plus matrix/baseline wiring.
-  `utils/schemathesis/diff.py` loads `report-<role>.json`, groups by
+  `utils/fuzz/diff.py` loads `report-<role>.json`, groups by
   operation ID, diffs same-operation failure-type outcomes across roles;
-  `utils/schemathesis/matrix.json` (per-(role,operation) expected
+  `utils/fuzz/matrix.json` (per-(role,operation) expected
   class derived from backend/auth-matrix.json) and
-  `utils/schemathesis/baseline-roles.json` (4 triaged diffs) shipped.
-  `just fuzz-diff` recipe added. Reduced run: 4 findings, all baselined,
+  `utils/fuzz/baseline-roles.json` (4 triaged diffs) shipped.
+  `just fuzz diff` added. Reduced run: 4 findings, all baselined,
   exit 0; deterministic on re-run.
 - Fuzzer-found (not fixed, backend out of scope for this step):
   `POST /post/create_dir_album` returns 500 "Failed to create directory:
   File exists (os error 17)" instead of a 4xx when the target directory
   already exists (admin roles, 1 case each).
+- Fuzzer-found (not fixed, backend out of scope): `POST
+/post/create_dir_album` also answers 500 when `name` contains a NUL byte
+  ("file name contained an unexpected NUL byte"). The stateful campaign
+  reports it under the same operation/failure-type pair as the EEXIST
+  finding, so `baseline.yaml` currently accepts it.
+- Seed observation (2026-11-17), unreproduced: one persistent-instance seed
+  stalled in the album index (`state=running`, `scanned=0`) until the server
+  was killed; throwaway seeds and the next persistent seed completed.
+
+## CLI cleanup (2026-11-17)
+
+- Module layout: `utils/fuzz/justfile` is the thin CLI and `just fuzz <verb>`
+  is the only surface. Harness code lives in `utils/fuzz/` (configs, hooks,
+  and `fuzz.sh`); CI calls `utils/fuzz/json2sarif.py` and `baseline.yaml`
+  directly, so the directory and those paths must stay in sync.
+- Verbs: `check | matrix | roles | diff | run | clean`, all delegating to
+  `utils/fuzz/fuzz.sh`. `check.sh`, `campaign.sh`, `run-roles.sh`,
+  `fuzz_matrix.sh`, and `serve.sh` are folded into that entry point. CI keeps
+  the `fuzz-check` / `fuzz-matrix` recipe names as deprecated aliases.
+- Dropped `fuzz-serve`: `fuzz run` seeds `sandbox/fuzz` on first use and
+  restarts the same state on later runs, so the separate serve step had no
+  remaining caller.
+- Budget presets `smoke | min | full` set `MAX_EXAMPLES`, `DEADLINE`, and
+  `FUZZ_MIN`; explicit env vars and the matching flags override them.
+- Campaign hook fix: the demoted probe now registers its `editor` account
+  before login. The previous sequence promoted a nonexistent user, cached a
+  `None` token, and raised 16 hook errors per campaign against the current
+  seed.
 
 ## Seed target (accepted)
 
@@ -90,8 +118,8 @@ fail-closed liveness.
    pass, separate `report-<role>.json`.
 4. Hooks: credential handling, refresh-on-401, poison guards.
 5. Differential diff plus matrix/baseline wiring.
-6. Gates and CI (local `just fuzz-auth`, nightly artifacts) plus
-   docs finalization.
+6. Gates and CI (tier-1 check and matrix in CI, nightly advisory
+   artifacts) plus docs finalization.
 
 ## Mechanics (confirmed 2026-11-17)
 

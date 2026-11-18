@@ -1,9 +1,8 @@
 # Per-role Schemathesis pass: one deterministic run per role, equal budget.
-# Reduced settings for fast test/debug runs; full-budget values are noted
-# in run-roles.sh (MAX_EXAMPLES / DEADLINE).
+# Budget presets live in utils/fuzz/fuzz.sh (FUZZ_LEVEL smoke|min|full).
 base-url = "http://127.0.0.1:8899"
 seed = 42
-hooks = "utils/schemathesis/hooks_roles.py"
+hooks = "utils/fuzz/hooks_roles.py"
 
 [generation]
 max-examples = 3

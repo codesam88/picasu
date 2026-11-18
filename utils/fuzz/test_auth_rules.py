@@ -1,6 +1,6 @@
 """Unit tests for the auth-matrix derivations used by the Schemathesis hooks.
 
-Run: python3 utils/schemathesis/test_auth_rules.py
+Run: python3 utils/fuzz/test_auth_rules.py
 
 The golden expectations pin the derivations against the committed
 ``backend/auth-matrix.json``: when a backend guard or credential changes, the
@@ -246,8 +246,8 @@ class DestructiveDisableConsistency(unittest.TestCase):
 
     def test_disabled_operation_ids_exist_in_matrix(self):
         matrix_ids = {row.get("operationId") for row in MATRIX}
-        for toml_path in (REPO / "utils/schemathesis/campaign.toml",
-                          REPO / "utils/schemathesis/check.toml"):
+        for toml_path in (REPO / "utils/fuzz/campaign.toml",
+                          REPO / "utils/fuzz/check.toml"):
             disabled = self.disabled_ids(toml_path)
             self.assertTrue(disabled, toml_path)
             self.assertEqual(disabled - matrix_ids, set(), toml_path)
