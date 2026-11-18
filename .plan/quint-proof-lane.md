@@ -476,6 +476,52 @@ splitting.
    pinning) are unencodable on both backends — superseded by
    --pin-prestate; strip or clearly mark dead.
 
+## Iteration 2 results (2026-11-18, commits 9588a738..17a90210)
+
+Model fixes landed TDD with mutation checks (all logs under
+/tmp/opencode/logs/):
+
+- Sweep batches accumulate across roots (fold preserving other roots'
+  entries); sweepBatchAccumulationTest red-on-replace-mutation, green on
+  the fix; SCOPE-8/9/11 revised. Suite is 70 runs
+  (completionCrashScanHealsTest retargeted to reboot semantics).
+- Fault model: request phase crash-free (re-derivability); `faults: int`
+  budget (K=1); budgeted CrashReboot/ThumbLossReboot/DbLossReboot +
+  RemoveIdOnly branches in the drain, each returning to the request
+  phase (reboot: unclean restart, requests resume); heal cycle
+  uninterrupted; drainCrashRecoveryTest red pre-fix, green post-fix,
+  infeasible under the K=0 mutation (budget is load-bearing).
+- Generator: disjunctive `initAllPinned` (one invocation covers the
+  single-event partition); pinned vals need declared types for Apalache
+  (separate tooling commit).
+
+Decisive measurement — NEITHER backend terminates at K=1:
+
+- Apalache (disjunctive init, 47 elements, 372 transitions): did not
+  terminate at the 50-min cap, still before depth 3 (per-depth costs
+  90/107/610 s at depths 1-3 on a single element).
+- TLC: 121 distinct initial states; at depth 6, 273M distinct states and
+  growing ~4M/min (44 GB pool); no invariant violation in any explored
+  state (shallow no-violation datapoint only). First attempt hit the
+  /tmp tmpfs quota — TMPDIR=/var/tmp.
+- Explosion source identified: reboot-to-request reopens the phase-0
+  content draws inside the suffix (each External event fans out ~16
+  variants at reduced bounds; one budgeted crash multiplies the tree by
+  that fan-out per crash position).
+
+Evaluation per the stop/continue table: greens unaffordable at the
+current configuration. Remaining levers, in cost order:
+(a) model-level reductions — terminal phase (done-marker bounds the
+machine) plus data independence (collapse (hash, mtime) into one
+version token; dupeIndex keys by it, snapshot compares wholesale; len
+stays numeric for item_size sums, sidecar stays for REQ-1 identity);
+(b) assume-guarantee — verify the sweep chain and crash-recovery
+protocols as small standalone models (exhaustive in seconds) and let
+the global claim rest on local proofs + a shallow global check;
+(c) inductive invariant (conjunct list banked above).
+No convergence verdict yet; the lane's product so far is the round-5
+sweep finding plus the refined, mutation-checked fault model.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
