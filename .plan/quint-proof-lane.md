@@ -381,6 +381,78 @@ reads — engineering-heavy, expression blowup beyond short chains;
 (iii) abandon prefix decomposition and pursue the inductive-invariant
 route for the deep claim.
 
+## Pinned pre-state round (2026-11-18, branch invest/quint-param)
+
+Encoding option (i) landed as `prefixes.ts gen --pin-prestate` (21417c1f),
+but not in the form first written down. Measured facts:
+
+- **Pinning by unprimed equalities does not encode.** Apalache's init
+  predicate is single-state: `v == <init expr>` is itself an assignment of
+  `v`, so it collides with the event's `v' = <expr>`:
+  `Assignment error: <[UNKNOWN]>: Manual assignment is spurious,
+real_pin::pipeline_merged::files is already assigned!`
+  (TransitionFinderPass, 196 s in). A control init containing only the event
+  fails earlier with `x is used before it is assigned` — there is no
+  pre-state in an init predicate at all, so no guard/membership variant of
+  the equality form can work.
+- **Substitution is the equivalent form that survives.** The generator reads
+  the model's deterministic `init` assignments, emits them as `INIT_<var>`
+  values (derived projections such as `rows` get their own pinned copy) and
+  inlines each event class with every state read replaced. Hand-validated
+  first on the reduced instance: deterministic `ExternalDelete("p1")` reached
+  exploration (no preprocessing error), and the nondet form
+  (`nondet p = PATHS.oneOf()`) was found violating a probe invariant at state
+  0 with `files.p2.present = false` — i.e. Apalache does explore the multiple
+  initial states of one element.
+- **TLC accepts it too.** The earlier "TLC does not support action
+  composition" blocker is specific to `.then` in init; the pinned init has no
+  composition. TLC additionally **ignores `--max-steps`** (verified on an
+  unbounded counter: it explored 42M states until the disk quota), so a TLC
+  verdict on a pinned element is an exhaustive claim over the finite state
+  graph, not a depth-bounded one.
+- **Costs at the reduced instance (3 paths, 2 hashes, 2 roots).** Snowcat is
+  ~195-207 s per verifier request. Stripping the 68 `run` declarations from
+  the model (798 of 3181 lines) does not reduce it (218 s vs 221 s wall to
+  first state) — the run-stripping lever does not exist. Apalache exploration
+  adds ~90 s (depth 1), ~110 s (depth 2), ~610 s (depth 3), so depth 60 is
+  out of reach (~14 h per element projection). TLC pays ~35-50 s per
+  invocation for the Quint→TLA compilation and then explores.
+- **Full single-event sweep** (51 elements, TLC, 120 s budget per element,
+  3 shards with distinct `--server-endpoint` ports because the TLC path
+  compiles through an Apalache server): 24 vacuous, 26 timeout, 1 violation,
+  0 ok; 74 min serial. Vacuous mean 51.5 s, timeout 120.1 s. The vacuous set
+  is exactly the classes whose guards need non-initial state (intake-, lease-,
+  sweep-batch-preconditioned worker/move/rotate/sweep branches): a
+  single-event prefix cannot reach them.
+- **Finding (new refinement round, model-level, reproduced without the pinned
+  encoding):** `SweepEnumerate` _replaces_ the global `sweepBatch`, so the
+  second root's enumeration discards the first root's queued stale removals.
+  Deterministic reproduction on the canonical module:
+  `ExternalDelete("p2")` → `BeginDrain` → `BeginScan` → `CompleteScan("r1")`
+  → `CompleteScan("r2")` → `SweepEnumerate("r1")` (batch `{p2}`) →
+  `SweepEnumerate("r2")` (batch empty) → drain intake → `Quiescent` holds at
+  phase 2 with both roots scanned while `files.p2` is absent and `p2` still
+  has a row (`¬Converged`). Code check: `sweep_stale_asset_paths` submits one
+  `WriteOp::SweepRemoveBatch` per root/chunk to the writer queue, so the
+  submissions accumulate; the model's single replaced batch is the gap.
+  Candidate fix: `sweepBatch' = sweepBatch.union(...)`.
+- **Two-event prefixes (option ii): encoding is feasible, measurement is
+  not.** Hand-encoded pairs (`ExternalDelete("p1")` →
+  `SubmitWatcherRemove(p)`, `ExternalModify("p1")` → `ExternalModify(p)`)
+  typecheck and their post-state assertions pass. The mechanical rule is a
+  substitution map `state var → its current post expression`, applied
+  iteratively: each event contributes its guards under the current map and
+  then rewrites the map from its assignment conjuncts. Expressions stay
+  readable at length 2 (`INIT_files.set("p1", {...}).get(p0)`, chained
+  `.set`), growth is per-read text, not nesting depth. It buys nothing while
+  no non-vacuous single-event element completes a verification run: pairs
+  inherit the same per-element cost with a larger state space.
+
+Verdict: (i) is the right encoding and is now machinery; the missing piece is
+verification cost, not the partition. (ii) is implementable but not the lever.
+The lever is a cheaper target — an inductive invariant (option iii), or a
+materially smaller bound configuration — not more prefix shapes.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
