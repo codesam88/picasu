@@ -448,6 +448,15 @@ real_pin::pipeline_merged::files is already assigned!`
   no non-vacuous single-event element completes a verification run: pairs
   inherit the same per-element cost with a larger state space.
 
+- **One disjunctive init is the cheaper shape.** An init
+  `any { initP0, ..., initP50 }` typechecks and TLC computes 126 distinct
+  initial states from it (27 satisfiable elements; nondet arguments expand
+  them), so a single run carries the whole single-event partition. That run
+  found the same sweep-batch violation in 203 s (156 s of it exploration,
+  depth 8) where the 51-element sweep needed 74 min to reach the same
+  conclusion. From the same initial-state set, a completed exhaustive run
+  would be one claim instead of 51.
+
 Verdict: (i) is the right encoding and is now machinery; the missing piece is
 verification cost, not the partition. (ii) is implementable but not the lever.
 The lever is a cheaper target — an inductive invariant (option iii), or a
