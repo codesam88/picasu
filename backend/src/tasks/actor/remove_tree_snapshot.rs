@@ -26,13 +26,5 @@ pub(crate) fn remove_task(timestamp: i64) {
         }
     }
 
-    log::debug!(
-        "{} items remaining in disk tree cache",
-        write_txn
-            .list_tables()
-            .expect("failed to list tables")
-            .count()
-    );
-
     write_txn.commit().expect("failed to commit transaction");
 }

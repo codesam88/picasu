@@ -5,11 +5,10 @@ use crate::{storage::cache::EXPIRE, tasks::looper::reset_expire_check_timer};
 
 use crate::tasks::actor::remove_tree_snapshot::remove_task;
 use mini_executor::BatchTask;
-use rayon::iter::{ParallelBridge, ParallelIterator};
-
-use log::{debug, error};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use std::sync::atomic::Ordering;
+
+use log::{debug, error};
 
 pub struct ExpireCheckTask;
 
@@ -22,70 +21,79 @@ impl BatchTask for ExpireCheckTask {
 }
 
 pub(crate) fn expire_check_task() {
-    let slot_guard =
-        crate::tasks::txn_probe::slot_guard(crate::tasks::txn_probe::Db::Cache, "expire_check:27");
-    let write_txn = QUERY_SNAPSHOT
-        .in_disk
-        .begin_write()
-        .expect("failed to begin write transaction");
-    slot_guard.acquired();
-
-    write_txn
-        .list_tables()
-        .expect("failed to list tables")
-        .par_bridge()
-        .for_each(|table_handle| {
-            if let Ok(timestamp) = table_handle.name().parse::<i64>()
+    // Read-collect phase: take a short read transaction, enumerate the query
+    // snapshot tables, decide which ones are expired (which also prunes their
+    // rows from the expire DB), and collect their tree-snapshot ids. The read
+    // transaction is dropped before any write transaction opens, so a long
+    // sweep can never hold a write slot while it scans. Tables created mid-sweep
+    // simply are not in this snapshot and are picked up on the next round.
+    let mut expired: Vec<(String, i64, Vec<i64>)> = Vec::new();
+    {
+        let read_txn = QUERY_SNAPSHOT
+            .in_disk
+            .begin_read()
+            .expect("failed to begin read transaction");
+        for table_handle in read_txn.list_tables().expect("failed to list tables") {
+            let name = table_handle.name().to_string();
+            if let Ok(timestamp) = name.parse::<i64>()
                 && VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed) > timestamp
                 && EXPIRE.expired_check(timestamp)
             {
-                let binding = timestamp.to_string();
-                let table_definition: TableDefinition<u64, Prefetch> =
-                    TableDefinition::new(&binding);
-
-                let read_txn = QUERY_SNAPSHOT
-                    .in_disk
-                    .begin_read()
-                    .expect("failed to begin read transaction");
-                let table = read_txn
+                let table_definition: TableDefinition<u64, Prefetch> = TableDefinition::new(&name);
+                let tree_ids: Vec<i64> = read_txn
                     .open_table(table_definition)
-                    .expect("failed to open table");
-
-                match write_txn.delete_table(table_handle) {
-                    Ok(true) => {
-                        debug!("Delete query cache table: {timestamp}");
-                        let tree_snapshot_delete_queue: Vec<_> = table
+                    .ok()
+                    .map(|table| {
+                        table
                             .iter()
-                            .expect("failed to iterate table")
-                            .par_bridge()
-                            .map(|result| {
-                                let (_, guard) = result.expect("failed to read record");
-                                let prefetch_return = guard.value();
-                                prefetch_return.timestamp
+                            .ok()
+                            .map(|iter| {
+                                iter.filter_map(|result| {
+                                    result.ok().map(|(_, guard)| guard.value().timestamp)
+                                })
+                                .collect()
                             })
-                            .collect();
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default();
 
-                        for timestamp in tree_snapshot_delete_queue {
-                            remove_task(timestamp);
-                        }
-                    }
-                    Ok(false) => {
-                        error!("Failed to delete query cache table: {timestamp}");
-                    }
-                    Err(err) => {
-                        error!("Failed to delete query cache table: {timestamp}, error: {err:#?}");
-                    }
-                }
-
-                debug!(
-                    "{} items remaining in disk query cache",
-                    write_txn
-                        .list_tables()
-                        .expect("failed to list tables")
-                        .count()
-                );
+                debug!("Collect expired query cache table: {timestamp}");
+                expired.push((name, timestamp, tree_ids));
             }
-        });
+        }
+    }
 
-    write_txn.commit().expect("failed to commit transaction");
+    // Delete phase: one short write transaction per expired table, no rayon
+    // bridge held across the write. Tree-snapshot removals run as separate
+    // short transactions per id.
+    for (name, timestamp, tree_ids) in expired {
+        let slot_guard = crate::tasks::txn_probe::slot_guard(
+            crate::tasks::txn_probe::Db::Cache,
+            "expire_check:62",
+        );
+        let write_txn = QUERY_SNAPSHOT
+            .in_disk
+            .begin_write()
+            .expect("failed to begin write transaction");
+        slot_guard.acquired();
+
+        let table_definition: TableDefinition<u64, Prefetch> = TableDefinition::new(&name);
+        match write_txn.delete_table(table_definition) {
+            Ok(true) => {
+                debug!("Delete query cache table: {timestamp}");
+            }
+            Ok(false) => {
+                error!("Failed to delete query cache table: {timestamp}");
+            }
+            Err(err) => {
+                error!("Failed to delete query cache table: {timestamp}, error: {err:#?}");
+            }
+        }
+
+        write_txn.commit().expect("failed to commit transaction");
+
+        for tree_timestamp in tree_ids {
+            remove_task(tree_timestamp);
+        }
+    }
 }
