@@ -75,6 +75,10 @@ fail-closed liveness.
 - Seed observation (2026-11-17), unreproduced: one persistent-instance seed
   stalled in the album index (`state=running`, `scanned=0`) until the server
   was killed; throwaway seeds and the next persistent seed completed.
+- Nightly advisory jobs (2026-11-18): stateful campaign (`FUZZ_MIN=30`,
+  baseline-compared, SARIF category `schemathesis-stateful`) and full-budget
+  per-role passes plus diff (report artifacts). Both nightly-only with
+  `continue-on-error`; no PR trigger and promotion criteria unchanged.
 
 ## CLI cleanup (2026-11-17)
 
