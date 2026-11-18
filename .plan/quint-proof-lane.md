@@ -448,6 +448,11 @@ real_pin::pipeline_merged::files is already assigned!`
   no non-vacuous single-event element completes a verification run: pairs
   inherit the same per-element cost with a larger state space.
 
+- **No element exhausts at these bounds.** TLC on the empty-prefix element
+  ran 40 min without a verdict: 29.5M distinct states at depth 18, 16.3M
+  still queued and growing, 9.1 GB of fingerprints. The cost is the shared
+  phase-1/2 suffix machine (crashes, rescans and sweeps loop), not the
+  prefix: every satisfiable element explores essentially the same graph.
 - **One disjunctive init is the cheaper shape.** An init
   `any { initP0, ..., initP50 }` typechecks and TLC computes 126 distinct
   initial states from it (27 satisfiable elements; nondet arguments expand
