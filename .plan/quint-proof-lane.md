@@ -467,6 +467,59 @@ verification cost, not the partition. (ii) is implementable but not the lever.
 The lever is a cheaper target — an inductive invariant (option iii), or a
 materially smaller bound configuration — not more prefix shapes.
 
+## Fundamental insights and direction change (2026-11-18)
+
+Stepping back from measurement levers (shards, bounds, encodings), three
+structural levers were under-used:
+
+1. **Fault-free drain is lossless.** Phase 1's action set is a subset of
+   phase 0's, and files are frozen in phases 1-2 (no environment). Every
+   crash-mid-drain state is therefore free-phase-reachable (partial worker
+   application then crash happens in the free phase too). Removing
+   ProcessCrash/LoseThumbs/DbLoss from phase 1 loses no coverage: crash
+   resilience migrates to the prefix partition, where "crash" is already a
+   first-class partition element (fault insertion at the boundary, not
+   inside the recovery fixpoint). This removes the crash/rescan churn
+   loops that drove the suffix state explosion (29.5M states at depth 18
+   for the empty prefix).
+2. **Rounds 1-5 are CEGAR by hand — bank them.** Each counterexample fix
+   is literally an inductive-invariant conjunct: record resolvability,
+   lease-held-before-release, identity-fresh-before-skip, eager-evaluation
+   totality, sweep-batch accumulation. The inductive route's real cost is
+   collecting and formalizing these conjuncts (`--inductive-invariant`),
+   not starting over with TypeOK strengthening.
+3. **Assume-guarantee decomposition.** The sweep-batch bug was a local
+   3-stage-protocol bug; a standalone sweep-protocol model (2 roots,
+   enumerate/recheck/apply) checks exhaustively in seconds. Local models
+   for intake, sweep, move-lease give cheap exhaustive checks feeding the
+   global claim.
+
+Secondary: partial data independence (mtime is compared wholesale and can
+fold into a snapshot version; hash keys dupeIndex, len is summed into
+album item_size, sidecar is REQ-1 identity — those keep their roles);
+TLC symmetry reduction (paths within a root); Apalache invariant
+splitting.
+
+### New direction
+
+1. Model fixes first: (a) per-root sweep-batch accumulation (round 5;
+   SCOPE-8/9/11 revised), (b) fault-free drain phase (SCOPE-13/phase
+   machine revised; crash resilience reframed to partition level).
+2. Make the disjunctive init a first-class generator output (the
+   126-initial-state single invocation found the sweep finding in 203 s
+   vs 74 min per-element).
+3. Re-measure the single-event partition on the reduced instance:
+   TLC for exhaustive verdicts (may still be heavy), Apalache bounded
+   depth for termination; the green-cost datapoint decides lane
+   viability.
+4. SCOPE-15 + lane registration after the first green; nightly/manual
+   dispatch per devops-cleanup.
+5. Inductive-invariant skeleton: record the conjunct list (from rounds
+   1-5) in the plan; pursue only if greens stay unaffordable.
+6. Cleanup: the composed-init gen modes (instance/class-level without
+   pinning) are unencodable on both backends — superseded by
+   --pin-prestate; strip or clearly mark dead.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
