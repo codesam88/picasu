@@ -537,85 +537,84 @@ impl Expire {
     /// * `false` if the `timestamp` has not yet expired, or has no row recorded
     ///   yet (the active version, whose expiry is scheduled on the next rotation).
     pub fn expired_check(&self, timestamp: i64) -> bool {
-        // Begin a read transaction on the in-memory disk
+        // Decide expiry in a short read transaction.
         let read_transaction = self
             .in_disk
             .begin_read()
             .expect("failed to begin read transaction for expire check");
 
-        // Open the expiration table using its definition
-        let expire_table = read_transaction
-            .open_table(EXPIRE_TABLE_DEFINITION)
-            .expect("failed to open expire table");
+        let Ok(expire_table) = read_transaction.open_table(EXPIRE_TABLE_DEFINITION) else {
+            // Table absent: nothing recorded, treat as not expired.
+            return false;
+        };
 
-        // Attempt to retrieve the expiration entry for the given timestamp
-        match expire_table
-            .get(timestamp)
-            .expect("failed to get expire entry")
-            .and_then(|entry| entry.value())
-        {
-            // If an expiration time exists and the current time has surpassed it
-            Some(expire_time) if Utc::now().timestamp_millis() > expire_time => {
-                let slot_guard = crate::tasks::txn_probe::slot_guard(
-                    crate::tasks::txn_probe::Db::Expire,
-                    "storage/cache.rs:560",
-                );
-                // Begin a write transaction to modify the expiration table
-                let write_transaction = self
-                    .in_disk
-                    .begin_write()
-                    .expect("failed to begin write transaction for expire cleanup");
-                slot_guard.acquired();
-                {
-                    // Open the expiration table for writing
-                    let mut write_table = write_transaction
-                        .open_table(EXPIRE_TABLE_DEFINITION)
-                        .expect("failed to open expire table for writing");
+        let expired = matches!(
+            expire_table
+                .get(timestamp)
+                .expect("failed to get expire entry")
+                .and_then(|entry| entry.value()),
+            Some(expire_time) if Utc::now().timestamp_millis() > expire_time
+        );
 
-                    // Iterate over all entries in the expiration table
-                    for (key, _) in expire_table
-                        .iter()
-                        .expect("failed to iterate expire table")
-                        .flatten()
-                    {
-                        let key_timestamp = key.value();
-                        // If the key's timestamp is less than or equal to the provided timestamp
-                        if key_timestamp <= timestamp {
-                            // Remove the expired key from the table
-                            write_table
-                                .remove(key_timestamp)
-                                .expect("failed to remove expired key");
-                            // Log the deletion of the expired key
-                            debug!("Deleted expired key: {key_timestamp:?}");
-                        }
-                    }
+        // Collect the rows to delete (all keys <= timestamp) while still in
+        // the read transaction, so the write transaction below stays short.
+        let to_delete: Vec<i64> = if expired {
+            expire_table
+                .iter()
+                .expect("failed to iterate expire table")
+                .flatten()
+                .map(|(key, _)| key.value())
+                .filter(|key_timestamp| *key_timestamp <= timestamp)
+                .collect()
+        } else {
+            Vec::new()
+        };
 
-                    // Log the number of items remaining in the expiration table
-                    debug!(
-                        "{} items remaining in expire table",
-                        write_table
-                            .len()
-                            .expect("failed to get expire table length")
-                    );
-                }
-                // Commit the write transaction to finalize changes
-                write_transaction
-                    .commit()
-                    .expect("failed to commit expire transaction");
-                // Indicate that the timestamp has expired
-                true
-            }
-            // `Some(_)`: an expiration time exists but has not yet been reached.
-            // `None`: no row recorded for this timestamp. This is the active version
-            // whose expiry hasn't been scheduled yet (see `update_expire_task`'s
-            // swap/commit race) — not an already-removed entry, since a removed
-            // entry's query snapshot table would already be gone and never reach
-            // this check again.
-            Some(_) | None => false,
+        drop(expire_table);
+        drop(read_transaction);
+
+        if !expired {
+            return false;
         }
+
+        let slot_guard = crate::tasks::txn_probe::slot_guard(
+            crate::tasks::txn_probe::Db::Expire,
+            "storage/cache.rs:560",
+        );
+        // Begin a write transaction to modify the expiration table
+        let write_transaction = self
+            .in_disk
+            .begin_write()
+            .expect("failed to begin write transaction for expire cleanup");
+        slot_guard.acquired();
+        {
+            // Open the expiration table for writing
+            let mut write_table = write_transaction
+                .open_table(EXPIRE_TABLE_DEFINITION)
+                .expect("failed to open expire table for writing");
+
+            for key_timestamp in to_delete {
+                write_table
+                    .remove(key_timestamp)
+                    .expect("failed to remove expired key");
+                debug!("Deleted expired key: {key_timestamp:?}");
+            }
+
+            debug!(
+                "{} items remaining in expire table",
+                write_table
+                    .len()
+                    .expect("failed to get expire table length")
+            );
+        }
+        // Commit the write transaction to finalize changes
+        write_transaction
+            .commit()
+            .expect("failed to commit expire transaction");
+        // Indicate that the timestamp has expired
+        true
     }
 }
-
 #[cfg(test)]
 mod snapshot_id_tests {
     use super::*;
