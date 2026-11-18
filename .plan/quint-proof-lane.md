@@ -319,12 +319,15 @@ untouched.
   measurement obtainable; a model-level per-prefix refactor cannot remove
   the composition itself. TLC is not the backend for prefix-partition
   verification.
-- **Apalache: works — 12/12 prefixes converge** (empty prefix, 4
-  singletons, 2 pairs, 6 adversarial triples incl. unobserved delete +
-  crash during drain, move-lease + crash + scan, upload + DbLoss +
-  rescan). Runtime distribution: min 201 s / median 206 s / max 208 s —
-  essentially constant regardless of prefix content, i.e. dominated by
-  per-invocation overhead (JVM + server startup), not exploration.
+- **RETRACTED (2026-11-18): "12/12 prefixes converge" was a measurement
+  artifact.** quint exits 0 with no verdict when Apalache's preprocessing
+  fails; the old exit-status classifier read that as ok. With output-based
+  classification (ab198754), all measured prefixes are errors: Apalache
+  0.62.4 rejects action composition (`\cdot`) in the init predicate —
+  confirmed with a plain-TLA+ control independent of Quint — so every
+  composed-prefix init fails in PreprocessingPass before any exploration.
+  No convergence claims for the model exist yet. Lesson recorded: classify
+  from output markers, never exit status alone.
 
 Feasibility: full partition policy ≈ 630+ prefixes x ~206 s ≈ 35 h
 single-job — exceeds the 6 h CI budget as-invoked. The lever is Apalache
@@ -342,6 +345,41 @@ full-policy lane against the CI budget (shard by partition class if
 needed); (3) land SCOPE-15 + the nightly/manual-dispatch lane
 (devops-cleanup CI item); (4) violations from the full run become
 refinement rounds.
+
+## Class-level spike round 2 (2026-11-18, commit ab198754)
+
+- Apalache 0.62.4 does not support `\cdot` in the init predicate (plain
+  TLA+ control fails identically) — every composed prefix init is
+  rejected before exploration. Also surfaced: `nondet` requires oneOf
+  (QNT204), `.then` requires identical effect sets (QNT000 — the Stay
+  full-assignment shape is mandatory), an init denoting no state surfaces
+  as a step-0 deadlock with an empty state (the vacuous detector keys on
+  that), and `quint compile` cannot inspect the encoding (QNT409).
+- Server-mode amortization is ~0: the 205 s per prefix is Snowcat
+  typechecking (~190 s of it) rerun per request; JVM start is 3-5 s.
+  Requests serialize on the server. Server mode is not the lever.
+- Cost breakdown: SanyParser 2.7 s, Snowcat 190 s, passes 2-9 ≈ 2 s,
+  client-side flatten/IR ≈ 25 s. A 3-init module trims Snowcat only to
+  156 s — intrinsic to the merged model size.
+- Class-level partition generated: 106 elements (50 classes, 35 pairs,
+  14 same-class pairs, 6 adversarial) — measured subset all `error`
+  (7/7) for the composition reason above; vacuous/violation counts
+  unobtainable while composition fails (vacuous detection is
+  selftest-covered only).
+- CI sizing: ~205 s/prefix ⇒ 430-630 elements ≈ 24.5-36 h serial; a 6 h
+  job needs ≥5-8 shards. Runtime levers: sharding, and a run-stripped
+  verify module (runs are a large share of the 3,174 lines Snowcat
+  typechecks per request).
+
+Encoding options for the next decision (composition is unusable in
+init): (i) single-event class-level prefixes via pre-state pinning — emit
+`initPk = all { <unprimed equalities to the deterministic initial state>,
+nondet args, <Event>, <phase bookkeeping> }`; mechanical, sound, no
+composition needed, covers every event class alone; (ii) multi-event
+prefixes require substituting event 1's post-expressions into event 2's
+reads — engineering-heavy, expression blowup beyond short chains;
+(iii) abandon prefix decomposition and pursue the inductive-invariant
+route for the deep claim.
 
 ## Step/action division of labor (review anchor)
 
