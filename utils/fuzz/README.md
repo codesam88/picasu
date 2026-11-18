@@ -212,4 +212,6 @@ Stateful phase uses up to 8 steps per sequence.
 
 ## SARIF / Security tab
 
-`utils/fuzz/json2sarif.py <report.json> <baseline.yaml> <out.sarif>` converts a run report to SARIF 2.1.0. Baseline-accepted findings are excluded; results are advisory (`level: warning`). Operation anchoring is line-based against `backend/openapi.json`. The nightly workflow uploads the result under the `schemathesis` category.
+`utils/fuzz/json2sarif.py <report.json> <baseline.yaml> <out.sarif>` converts a run report to SARIF 2.1.0. Baseline-accepted findings are excluded; results are advisory (`level: warning`). Operation anchoring is line-based against `backend/openapi.json`.
+
+The nightly advisory workflow uploads the tier-1 report under `schemathesis` and the stateful campaign under `schemathesis-stateful`. Per-role reports and logs are workflow artifacts; `just fuzz diff` runs after them. All three jobs are nightly-only and advisory.
