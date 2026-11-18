@@ -5,7 +5,7 @@
 # instance.
 base-url = "http://localhost:5673"
 seed = 1
-hooks = "utils/schemathesis/hooks_campaign.py"
+hooks = "utils/fuzz/hooks_campaign.py"
 
 [generation]
 max-examples = 8

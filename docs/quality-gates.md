@@ -35,7 +35,7 @@ graph LR
 graph LR
   test --> backend-test
   test --> frontend-test
-  test --> fuzz-matrix
+  test --> fuzz::matrix
   test --> quint::test
   test --> utils-test
   frontend-test --> frontend-playwright
@@ -46,30 +46,31 @@ graph LR
 
 | Orphan                  | Orphan                |
 | ----------------------- | --------------------- |
-| `backend-build`         | `docs-openapi`        |
-| `backend-build-release` | `docs-serve`          |
-| `backend-format`        | `format`              |
-| `bench::battery`        | `frontend-format`     |
-| `bench::battery-check`  | `fuzz-run`            |
-| `bench::clean`          | `fuzz-serve`          |
-| `bench::extract`        | `gates-docs`          |
-| `bench::format`         | `install-dev`         |
-| `bench::lint`           | `install-plan`        |
-| `bench::preflight`      | `openapi-gen`         |
-| `bench::prepare`        | `plan`                |
-| `bench::run`            | `plan-format`         |
-| `bench::seed-images`    | `quint::doc-check`    |
-| `bench::server`         | `quint::docs`         |
-| `bench::status`         | `quint::format`       |
-| `bench::test`           | `quint::fulltest`     |
-| `branches-prune`        | `quint::selftest`     |
-| `build`                 | `run`                 |
-| `build-release`         | `setup-dev`           |
-| `check-tools`           | `setup-sccache`       |
-| `clean`                 | `test-release`        |
-| `distclean`             | `utils-format`        |
-| `docs-build`            | `zizmor-check-online` |
-| `docs-format`           |                       |
+| `backend-build`         | `docs-serve`          |
+| `backend-build-release` | `format`              |
+| `backend-format`        | `frontend-format`     |
+| `bench::battery`        | `fuzz::clean`         |
+| `bench::battery-check`  | `fuzz::diff`          |
+| `bench::clean`          | `fuzz::roles`         |
+| `bench::extract`        | `fuzz::run`           |
+| `bench::format`         | `gates-docs`          |
+| `bench::lint`           | `install-dev`         |
+| `bench::preflight`      | `install-plan`        |
+| `bench::prepare`        | `openapi-gen`         |
+| `bench::run`            | `plan`                |
+| `bench::seed-images`    | `plan-format`         |
+| `bench::server`         | `quint::doc-check`    |
+| `bench::status`         | `quint::docs`         |
+| `bench::test`           | `quint::format`       |
+| `branches-prune`        | `quint::fulltest`     |
+| `build`                 | `quint::selftest`     |
+| `build-release`         | `run`                 |
+| `check-tools`           | `setup-dev`           |
+| `clean`                 | `setup-sccache`       |
+| `distclean`             | `test-release`        |
+| `docs-build`            | `utils-format`        |
+| `docs-format`           | `zizmor-check-online` |
+| `docs-openapi`          |                       |
 
 ## Rules by group
 
@@ -133,8 +134,6 @@ graph TD
   env-var-check
   fuzz-check
   fuzz-matrix
-  fuzz-run
-  fuzz-serve
   gates-check
   msrv-check
   openapi-breakcheck
@@ -156,7 +155,7 @@ graph TD
   openapi-check --> openapi-lint
   openapi-check --> openapi-sanity
   utils-check --> zizmor-check
-  auth-matrix-check ~~~ dylint-check & env-var-check & fuzz-check & fuzz-matrix & fuzz-run & fuzz-serve & gates-check & msrv-check & openapi-gen & openapi-routes-release & plan & plan-format & plan-lint & utils-format & utils-test & zizmor-check-online
+  auth-matrix-check ~~~ dylint-check & env-var-check & fuzz-check & fuzz-matrix & gates-check & msrv-check & openapi-gen & openapi-routes-release & plan & plan-format & plan-lint & utils-format & utils-test & zizmor-check-online
 ```
 
 | Rule (justfile)          | Description                                                                       | CI Workflow           | Trigger             |
@@ -164,10 +163,8 @@ graph TD
 | `auth-matrix-check`      | ensure auth-matrix artifacts match generator                                      | (openapi-check)       | local, PR, main     |
 | `dylint-check`           | run dylint auth lints (advisory)                                                  | ci                    | PR, main            |
 | `env-var-check`          | check PICASU_* env vars match docs/config.md                                      | ci                    | local, PR, main     |
-| `fuzz-check`             | tier-1 gate: seeded sweep, baseline-compared                                      | ci, fuzz-advisory     | PR, main, scheduled |
-| `fuzz-matrix`            | run fuzz matrix (auth checks)                                                     | ci                    | local, PR, main     |
-| `fuzz-run`               | run fuzz campaign (budget via FUZZ_MIN)                                           | ❌️                    | -                   |
-| `fuzz-serve`             | —                                                                                 | ❌️                    | -                   |
+| `fuzz-check`             | Deprecated: CI invokes this name; use `just fuzz check`.                          | ci, fuzz-advisory     | PR, main, scheduled |
+| `fuzz-matrix`            | Deprecated: CI invokes this name; use `just fuzz matrix`.                         | ci                    | PR, main            |
 | `gates-check`            | ensure all test/check rules are called from CI and global rules                   | ci, docs-check        | local, PR, main     |
 | `msrv-check`             | Non-blocking by design: MSRV floor check (nightly lane).                          | msrv                  | scheduled           |
 | `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | (openapi-check)       | local, PR, main     |
@@ -186,7 +183,6 @@ graph TD
 | `zizmor-check-online`    | e.g. --format=sarif                                                               | ❌️                    | -                   |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05
-Note: `fuzz-check` - CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)
 
 ### Docs
 
@@ -226,14 +222,14 @@ graph TD
   install-dev ~~~ check-tools & install & install-plan
 ```
 
-| Rule (justfile) | Description                                                       | CI Workflow                                                                                   | Trigger                          |
-| --------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
-| `check-tools`   | verify installed tool versions                                    | ❌️                                                                                            | -                                |
-| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, fuzz-advisory, release, zizmor, (fuzz-check), (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
-| `install-dev`   | install managed dev tools                                         | ❌️                                                                                            | -                                |
-| `install-plan`  | Install 'plan' and 'gloss' tools (pinned)                         | ❌️                                                                                            | -                                |
-| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                                            | -                                |
-| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                                            | -                                |
+| Rule (justfile) | Description                                                       | CI Workflow                                                                     | Trigger                          |
+| --------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------- |
+| `check-tools`   | verify installed tool versions                                    | ❌️                                                                              | -                                |
+| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, fuzz-advisory, release, zizmor, (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
+| `install-dev`   | install managed dev tools                                         | ❌️                                                                              | -                                |
+| `install-plan`  | Install 'plan' and 'gloss' tools (pinned)                         | ❌️                                                                              | -                                |
+| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                              | -                                |
+| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                              | -                                |
 
 ### Global
 
@@ -309,6 +305,29 @@ graph TD
 | `bench::server`        | Serve a backend cell.                                           | ❌️          | -       |
 | `bench::status`        | Report per-cell state under a battery parent.                   | ❌️          | -       |
 | `bench::test`          | Run the bench unit tests.                                       | ❌️          | -       |
+
+### Fuzz
+
+```mermaid
+graph TD
+  fuzz__check["fuzz::check"]
+  fuzz__clean["fuzz::clean"]
+  fuzz__diff["fuzz::diff"]
+  fuzz__matrix["fuzz::matrix"]
+  fuzz__roles["fuzz::roles"]
+  fuzz__run["fuzz::run"]
+```
+
+| Rule (justfile) | Description                                                         | CI Workflow   | Trigger             |
+| --------------- | ------------------------------------------------------------------- | ------------- | ------------------- |
+| `fuzz::check`   | Tier-1 A1-A5 sweep, baseline-compared (gating; CI runs this).       | (fuzz-check)  | PR, main, scheduled |
+| `fuzz::clean`   | Remove the campaign's seeded state and per-role reports.            | ❌️            | -                   |
+| `fuzz::diff`    | Differential diff across per-role reports; fails on new diffs only. | ❌️            | -                   |
+| `fuzz::matrix`  | Deterministic auth-matrix checks (gating; included in `just test`). | (fuzz-matrix) | local, PR, main     |
+| `fuzz::roles`   | Per-role differential passes, equal budget, report-<role>.json.     | ❌️            | -                   |
+| `fuzz::run`     | Advisory stateful campaign; seeds sandbox/fuzz on first use.        | ❌️            | -                   |
+
+Note: `fuzz::check` - CI-only: the seeded sweep runtime does not belong in the local `test` aggregate
 
 ### Quint
 

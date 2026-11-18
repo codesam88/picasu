@@ -2,7 +2,7 @@
 
 Strategy home for API fuzzing and authorization assurance. Operational
 commands, environment variables, debugging, and hook details live in
-`utils/schemathesis/README.md`; this document covers the strategy, oracles,
+`utils/fuzz/README.md`; this document covers the strategy, oracles,
 gates, and known limits. The contract that feeds the harness is described in
 `docs/api-assurance.md`.
 
@@ -48,7 +48,7 @@ no-credential probes.
 
 ### A1-A5 oracle sweep (Tier 1)
 
-`just fuzz-check` runs a bounded single-operation sweep against a throwaway
+`just fuzz check` runs a bounded single-operation sweep against a throwaway
 seeded backend and compares findings to `baseline.yaml`. Each operation the
 contract assigns a check to carries exactly one of:
 
@@ -170,10 +170,10 @@ two real accounts but is read-only by design and cannot replay writes.
 
 | Command / artifact            | Scope                                         | Gate status                             |
 | ----------------------------- | --------------------------------------------- | --------------------------------------- |
-| `just fuzz-check`             | A1-A5 sweep vs `baseline.yaml`                | Gating in CI                            |
-| `just fuzz-matrix`            | One request per assigned check, deterministic | Gating; included in `just test`         |
-| `just fuzz-run`               | Stateful generative campaign                  | Advisory only                           |
-| `just fuzz-serve`             | Seeded instance for manual/nightly use        | Operational                             |
+| `just fuzz check`             | A1-A5 sweep vs `baseline.yaml`                | Gating in CI                            |
+| `just fuzz matrix`            | One request per assigned check, deterministic | Gating; included in `just test`         |
+| `just fuzz roles` / `diff`    | Equal-budget per-role passes, differential    | Advisory; `diff` fails on new diffs     |
+| `just fuzz run`               | Stateful generative campaign                  | Advisory only                           |
 | Nightly fuzz-advisory + SARIF | Campaign report converted to SARIF            | Advisory, uploaded under `schemathesis` |
 
 `baseline.yaml` is a triage ledger, not a requirement set: it must shrink as
@@ -187,7 +187,7 @@ recovers via refresh or fails loudly.
 Auth knowledge is derived, not hand-maintained:
 
 `backend/auth-matrix.json` (committed machine contract of per-operation
-`x-picasu-auth`) -> `utils/schemathesis/auth_rules.py` -> campaign hooks.
+`x-picasu-auth`) -> `utils/fuzz/auth_rules.py` -> campaign hooks.
 
 The derivation covers share-header injection, check assignment, wrong-credential
 token selection, read-only exemptions, and seeded scope pairs. It is pure and
@@ -268,7 +268,7 @@ invalidates the session under test.
 
 ## See also
 
-- `utils/schemathesis/README.md` — operational commands, environment, and
+- `utils/fuzz/README.md` — operational commands, environment, and
   debugging.
 - `docs/api-assurance.md` — contract basis and consumers.
 - `docs/auth-matrix.md` — human-readable authorization matrix.

@@ -136,7 +136,7 @@ utils-check: zizmor-check
 [group('utils')]
 utils-test:
     cargo test -p snapfab -p openapi-sanity -p quint
-    python3 {{justfile_directory()}}/utils/schemathesis/test_auth_rules.py
+    python3 {{justfile_directory()}}/utils/fuzz/test_auth_rules.py
 
 # Benchmark tooling submodule (utils/bench/justfile); `just bench <recipe>`
 # works from any directory.
@@ -149,6 +149,11 @@ mod bench "utils/bench/justfile"
 # the elevated-sample deep lane, selftest = checker self-tests.
 [group('utils')]
 mod quint "utils/quint/justfile"
+
+# API fuzz harness submodule (utils/fuzz/justfile); `just fuzz <verb>` works
+# from any directory. Verbs: check, matrix, roles, run, diff, clean.
+[group('utils')]
+mod fuzz "utils/fuzz/justfile"
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -211,51 +216,13 @@ openapi-json-match:
 install tool:
     ./scripts/deps-install.sh --tool {{tool}}
 
-# Common fuzz flows; the fundamental commands (raw launcher, campaign engine,
-# tier-1 check) are scripts under scripts/ and utils/schemathesis/, combined
-# as documented in utils/schemathesis/README.md.
-
-# tier-1 gate: seeded sweep, baseline-compared
+# Deprecated: CI invokes this name; use `just fuzz check`.
 [group('utils')]
-fuzz-check: frontend-build-maybe (install "schemathesis")
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ./scripts/deps-install.sh --tool schemathesis --check
-    utils/schemathesis/check.sh
+fuzz-check: fuzz::check
 
-# Serve a seeded instance in the foreground (first run seeds; Ctrl-C stops)
-# run fuzz matrix (auth checks)
+# Deprecated: CI invokes this name; use `just fuzz matrix`.
 [group('utils')]
-fuzz-matrix: frontend-build-maybe
-    utils/schemathesis/fuzz_matrix.sh
-
-[group('utils')]
-fuzz-serve *args: frontend-build-maybe
-    utils/schemathesis/serve.sh {{ args }}
-
-# run fuzz campaign (budget via FUZZ_MIN)
-[group('utils')]
-fuzz-run *args: (install "schemathesis")
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ./scripts/deps-install.sh --tool schemathesis --check
-    FUZZ_STATE_DIR="${FUZZ_STATE_DIR:-{{justfile_directory()}}/sandbox/fuzz}" \
-    utils/schemathesis/campaign.sh {{ args }}
-
-# per-role runner (equal budget, separate report-<role>.json)
-[group('utils')]
-fuzz-roles *args: (install "schemathesis")
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ./scripts/deps-install.sh --tool schemathesis --check
-    utils/schemathesis/run-roles.sh {{ args }}
-
-# differential diff across per-role reports (fails on NEW diffs only)
-[group('utils')]
-fuzz-diff *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    python3 utils/schemathesis/diff.py {{ args }}
+fuzz-matrix: fuzz::matrix
 
 
 # audit workflows/deps offline (no GH_TOKEN)
@@ -406,7 +373,7 @@ check: backend-check utils-check frontend-check docs-check plan-lint openapi-che
 
 # run full test suite
 [group('global')]
-test: backend-test utils-test frontend-test fuzz-matrix quint::test
+test: backend-test utils-test frontend-test fuzz::matrix quint::test
 
 # verify installed tool versions
 [group('deps')]

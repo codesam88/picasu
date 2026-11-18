@@ -398,9 +398,9 @@ const localNotes = [
       "needs nightly-2026-08-01 toolchain+rDylint; CI-only by decision 2026-11-05",
   },
   {
-    name: "fuzz-check",
+    name: "fuzz::check",
     reason:
-      "CI-only tier-1 fuzz check not promoted into local `test` aggregate (step 3 pending)",
+      "CI-only: the seeded sweep runtime does not belong in the local `test` aggregate",
   },
 ];
 const noteByName = new Map(localNotes.map((e) => [e.name, e.reason]));

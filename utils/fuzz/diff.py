@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Differential diff across per-role Schemathesis reports (run-roles.sh output).
+"""Differential diff across per-role Schemathesis reports (`just fuzz roles`).
 
 Loads report-<role>.json files, groups findings by operation, and diffs
 same-operation outcomes across roles. Fails (exit 1) only on NEW diffs that

@@ -178,8 +178,16 @@ def _token_for_credential(kind):
 
 def _demoted_token():
     # Role changes re-auth: GuardReauth answers 403 without the password
-    # header, leaving the editor promoted and the probe mis-seeded.
+    # header. The editor account is registered here so the probe does not
+    # depend on a hand-created user; registration answers 4xx when the account
+    # already exists, which is harmless.
     if "demoted" not in _cache:
+        _api(
+            "POST",
+            "/post/users/register",
+            headers={"Cookie": ADMIN_COOKIE},
+            body={"userId": "editor", "password": PASSWORD},
+        )
         _api(
             "PUT",
             "/put/users/admin",
@@ -187,6 +195,8 @@ def _demoted_token():
             body={"userId": "editor", "admin": True},
         )
         token = _login_token("editor", PASSWORD)
+        if token is None:
+            raise RuntimeError("demoted probe: cannot log in as 'editor'")
         _api(
             "PUT",
             "/put/users/admin",

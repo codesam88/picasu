@@ -1,0 +1,61 @@
+# API fuzz harness (Schemathesis): tier-1 sweep, auth matrix, per-role
+# differential runs, and the advisory campaign. Strategy: docs/api-fuzzing.md;
+# operations and environment: utils/fuzz/README.md.
+
+root := source_directory() / ".." / ".."
+harness := source_directory() / "fuzz.sh"
+
+# List fuzz verbs.
+[private]
+default:
+    @just --list --unsorted --justfile "{{ source_file() }}"
+
+# Frontend assets for SPA-shell route checks (idempotent; builds when missing).
+[private]
+_frontend:
+    just -d "{{ root }}" frontend-build-maybe
+
+# Pinned Schemathesis, installed on first use.
+[private]
+_schemathesis:
+    just -d "{{ root }}" install schemathesis
+
+# Tier-1 A1-A5 sweep, baseline-compared (gating; CI runs this).
+[group('fuzz')]
+check *args: _frontend _schemathesis
+    "{{ harness }}" check {{ args }}
+
+# Deterministic auth-matrix checks (gating; included in `just test`).
+[group('fuzz')]
+matrix: _frontend
+    "{{ harness }}" matrix
+
+# Per-role differential passes, equal budget, report-<role>.json.
+[group('fuzz')]
+roles *args: _frontend _schemathesis
+    "{{ harness }}" roles {{ args }}
+
+# Advisory stateful campaign; seeds sandbox/fuzz on first use.
+[group('fuzz')]
+run *args: _frontend _schemathesis
+    "{{ harness }}" run {{ args }}
+
+# Differential diff across per-role reports; fails on new diffs only.
+[group('fuzz')]
+diff *args:
+    "{{ harness }}" diff {{ args }}
+
+# Remove the campaign's seeded state and per-role reports.
+[group('fuzz')]
+clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    state="{{ root }}/sandbox/fuzz"
+    if [ -f "$state/server.pid" ]; then
+        pid="$(cat "$state/server.pid")"
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+    rm -rf "$state"
+    rm -rf "{{ source_directory() }}/out"

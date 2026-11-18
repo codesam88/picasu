@@ -65,7 +65,7 @@ backfilled as the classification is reviewed.
 | S1   | metadata present ⇔ `security(...)` present                | `openapi-sanity`                              | gating                      |
 | S2   | `security` schemes ⇔ guard types                          | `openapi-sanity`                              | gating                      |
 | S3   | `credentials` ⇔ decoded claims type                       | dylint (`credentials_agreement`, gating)      | implemented; gating in CI   |
-| S4   | asset touched is bound to the share's album               | behavioral cross-scope checks, matrix-derived | gating (`just fuzz-matrix`) |
+| S4   | asset touched is bound to the share's album               | behavioral cross-scope checks, matrix-derived | gating (`just fuzz matrix`) |
 | S5   | read-only gate ⇔ `GuardMutate` + 405 declared             | `openapi-sanity`                              | gating                      |
 | S6   | password confirmation ⇔ `GuardReauth` + documented header | `openapi-sanity`                              | gating                      |
 | S7   | no contributing guard ⇔ `security(())`                    | `openapi-sanity`                              | gating                      |
@@ -90,16 +90,16 @@ behavioral tests. Each rule lives where its inputs live.
    review artifact unless a future step merges them.
 2. **Schemathesis derivation (implemented).** The campaign hooks derive
    their auth knowledge from `backend/auth-matrix.json` through
-   `utils/schemathesis/auth_rules.py`: the share-header injection set,
+   `utils/fuzz/auth_rules.py`: the share-header injection set,
    the probe each operation carries, wrong-credential token selection, read-only
    exemptions, and the seeded scope pairs. The derivation is pure and
    unit-tested; a matrix change that alters a probe fails the tests
    instead of drifting. Destructive-operation disables stay hand-tuned in
    the TOML configs, pinned to the matrix by a consistency test. Tier 1
-   (`just fuzz-check`) gates CI against `utils/schemathesis/baseline.yaml`,
+   (`just fuzz check`) gates CI against `utils/fuzz/baseline.yaml`,
    and the fuzz matrix is rebuilt from the model and executed
-   deterministically by `just fuzz-matrix`; the stateful campaign
-   (`just fuzz-run`) stays advisory because its phases are time-budgeted.
+   deterministically by `just fuzz matrix`; the stateful campaign
+   (`just fuzz run`) stays advisory because its phases are time-budgeted.
 
    Fuzzing strategy and oracles: `docs/api-fuzzing.md`.
 
@@ -140,7 +140,7 @@ behavioral tests. Each rule lives where its inputs live.
 | ----------------------------------- | ---------------------------------------- | ------------------------------------- |
 | `just openapi-check`                | spec parity, shape, lint, routes         | gating (CI + precommit on `backend/`) |
 | `just dylint-check`                 | AUTH-2, AUTH-3, decode agreement         | gating (CI)                           |
-| `just fuzz-check` / `just fuzz-run` | 5-check oracle sweep / stateful campaign | sweep gating in CI; campaign advisory |
+| `just fuzz check` / `just fuzz run` | 5-check oracle sweep / stateful campaign | sweep gating in CI; campaign advisory |
 | `just env-var-check`                | config consistency                       | gating                                |
 
 Quarterly re-pin cadence applies to Schemathesis, dylint nightlies,
@@ -183,6 +183,6 @@ covered only by the probes below.
   and whether its expectation is independent of the artifact it checks, is
   tracked in `.plan/api-assurance-coverage.md`; the registry and strength floor
   are open.
-- **The stateful campaign is advisory.** Tier 1 (`just fuzz-check`) gates
-  against an accepted-findings baseline; `just fuzz-run` is time-budgeted and
+- **The stateful campaign is advisory.** Tier 1 (`just fuzz check`) gates
+  against an accepted-findings baseline; `just fuzz run` is time-budgeted and
   not byte-reproducible.
