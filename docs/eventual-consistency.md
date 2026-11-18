@@ -20,12 +20,12 @@ Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit i
 Computed from the catalog statuses and the `run` declarations in `merged.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
-- Proof: 68 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
+- Proof: 69 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
 - Requirements: 14 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
-- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
+- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply, with batches accumulating across roots; move lease window is visible.
 
 ## Goals
 
@@ -215,9 +215,9 @@ Lifting: Hierarchical path IDs with arbitrary subtree enumeration.
 
 ### SCOPE-8: Sweep enumeration micro-stage
 
-Bound: SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; chunking/cancel are abstracted.
+Bound: SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; the root's candidates are added to the batch accumulated from the other roots' submissions (paths are root-disjoint, so one path-keyed batch holds them); chunking/cancel are abstracted.
 
-Why safe: Enumeration only reads; the per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.
+Why safe: Enumeration only reads, and accumulation mirrors the code: sweep_stale_asset_paths submits one WriteOp::SweepRemoveBatch per root to the writer queue, so submissions queue up rather than replacing each other. The per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.
 
 Lifting: Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).
 
@@ -225,7 +225,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-9: Sweep re-check micro-stage
 
-Bound: SweepRecheck drains one enumerated batch, dropping candidates whose generation moved, whose path is now leased, or whose file reappeared; survivors stay in sweepBatch.
+Bound: SweepRecheck re-checks the accumulated batch (all queued per-root submissions), dropping candidates whose generation moved, whose path is now leased, or whose file reappeared; survivors stay in sweepBatch. The re-check is per candidate and independent of the enumerating root.
 
 Why safe: Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; sweep_remove_batch checks only path.exists skip + asset-id/record resolution (no generation/lease re-check).
 
@@ -245,7 +245,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-11: sweep_remove_batch micro-stage
 
-Bound: SweepRemoveBatchApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
+Bound: SweepRemoveBatchApply drains the accumulated re-checked batch (one writer submission per root, applied per path), pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
 
 Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
 

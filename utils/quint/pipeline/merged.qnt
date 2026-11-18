@@ -1634,10 +1634,20 @@ module pipeline_merged {
   // @operation OP-9
   // @scope SCOPE-8
   // SweepEnumerate maps to the enumeration loop of tasks/actor/album_index.rs::sweep_stale_asset_paths (candidates from ASSET_BY_PATH rows with missing files, per-candidate generation snapshot).
+  // Enumeration accumulates: sweep_stale_asset_paths submits one
+  // WriteOp::SweepRemoveBatch per root to the writer queue, so a root's
+  // enumeration adds its candidates to the submissions already queued for the
+  // other roots instead of replacing them. Paths are root-disjoint (rootOf is
+  // static), so one path-keyed map holds every queued submission; the
+  // enumerated root's own entries are rebuilt from this walk.
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
-    sweepBatch' = PATHS.filter(p => rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present)).mapBy(p => generations.get(p)),
+    sweepBatch' = PATHS.filter(p => rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present))
+      .fold(
+        sweepBatch.keys().filter(p => not(rootOf(p) == root)).mapBy(p => sweepBatch.get(p)),
+        (acc, p) => acc.put(p, generations.get(p))
+      ),
     sweepPending' = sweepPending.put(root, false),
     files' = files,
     generations' = generations,
@@ -1651,6 +1661,9 @@ module pipeline_merged {
   // @operation OP-9
   // @scope SCOPE-9
   // SweepRecheck maps to the inline re-check loop of sweep_stale_asset_paths (generation unchanged + path_epoch::is_busy + path.exists, pre-submit).
+  // The batch may hold several roots' queued submissions; the re-check is
+  // per candidate (generation, lease, exists) and does not depend on which
+  // root enumerated it.
   action SweepRecheck: bool = all {
     sweepBatch.keys().size() > 0,
     sweepBatch' = sweepBatch.keys().filter(p =>
@@ -1671,6 +1684,8 @@ module pipeline_merged {
   // @operation OP-9
   // @scope SCOPE-11
   // SweepRemoveBatchApply maps to flush_tree.rs::sweep_remove_batch, submitted as WriteOp::SweepRemoveBatch via tasks/queue/writer.rs::submit; checks path.exists skip + asset-id/record resolution only, no generation/lease check.
+  // The apply drains the whole accumulated batch: one writer submission per
+  // root, each applied per path in the writer queue.
   // @operation OP-8
   action SweepRemoveBatchApply: bool = all {
     sweepBatch.keys().size() > 0,
@@ -3143,6 +3158,32 @@ module pipeline_merged {
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))
     .then(all { assert(Quiescent and Converged and AspectsAligned and CompletionInvariant), Skip })
+
+  // Sweep batches accumulate across roots. Deleting a path under r1 leaves a
+  // stale row; both roots are scanned (each queues its own sweep), and the
+  // enumeration of the empty second root must not discard the first root's
+  // candidate. Re-check and apply then drain the accumulated batch.
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-8
+  // @scope SCOPE-9
+  // @scope SCOPE-11
+  // @scope SCOPE-13
+  run sweepBatchAccumulationTest = initCompletion
+    .then(all { assert(phase == 0), Stay(ExternalDelete("p2")) })
+    .then(BeginDrain)
+    .then(BeginScan)
+    .then(CompleteScan("r1"))
+    .then(CompleteScan("r2"))
+    .then(all { assert(sweepBatch.keys() == Set()), Stay(SweepEnumerate("r1")) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(SweepEnumerate("r2")) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(Stay(SweepRecheck))
+    .then(Stay(SweepRemoveBatchApply))
+    .then(all { assert(Quiescent and Converged and AspectsAligned), Skip })
 
   // A crash during the drain loses the queued remove. The phase-2 scan
   // rediscovers the deleted path and the sweep prunes its row, so the machine
