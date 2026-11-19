@@ -275,8 +275,8 @@ terminal-transition correctness bug, recorded in
     drop guard before begin_write), (iii) 2a single sweeper
     (`UpdateExpire` batch → `WriteOp::ExpireCheck`); defer 2b full
     single-writer until (ii) numbers show residual waits.
-    Landed (i) in `ac416b97`, (ii) in `ccee237b`, flush
-    keep-until-commit in `2d5d0bd5`. Small-cap 2000-image cap-128
+    Landed (i) in `e13100ba`, (ii) in `9990c108` (incl.
+    keep-until-commit). Small-cap 2000-image cap-128
     re-run green: scan 2002/2000/2000, lag max 3 (<129), 4527
     `/get/data` 200 with no Unknown snapshot id, VmHWM 585.9MB,
     temp_db 142.6MB.
