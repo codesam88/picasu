@@ -18,13 +18,14 @@ default:
 _install-quint:
     just -d "{{ root }}" install quint
 
-# Static self-checks: prettier over the layer + typecheck both specs.
+# Static self-checks: prettier over the layer + typecheck all three specs.
 [group('quint')]
 lint: _install-quint
     cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md' '../utils/quint/coverage/**/*.ts'
     cd "{{ root }}/frontend" && npx --no-install tsc --noEmit -p ../utils/quint/coverage/tsconfig.json
     quint typecheck "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint typecheck "{{ pipeline_dir }}/asset-aspects.qnt"
+    quint typecheck "{{ pipeline_dir }}/asset-aspects-step.qnt"
 
 # Apply formatting.
 [group('quint')]
@@ -36,11 +37,13 @@ format:
 check:
     node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}"
 
-# Run both model entries at the standard sample count (10k per run).
+# Run all three model entries at the standard sample count (10k per run);
+# the step entry is filtered to its own completion/accumulation runs.
 [group('quint')]
 test: _install-quint
     quint test "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint test "{{ pipeline_dir }}/asset-aspects.qnt"
+    quint test --match "^(completion|sweepBatch)" "{{ pipeline_dir }}/asset-aspects-step.qnt"
 
 # Deep model runs, elevated sample counts (nightly; tens of minutes).
 [group('quint')]
@@ -49,6 +52,7 @@ fulltest: _install-quint
     set -euo pipefail
     quint test --max-samples 100000 "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint test --max-samples 100000 "{{ pipeline_dir }}/asset-aspects.qnt"
+    quint test --max-samples 100000 --match "^(completion|sweepBatch)" "{{ pipeline_dir }}/asset-aspects-step.qnt"
 
 # Regenerate docs/eventual-consistency.md from the catalogs.
 [group('quint')]

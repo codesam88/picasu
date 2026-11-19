@@ -52,8 +52,10 @@ Current contents of `pipeline/`:
   branches, crashes, and untracked rescans; phase 2 takes one tracked
   `CompleteScan` per root and drains the work it creates.
   `Quiescent` is the drained-state predicate and `CompletionInvariant`
-  claims the goal at phase-2 quiescence. Its sanity runs are
-  simulation-only and are not part of `just quint test`.
+  claims the goal at phase-2 quiescence. Its own five runs
+  (`completion*`, `sweepBatch*`) are executed by `just quint test` via a
+  `--match` filter; the runs inherited from the imported entries are
+  skipped there (they run in their own entries).
 - `operations.json` — internal mutation operations OP-1..OP-12 with
   events, aspect reads/writes, guards, status and interaction nodes;
   validated by `just operations-check` against backend annotations.
