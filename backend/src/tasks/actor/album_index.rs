@@ -1622,6 +1622,106 @@ mod tests {
         reset_backend_state();
     }
 
+    #[test]
+    fn index_album_sweep_accumulates_batches_across_roots() {
+        use crate::model::asset::{AssetKind, AssetRecord};
+        use crate::storage::asset_store;
+        use arrayvec::ArrayString;
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let data_path = crate::storage::files::DATA_PATH
+            .get()
+            .expect("DATA_PATH set");
+        let users_home = data_path.join("users");
+        let _ = fs::remove_dir_all(&users_home);
+        fs::create_dir_all(&users_home).expect("create users home");
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = Some(users_home.clone());
+        }
+
+        let image_ghost = image_home.join("image_root_ghost.jpg");
+        let users_ghost = users_home.join("users_root_ghost.jpg");
+
+        let image_hash: ArrayString<64> = "imagerootghosthash"
+            .parse()
+            .expect("test content hash parses");
+        let users_hash: ArrayString<64> = "usersrootghosthash"
+            .parse()
+            .expect("test content hash parses");
+        let rec_image = AssetRecord::new_media(
+            AssetKind::Image,
+            image_ghost.to_string_lossy().into_owned(),
+            Some(image_hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        let rec_users = AssetRecord::new_media(
+            AssetKind::Image,
+            users_ghost.to_string_lossy().into_owned(),
+            Some(users_hash),
+            10,
+            "jpg".into(),
+            0,
+        );
+        asset_store::insert_asset(&rec_image).expect("insert image-root ghost");
+        asset_store::insert_asset(&rec_users).expect("insert users-root ghost");
+
+        // Make the on-disk rows visible to the sweep's in-memory read.
+        crate::storage::tree_view::bump_tree_epoch();
+
+        // One global job sweeps the image root first and users_home second;
+        // each root submits its own WriteOp::SweepRemoveBatch. The second
+        // submission must not discard the first root's pending batch.
+        index_album_with_root("/", false, None).expect("index accepted");
+        wait_for_index_completion();
+
+        let tree = crate::storage::db::snapshot_tree();
+        let image_survives = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == image_ghost.to_string_lossy())
+        });
+        let users_survives = tree.iter().any(|dt| {
+            dt.abstract_data
+                .path()
+                .is_some_and(|p| p.file == users_ghost.to_string_lossy())
+        });
+        drop(tree);
+
+        assert!(
+            !image_survives,
+            "stale row under the first swept root must be pruned"
+        );
+        assert!(
+            !users_survives,
+            "stale row under the second swept root must be pruned"
+        );
+
+        {
+            let mut c = crate::model::config::APP_CONFIG
+                .get()
+                .expect("cfg")
+                .write()
+                .expect("lock");
+            c.users_home = None;
+        }
+        fs::remove_dir_all(&users_home).ok();
+        reset_backend_state();
+    }
+
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn index_scan_respects_path_lease_before_pruning() {
