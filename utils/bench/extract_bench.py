@@ -120,7 +120,13 @@ COUNTER_COLUMNS = ("snapshot_memory_hit", "snapshot_disk_fallback")
 
 # Process-level cost recorded by the cell orchestrator while the server is
 # alive: peak resident set and the snapshot store's apparent size.
-METRICS_COLUMNS = ("vm_hwm_mb", "temp_db_mb")
+METRICS_COLUMNS = (
+    "vm_hwm_mb",
+    "temp_db_mb",
+    "index_v5_mb",
+    "cache_db_mb",
+    "compressed_mb",
+)
 
 SCROLL_COLUMNS = (
     "scroll_bar_p50_ms",
@@ -1180,6 +1186,9 @@ def _cell(row: dict, status: dict) -> dict:
         "vm_hwm_mb": row["vm_hwm_mb"] if row.get("vm_hwm_mb") is not None else "n/a",
         "temp_db_mb": row["temp_db_mb"] if row.get("temp_db_mb") is not None else "n/a",
     }
+    for _metric in METRICS_COLUMNS:
+        if _metric not in cell:
+            cell[_metric] = row[_metric] if row.get(_metric) is not None else "n/a"
     for background in BACKGROUNDS:
         for access in ACCESSES:
             for stat in STATS:
