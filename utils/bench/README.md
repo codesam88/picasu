@@ -175,7 +175,7 @@ editing the fixture to match the parser.
 ## Events
 
 The workload writes `events.jsonl` in the cell outdir: one JSON object per
-line with schema version `v` (currently 1). Event types: `probe_round`,
+line with schema version `v` (currently 1). Event types: `probe_round`, `scroll_probe`,
 `storm_sample`, `storm_summary`, `upload_file`, `upload_summary`,
 `scan_state`, `verify_result`. Every object carries `v`, `type`, and `t`
 (wall-clock ISO timestamp). Incompatible schema changes bump `v`; readers

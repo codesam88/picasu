@@ -296,7 +296,7 @@ class ReportSchemaTest(unittest.TestCase):
         self.assertNotIn("uscan_storm_read_failed", columns)
         # 3 backgrounds x 6 accesses x 3 stats, storm accesses included,
         # plus the two upload submit/visible p50 columns.
-        self.assertEqual(sum(1 for column in columns if column.endswith("_ms")), 56)
+        self.assertEqual(sum(1 for column in columns if column.endswith("_ms")), 65)
 
     def test_checked_in_baselines_use_only_the_new_names(self):
         metrics = {
