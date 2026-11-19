@@ -816,6 +816,18 @@ class MedianRowTest(unittest.TestCase):
         self.assertEqual(med["idle_prefetch_p95_ms"], "10.5")
         self.assertEqual(med["idle_prefetch_max_ms"], "11.0")
 
+    def test_headline_range_columns_report_min_and_max(self):
+        rows = [
+            {"cell": "gate-control", "scan_wall_s": "10.0", "temp_db_mb": "2.0"},
+            {"cell": "gate-control", "scan_wall_s": "20.0", "temp_db_mb": "4.0"},
+            {"cell": "gate-control", "scan_wall_s": "30.0", "temp_db_mb": "3.0"},
+        ]
+        med = self.battery._build_median_row(rows)
+        self.assertEqual(med["scan_wall_s_min"], "10.0")
+        self.assertEqual(med["scan_wall_s_max"], "30.0")
+        self.assertEqual(med["temp_db_mb_min"], "2.0")
+        self.assertEqual(med["temp_db_mb_max"], "4.0")
+
     def test_probe_tails_follow_the_per_repeat_values(self):
         # Each repeat already summarises its probe rounds; the recorded
         # worst-case baselines were medians of those per-rep values.

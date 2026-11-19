@@ -226,9 +226,14 @@ Cells without drain tables (stats off or older logs) still parse
 unchanged; their `stages.json` is an empty list.
 
 The orchestrator writes `cell-metrics.json` in each cell while the server
-is still alive: `vm_hwm_mb` (peak resident set from `/proc/<pid>/status`)
-and `temp_db_mb` (apparent size of the snapshot store). Both are `n/a` for
-cells recorded before the metrics existed.
+is still alive. `vm_hwm_mb` is the peak resident set from
+`/proc/<pid>/status` in MiB (1024-based). The `*_mb` resource columns are
+decimal MB (`/1e6`): `temp_db_mb`, `index_v5_mb` and `cache_db_mb` are
+apparent file sizes (`st_size`) of `temp_db.redb`, `index_v5.redb` and
+`cache_db.redb`; `compressed_mb` is the apparent size of every file under
+`data/object/compressed` (thumbnails/compressed storage; originals are not
+under that path). `vm_hwm_mb` is MiB, the rest are MB. Cells recorded
+before a metric existed report `n/a`.
 
 The battery parses the same tables in process: `build_row` runs the
 extractor's functions over `server.log`, so the report's stage columns and
@@ -342,7 +347,11 @@ git commit from `run-manifest.json`), scan walls, the full request-latency
 matrix, the extractor's stage p50/max columns for the filter/locate path
 and tree-view rebuild breakdown (`n/a` when the drain table is absent), the
 `observe counters` totals, and the per-cell process metrics (`vm_hwm_mb`,
-`temp_db_mb`). Upload submit/visible p50s come from the `upload ...` log lines.
+`temp_db_mb`, `index_v5_mb`, `cache_db_mb`, `compressed_mb`). Upload
+submit/visible p50s come from the `upload ...` log lines. The `:median`
+row of a multi-repeat battery also carries `*_min`/`*_max` range columns
+for the headline metrics (scan wall, scan/idle prefetch p50, scroll p50s,
+`temp_db_mb`, `vm_hwm_mb`).
 
 The matrix is one column per background × access condition × statistic:
 
