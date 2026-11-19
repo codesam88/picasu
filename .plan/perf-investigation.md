@@ -183,6 +183,15 @@ stayed within 0.4 ms.
    `step2-scale-prefix-*.log` and the cell `diag-orchestrator/stacks.txt`.
    No 50k seed exists; at the 5650 set's 3.1 GB it is ~27 GB of images,
    and a 524 s scan extrapolates to ~77 min/scan. Not attempted.
+   **Control retry 2026-11-19 (fixed tree `619e392b`, serial,
+   default cap 1024, 1000MHz powersave):** completed rc=0, no stall.
+   Scan walls 503.0/488.6s median 495.8s, 5738/5650/5650, final
+   next/writer/cascade 14800/14799/14799, max next-writer lag 9,
+   max writer-cascade lag 1453 (exceeds cap — under review, not a
+   freeze), VmHWM 1371MB, temp_db 1078MB, hit 396 / fallback 3160,
+   scan prefetch p50 9.0ms p95 123.5ms max 163.6ms, no Unknown id.
+   Log `20261119-023807-5650-control-retry.log`, cell
+   `5650-control-retry/cell-control-rep1`. Unblocks retention delta.
    **Gate (set-100) A/B:** base `d0499623` vs this branch, two control
    rounds each, idle p50 within 0.4 ms (prefetch 6.9/7.0 vs 7.3/7.1,
    thumb 7.4/7.8 vs 7.6/7.6, edit 7.5/7.4 vs 7.8/7.5). The absolute gate
@@ -266,3 +275,41 @@ terminal-transition correctness bug, recorded in
     drop guard before begin_write), (iii) 2a single sweeper
     (`UpdateExpire` batch → `WriteOp::ExpireCheck`); defer 2b full
     single-writer until (ii) numbers show residual waits.
+    Landed (i) in `ac416b97`, (ii) in `ccee237b`, flush
+    keep-until-commit in `2d5d0bd5`. Small-cap 2000-image cap-128
+    re-run green: scan 2002/2000/2000, lag max 3 (<129), 4527
+    `/get/data` 200 with no Unknown snapshot id, VmHWM 585.9MB,
+    temp_db 142.6MB.
+    2a single-sweeper first tried 2026-11-19 under background load
+    and reverted (+143% scan wall, lag 230 — host-contaminated,
+    303s vs 546s variance). Idle re-run 2026-11-19 clean:
+    before 188.4s vs after 175.3s (-7%, lag max 2-3 both,
+    VmHWM -6.5%, temp_db same, exit 0 both, 945→1100MHz drift
+    noted). Landed as single sweeper; single-run evidence only.
+    2a no-regression evidence (2000-img control, cap-128, serial,
+    945→1100MHz drift; reports `cell-2a-before2/report.tsv` /
+    `cell-2a-after2/report.tsv`, logs `1795050986` / `1795051562`
+    exit 0; both stamp base `563f7219`, after carried uncommitted
+    2a diff):
+
+    | metric                            | before                  | after                   |
+    | --------------------------------- | ----------------------- | ----------------------- |
+    | scan_wall_s                       | 188.353                 | 175.258                 |
+    | idle prefetch p50/p95/max ms      | 7.2/7.2/7.2             | 7.1/7.3/7.3             |
+    | idle thumb                        | 7.8/8.0/8.1             | 7.9/8.0/8.0             |
+    | idle edit                         | 7.7/7.8/7.8             | 7.7/7.8/7.8             |
+    | scan prefetch                     | 12.4/51.1/70.7          | 8.2/47.1/65.3           |
+    | scan thumb                        | 10.2/19.5/25.4          | 3.2/8.6/18.0            |
+    | scan edit                         | 11.0/13.5/20.0          | 8.6/11.0/14.0           |
+    | build/clone/par_iter/total p50 µs | 13951/18611/25171/18605 | 13257/17475/24892/17470 |
+    | build/clone/par_iter/total max µs | 34322/46308/64978/46302 | 19946/27175/50743/27170 |
+    | hit/fallback                      | 62/997                  | 77/1065                 |
+    | vm_hwm_mb / temp_db_mb            | 577.9/134.7             | 540.2/134.7             |
+
+    (`prefetch_total` p50 39816→52 µs excluded as sparse-sample
+    artifact vs 8.2ms scan prefetch; uscan/storm/upload n/a on
+    control.)
+    2b full single-writer per cache DB skipped 2026-11-19
+    (effort M-L for robustness only; current lag ≤3 needs no
+    queue). Residual: per-DB owner + guard-across-txn class still
+    open by design, not by omission.
