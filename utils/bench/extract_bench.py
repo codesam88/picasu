@@ -122,6 +122,18 @@ COUNTER_COLUMNS = ("snapshot_memory_hit", "snapshot_disk_fallback")
 # alive: peak resident set and the snapshot store's apparent size.
 METRICS_COLUMNS = ("vm_hwm_mb", "temp_db_mb")
 
+SCROLL_COLUMNS = (
+    "scroll_bar_p50_ms",
+    "scroll_bar_p95_ms",
+    "scroll_bar_max_ms",
+    "scroll_rows_p50_ms",
+    "scroll_rows_p95_ms",
+    "scroll_rows_max_ms",
+    "scroll_data_p50_ms",
+    "scroll_data_p95_ms",
+    "scroll_data_max_ms",
+)
+
 
 def _drain_scan_index(context: str, ordinal: int) -> int:
     for pattern in (r"scan job=(\d+)", r"\bjob=(\d+)", r"scan=(\d+)", r"run=(\d+)"):
@@ -299,6 +311,11 @@ _V1_EVENTS = {
         ("kind", "matched", "total"),
         ("matched", "total"),
     ),
+    "scroll_probe": (
+        "scroll_probes",
+        (),
+        (),
+    ),
 }
 
 
@@ -317,6 +334,7 @@ class Events:
     upload_summaries: list = dataclasses.field(default_factory=list)
     scan_states: list = dataclasses.field(default_factory=list)
     verify_results: list = dataclasses.field(default_factory=list)
+    scroll_probes: list = dataclasses.field(default_factory=list)
 
 
 def read_events(outdir) -> Events:
@@ -502,6 +520,39 @@ def _round_storm_aggs(outdir: Path) -> list:
             )
         )
     return aggs
+
+
+def _round_scroll_samples(outdir: Path) -> dict:
+    """Raw scroll-probe samples (ms) across per-round artifacts."""
+    samples = {"scrollbar": [], "rows": [], "data": []}
+    paths = list(outdir.glob("rounds-run-*/scroll-round-*.tsv"))
+    candidate = outdir / "scroll-probe.tsv"
+    if candidate.is_file():
+        paths.append(candidate)
+    for path in paths:
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            kind = parts[0].strip().lower().replace("-", "_")
+            key = None
+            if kind in ("scrollbar", "scroll_bar"):
+                key = "scrollbar"
+            elif kind in ("rows", "scroll_rows"):
+                key = "rows"
+            elif kind in ("data", "scroll_data"):
+                key = "data"
+            if key is None:
+                continue
+            try:
+                samples[key].append(float(parts[2]) * 1000.0)
+            except ValueError:
+                continue
+    return samples
 
 
 def _reported_median(result: dict) -> float | None:
@@ -781,6 +832,17 @@ def _apply_events(row: dict, events: Events, log: str) -> None:
     verifies = storm_verifies(events)
     if verifies:
         row["storm_verify"] = verifies
+    # Scroll probe samples (raw per-call latencies in ms).
+    bar_samples = []
+    rows_samples = []
+    data_samples = []
+    for event in getattr(events, "scroll_probes", []) or []:
+        bar_samples.extend(event.get("scrollbar_ms") or event.get("scroll_bar_ms") or [])
+        rows_samples.extend(event.get("rows_ms") or event.get("scroll_rows_ms") or [])
+        data_samples.extend(event.get("data_ms") or event.get("scroll_data_ms") or [])
+    row["scroll_bar_samples"] = bar_samples
+    row["scroll_rows_samples"] = rows_samples
+    row["scroll_data_samples"] = data_samples
 
 
 # --- cell parsing ------------------------------------------------------------
@@ -896,6 +958,10 @@ def _apply_artifact_measurements(row: dict, outdir: Path, log: str) -> None:
     verifies = _TRANSCRIPT_VERIFY_RE.findall(log)
     if verifies:
         row["storm_verify"] = [(int(m), int(t)) for m, t in verifies]
+    scroll_samples = _round_scroll_samples(outdir)
+    row["scroll_bar_samples"] = scroll_samples.get("scrollbar", [])
+    row["scroll_rows_samples"] = scroll_samples.get("rows", [])
+    row["scroll_data_samples"] = scroll_samples.get("data", [])
 
 
 def _apply_post_scan(row: dict, log: str, outdir: Path | None = None) -> None:
@@ -1163,6 +1229,22 @@ def _cell(row: dict, status: dict) -> dict:
     for name in COUNTER_COLUMNS:
         values = [str(table[name]) for table in counters if name in table]
         cell[name] = ",".join(values) if values else "n/a"
+    # Scroll probe summary columns.
+    scroll_map = (
+        ("scroll_bar", "scroll_bar_samples"),
+        ("scroll_rows", "scroll_rows_samples"),
+        ("scroll_data", "scroll_data_samples"),
+    )
+    for prefix, sample_key in scroll_map:
+        samples = row.get(sample_key) or []
+        if samples:
+            cell[f"{prefix}_p50_ms"] = round(statistics.median(samples), 1)
+            cell[f"{prefix}_p95_ms"] = round(percentile(samples, 95), 1)
+            cell[f"{prefix}_max_ms"] = round(max(samples), 1)
+        else:
+            cell[f"{prefix}_p50_ms"] = "n/a"
+            cell[f"{prefix}_p95_ms"] = "n/a"
+            cell[f"{prefix}_max_ms"] = "n/a"
     return cell
 
 
@@ -1210,6 +1292,7 @@ def main(argv=None) -> None:
         *STAGE_COLUMNS,
         *COUNTER_COLUMNS,
         *METRICS_COLUMNS,
+        *SCROLL_COLUMNS,
         "storm_verify",
     ]
     width = max([len(label) for label in labels] + [8])

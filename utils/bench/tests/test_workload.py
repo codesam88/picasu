@@ -383,3 +383,68 @@ class UploadStimulusTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScrollProbeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.cell = self.root / "cell"
+        self.cell.mkdir()
+        self.workload = load_workload()
+
+    def _cfg(self, **overrides):
+        fields = {"out": self.cell, "images": 5, "upload_files": 1, "probe_page": 1000}
+        fields.update(overrides)
+        return self.workload.config.WorkloadConfig(**fields)
+
+    def _client(self):
+        calls = []
+
+        class Client:
+            def get(self, path, bearer=None, timeout=30.0):
+                calls.append((path, bearer, timeout))
+                return 200, b"[]", 0.012
+
+        client = Client()
+        client.calls = calls
+        return client
+
+    def test_scroll_probe_issues_expected_requests(self):
+        cfg = self._cfg()
+        client = self._client()
+        result = self.workload.scroll_probe(cfg, client, 42, "tok", total_rows=100, positions=3)
+        self.assertIn("scrollbar", result)
+        self.assertEqual(len(result["scrollbar"]), 1)
+        self.assertGreater(len(result["rows"]), 0)
+        self.assertGreater(len(result["data"]), 0)
+        paths = [call[0] for call in client.calls]
+        self.assertTrue(any("/get/get-scroll-bar?timestamp=42" in p for p in paths))
+        self.assertTrue(any("/get/get-rows?index=" in p and "timestamp=42" in p for p in paths))
+        self.assertTrue(any("/get/get-data?timestamp=42" in p for p in paths))
+        # bearer token forwarded
+        self.assertTrue(all(call[1] == "tok" for call in client.calls))
+
+    def test_scroll_probe_aliases(self):
+        cfg = self._cfg()
+        client = self._client()
+        for name in ("run_scroll_probe", "probe_scroll", "scroll_probe_round"):
+            fn = getattr(self.workload, name)
+            out = fn(cfg, client, 1, "t", total_rows=10)
+            self.assertIsInstance(out, dict)
+
+    def test_scroll_probe_writes_artifact(self):
+        cfg = self._cfg()
+        client = self._client()
+        self.workload.scroll_probe(
+            cfg,
+            client,
+            1,
+            "t",
+            total_rows=10,
+            out=self.cell,
+            round_no=1,
+            round_dir=self.cell / "rounds",
+        )
+        self.assertTrue((self.cell / "scroll-probe.tsv").is_file())
