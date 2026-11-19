@@ -37,6 +37,7 @@
         "asset-aspects-step.qnt:ConvergenceInvariant",
         "asset-aspects-step.qnt:completionCrashScanHealsTest",
         "asset-aspects-step.qnt:completionScanTest",
+        "asset-aspects-step.qnt:sweepBatchAccumulationTest",
         "asset-aspects.qnt:AspectAligned",
         "asset-aspects.qnt:AspectsAligned",
         "asset-aspects.qnt:DupeIndexBijective",
@@ -122,6 +123,7 @@
         "asset-aspects-step.qnt:completionInitTest",
         "asset-aspects-step.qnt:completionScanTest",
         "asset-aspects-step.qnt:stepCompletion",
+        "asset-aspects-step.qnt:sweepBatchAccumulationTest",
         "asset-aspects.qnt:AlbumShareEdit",
         "asset-aspects.qnt:AlbumStatsConsistent",
         "asset-aspects.qnt:AlbumStatsNoPhantom",
@@ -332,6 +334,7 @@
       "kind": "SCOPE",
       "title": "Sweep enumeration micro-stage",
       "refs": [
+        "asset-aspects-step.qnt:sweepBatchAccumulationTest",
         "asset-aspects.qnt:SweepEnumerate"
       ]
     },
@@ -340,6 +343,7 @@
       "kind": "SCOPE",
       "title": "Sweep re-check micro-stage",
       "refs": [
+        "asset-aspects-step.qnt:sweepBatchAccumulationTest",
         "asset-aspects.qnt:SweepRecheck",
         "asset-aspects.qnt:SweepRecheckBatchClean",
         "asset-aspects.qnt:aspectsAbsorbedSweepTest",
@@ -366,6 +370,7 @@
       "title": "sweep_remove_batch micro-stage",
       "refs": [
         "asset-aspects-step.qnt:AssetIdKeyCoherent",
+        "asset-aspects-step.qnt:sweepBatchAccumulationTest",
         "asset-aspects.qnt:DupeIndexBijective",
         "asset-aspects.qnt:PathMapIdentityCoherence",
         "asset-aspects.qnt:PathMapIdentityCoherence",
@@ -408,7 +413,8 @@
         "asset-aspects-step.qnt:completionInitTest",
         "asset-aspects-step.qnt:completionScanTest",
         "asset-aspects-step.qnt:completionTwoStepTest",
-        "asset-aspects-step.qnt:stepCompletion"
+        "asset-aspects-step.qnt:stepCompletion",
+        "asset-aspects-step.qnt:sweepBatchAccumulationTest"
       ]
     }
   ]

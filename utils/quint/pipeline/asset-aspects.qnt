@@ -97,10 +97,15 @@ module asset_aspects {
   // @operation OP-9
   // @scope SCOPE-8
   // SweepEnumerate maps to the enumeration loop of tasks/actor/album_index.rs::sweep_stale_asset_paths (candidates from ASSET_BY_PATH rows with missing files, per-candidate generation snapshot).
+  // sweep batches accumulate across roots (code: per-root WriteOp::SweepRemoveBatch submissions)
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
-    sweepBatch' = PATHS.filter(p => rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present)).mapBy(p => generations.get(p)),
+    sweepBatch' = PATHS.filter(p => rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present))
+      .fold(
+        sweepBatch.keys().filter(p => not(rootOf(p) == root)).mapBy(p => sweepBatch.get(p)),
+        (acc, p) => acc.put(p, generations.get(p))
+      ),
     sweepPending' = sweepPending.put(root, false),
     files' = files,
     generations' = generations,
