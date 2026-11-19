@@ -172,6 +172,25 @@ class BatteryDefinitionTest(unittest.TestCase):
             self.assertEqual(cell.ncpu, 8)
             self.assertEqual(cell.env["SCAN_REPEATS"], "2")
 
+    def test_micro_battery_is_pinned_and_ordered(self):
+        cells = self.battery.battery_cells("micro")
+        self.assertEqual([cell.profile for cell in cells], ["control", "control"])
+        self.assertEqual([cell.images for cell in cells], [50, 200])
+        self.assertEqual([cell.repo for cell in cells], ["set-50", "set-200"])
+        for cell in cells:
+            self.assertEqual(cell.level, "micro")
+            self.assertEqual(cell.ncpu, 8)
+            self.assertEqual(cell.env["SCAN_REPEATS"], "2")
+            self.assertEqual(cell.env["REPEATS"], "3")
+            self.assertEqual(cell.env["WARMUP"], "1")
+            self.assertEqual(cell.env["BUILD_PROFILE"], "release")
+            self.assertEqual(cell.env["WORKLOAD"], cell.profile)
+            self.assertEqual(cell.env["NCPU"], "8")
+        self.assertEqual(
+            [cell.outdir_suffix for cell in cells],
+            ["micro-control-50", "micro-control-200"],
+        )
+
     def test_unknown_level_is_rejected(self):
         with self.assertRaises(KeyError):
             self.battery.battery_cells("nope")
@@ -508,6 +527,11 @@ class BatteryWorkloadTimeoutTest(unittest.TestCase):
         envs = self.cell_envs("scale")
         self.assertEqual(len(envs), len(self.battery.battery_cells("scale")))
         self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "7200" for env in envs))
+
+    def test_micro_cells_get_an_1800s_workload_budget(self):
+        envs = self.cell_envs("micro")
+        self.assertEqual(len(envs), len(self.battery.battery_cells("micro")))
+        self.assertTrue(all(env["WORKLOAD_TIMEOUT_S"] == "1800" for env in envs))
 
     def test_exported_workload_timeout_wins_over_the_level_default(self):
         envs = self.cell_envs("gate", preset="999")

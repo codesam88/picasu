@@ -108,7 +108,7 @@ describe the same work:
 
 Profiles × scales × load states, with env pinned per battery
 (`SCAN_REPEATS`, hyperfine repeats, storm clients/ops, margin, and the
-per-level workload budget `WORKLOAD_TIMEOUT_S`: gate 1800 s, scale
+per-level workload budget `WORKLOAD_TIMEOUT_S`: micro 1800 s, gate 1800 s, scale
 7200 s):
 
 | Profile               | 100 (gate)               | 5650 (scale)      | 50k+ (target)                |
@@ -118,10 +118,13 @@ per-level workload budget `WORKLOAD_TIMEOUT_S`: gate 1800 s, scale
 | storm-idle            | serving floor            | serving at scale  | —                            |
 | upload                | ingest latency + visible | ingest at scale   | —                            |
 
-The 100-image battery is the regression gate and runs on every
+The `micro` battery (50 and 200 images, control profile only, observer
+stats on) is a fast, CI-friendly linearity check plus observer spot-check:
+it exercises the small-scale end of the row-scaling curve without the cost
+of `scale`. The 100-image battery is the regression gate and runs on every
 harness change. Larger scales run on demand and only promote upward
 when the smaller scale is clean. Empty matrix cells are not run until
-their prerequisite is green.
+their prerequisite is green. `scale` stays opt-in due to its cost.
 
 Profiles fill different cells of the measurement matrix rather than
 reporting different metrics: every cell writes the same row schema, so

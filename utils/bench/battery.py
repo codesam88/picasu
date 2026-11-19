@@ -136,13 +136,22 @@ class Cell:
     ncpu: int
     env: dict
     outdir_suffix: str
+    name: str = ""
 
     @property
     def cell_id(self) -> str:
-        return f"{self.level}-{self.profile}"
+        return self.name or f"{self.level}-{self.profile}"
 
 
-def _cell(level: str, profile: str, images: int, repo: str) -> Cell:
+def _cell(
+    level: str,
+    profile: str,
+    images: int,
+    repo: str,
+    *,
+    cell_name: str | None = None,
+    outdir_suffix: str | None = None,
+) -> Cell:
     env = {
         "WORKLOAD": profile,
         "IMAGES": str(images),
@@ -163,7 +172,8 @@ def _cell(level: str, profile: str, images: int, repo: str) -> Cell:
         repo=repo,
         ncpu=8,
         env=env,
-        outdir_suffix=f"{level}-{profile}",
+        outdir_suffix=outdir_suffix if outdir_suffix is not None else f"{level}-{profile}",
+        name=cell_name if cell_name is not None else "",
     )
 
 
@@ -178,10 +188,14 @@ _BATTERIES = {
         "repo": "set-5650",
         "profiles": ("control", "storm-diff", "upload"),
     },
+    "micro": {
+        "scales": ((50, "set-50"), (200, "set-200")),
+        "profiles": ("control",),
+    },
 }
 
 
-_KNOWN_LEVELS = ("cell", "gate", "scale")
+_KNOWN_LEVELS = ("cell", "gate", "micro", "scale")
 
 
 def _cell_from_env(environ: dict) -> Cell:
@@ -272,9 +286,29 @@ def battery_cells(level: str, environ=None) -> tuple:
     if level == "cell":
         return (_cell_from_env(environ if environ is not None else os.environ),)
     spec = _BATTERIES[level]
-    return tuple(
-        _cell(level, profile, spec["images"], spec["repo"]) for profile in spec["profiles"]
-    )
+    if "scales" in spec:
+        scales = spec["scales"]
+    else:
+        scales = ((spec["images"], spec["repo"]),)
+    profiles = spec["profiles"]
+    multi = len(scales) > 1
+    cells = []
+    for images, repo in scales:
+        for profile in profiles:
+            if multi:
+                cells.append(
+                    _cell(
+                        level,
+                        profile,
+                        images,
+                        repo,
+                        cell_name=f"{level}-{profile}-{images}",
+                        outdir_suffix=f"{level}-{profile}-{images}",
+                    )
+                )
+            else:
+                cells.append(_cell(level, profile, images, repo))
+    return tuple(cells)
 
 
 def repo_path(cell: Cell, sets_root: Path = DEFAULT_SETS_ROOT) -> Path:
@@ -304,7 +338,7 @@ def _parse_upload_p50(text: str) -> tuple:
     return submit, visible
 
 
-def build_row(level: str, profile: str, outdir: Path) -> dict:
+def build_row(level: str, profile: str, outdir: Path, cell_id: str | None = None) -> dict:
     """Flatten one cell outdir into the run-report row schema.
 
     The row carries the report columns plus `stages`, the per-scan drain
@@ -326,7 +360,7 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
 
     walls = parsed.get("scan_runs_ms", [])
     row = {
-        "cell": f"{level}-{profile}",
+        "cell": cell_id if cell_id is not None else f"{level}-{profile}",
         "profile": profile,
         "level": level,
         "scale": _fmt(parsed.get("images")),
@@ -703,14 +737,32 @@ def _extract_entry(path: Path) -> dict:
     """One rep subdir: row + manifest + stages + terminal, or an error entry."""
     match = _REP_DIR_RE.match(path.name)
     cell = match.group("cell") if match else ""
-    level, _, profile = cell.partition("-")
-    if not level or not profile:
+    level = None
+    remainder = ""
+    for candidate in _KNOWN_LEVELS:
+        if cell == candidate:
+            level = candidate
+            remainder = ""
+            break
+        if cell.startswith(candidate + "-"):
+            level = candidate
+            remainder = cell[len(candidate) + 1 :]
+            break
+    if level is None:
+        return {
+            "dir": path.name,
+            "error": "cannot derive level and profile from directory name",
+        }
+    profile = re.sub(r"-\d+$", "", remainder) if remainder else remainder
+    if not profile:
+        profile = "control" if level == "micro" else profile
+    if not profile:
         return {
             "dir": path.name,
             "error": "cannot derive level and profile from directory name",
         }
     try:
-        row = build_row(level, profile, path)
+        row = build_row(level, profile, path, cell_id=cell)
     except (Exception, SystemExit) as err:
         # Broken reps become error entries so one bad dir cannot abort the
         # walk; KeyboardInterrupt still aborts the extract.
@@ -1324,7 +1376,7 @@ def _reuse_row(level: str, cell: Cell, cell_out: Path) -> dict | None:
     if not (cell_out / "status-final.json").is_file():
         return None
     try:
-        return build_row(level, cell.profile, cell_out)
+        return build_row(level, cell.profile, cell_out, cell_id=cell.cell_id)
     except Exception, SystemExit:
         # Any parse failure marks the rep incomplete; a fresh run reports
         # its own row errors. KeyboardInterrupt still aborts the battery.
@@ -1403,7 +1455,7 @@ def run_battery(
             cfg = orchestrator.config_from_env(env)
             rc = orchestrator.run_cell(cfg, env)
             try:
-                row = build_row(level, cell.profile, cell_out)
+                row = build_row(level, cell.profile, cell_out, cell_id=cell.cell_id)
             except (OSError, ValueError, SystemExit) as err:
                 print(f"[battery {level}] {cell.cell_id}: no result row: {err}", file=sys.stderr)
             else:

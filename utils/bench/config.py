@@ -47,11 +47,11 @@ POLL_INTERVAL_S = 0.2
 DEFAULT_SETS_ROOT = Path.home() / "picasu-bench"
 BATTERY_BASE_PORT = 5795
 BATTERY_REPEATS_DEFAULT = 3
-BATTERY_REPEATS_BY_LEVEL = {"cell": 3, "gate": 3, "scale": 3}
+BATTERY_REPEATS_BY_LEVEL = {"cell": 3, "gate": 3, "micro": 3, "scale": 3}
 BATTERY_REPEATS_MIN = 1
 # Per-level workload budget handed to run_cell as WORKLOAD_TIMEOUT_S. The
 # scale figure covers the measured ~1335 s single control cell at 5650 rows.
-WORKLOAD_TIMEOUT_S_BY_LEVEL = {"cell": 7200, "gate": 1800, "scale": 7200}
+WORKLOAD_TIMEOUT_S_BY_LEVEL = {"cell": 7200, "gate": 1800, "micro": 1800, "scale": 7200}
 
 DEFAULT_IMAGES = 100
 DEFAULT_REPEATS = 3
