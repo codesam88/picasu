@@ -720,6 +720,150 @@ def random_fetch_round(
     )
 
 
+def scroll_probe(
+    cfg: config.WorkloadConfig,
+    client: HttpClient,
+    timestamp,
+    token,
+    *,
+    total_rows=None,
+    positions: int | None = 3,
+    timeout: float = 30.0,
+    round_dir: Path | None = None,
+    round_no: int | None = None,
+    out: Path | None = None,
+    phase: str = "during",
+) -> dict:
+    """Exercise the scroll-bar / row / data read paths.
+
+    Fetches ``get-scroll-bar`` once, then walks a few scroll positions
+    (top / middle / bottom) issuing ``get-rows`` by index and ``get-data``
+    start/end windows for the visible +/-1 batches, mirroring
+    ``useFetchRows`` / ``useFetchImgs``. Returns the per-call latencies in
+    seconds (``scrollbar``, ``rows``, ``data``).
+    """
+    if total_rows is None:
+        try:
+            total_rows = row_space_cap(cfg)
+        except Exception:  # noqa: BLE001
+            total_rows = 1000
+    try:
+        total_rows = max(1, int(total_rows))
+    except TypeError, ValueError:
+        total_rows = 1000
+    try:
+        page_size = int(getattr(cfg, "probe_page", 1000) or 1000)
+    except TypeError, ValueError:
+        page_size = 1000
+    if page_size < 1:
+        page_size = 1000
+
+    scrollbar: list = []
+    rows: list = []
+    data: list = []
+
+    # Scroll bar once (full snapshot month buckets).
+    try:
+        _code, _body, elapsed = client.get(
+            f"/get/get-scroll-bar?timestamp={timestamp}",
+            bearer=token,
+            timeout=timeout,
+        )
+        scrollbar.append(float(elapsed))
+    except WorkloadError:
+        scrollbar.append(0.0)
+
+    # Scroll positions: top / middle / bottom (+ locate target = top).
+    pos_indices = [0, max(0, total_rows // 2), max(0, total_rows - page_size)]
+    seen: set = set()
+    unique: list = []
+    for pos in pos_indices:
+        if pos in seen:
+            continue
+        seen.add(pos)
+        unique.append(pos)
+    if positions is not None and positions > 0:
+        unique = unique[:positions]
+
+    for pos in unique:
+        # ~3-5 row (layout window) calls per scroll position.
+        for offset in (-2, -1, 0, 1, 2):
+            idx = pos + offset
+            if idx < 0:
+                continue
+            try:
+                _code, _body, elapsed = client.get(
+                    f"/get/get-rows?index={idx}&timestamp={timestamp}",
+                    bearer=token,
+                    timeout=timeout,
+                )
+                rows.append(float(elapsed))
+            except WorkloadError:
+                rows.append(0.0)
+        # Visible +/-1 batches: get-data start/end windows.
+        for batch_offset in (-1, 0, 1):
+            start = pos + batch_offset * page_size
+            if start < 0:
+                start = 0
+            end = start + page_size
+            try:
+                _code, _body, elapsed = client.get(
+                    f"/get/get-data?timestamp={timestamp}&start={start}&end={end}",
+                    bearer=token,
+                    timeout=timeout,
+                )
+                data.append(float(elapsed))
+            except WorkloadError:
+                data.append(0.0)
+
+    # Persist a per-round artifact when a round dir is provided.
+    if round_dir is not None and round_no is not None:
+        try:
+            round_dir = Path(round_dir)
+            round_dir.mkdir(parents=True, exist_ok=True)
+            path = round_dir / f"scroll-round-{round_no}.tsv"
+            lines_out = []
+            for value in scrollbar:
+                lines_out.append(f"scrollbar\t200\t{value!r}")
+            for value in rows:
+                lines_out.append(f"rows\t200\t{value!r}")
+            for value in data:
+                lines_out.append(f"data\t200\t{value!r}")
+            path.write_text("\n".join(lines_out) + ("\n" if lines_out else ""))
+        except OSError:
+            pass
+
+    # Persist a cell-level artifact when an out dir is provided.
+    if out is not None:
+        try:
+            out = Path(out)
+            out.mkdir(parents=True, exist_ok=True)
+            path = out / "scroll-probe.tsv"
+            lines_out = []
+            for value in scrollbar:
+                lines_out.append(f"scrollbar\t200\t{value!r}")
+            for value in rows:
+                lines_out.append(f"rows\t200\t{value!r}")
+            for value in data:
+                lines_out.append(f"data\t200\t{value!r}")
+            path.write_text("\n".join(lines_out) + ("\n" if lines_out else ""))
+        except OSError:
+            pass
+
+    result = {
+        "scrollbar": scrollbar,
+        "rows": rows,
+        "data": data,
+        "scrollbar_ms": [value * 1000.0 for value in scrollbar],
+        "rows_ms": [value * 1000.0 for value in rows],
+        "data_ms": [value * 1000.0 for value in data],
+        "scrollbar_s": list(scrollbar),
+        "rows_s": list(rows),
+        "data_s": list(data),
+    }
+    return result
+
+
 def probe_round(
     cfg: config.WorkloadConfig,
     client: HttpClient,
@@ -750,6 +894,35 @@ def probe_round(
         return False
 
     random_fetch_round(cfg, client, transcript, round_no, rows, state, lines, round_dir)
+
+    # Scroll probe: exercise the scroll-bar / row / data read paths that the
+    # frontend drives while scrolling, mirroring useFetchRows/useFetchImgs.
+    try:
+        token = _prefetch_token(out)
+        timestamp = _prefetch_timestamp(out)
+        if timestamp is not None and token is not None:
+            scroll_result = scroll_probe(
+                cfg,
+                client,
+                timestamp,
+                token,
+                total_rows=rows if rows else None,
+                round_dir=round_dir,
+                round_no=round_no,
+            )
+            emit_event(
+                cfg.out,
+                "scroll_probe",
+                round=round_no,
+                rows=rows,
+                state=state,
+                phase="during",
+                scrollbar_ms=[value * 1000.0 for value in scroll_result["scrollbar"]],
+                rows_ms=[value * 1000.0 for value in scroll_result["rows"]],
+                data_ms=[value * 1000.0 for value in scroll_result["data"]],
+            )
+    except Exception:  # noqa: BLE001 - a probe must not kill the scan
+        transcript.log(f"scroll probe round={round_no} failed; continuing")
 
     json_path = round_dir / f"hyperfine-round-{round_no}.json"
     benches = [
@@ -1414,6 +1587,30 @@ def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger
     lines = build_probe_list(cfg, client)
     if lines is None:
         raise WorkloadError("could not build probe list after scan")
+    # Scroll probe at rest (post-settle), mirroring the during-scan probe.
+    try:
+        timestamp = _prefetch_timestamp(out)
+        token = _prefetch_token(out)
+        if timestamp is not None and token is not None:
+            scroll_result = scroll_probe(
+                cfg,
+                client,
+                timestamp,
+                token,
+                total_rows=len(lines) if lines else None,
+                out=out,
+                phase="post",
+            )
+            emit_event(
+                cfg.out,
+                "scroll_probe",
+                phase="post",
+                scrollbar_ms=[value * 1000.0 for value in scroll_result["scrollbar"]],
+                rows_ms=[value * 1000.0 for value in scroll_result["rows"]],
+                data_ms=[value * 1000.0 for value in scroll_result["data"]],
+            )
+    except Exception:  # noqa: BLE001
+        logger.log("scroll probe (post) failed; continuing")
     run_sequential_probes(cfg, client, lines)
     seq_path = out / "probe-seq.tsv"
     if not seq_path.is_file() or not seq_path.read_text():
@@ -1744,3 +1941,8 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+scroll_probe_round = scroll_probe
+run_scroll_probe = scroll_probe
+probe_scroll = scroll_probe
+run_scroll = scroll_probe

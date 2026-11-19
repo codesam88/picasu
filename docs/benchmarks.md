@@ -48,7 +48,8 @@ practical, so:
 ## Stimulus catalog
 
 - `control`: populate scans with during-scan random thumbnail GETs
-  plus hyperfine prefetch/edit-rating probes per round, then a
+  plus hyperfine prefetch/edit-rating probes per round, a scroll probe
+  (get-scroll-bar, get-rows, get-data) during scan and after settle, then a
   sequential sweep and post-scan baselines. Measures the request path
   under indexing load — the primary regression signal.
 - `storm-read` / `storm-thumb` / `storm-diff`: concurrent bursts

@@ -85,6 +85,7 @@ IDENTITY_COLUMNS = ["cell", "profile", "level", "scale", "build", "commit"]
 STAGE_COLUMNS = list(extract_bench.STAGE_COLUMNS)
 COUNTER_COLUMNS = list(extract_bench.COUNTER_COLUMNS)
 METRICS_COLUMNS = list(extract_bench.METRICS_COLUMNS)
+SCROLL_COLUMNS = list(extract_bench.SCROLL_COLUMNS)
 UPLOAD_COLUMNS = ["upload_submit_p50_ms", "upload_visible_p50_ms"]
 
 BASELINE_COLUMNS = ["cell", "metric", "baseline", "rel_tol", "abs_tol", "recorded", "note"]
@@ -106,6 +107,7 @@ REPORT_COLUMNS = (
     + STAGE_COLUMNS
     + COUNTER_COLUMNS
     + METRICS_COLUMNS
+    + SCROLL_COLUMNS
 )
 
 
@@ -321,7 +323,12 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
         "upload_visible_p50_ms": upload_visible,
     }
     for column in (
-        LATENCY_COLUMNS + STORM_FAILED_COLUMNS + STAGE_COLUMNS + COUNTER_COLUMNS + METRICS_COLUMNS
+        LATENCY_COLUMNS
+        + STORM_FAILED_COLUMNS
+        + STAGE_COLUMNS
+        + COUNTER_COLUMNS
+        + METRICS_COLUMNS
+        + SCROLL_COLUMNS
     ):
         row[column] = _fmt(cell.get(column))
     # The drain parse behind the stage columns, kept whole for the extract
