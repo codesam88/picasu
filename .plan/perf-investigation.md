@@ -285,7 +285,11 @@ terminal-transition correctness bug, recorded in
     303s vs 546s variance). Idle re-run 2026-11-19 clean:
     before 188.4s vs after 175.3s (-7%, lag max 2-3 both,
     VmHWM -6.5%, temp_db same, exit 0 both, 945→1100MHz drift
-    noted). Landed as single sweeper; single-run evidence only.
+    noted). 2a reverted before PR (partial single-writer only;
+    sweep-vs-sweep waiter gone but flush paths still direct, so it
+    adds a special case for a noise-range delta). Stall fix stands
+    on ordering + keep-until-commit; single-writer per DB stays an
+    open design item (2b skipped).
     2a no-regression evidence (2000-img control, cap-128, serial,
     945→1100MHz drift; reports `cell-2a-before2/report.tsv` /
     `cell-2a-after2/report.tsv`, logs `1795050986` / `1795051562`
