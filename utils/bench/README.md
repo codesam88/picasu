@@ -314,11 +314,12 @@ recipe does not forward it):
 python3 utils/bench/battery.py run gate --out /tmp/my-gate-run --fresh
 ```
 
-| Level   | Images | Cells                                                                              |
-| ------- | ------ | ---------------------------------------------------------------------------------- |
-| `cell`  | env    | one cell, fully parameterized by env (WORKLOAD, IMAGES, NCPU, PORT, BUILD_PROFILE) |
-| `gate`  | 100    | `control`, `storm-read`, `storm-thumb`, `storm-diff`, `storm-idle`, `upload`       |
-| `scale` | 5650   | `control`, `storm-diff`, `upload`                                                  |
+| Level   | Images  | Cells                                                                              |
+| ------- | ------- | ---------------------------------------------------------------------------------- |
+| `cell`  | env     | one cell, fully parameterized by env (WORKLOAD, IMAGES, NCPU, PORT, BUILD_PROFILE) |
+| `micro` | 50, 200 | `control` (at each scale)                                                          |
+| `gate`  | 100     | `control`, `storm-read`, `storm-thumb`, `storm-diff`, `storm-idle`, `upload`       |
+| `scale` | 5650    | `control`, `storm-diff`, `upload`                                                  |
 
 Both levels pin `SCAN_REPEATS=2`, hyperfine `REPEATS=3`/`WARMUP=1`,
 `NCPU=8`, release builds, and storm `CLIENTS=8`/`OPS=10`/`MARGIN_S=0.5`.
@@ -326,9 +327,13 @@ Image repos are seeded once (see below) and resolved from
 `BENCH_SETS_ROOT` (defaults to the canonical archive root
 `~/picasu-bench`). Each level also pins the
 workload budget `battery run` hands to run_cell as `WORKLOAD_TIMEOUT_S`
-(gate 1800 s, scale 7200 s) — `battery run` invokes run_cell
+(gate 1800 s, micro 1800 s, scale 7200 s) — `battery run` invokes run_cell
 in-process, so no outer `timeout` bounds a cell. An exported
 `WORKLOAD_TIMEOUT_S` overrides the level default.
+
+The `micro` battery (50 and 200 images, control profile only, observer
+stats on) is a fast, CI-friendly linearity check plus observer spot-check;
+`scale` stays opt-in due to its cost.
 
 Each level also pins `BATTERY_REPEATS=3` (overridable via the exported
 `BATTERY_REPEATS` env var, minimum 1).
