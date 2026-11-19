@@ -683,6 +683,32 @@ module asset_aspects_step {
     .then(Stay(WorkerSkipUnchanged))
     .then(all { assert(Quiescent and Converged and AspectsAligned and CompletionInvariant), Skip })
 
+  // Sweep batches accumulate across roots. Deleting a path under r1 leaves a
+  // stale row; both roots are scanned (each queues its own sweep), and the
+  // enumeration of the empty second root must not discard the first root's
+  // candidate. Re-check and apply then drain the accumulated batch.
+  // @assumes ASS-3
+  // @assumes ASS-6
+  // @scope SCOPE-8
+  // @scope SCOPE-9
+  // @scope SCOPE-11
+  // @scope SCOPE-13
+  run sweepBatchAccumulationTest = initCompletion
+    .then(all { assert(phase == 0), Stay(ExternalDelete("p2")) })
+    .then(BeginDrain)
+    .then(BeginScan)
+    .then(CompleteScan("r1"))
+    .then(CompleteScan("r2"))
+    .then(all { assert(sweepBatch.keys() == Set()), Stay(SweepEnumerate("r1")) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(SweepEnumerate("r2")) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(Stay(SweepRecheck))
+    .then(Stay(SweepRemoveBatchApply))
+    .then(all { assert(Quiescent and Converged and AspectsAligned), Skip })
+
   // A crash during the drain loses the queued remove. The phase-2 scan
   // rediscovers the deleted path and the sweep prunes its row, so the machine
   // still reaches phase-2 quiescence with the invariant holding.
