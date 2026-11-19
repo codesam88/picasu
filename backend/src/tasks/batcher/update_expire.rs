@@ -1,7 +1,6 @@
 use crate::storage::cache::{EXPIRE, EXPIRE_TABLE_DEFINITION};
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
-use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::batcher::expire_check::ExpireCheckTask;
+use crate::tasks::queue::writer::{WriteOp, submit};
 use chrono::Utc;
 use mini_executor::BatchTask;
 use std::sync::atomic::Ordering;
@@ -10,18 +9,20 @@ use std::time::Duration;
 pub struct UpdateExpireTask;
 
 impl BatchTask for UpdateExpireTask {
-    fn batch_run(_: Vec<Self>) -> impl std::future::Future<Output = ()> + Send {
+    async fn batch_run(_: Vec<Self>) {
         if update_expire_task() {
-            BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
+            match submit(WriteOp::ExpireCheck).await {
+                Ok(()) => {}
+                Err(err) => log::warn!("update expire submit failed: {err:#}"),
+            }
         }
-        std::future::ready(())
     }
 }
 
 /// Refresh the expiry bookkeeping timestamp. Returns whether an expiry sweep
-/// is due: the `BatchTask` path cascades to [`ExpireCheckTask`] through
-/// [`BATCH_COORDINATOR`] in that case, while the serial writer
-/// (`tasks::queue::writer`) runs its own inline sweep instead.
+/// is due: the `BatchTask` path submits [`WriteOp::ExpireCheck`] to the
+/// serial writer in that case, while the serial writer's own cascade path
+/// runs its inline sweep instead.
 pub(crate) fn update_expire_task() -> bool {
     let current_timestamp = Utc::now().timestamp_millis();
     let last_timestamp = VERSION_COUNT_TIMESTAMP.swap(current_timestamp, Ordering::SeqCst);

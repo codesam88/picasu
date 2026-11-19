@@ -1,24 +1,13 @@
 use crate::model::response::Prefetch;
+use crate::storage::cache::EXPIRE;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
-use crate::{storage::cache::EXPIRE, tasks::looper::reset_expire_check_timer};
 
 use crate::tasks::actor::remove_tree_snapshot::remove_task;
-use mini_executor::BatchTask;
 use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use std::sync::atomic::Ordering;
 
 use log::{debug, error};
-
-pub struct ExpireCheckTask;
-
-impl BatchTask for ExpireCheckTask {
-    async fn batch_run(_: Vec<Self>) {
-        expire_check_task();
-        // Reset countdown timer after task execution
-        reset_expire_check_timer().await;
-    }
-}
 
 pub(crate) fn expire_check_task() {
     // Read-collect phase: take a short read transaction, enumerate the query
