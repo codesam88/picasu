@@ -155,3 +155,30 @@ class CellMetricsTest(unittest.TestCase):
         document = json.loads((out / "cell-metrics.json").read_text())
         self.assertNotIn("temp_db_mb", document)
         self.assertNotIn("temp_db_bytes", document)
+
+    def test_record_cell_metrics_reads_new_resource_columns(self):
+        import json
+        from types import SimpleNamespace
+
+        import run_cell
+
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(out, ignore_errors=True))
+        (out / "data" / "db").mkdir(parents=True)
+        payload = b"x" * 2_048_000
+        (out / "data" / "db" / "index_v5.redb").write_bytes(payload)
+        (out / "data" / "db" / "cache_db.redb").write_bytes(payload)
+        compressed = out / "data" / "object" / "compressed"
+        compressed.mkdir(parents=True)
+        (compressed / "a.jpg").write_bytes(payload)
+        (out / "launcher-info.json").write_text(json.dumps({"pid": os.getpid()}))
+
+        run_cell.record_cell_metrics(SimpleNamespace(out=out))
+
+        document = json.loads((out / "cell-metrics.json").read_text())
+        self.assertEqual(document["index_v5_bytes"], len(payload))
+        self.assertEqual(document["index_v5_mb"], 2.0)
+        self.assertEqual(document["cache_db_bytes"], len(payload))
+        self.assertEqual(document["cache_db_mb"], 2.0)
+        self.assertEqual(document["compressed_bytes"], len(payload))
+        self.assertEqual(document["compressed_mb"], 2.0)

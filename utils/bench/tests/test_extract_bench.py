@@ -577,6 +577,22 @@ class ObserverCounterTest(unittest.TestCase):
         self.assertEqual(cell["vm_hwm_mb"], 120.5)
         self.assertEqual(cell["temp_db_mb"], 3.2)
 
+    def test_cell_carries_new_resource_metrics(self):
+        row = {
+            "benchmark": "cell",
+            "vm_hwm_mb": 120.5,
+            "temp_db_mb": 3.2,
+            "index_v5_mb": 4.1,
+            "cache_db_mb": 5.2,
+            "compressed_mb": 6.3,
+        }
+
+        cell = extractor()._cell(row, {})
+
+        self.assertEqual(cell["index_v5_mb"], 4.1)
+        self.assertEqual(cell["cache_db_mb"], 5.2)
+        self.assertEqual(cell["compressed_mb"], 6.3)
+
     def test_cell_metrics_file_fills_the_row(self):
         directory = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)

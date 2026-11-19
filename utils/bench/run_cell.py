@@ -75,6 +75,9 @@ LAUNCHER_INTERRUPT_RC = 130
 TERMINAL_STATUS_STATES = ("completed", "failed", "canceled")
 CELL_METRICS_FILE = "cell-metrics.json"
 TEMP_DB_RELATIVE = Path("data") / "db" / "temp_db.redb"
+INDEX_DB_RELATIVE = Path("data") / "db" / "index_v5.redb"
+CACHE_DB_RELATIVE = Path("data") / "db" / "cache_db.redb"
+COMPRESSED_DIR_RELATIVE = Path("data") / "object" / "compressed"
 
 EXIT_CONFIG = 1
 
@@ -267,6 +270,30 @@ def record_cell_metrics(cfg: config.CellConfig) -> None:
     else:
         metrics["temp_db_bytes"] = size
         metrics["temp_db_mb"] = round(size / 1e6, 1)
+
+    for relative, stem in (
+        (INDEX_DB_RELATIVE, "index_v5"),
+        (CACHE_DB_RELATIVE, "cache_db"),
+    ):
+        db_path = cfg.out / relative
+        try:
+            size = db_path.stat().st_size
+        except OSError:
+            continue
+        metrics[f"{stem}_bytes"] = size
+        metrics[f"{stem}_mb"] = round(size / 1e6, 1)
+
+    compressed = cfg.out / COMPRESSED_DIR_RELATIVE
+    if compressed.is_dir():
+        total = 0
+        for entry in compressed.rglob("*"):
+            if entry.is_file():
+                try:
+                    total += entry.stat().st_size
+                except OSError:
+                    continue
+        metrics["compressed_bytes"] = total
+        metrics["compressed_mb"] = round(total / 1e6, 1)
     try:
         (cfg.out / CELL_METRICS_FILE).write_text(json.dumps(metrics, indent=2) + "\n")
     except OSError as err:

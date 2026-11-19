@@ -88,6 +88,20 @@ METRICS_COLUMNS = list(extract_bench.METRICS_COLUMNS)
 SCROLL_COLUMNS = list(extract_bench.SCROLL_COLUMNS)
 UPLOAD_COLUMNS = ["upload_submit_p50_ms", "upload_visible_p50_ms"]
 
+HEADLINE_RANGE_COLUMNS = [
+    "scan_wall_s",
+    "scan_prefetch_p50_ms",
+    "idle_prefetch_p50_ms",
+    "scroll_bar_p50_ms",
+    "scroll_rows_p50_ms",
+    "scroll_data_p50_ms",
+    "temp_db_mb",
+    "vm_hwm_mb",
+]
+RANGE_COLUMNS = [
+    f"{column}_{suffix}" for column in HEADLINE_RANGE_COLUMNS for suffix in ("min", "max")
+]
+
 BASELINE_COLUMNS = ["cell", "metric", "baseline", "rel_tol", "abs_tol", "recorded", "note"]
 BASELINE_HEADER = "\t".join(BASELINE_COLUMNS)
 
@@ -108,6 +122,7 @@ REPORT_COLUMNS = (
     + COUNTER_COLUMNS
     + METRICS_COLUMNS
     + SCROLL_COLUMNS
+    + RANGE_COLUMNS
 )
 
 
@@ -331,6 +346,10 @@ def build_row(level: str, profile: str, outdir: Path) -> dict:
         + SCROLL_COLUMNS
     ):
         row[column] = _fmt(cell.get(column))
+    for column in HEADLINE_RANGE_COLUMNS:
+        value = row.get(column, NA)
+        row[f"{column}_min"] = value
+        row[f"{column}_max"] = value
     # The drain parse behind the stage columns, kept whole for the extract
     # document: it comes from the same server.log read, so a cell carries
     # its stage rows without a separate extract run.
@@ -448,6 +467,20 @@ def _build_median_row(rows: list) -> dict:
         if column in _NON_NUMERIC_COLUMNS:
             # Non-numeric columns pass through from the first repeat.
             result[column] = first.get(column, result.get(column, NA))
+            continue
+        if column.endswith("_min"):
+            base = column[:-4]
+            values = []
+            for row in rows:
+                values.extend(_numeric_values(row.get(column, row.get(base, NA))))
+            result[column] = _fmt(min(values)) if values else NA
+            continue
+        if column.endswith("_max"):
+            base = column[:-4]
+            values = []
+            for row in rows:
+                values.extend(_numeric_values(row.get(column, row.get(base, NA))))
+            result[column] = _fmt(max(values)) if values else NA
             continue
         if column.endswith("_failed"):
             values = []
@@ -1486,6 +1519,14 @@ def main(argv=None) -> int:
             print("note: no baseline rows recorded; nothing to check")
         for failure in result.failures:
             print(failure.message)
+        baselined_metrics = {baseline.metric for baseline in baselines}
+        ungated = [
+            column
+            for column in (METRICS_COLUMNS + SCROLL_COLUMNS + RANGE_COLUMNS)
+            if column not in baselined_metrics
+        ]
+        if ungated:
+            print("informational (ungated, no baseline): " + ", ".join(ungated))
         print(
             f"{len(result.failures)} failure(s); {result.checked} metric(s) in band "
             f"across {result.cells} cell(s)"
