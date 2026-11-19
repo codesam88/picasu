@@ -522,6 +522,97 @@ the global claim rest on local proofs + a shallow global check;
 No convergence verdict yet; the lane's product so far is the round-5
 sweep finding plus the refined, mutation-checked fault model.
 
+## Inductive-check spike results (2026-11-19, branch invest/quint-param)
+
+Scope: rung 1 (TypeOK) of the ladder, reduced instance, quint 0.33.1 /
+Apalache 0.62.4 (`--inductive-invariant`, 2-3 invocations: base, step,
+implication). Scratch modules only (/tmp/opencode/inv/); repo untouched.
+
+**The invocation form works; the model is not encodable.** Quint's step
+phase runs Apalache with init := the invariant, so every state variable
+must be domain-assigned at its first occurrence (`x == v` or `x.in(S)`,
+Quint docs "Requirement: TypeOK"). Encodability boundary, measured with
+minimal repros (logs /tmp/opencode/logs/2026-11-19-*):
+
+- Scalars: `x.in(Int)` accepted; unbounded int scalars are fine.
+- Sets: `x.in(powerset(universe))` accepted even with an infinite element
+  universe (IntakeItem-shaped records with Int fields).
+- Maps: `setOfMaps(KEYS, VALUES)` is the only domain constructor and
+  Apalache encodes it as `DOMAIN m = KEYS /\ m \in [KEYS -> VALUES]`:
+  total maps over a constant finite key set with a finite value set.
+  Rejections, verbatim:
+
+  ```
+  # infinite value set
+  Input error (see the manual): Found a set map over an infinite set of
+  CellTFrom(Int). Not supported.
+  # infinite key set
+  checker error: Unexpected equality test over types CellTFrom(Set(Int))
+  and InfSet[CellTFrom(Int)]
+  # partial maps (union of function sets over key subsets)
+  rewriter error: Trying to expand a set of functions. This will blow up
+  the solver.
+  ```
+
+  A variable key set (`setOfMaps(m.keys(), V)`) is circular (the same
+  "used before it is assigned" error).
+
+8 of 16 state vars therefore have no domain expression: `files` and
+`generations` (total maps over PATHS with unbounded Int values), and
+`assetById`, `assetByPath`, `dupeIndex`, `metadataPayload`,
+`thumbPresent`, `sweepBatch` (sparse maps). Real-model evidence: with
+bounded file/generation universes and the encodable vars assigned, the
+step phase stops at:
+
+```
+Assignment error: No assignments found for:
+  dupeIndex, sweepBatch, metadataPayload, assetById, thumbPresent,
+  assetByPath
+```
+
+(375 s wall). With honest unbounded universes it stops earlier at the
+infinite-set-map error (205 s).
+
+Cost on the reduced instance: 375-399 s wall per two-phase invocation
+(client flatten 27 s, Snowcat 172-178 s per Apalache invocation, passes
+5-15 s, base-phase SMT ~2 s for 42 VCs). Step-phase SMT over the
+372-transition relation is unmeasured (never reached); a full 3-phase
+iteration is ~10 min compute plus that unknown.
+
+Rungs 2-4 were not runnable: the step phase cannot start until all 16
+vars are domain-assigned, so the goal's inductiveness, the banked
+conjunct set and the coverage sketch remain unmeasured.
+
+Reshaping required before the ladder can run at all:
+
+- make the six sparse tables admissible: total maps over constant finite
+  key universes with sentinels (assetByPath id 0 = no row; assetById /
+  metadataPayload kind "none"; dupeIndex empty set per hash;
+  thumbPresent false; sweepBatch generation -1), or replace them by
+  `Set[Record]` (encodable like intake; key uniqueness becomes an
+  invariant and reads become searches);
+- bound the value universes: file content scalars (ForceModify's +1 is
+  the only escape; HASHES/SMALL/rotate values already fit a small set),
+  nextAssetId (id reuse), album itemCount/itemSize (its domain is the
+  aggregate invariant itself). Generations need more than a bound: the
+  counter is also used as an ordering (`jj.generation > ii.generation`,
+  `it.generation < generations.get(p)`), so a finite domain requires
+  either an inductive "no in-flight spread beyond K" argument or a
+  replacement of the order by an explicit token relation — the one
+  clearly creative item in the reshape.
+
+Surface: ~680 action-body mentions of the six sparse tables (assetByPath
+252, metadataPayload 147, assetById 123, dupeIndex 60, sweepBatch 52,
+thumbPresent 44; stutters excluded), plus 70 runs to revalidate. This is
+a state-representation + counter-abstraction redesign (weeks), not a
+TypeOK exercise; the banked conjuncts are downstream of it.
+
+Verdict for the pivot target: reshape, do not continue the current
+ladder. Estimated 2-3 weeks for the representation/counter reshape plus
+1-2 weeks for the invariant iterations, with step-phase SMT cost as the
+unpriced schedule risk. The cheaper alternative remains (b),
+assume-guarantee local models.
+
 ## Step/action division of labor (review anchor)
 
 - `step`: which action may fire per tick — uniform choice over enabled
