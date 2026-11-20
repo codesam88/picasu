@@ -192,6 +192,17 @@ pub fn reset_dir_album_cache() {
     cache.clear();
 }
 
+/// Test-only accessor for the `DIR_ALBUM_CACHE` mutex. Used by lock-order
+/// tests to hold the mutex while exercising a code path that must not take
+/// it while holding a write transaction.
+#[cfg(test)]
+pub fn lock_dir_album_cache_for_test() -> std::sync::MutexGuard<
+    'static,
+    std::collections::HashMap<std::path::PathBuf, arrayvec::ArrayString<64>>,
+> {
+    DIR_ALBUM_CACHE.lock().expect("lock poisoned")
+}
+
 /// Find or create the album corresponding to `dir_path`.
 /// Must be called from a blocking context (e.g., `tokio::task::spawn_blocking`).
 ///

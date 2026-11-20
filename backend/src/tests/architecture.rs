@@ -94,3 +94,49 @@ fn request_paths_run_on_interactive_pool() {
         );
     }
 }
+
+/// Source-level guard: no `DIR_ALBUM_CACHE` lock acquisition may occur inside a
+/// `TREE.in_disk.begin_write()` ... `commit()` span. The dominant convention is
+/// cache mutex BEFORE write txn; inverting it deadlocks against
+/// `get_or_create_dir_album`, which holds the mutex across `begin_write`.
+fn assert_no_dir_album_call_inside_write_txn(path: &str, source: &str, calls: &[&str]) {
+    let mut in_txn = false;
+    for (lineno, line) in source.lines().enumerate() {
+        if line.contains("begin_write()") {
+            in_txn = true;
+        }
+        if in_txn {
+            for call in calls {
+                assert!(
+                    !line.contains(call),
+                    "{path}:{}: `{call}` must not be called inside a write transaction \
+                     (snapshot before begin_write)",
+                    lineno + 1
+                );
+            }
+        }
+        if in_txn && line.contains("commit()") {
+            in_txn = false;
+        }
+    }
+}
+
+#[test]
+fn transitor_does_not_lock_dir_album_cache_inside_write_txn() {
+    let source = include_str!("../process/transitor.rs");
+    assert_no_dir_album_call_inside_write_txn(
+        "process/transitor.rs",
+        source,
+        &["ancestor_album_ids_for_path("],
+    );
+}
+
+#[test]
+fn assign_album_does_not_lock_dir_album_cache_inside_write_txn() {
+    let source = include_str!("../router/put/assign_album.rs");
+    assert_no_dir_album_call_inside_write_txn(
+        "router/put/assign_album.rs",
+        source,
+        &["get_parent_album_id("],
+    );
+}

@@ -420,11 +420,16 @@ fn move_album_into_album(
         })?;
     }
 
+    // Snapshot the old parent album id before taking the write transaction:
+    // `get_parent_album_id` locks `DIR_ALBUM_CACHE`, which must never be
+    // acquired while holding a write txn (lock-order convention).
+    let old_parent_id = get_parent_album_id(&source_dir);
+
     let txn = crate::storage::db::TREE
         .in_disk
         .begin_write()
         .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-    if let Some(old_parent_id) = get_parent_album_id(&source_dir) {
+    if let Some(old_parent_id) = old_parent_id {
         crate::storage::asset_store::refresh_empty_album_cover(&txn, old_parent_id.as_str())
             .or_raise(|| {
                 (
