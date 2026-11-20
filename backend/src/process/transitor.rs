@@ -129,6 +129,95 @@ pub fn store_metadata_record(
     Ok(())
 }
 
+/// Bulk variant of [`store_metadata_record`] for the `edit_flags` path: stores the
+/// metadata payload for every item and applies all trash-driven album deltas
+/// inside a single write transaction, so a multi-item trash toggle cannot leave
+/// a partially committed aggregate.
+pub fn store_metadata_records_bulk(
+    items: &[(ArrayString<64>, AbstractData)],
+    trash: Option<bool>,
+) -> Result<()> {
+    use crate::model::asset::AssetRecord;
+    use crate::model::metadata_record::to_metadata_record;
+    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
+    use redb::ReadableTable;
+
+    use crate::storage::asset_store;
+
+    #[cfg(test)]
+    crate::router::put::edit_flags::EDIT_FLAGS_WRITE_TXN_COUNT
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    let txn = TREE.in_disk.begin_write()?;
+    {
+        let mut metadata_table = txn.open_table(METADATA_TABLE)?;
+        for (asset_id, data) in items {
+            let payload = to_metadata_record(data);
+            metadata_table.insert(asset_id.as_str(), payload)?;
+        }
+        drop(metadata_table);
+
+        if let Some(is_trashed) = trash {
+            for (asset_id, _data) in items {
+                let mut id_table = txn.open_table(ASSET_BY_ID)?;
+                let existing = id_table
+                    .get(asset_id.as_str())?
+                    .map(|guard| guard.value().to_string());
+                if let Some(json) = existing {
+                    let mut record: AssetRecord = serde_json::from_str(&json)?;
+                    let old_trashed = record.is_trashed;
+                    let album_id = record.album_id;
+                    let file_size = record.file_size;
+                    record.is_trashed = is_trashed;
+                    let updated = serde_json::to_string(&record)?;
+                    id_table.insert(asset_id.as_str(), updated.as_str())?;
+                    drop(id_table);
+
+                    if old_trashed != is_trashed
+                        && let Some(alb) = album_id
+                    {
+                        let member: ArrayString<64> = asset_id.as_str().parse().map_err(|_| {
+                            anyhow::anyhow!("asset id exceeds 64 bytes for album delta: {asset_id}")
+                        })?;
+                        let delta = if is_trashed {
+                            asset_store::AlbumDelta {
+                                count_delta: -1,
+                                size_delta: -file_size.cast_signed(),
+                                member: Some(member),
+                                is_add: false,
+                                member_timestamp: None,
+                                member_size_override: Some(file_size),
+                                is_update: false,
+                            }
+                        } else {
+                            asset_store::AlbumDelta {
+                                count_delta: 1,
+                                size_delta: 0,
+                                member: Some(member),
+                                is_add: true,
+                                member_timestamp: None,
+                                member_size_override: Some(file_size),
+                                is_update: false,
+                            }
+                        };
+                        asset_store::apply_album_delta(&txn, alb.as_str(), delta).with_context(
+                            || {
+                                format!(
+                                    "Failed to apply album delta for album {alb} asset {asset_id}"
+                                )
+                            },
+                        )?;
+                    }
+                } else {
+                    drop(id_table);
+                }
+            }
+        }
+    }
+    txn.commit()?;
+    Ok(())
+}
+
 /// Convert an `AssetRecord` to a payload-less `AbstractData` for API
 /// responses. This is a lossy conversion — EXIF, tags, and other metadata
 /// are not preserved.
