@@ -304,7 +304,14 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         start_time: None,
         end_time: None,
         last_modified_time: now,
-        cover: None,
+        cover: albuminfo
+            .cover_asset_id
+            .as_deref()
+            .and_then(|id| ArrayString::from(id).ok()),
+        manual_cover: albuminfo
+            .cover_asset_id
+            .as_deref()
+            .and_then(|id| ArrayString::from(id).ok()),
         item_count: 0,
         item_size: 0,
         share_list: std::collections::HashMap::new(),
@@ -456,6 +463,34 @@ mod tests {
                 std::collections::HashSet::from(["hiking".to_string()])
             );
             assert_eq!(data.rating, Some(5));
+        }
+
+        #[test]
+        fn reads_cover_asset_id_from_albuminfo() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/">
+<picasu:CoverAssetId>cover-xyz</picasu:CoverAssetId>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#;
+            std::fs::write(dir.path().join(".albuminfo.xmp"), xmp).expect("write");
+            let data = read_albuminfo(dir.path());
+            assert_eq!(data.cover_asset_id.as_deref(), Some("cover-xyz"));
+
+            // Legacy short spelling still reads.
+            let dir2 = tempfile::tempdir().expect("failed to create temp dir");
+            let xmp2 = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/">
+<picasu:Cover>cover-legacy</picasu:Cover>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#;
+            std::fs::write(dir2.path().join(".albuminfo.xmp"), xmp2).expect("write");
+            let data2 = read_albuminfo(dir2.path());
+            assert_eq!(data2.cover_asset_id.as_deref(), Some("cover-legacy"));
         }
     }
 }
