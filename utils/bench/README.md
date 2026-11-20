@@ -3,18 +3,19 @@
 Benchmark and debug cells for the Picasu backend. The harness is stdlib-only
 Python; it is not part of the server binary.
 
-| Path                  | Role                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`         |
-| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts                  |
-| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown                     |
-| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON + report extract        |
-| `baselines.tsv`       | Checked-in accepted bands for the gate battery (evolving record, updated with rationale) |
-| `extract_bench.py`    | Summarise one or more harness output directories                                         |
-| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                       |
-| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT             |
-| `config.py`           | Typed, validated per-layer configuration shared by every module                          |
-| `manifests/`          | PhotoSpec manifests for fixed image sets                                                 |
+| Path                  | Role                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`          |
+| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts                   |
+| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown                      |
+| `battery.py`          | Pinned cell batteries, TSV run report, baseline guardrail check, JSON + report extract    |
+| `baselines.tsv`       | Checked-in accepted values for the gate battery (evolving record, updated with rationale) |
+| `render_baselines.py` | Render `baselines.md` from the baselines and battery reports                              |
+| `extract_bench.py`    | Summarise one or more harness output directories                                          |
+| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                        |
+| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT              |
+| `config.py`           | Typed, validated per-layer configuration shared by every module                           |
+| `manifests/`          | PhotoSpec manifests for fixed image sets                                                  |
 
 The environment contracts live in the module docstrings. Each producer writes
 into `$OUT`; the launcher writes `launcher-info.json`, which the workload
@@ -62,7 +63,7 @@ when every check passes. A failure means the cell is refused, not run and
 failed later.
 
 ```sh
-just bench preflight --archive ~/picasu-bench/set-100 \
+python3 utils/bench/battery.py preflight --archive ~/picasu-bench/set-100 \
     --sandbox /dev/shm/scratchpad/sb-100 \
     --out /dev/shm/scratchpad/cell --port 5795
 ```
@@ -77,7 +78,7 @@ ok port: 5795 free
 ```
 
 ```sh
-$ PORT=5795 just bench preflight
+$ PORT=5795 python3 utils/bench/battery.py preflight
 ok binary: /home/me/picasu/target/release/picasu
 ok hyperfine: /home/me/.local/bin/hyperfine
 FAIL port: port 5795 already in use: LISTEN 0 4096 127.0.0.1:5795 ... (pick a free PORT or stop the holder)
@@ -106,31 +107,30 @@ Command tree (with the recipe that runs each):
 
 ```
 just bench run ...        # bench.py run cell ... (battery.py cell level)
-just bench battery ...    # bench.py battery ... (battery.py run/check/extract/list)
-just bench extract ...    # bench.py battery extract ... (battery parent)
+just bench battery ...    # run the default batteries into DIR (default: fresh timestamped dir)
+just bench extract ...    # record baselines + render the doc from DIR (default: newest battery output)
 just bench seed-images ...# bench.py seed ... (seed_images.py)   [recipe: seed-images]
 just bench server ...     # bench.py server ... (backend_launcher.py)
 just bench prepare ...    # bench.py prepare ... (prepare.py)
-just bench preflight ...  # bench.py preflight ... (preflight.py)
 just bench status ...     # bench.py status ... (per-cell state)
 bench extract ...         # bench.py extract ... (extract_bench.py, single cell)
 ```
 
 `just bench run` injects the `cell` subcommand, so the recipe is invoked as
-`just bench run --out ...` (no second `cell` token). `just bench extract`
-operates on a battery parent directory; the direct `bench.py extract`
-invocation operates on a single cell directory. `bench battery-check` exists
-only as a recipe (`just bench battery-check`), not as a `bench.py`
-subcommand.
+`just bench run --out ...` (no second `cell` token). `just bench battery`
+runs the default batteries (micro + gate) into one folder; `just bench
+extract` records that folder into the checked-in baselines and re-renders
+the doc. Single levels, JSON dumps and matrix views go through `bench.py`
+directly (see below); `bench battery-check` exists only as a recipe
+(`just bench battery-check`), not as a `bench.py` subcommand.
 
 Examples:
 
 ```sh
 just bench status /tmp/picasu-battery-gate
-just bench extract /tmp/picasu-battery-gate /tmp/picasu-battery-gate/run.json
-just bench battery gate --out /tmp/picasu-battery-gate
-just bench battery-check /tmp/picasu-battery-gate/report.tsv
-just bench preflight --out /dev/shm/scratchpad/cell --port 5795
+just bench battery /tmp/my-bench-run
+just bench extract /tmp/my-bench-run
+just bench battery-check /tmp/my-bench-run/gate/report.tsv
 ```
 
 Direct (flag-form) invocations, for options the recipes do not expose:
@@ -342,9 +342,9 @@ Each level also pins `BATTERY_REPEATS=3` (overridable via the exported
 just bench seed-images ~/picasu-bench/set-100 100
 just bench seed-images ~/picasu-bench/set-5650 5650
 export BENCH_SETS_ROOT=$HOME/picasu-bench    # only if the archive lives elsewhere
-just bench battery gate                      # -> /tmp/picasu-battery-gate-<stamp>/report.tsv
-just bench battery gate /tmp/my-gate-run     # explicit outdir
-just bench battery-check /tmp/my-gate-run/report.tsv
+just bench battery                           # default batteries into a fresh timestamped dir
+just bench battery /tmp/my-bench-run         # explicit outdir
+just bench battery-check /tmp/my-bench-run/gate/report.tsv
 ```
 
 `report.tsv` carries identity (`cell`, profile, level, scale, build,
@@ -393,25 +393,65 @@ extreme of the per-round probe summaries, then pooled like every other
 per-rep metric; storm tails are the worst per-run summary. A tail
 therefore describes the rounds or runs the cell actually recorded.
 
-`baselines.tsv` is long-format (`cell`, `metric`, `baseline`, `rel_tol`,
-`abs_tol`, `recorded`, `note`). The band is
-`max(abs_tol, abs(baseline) * rel_tol)`. A baselined metric that is
-missing, `n/a`, or outside its band fails the check with the cell and
-metric named; a baselined cell missing from the report also fails.
-Recording is deliberate: run the battery, review the report, edit the
-baseline row, and note why in the commit. `battery-check` never writes
-the file, so an unexplained move keeps failing.
+`baselines.tsv` is long-format (`cell`, `metric`, `baseline`,
+`recorded`, `note`). `battery check` fails a reported median unless it
+is within 50% of the recorded baseline or within an absolute floor in
+the metric's own unit (100 ms, 0.1 s, 100 000 µs, 1 MB) — a guardrail
+against big moves, not a fitted tolerance. A baselined metric that is
+missing or `n/a` fails the check with the cell and metric named; a
+baselined cell missing from the report also fails.
+Recording is deliberate: run the battery, review the report, and note
+why in the commit. `battery check` never writes the file, so an
+unexplained move keeps failing.
 
 `battery-check` compares baselines against the `:median` rows only:
 repeat rows are recorded but never checked, so a baselined metric must be
 recorded under its `<cell>:median` name (e.g. `gate-control:median`).
 
+### Baselines pipeline
+
+The checked-in baseline files are generated from battery reports, never
+edited by hand:
+
+```
+report.tsv -> baselines.tsv -> baselines.md
+```
+
+```sh
+just bench battery                          # run micro + gate into a fresh dir
+just bench battery /tmp/my-bench-run        # or pick the outdir
+just bench extract                          # latest battery dir -> baselines + doc
+just bench extract /tmp/my-bench-run        # or point at a run root
+```
+
+`extract` with no args uses the newest battery output dir; with a path it
+takes that run root (a battery parent, or a folder containing battery
+parents). A run root holding only some levels warns about the baselined
+cells with no fresh medians (they render as n/a until recorded).
+Merging keeps `note` for existing cell+metric rows and moves `baseline`
+and `recorded` to this run; cells absent from the run are carried over
+unchanged. A new cell+metric is recorded with a note naming it as new.
+Each battery run also records its host environment (`environment.json`
+in the battery dir: host, kernel, CPU, governor, memory, load, git
+identity); recording merges one `# env:` line per run into
+`baselines.tsv`, rendered as a battery-wide bullet list in the doc.
+Unknown fields mean the run predates environment capture.
+
+`render_baselines.py` owns `baselines.md`: it writes one table per
+scenario (idle, scan, upload, synthetic bursts), plus scan wall time and
+memory footprint across all image counts, with a glossary of the terms up
+front.
+Historical notes live in git history; per-row explanations stay in
+the `note` column of `baselines.tsv`. Neither use is part of `just check`
+or CI. Raw JSON/matrix output is still available through `bench.py`
+directly (see below).
+
 ## Battery JSON extract
 
 The runner owns the battery parent: `battery run` creates it and refuses to
 run into a directory holding entries it did not create (anything other than
-`*-repN` subdirs, `report.tsv`, `report.json`, `orchestrator.log` and the
-extract's `report.md`/`matrix.tsv`).
+`*-repN` subdirs, `report.tsv`, `report.json`, `environment.json`,
+`orchestrator.log` and the extract's `report.md`/`matrix.tsv`).
 `--fresh` wipes the parent first and is the only way past that guard. Manual
 loose cells are therefore impossible.
 
@@ -428,11 +468,18 @@ second battery elsewhere.
 document, on stdout by default or into a file with `--out`:
 
 ```sh
-just bench extract /tmp/my-gate-run
-just bench extract /tmp/my-gate-run /tmp/my-gate-run.json
-python3 utils/bench/battery.py extract /tmp/my-gate-run --out run.json
+python3 utils/bench/battery.py extract /tmp/my-gate-run --out /tmp/my-gate-run.json
 python3 utils/bench/battery.py extract /tmp/my-gate-run --matrix-only
 python3 utils/bench/battery.py extract /tmp/my-gate-run --format tsv --matrix-only
+```
+
+`just bench extract` is the baselines shortcut: it records every parent
+into the checked-in `baselines.tsv` and re-renders `baselines.md`
+(multiple parents, or a run root containing them, in one call):
+
+```sh
+just bench extract                          # newest battery output
+just bench extract /tmp/my-bench-run        # explicit run root
 ```
 
 One extract produces three artifacts. The JSON document (stdout, or the

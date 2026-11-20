@@ -1,151 +1,127 @@
 # Benchmark baselines
 
-New baseline set collected on branch `perf/new-baseline` (commit
-`3f1040c1df33a7d9f1e0ee99c169e491f497d055`) using the streamlined
-battery harness. Raw artifacts: `/tmp/opencode/baselines-new/{micro,gate}/`
-(extracts under `/tmp/opencode/baselines-new/extracts/`). Checked-in bands:
-`utils/bench/baselines.tsv` (micro + gate `:median` rows).
+Generated from `baselines.tsv` and the battery `report.tsv` files. `battery check` gates the baselined medians; context values (idle worst cases, scroll, bursts, memory footprint) come from the latest report.
 
-## Setup
+## Terms
 
-- Branch: `perf/new-baseline`
-- Commit: `3f1040c1df33a7d9f1e0ee99c169e491f497d055`
-- Host: `codex`, Linux 7.0.0-38-generic, x86_64, 8 logical CPUs, 62 GiB RAM
-- CPU: intel_pstate, governor `powersave`, energy_performance_preference
-  `balance_power`, max 2.4 GHz, no turbo. This is not the `ondemand`
-  governor used for earlier baseline runs; absolute latency figures are
-  not directly comparable to those runs.
-- Image sets: `~/picasu-bench/set-{50,100,200}` (BENCH_SETS_ROOT default)
-- Battery knobs: BATTERY_REPEATS=3, SCAN_REPEATS=2, hyperfine REPEATS=3 /
-  WARMUP=1, NCPU=8, BUILD_PROFILE=release, storm CLIENTS=8 / OPS=10 /
-  MARGIN_S=0.5
-- Co-located load caveat: the host was shared during collection (~33 GiB
-  in use, ~30 GiB shared/buff-cache); numbers reflect that load and should
-  not be treated as isolated-machine figures.
+- **#images**: number of images in the scanned set.
+- **scenario**: the server load a run applies: control (no extra load), a synthetic burst, or upload.
+- **idle**: server at rest after the scan; the idle accesses are the baseline.
+- **scan**: while the initial indexing scan of the image set runs.
+- **upload**: while files are continuously uploaded and scanned.
+- **burst**: a synthetic client loop repeating one access on top of the idle or scan state.
+- **access**: the API action measured: read (grid prefetch), thumbnail (download), edit (metadata), scroll bar/rows/data (scroll requests), upload submit/visible (upload endpoints).
+- **median**: median over repeat runs.
+- **worst_case**: worst observed repeat value.
+- **wall time**: elapsed wall-clock time of the scan.
+- **tree build**: album tree rebuild stage inside the scan.
+- **filter clone**: filter snapshot clone stage inside the scan.
+- **peak memory**: peak resident memory of the server process.
+- **DB**: on-disk database; index, cache, and temp are separate stores.
+- **compressed store**: on-disk store of generated image files.
+- **units**: ms = milliseconds, us = microseconds, s = seconds, MB = 10^6 bytes, MiB = 2^20 bytes, GiB = 2^30 bytes.
 
-## Micro battery (linearity check)
+## Run environment
 
-Medians over 3 repeats, 2 scans per repeat.
+Host environment of the recorded baselines, captured once per battery run; `unknown` marks fields the collection predates.
 
-| scale | scan wall s (median) | scan wall range | idle prefetch p50 ms | scan prefetch p50 ms | scroll data p50 ms | tree build p50 us | filter clone p50 us | vm HWM MB | temp_db MB |
-| ----: | -------------------: | --------------- | -------------------: | -------------------: | -----------------: | ----------------: | ------------------: | --------: | ---------: |
-|    50 |               5.2495 | 5.1495-5.347    |                  7.0 |                  8.1 |                1.0 |             422.5 |               510.5 |     369.4 |        0.6 |
-|   200 |               18.061 | 18.053-18.1665  |                  7.1 |                  8.0 |                1.7 |            1588.0 |              2018.5 |     376.8 |        2.2 |
+- **host**: unknown (unknown)
+- **CPU**: unknown, unknown cores, unknown/unknown MHz, frequency governor unknown, turbo boost unknown
+- **memory**: unknown
+- **load average (1/5/15 min)**: unknown/unknown/unknown at start, unknown/unknown/unknown at end
+- **git**: fix/album-concurrency @ 590d41b992ee
+- **captured**: 2026-11-20T21:51:28.282523+00:00 to unknown
 
-Ranges (min-max across repeat rows):
+## Memory footprint
 
-| scale | idle prefetch p50 ms | scroll data p50 ms | temp_db MB | vm HWM MB   |
-| ----: | -------------------- | ------------------ | ---------- | ----------- |
-|    50 | 6.7-11.5             | 1.0-1.1            | 0.6-0.6    | 369.0-369.4 |
-|   200 | 6.9-11.6             | 1.5-1.9            | 1.1-2.2    | 376.2-378.8 |
+Peak process memory and on-disk store sizes after the run.
 
-## Gate battery (set-100)
+| #images | scenario          | peak memory MiB | temp DB MB | index DB MB | cache DB MB | compressed store MB |
+| ------: | ----------------- | --------------: | ---------: | ----------: | ----------: | ------------------: |
+|      50 | control           |           370.0 |        1.1 |         0.3 |         0.6 |                 2.2 |
+|     100 | control           |           373.5 |        1.1 |         0.5 |         0.6 |                 4.0 |
+|     100 | read burst        |           369.3 |        0.6 |         0.6 |         0.6 |                 4.0 |
+|     100 | thumbnail burst   |           370.0 |        1.1 |         0.6 |         0.6 |                 4.0 |
+|     100 | edit burst        |           370.7 |        1.1 |         0.7 |         0.6 |                 4.0 |
+|     100 | read burst (idle) |           366.2 |        0.6 |         0.5 |         1.1 |                 3.9 |
+|     100 | upload            |           392.5 |       10.4 |         0.9 |         2.2 |                 4.0 |
+|     200 | control           |           385.4 |        4.2 |         0.8 |         0.6 |                 7.8 |
 
-Medians over 3 repeats, 2 scans per repeat (storm-idle forces 1 scan).
+## Idle access latency
 
-Scan walls:
+Server at rest after the scan; these accesses are the baseline.
 
-| cell             | scan wall s (median) | range         |
-| ---------------- | -------------------: | ------------- |
-| gate-control     |               9.3855 | 9.3795-9.5155 |
-| gate-storm-read  |               9.3895 | 9.386-9.4865  |
-| gate-storm-thumb |               9.3815 | 9.3785-9.3825 |
-| gate-storm-diff  |               6.2565 | 6.256-6.352   |
-| gate-storm-idle  |                9.688 | 9.68-9.892    |
-| gate-upload      |              17.5515 | 17.5465-17.56 |
+| #images | access      | median ms | worst_case ms |
+| ------: | ----------- | --------: | ------------: |
+|      50 | read        |      10.7 |          10.9 |
+|      50 | thumbnail   |      11.3 |          13.0 |
+|      50 | edit        |      12.1 |          13.4 |
+|      50 | scroll bar  |       0.7 |           1.6 |
+|      50 | scroll rows |       0.7 |           5.0 |
+|      50 | scroll data |       1.1 |           7.7 |
+|     100 | read        |      10.9 |          11.8 |
+|     100 | thumbnail   |      10.2 |          12.6 |
+|     100 | edit        |      12.2 |          15.6 |
+|     100 | scroll bar  |       0.7 |           1.6 |
+|     100 | scroll rows |       0.7 |           3.1 |
+|     100 | scroll data |       1.3 |           8.6 |
+|     200 | read        |      11.3 |          11.8 |
+|     200 | thumbnail   |      12.6 |          13.4 |
+|     200 | edit        |      13.0 |          13.3 |
+|     200 | scroll bar  |       0.7 |           1.6 |
+|     200 | scroll rows |       0.7 |           4.3 |
+|     200 | scroll data |       1.8 |          10.9 |
 
-Idle latencies (p50 ms):
+## Scan access latency
 
-| cell             | prefetch | thumb | edit |
-| ---------------- | -------: | ----: | ---: |
-| gate-control     |     11.6 |  11.5 | 12.4 |
-| gate-storm-read  |     11.6 |  12.4 | 12.5 |
-| gate-storm-thumb |     11.6 |  12.7 | 12.5 |
-| gate-storm-diff  |     11.3 |  12.4 | 12.4 |
-| gate-storm-idle  |      6.9 |   7.4 |  7.4 |
-| gate-upload      |     11.7 |   8.0 | 13.2 |
+While the initial indexing scan runs.
 
-Scan latencies (p50 ms; n/a for storm cells that do not run during-scan probes):
+| #images | access    | median ms | worst_case ms |
+| ------: | --------- | --------: | ------------: |
+|      50 | read      |       7.9 |          12.0 |
+|      50 | thumbnail |       3.2 |           7.5 |
+|      50 | edit      |      10.0 |          16.7 |
+|     100 | read      |       8.0 |          20.7 |
+|     100 | thumbnail |       4.0 |          12.5 |
+|     100 | edit      |       9.1 |          13.2 |
+|     200 | read      |       8.0 |          14.8 |
+|     200 | thumbnail |       3.0 |           9.2 |
+|     200 | edit      |       9.2 |          14.1 |
 
-| cell             |         prefetch |           thumb |             edit |
-| ---------------- | ---------------: | --------------: | ---------------: |
-| gate-control     |              8.1 |             3.2 |              8.6 |
-| gate-storm-read  |              n/a |             n/a |              n/a |
-| gate-storm-thumb |              n/a |             n/a |              n/a |
-| gate-storm-diff  |              n/a |             n/a |              n/a |
-| gate-storm-idle  |              n/a |             n/a |              n/a |
-| gate-upload      | n/a (uscan 13.0) | n/a (uscan 2.6) | n/a (uscan 13.7) |
+## Upload access latency
 
-Upload cell submit/visible p50 ms: submit 3.0, visible 636.0.
+While files are continuously uploaded and scanned.
 
-Scroll (p50 ms):
+| #images | access         | median ms | worst_case ms |
+| ------: | -------------- | --------: | ------------: |
+|     100 | read           |      12.5 |          16.9 |
+|     100 | thumbnail      |       2.5 |           2.9 |
+|     100 | edit           |      14.9 |          19.2 |
+|     100 | upload submit  |       4.0 |           n/a |
+|     100 | upload visible |     640.0 |           n/a |
 
-| cell             | bar | rows | data |
-| ---------------- | --: | ---: | ---: |
-| gate-control     | 0.7 |  0.7 |  1.2 |
-| gate-storm-read  | 1.3 |  1.5 |  2.4 |
-| gate-storm-thumb | 1.4 |  1.5 |  2.4 |
-| gate-storm-diff  | 0.9 |  1.3 |  2.1 |
-| gate-storm-idle  | 0.6 |  0.7 |  1.2 |
-| gate-upload      | 1.3 |  1.4 |  3.2 |
+## Burst access latency
 
-Stages (p50 us):
+A synthetic client burst of one access type on top of the idle or scan state.
 
-| cell             | tree_refresh_build | filter_snapshot_clone |
-| ---------------- | -----------------: | --------------------: |
-| gate-control     |              904.0 |                1132.0 |
-| gate-storm-read  |              726.5 |                 832.5 |
-| gate-storm-thumb |              516.0 |                 541.5 |
-| gate-storm-diff  |              729.0 |                 867.5 |
-| gate-storm-idle  |                0.0 |                   0.0 |
-| gate-upload      |             1906.0 |                2465.0 |
+| #images | scenario               | access    | median ms | worst_case ms | failed requests |
+| ------: | ---------------------- | --------- | --------: | ------------: | --------------: |
+|     100 | scan + read burst      | read      |       2.0 |          19.0 |               0 |
+|     100 | scan + thumbnail burst | thumbnail |       4.0 |          20.0 |               0 |
+|     100 | scan + edit burst      | edit      |       5.5 |          33.0 |             240 |
+|     100 | idle + read burst      | read      |       2.0 |          16.0 |               0 |
 
-Resources:
+## Scan wall time and stages
 
-| cell             | vm HWM MB | temp_db MB | index_v5 MB | cache_db MB | compressed MB |
-| ---------------- | --------: | ---------: | ----------: | ----------: | ------------: |
-| gate-control     |     372.6 |        0.6 |         0.4 |         0.6 |           4.0 |
-| gate-storm-read  |     369.3 |        0.6 |         0.7 |         0.6 |           4.0 |
-| gate-storm-thumb |     369.3 |        0.6 |         0.6 |         0.6 |           4.0 |
-| gate-storm-diff  |     370.1 |        0.6 |         0.7 |         0.6 |           4.0 |
-| gate-storm-idle  |     365.8 |        1.1 |         0.7 |         1.1 |           4.0 |
-| gate-upload      |     391.1 |        8.9 |         0.7 |         2.2 |           4.0 |
+Wall time and the two dominant internal scan stages.
 
-Ranges (min-max across repeat rows) for headline metrics:
-
-| cell             | scan wall s   | idle prefetch p50 ms | scroll data p50 ms | temp_db MB | vm HWM MB   |
-| ---------------- | ------------- | -------------------- | ------------------ | ---------- | ----------- |
-| gate-control     | 9.3795-9.5155 | 6.9-11.8             | 1.2-1.3            | 0.6-0.6    | 372.6-372.9 |
-| gate-storm-read  | 9.386-9.4865  | 11.4-11.8            | 2.3-2.5            | 0.6-0.6    | 368.8-369.5 |
-| gate-storm-thumb | 9.3785-9.3825 | 11.6-11.7            | 1.3-2.4            | 0.6-0.6    | 369.1-369.5 |
-| gate-storm-diff  | 6.256-6.352   | 11.1-12.2            | 1.5-2.4            | 0.6-0.6    | 370.0-370.3 |
-| gate-storm-idle  | 9.68-9.892    | 6.8-6.9              | 1.2-1.2            | 0.6-1.1    | 365.8-365.8 |
-| gate-upload      | 17.5465-17.56 | 6.9-11.7             | 2.1-3.3            | 8.9-17.8   | 388.4-394.1 |
-
-## Scale (5650) still needs
-
-Not run (hours of wall time). Follow-up work: run `just bench battery scale`
-(set-5650, control + storm-diff + upload) and record its `:median` rows.
-Open perf items that this baseline set does not yet cover:
-
-- Edit-path slowness at 5650 rows (barrier/flush path) and larger libraries.
-- temp_db.redb growth under probe load (one table per prefetch cache miss).
-- Retention/lag at scale (writer-cascade lag cap).
-- 50k-image set is not available (~27 GB); 5650 remains the largest
-  measured scale.
-
-Scroll/resource columns and range columns remain ungated (informational)
-in `baselines.tsv` by design; gate on them only after a confirming run.
-
-## Rerun: post-fix micro (2026-11-20)
-
-- Branch: `perf/new-baseline`, commit `2e6f9db68632e9d220a9687b135bd4a443055e62`
-- Evidence: `/tmp/opencode/baselines-verify/micro/report.tsv` (first verify),
-  `/tmp/opencode/baselines-verify/micro-rerun/report.tsv` (rerun)
-- Why bands moved: the earlier micro idle baselines (~7 ms) were recorded under
-  favorable host state; the post-fix rerun on a shared host shows idle
-  prefetch/thumb/edit in the ~11-13 ms range, consistent with the gate battery's
-  ~11-12 ms. Baselines are an evolving record, not a hard gate; the six micro
-  idle `:median` rows were re-recorded as the mean of the two run medians with
-  `rel_tol` widened to 1.0. Gate rows, stages, scroll, and resources were left
-  untouched.
+| #images | scenario          | wall time s (min-max)   | tree build median us | tree build worst_case us | filter clone median us | filter clone worst_case us |
+| ------: | ----------------- | ----------------------- | -------------------: | -----------------------: | ---------------------: | -------------------------: |
+|      50 | control           | 5.2585 (5.1485-5.3565)  |                459.0 |                    704.0 |                  541.5 |                      855.0 |
+|     100 | control           | 9.4965 (9.3825-9.4975)  |                850.0 |                   1344.0 |                 1069.5 |                     1602.5 |
+|     100 | read burst        | 9.3865 (9.3815-9.4895)  |                732.5 |                    750.0 |                  716.5 |                      783.0 |
+|     100 | thumbnail burst   | 9.386 (9.3845-9.492)    |                660.0 |                    694.5 |                  686.0 |                      720.5 |
+|     100 | edit burst        | 6.358 (6.357-7.464)     |                496.0 |                    567.5 |                  626.5 |                      699.0 |
+|     100 | read burst (idle) | 9.684 (9.679-9.7)       |                  0.0 |                      0.0 |                    0.0 |                        0.0 |
+|     100 | upload            | 17.656 (17.5585-17.658) |               1916.0 |                   2715.0 |                 2488.5 |                     3303.0 |
+|     200 | control           | 18.069 (18.068-18.17)   |               1551.0 |                   2950.0 |                 1998.5 |                     3419.0 |
