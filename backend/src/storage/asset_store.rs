@@ -2028,4 +2028,260 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    #[ignore = "txn-hold scaling probe (23s): run explicitly with --ignored for perf work"]
+    #[allow(clippy::too_many_lines)]
+    fn measure_txn_hold_scaling() {
+        use crate::tests::bootstrap;
+        let _guard = bootstrap::lock();
+        let _ = &*bootstrap::TEST_ENV;
+        bootstrap::reset_backend_state();
+
+        // Album directory + dir album.
+        let album_dir = bootstrap::test_image_home().join("txn_hold_album");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+        let album_id = crate::process::dir_album::get_or_create_dir_album(album_dir.clone())
+            .expect("create dir album");
+
+        // Generate N photos in one batch.
+        let n: usize = 1000;
+        let specs: Vec<snapfab::PhotoSpec> = (0..n)
+            .map(|i| snapfab::PhotoSpec {
+                output: Some(
+                    album_dir
+                        .join(format!("p{i}.jpg"))
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                format: Some("jpeg".into()),
+                width: Some(8),
+                height: Some(8),
+                tags: None,
+                exif_date: None,
+                minimal: true,
+            })
+            .collect();
+        snapfab::generate_batch(&specs).expect("generate photos");
+
+        // Build AbstractData list with album assignment.
+        let mut data_list: Vec<crate::model::abstract_data::AbstractData> = Vec::with_capacity(n);
+        for i in 0..n {
+            let path = album_dir.join(format!("p{i}.jpg"));
+            let file = std::fs::File::open(&path).expect("open photo");
+            let hash = crate::process::hash::blake3_hasher(file).expect("hash photo");
+            let mut data =
+                crate::model::abstract_data::AbstractData::new(&path, hash).expect("build data");
+            data.set_album(Some(album_id));
+            data_list.push(data);
+        }
+
+        // Flush all members (each commits its own write txn).
+        crate::tasks::batcher::flush_tree::flush_tables(&data_list, &[]).expect("flush members");
+
+        // Pick a member for update scenario.
+        let member_id = data_list
+            .first()
+            .and_then(|_| {
+                // read member ids from album
+                let txn = crate::storage::db::TREE
+                    .in_disk
+                    .begin_write()
+                    .expect("begin");
+                let members = list_album_members(&txn, album_id.as_str()).expect("list members");
+                drop(txn);
+                members.into_iter().next()
+            })
+            .expect("at least one member");
+
+        // --- descendant_cover direct (private) ---
+        {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write");
+            let t0 = std::time::Instant::now();
+            let (cover, _th) = descendant_cover(&txn, album_dir.to_string_lossy().as_ref())
+                .expect("descendant_cover");
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!(
+                "MEASURE descendant_cover N={n} M_assets={} ms={ms:.3} cover={cover:?}",
+                n + 1,
+            );
+            drop(txn);
+        }
+
+        // --- refresh_empty_album_cover on an empty album ---
+        // Create a second empty album dir with no members.
+        let empty_dir = bootstrap::test_image_home().join("txn_hold_empty");
+        std::fs::create_dir_all(&empty_dir).expect("create empty dir");
+        let empty_album_id = crate::process::dir_album::get_or_create_dir_album(empty_dir.clone())
+            .expect("create empty album");
+        // Force item_count 0 (already 0) and ensure no members.
+        {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write");
+            let (_cover, _th) =
+                descendant_cover(&txn, empty_dir.to_string_lossy().as_ref()).expect("desc");
+            // make album empty cover path by calling refresh
+            drop(txn);
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write");
+            let t0 = std::time::Instant::now();
+            refresh_empty_album_cover(&txn, empty_album_id.as_str()).expect("refresh empty");
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("MEASURE refresh_empty_album_cover N={n} ms={ms:.3}");
+            txn.commit().expect("commit");
+        }
+
+        // --- apply_album_delta update (O(N) recompute) ---
+        {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write");
+            let t0 = std::time::Instant::now();
+            apply_album_delta(
+                &txn,
+                album_id.as_str(),
+                AlbumDelta {
+                    count_delta: 0,
+                    size_delta: 0,
+                    member: Some(member_id.parse().expect("parse member id")),
+                    is_add: false,
+                    member_timestamp: None,
+                    member_size_override: None,
+                    is_update: true,
+                },
+            )
+            .expect("apply update");
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("MEASURE apply_album_delta_update N={n} ms={ms:.3}");
+            txn.commit().expect("commit");
+        }
+
+        // --- read-txn baseline: descendant_cover equivalent (outside write txn) ---
+        {
+            use crate::model::metadata_record::compose_abstract_data;
+            use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
+            use redb::ReadableTable;
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_read()
+                .expect("begin read");
+            let t0 = std::time::Instant::now();
+            let id_table = txn.open_table(ASSET_BY_ID).expect("open id");
+            let meta_table = txn.open_table(METADATA_TABLE).expect("open meta");
+            let mut best: Option<(i64, arrayvec::ArrayString<64>, Option<Vec<u8>>)> = None;
+            for row in id_table.iter().expect("iter id") {
+                let (_, value) = row.expect("row");
+                let record: crate::model::asset::AssetRecord =
+                    serde_json::from_str(value.value()).expect("deser");
+                if record.kind == crate::model::asset::AssetKind::Album
+                    || record.is_trashed
+                    || std::path::Path::new(&record.path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        == Some(".__picasu_ph__.jpg")
+                    || !std::path::Path::new(&record.path).starts_with(&album_dir)
+                {
+                    continue;
+                }
+                let payload = meta_table
+                    .get(&*record.asset_id)
+                    .expect("get meta")
+                    .map(|g| g.value());
+                let ad = compose_abstract_data(&record, payload.as_ref());
+                let ts = ad.compute_timestamp(crate::constant::DEFAULT_PRIORITY_LIST);
+                match &best {
+                    None => best = Some((ts, record.asset_id, ad.thumbhash().cloned())),
+                    Some((best_ts, _, _)) if ts > *best_ts => {
+                        best = Some((ts, record.asset_id, ad.thumbhash().cloned()));
+                    }
+                    _ => {}
+                }
+            }
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("MEASURE descendant_cover_read N={n} ms={ms:.3}");
+            drop(txn);
+        }
+
+        // --- read-txn baseline: apply_album_delta recompute equivalent (outside write txn) ---
+        {
+            use crate::model::metadata_record::compose_abstract_data;
+            use crate::storage::db::{ASSET_BY_ALBUM, ASSET_BY_ID, METADATA_TABLE};
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_read()
+                .expect("begin read");
+            let t0 = std::time::Instant::now();
+            let table = txn.open_table(ASSET_BY_ALBUM).expect("open album");
+            let prefix = format!("{}/", album_id.as_str());
+            let mut members: Vec<String> = Vec::new();
+            for row in table.range(prefix.as_str()..).expect("range") {
+                let (k, v) = row.expect("row");
+                let key = k.value();
+                if !key.starts_with(&prefix) {
+                    break;
+                }
+                members.push(v.value().to_string());
+            }
+            for _pass in 0..2 {
+                for mid in &members {
+                    let id_table = txn.open_table(ASSET_BY_ID).expect("open id");
+                    let meta_table = txn.open_table(METADATA_TABLE).expect("open meta");
+                    if let Some(g) = id_table.get(mid.as_str()).expect("get id") {
+                        let record: crate::model::asset::AssetRecord =
+                            serde_json::from_str(g.value()).expect("deser");
+                        let payload = meta_table
+                            .get(mid.as_str())
+                            .expect("get meta")
+                            .map(|g| g.value());
+                        let ad = compose_abstract_data(&record, payload.as_ref());
+                        let _ts = ad.compute_timestamp(crate::constant::DEFAULT_PRIORITY_LIST);
+                        let _th = ad.thumbhash().cloned();
+                    }
+                }
+            }
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("MEASURE apply_recompute_read N={n} ms={ms:.3}");
+            drop(txn);
+        }
+
+        // --- apply_album_delta remove-to-empty (descendant_cover path) ---
+        // Remove all members one by one is expensive; instead remove a single member from a
+        // now-non-empty? We'll skip full removal; measure removal of one member (recompute O(N)).
+        {
+            let txn = crate::storage::db::TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write");
+            let t0 = std::time::Instant::now();
+            apply_album_delta(
+                &txn,
+                album_id.as_str(),
+                AlbumDelta {
+                    count_delta: -1,
+                    size_delta: 0,
+                    member: Some(member_id.parse().expect("parse member id")),
+                    is_add: false,
+                    member_timestamp: None,
+                    member_size_override: Some(0),
+                    is_update: false,
+                },
+            )
+            .expect("apply remove");
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            println!("MEASURE apply_album_delta_remove_one N={n} ms={ms:.3}");
+            txn.commit().expect("commit");
+        }
+
+        std::fs::remove_dir_all(&album_dir).ok();
+        std::fs::remove_dir_all(&empty_dir).ok();
+        bootstrap::reset_backend_state();
+    }
 }
