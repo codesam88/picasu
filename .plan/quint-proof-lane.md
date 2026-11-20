@@ -222,17 +222,27 @@ have caught it before the global model existed. Estimated: days.
 
 ## Measurement summary
 
-| Configuration                                                     | Method                             | Result                                                                                     |
-| ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------ |
-| Full machine, reduced bounds, disjunctive init (47 elements), K=1 | TLC, exhaustive, 60 min cap        | 273M distinct states at depth 6, ~4M/min growth, 44 GB pool; no violation; non-terminating |
-| Same                                                              | Apalache, bounded `--max-steps 60` | non-terminating at 50 min, before depth 3                                                  |
-| Empty prefix alone, K=0 (monotone machine)                        | TLC, exhaustive, 10 min cap        | 41M distinct states by depth 7 from one deterministic initial state                        |
-| Full partition, K=0                                               | TLC, 30 min cap                    | 16.2M distinct at depth 14; non-terminating                                                |
-| Single-element Apalache exploration                               | bounded, depths 1/2/3              | 90/107/610 s per depth                                                                     |
-| 51-element single-event sweep                                     | TLC, 120 s/element, 3 shards       | 74 min: 24 vacuous, 26 timeout, 1 violation (= round-5 bug), 0 ok                          |
-| Disjunctive init (126 initial states)                             | TLC, single invocation             | same violation in 203 s                                                                    |
-| Apalache inductive check, TypeOK base case                        | 3 SMT passes                       | PASS (42 VCs, ~190 s); step phase blocked by map-domain encoding                           |
-| Snowcat typechecking                                              | per verifier request               | ~195–207 s; run-stripping does not reduce it                                               |
+| Configuration                                                     | Method                             | Result                                                                                                                        |
+| ----------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Full machine, reduced bounds, disjunctive init (47 elements), K=1 | TLC, exhaustive, 60 min cap        | 273M distinct states at depth 6, ~4M/min growth, 44 GB pool; no violation; non-terminating                                    |
+| Same                                                              | Apalache, bounded `--max-steps 60` | non-terminating at 50 min, before depth 3                                                                                     |
+| Empty prefix alone, K=0 (monotone machine)                        | TLC, exhaustive, 10 min cap        | 41M distinct states by depth 7 from one deterministic initial state                                                           |
+| Full partition, K=0                                               | TLC, 30 min cap                    | 16.2M distinct at depth 14; non-terminating                                                                                   |
+| Single-element Apalache exploration                               | bounded, depths 1/2/3              | 90/107/610 s per depth                                                                                                        |
+| 51-element single-event sweep                                     | TLC, 120 s/element, 3 shards       | 74 min: 24 vacuous, 26 timeout, 1 violation (= round-5 bug), 0 ok                                                             |
+| Disjunctive init (126 initial states)                             | TLC, single invocation             | same violation in 203 s                                                                                                       |
+| Apalache inductive check, TypeOK base case                        | 3 SMT passes                       | PASS (42 VCs, ~190 s); step phase blocked by map-domain encoding                                                              |
+| Snowcat typechecking                                              | per verifier request               | ~195–207 s; run-stripping does not reduce it                                                                                  |
+| Empty-prefix drain probe, faults=1, uncapped (2026-11-20)         | TLC, 600 s cap, reduced bounds     | 4,316,486 distinct, 2,314,698 queued, depth 20 climbing; no verdict                                                           |
+| Same, `genSum < 8` on phase-1 ScanRoot r1/r2                      | TLC, exhaustive, reduced bounds    | 16,670 distinct, queue 0, complete depth 29, 36 s; `[ok] No violation found`                                                  |
+| Full reduced control with R=8, G=12, freshness, id quotient       | TLC, 300 s cap                     | 12,048,992 distinct, 11,710,729 queued, depth 6; timeout, no verdict                                                          |
+| Same, one freshness conjunct removed                              | `quint test` 70 runs + TLC 300 s   | suite 70/70; TLC 12,965,361 distinct (+8%), depth 7; timeout, no verdict                                                      |
+| Same, one phase-0 `genSum < 12` conjunct removed                  | TLC, 300 s cap                     | 11,122,895 distinct (−8%), depth 6; timeout, no verdict. Growth expectation did not hold                                      |
+| R=0 mutation, canonical suite                                     | `quint test` 70 runs               | 70/70; no completion run failed. Rescan budget is not exercised by deterministic runs                                         |
+| T1 attempt, kitted model (2026-11-20)                             | `prefixes.ts gen`                  | blocked: generator expects one non-phase conjunct; SCOPE-14/15 guards add one or two. No verifier run; harness fix authorized |
+| Generator fix `9ae4c749`                                          | `prefixes.ts gen`                  | 46 classes / 47 elements on the kitted pipeline; lint/selftest/check/70-run/pre-commit gates green                            |
+| T1 disjunctive init, kitted model                                 | TLC, single `initAllPinned`, 2 h   | timeout: 1.47B generated / 402.6M distinct / 392.7M queued; no marker; 74 GB scratch tripped disk guard                       |
+| T2 per-class fallback, kitted model                               | `prefixes.ts run`, 600 s/class     | 47/47 QNT409 compile errors (`initP<k>` both init and step via `initAllPinned`); 0 model verdicts                             |
 
 ## What landed on `invest/quint-param`
 
