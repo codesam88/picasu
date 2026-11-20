@@ -267,6 +267,9 @@ fn reset_login_throttle_knobs(config: &mut AppConfig) {
 fn fence_intake_queue() {
     crate::tasks::queue::worker::hold_intake();
     crate::tasks::queue::intake::drain_intake_channels();
+    // Cancel (rather than release) any worker parked mid-dispatch so its item
+    // cannot resurrect rows after the wipe below. Released workers finish first.
+    crate::tasks::queue::worker::cancel_intake();
     let intake_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while crate::tasks::queue::worker::intake_in_flight() > 0
         && std::time::Instant::now() < intake_deadline
@@ -275,6 +278,7 @@ fn fence_intake_queue() {
     }
     crate::tasks::queue::writer::barrier_sync();
     crate::tasks::queue::worker::release_intake();
+    crate::tasks::queue::worker::clear_intake_cancel();
 }
 
 /// Reset all shared backend state between scenario tests.
@@ -737,6 +741,89 @@ mod tests {
             TREE_SNAPSHOT.in_memory.is_empty(),
             "reset must clear TREE_SNAPSHOT in_memory"
         );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// An intake item parked mid-dispatch (worker dequeued it but has not
+    /// indexed it) must not resurrect a row after `reset_backend_state`:
+    /// the fence cancels the parked worker's item, so the wiped tables stay
+    /// empty and releasing intake does not re-insert the row.
+    #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)]
+    async fn reset_backend_state_intake_parked_dispatch_does_not_resurrect() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+
+        reset_backend_state();
+
+        let root = test_image_home().join("intake_park");
+        std::fs::create_dir_all(&root).expect("create intake_park dir");
+        let path = root.join("photo.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(path.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate intake-park photo");
+
+        // Park the worker after it dequeues the intake item.
+        crate::tasks::queue::worker::hold_intake();
+        crate::tasks::queue::intake::submit_watcher_index(path.clone())
+            .await
+            .expect("submit parked intake item");
+
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            crate::tasks::queue::worker::wait_until_intake_held(),
+        )
+        .await
+        .expect("a worker must dequeue the item and park mid-dispatch");
+
+        // Reset while the worker is parked; the fence must cancel it.
+        reset_backend_state();
+
+        // Releasing must not let the cancelled item dispatch after the wipe.
+        crate::tasks::queue::worker::release_intake();
+
+        // Give any (buggy) late dispatch a chance to land.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let row = crate::storage::asset_store::get_asset_id_by_path(&path.to_string_lossy())
+            .expect("read ASSET_BY_PATH after reset");
+        assert!(
+            row.is_none(),
+            "parked intake item resurrected a row after reset: {row:?}"
+        );
+
+        let txn = TREE.in_disk.begin_read().expect("begin read after reset");
+        for (name, count) in [
+            ("METADATA_TABLE", {
+                let t = txn.open_table(METADATA_TABLE).expect("open METADATA_TABLE");
+                t.iter().expect("iter").count()
+            }),
+            ("ASSET_BY_PATH", {
+                let t = txn
+                    .open_table(crate::storage::db::ASSET_BY_PATH)
+                    .expect("open ASSET_BY_PATH");
+                t.iter().expect("iter").count()
+            }),
+            ("ASSET_BY_ID", {
+                let t = txn
+                    .open_table(crate::storage::db::ASSET_BY_ID)
+                    .expect("open ASSET_BY_ID");
+                t.iter().expect("iter").count()
+            }),
+        ] {
+            assert_eq!(count, 0, "reset must drain {name}; {count} rows survived");
+        }
+        drop(txn);
 
         std::fs::remove_dir_all(&root).ok();
     }

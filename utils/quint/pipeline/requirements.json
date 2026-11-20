@@ -303,6 +303,24 @@
         "tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact",
         "tasks::actor::album_index::tests::reset_rescan_reseeds_album_member_rows_and_aggregates"
       ]
+    },
+    {
+      "id": "REQ-17",
+      "title": "Lock-order convention for cache mutex and tree transaction",
+      "statement": "Lock acquisition follows the registered order: the DIR_ALBUM_CACHE mutex is acquired before any TREE.in_disk transaction, and no higher-ordered resource may be held when acquiring a lower-ordered one. Inversions panic under the runtime checker.",
+      "derived_from": [
+        "G0"
+      ],
+      "owner": "lock_order checker (backend/src/lock_order.rs) and tests/architecture.rs guards",
+      "gate": "Cargo test: source-level guards in tests/architecture.rs plus the cfg(test) runtime checker in lock_order.rs panic on any inversion.",
+      "status": "verified",
+      "implementation": "Thread-local acquisition-order registry (lock_order::acquire/release) registers DIR_ALBUM_CACHE, TREE and REBUILD_LOCK; architecture.rs scans the three known call sites. No model changes.",
+      "tests": [
+        "tests::architecture::transitor_does_not_lock_dir_album_cache_inside_write_txn",
+        "tests::architecture::assign_album_does_not_lock_dir_album_cache_inside_write_txn",
+        "tests::architecture::delete_does_not_call_evict_dir_album_inside_tree_txn"
+      ],
+      "limits": "Textual approximation for helper call sites; the runtime checker covers only instrumented acquisition points."
     }
   ]
 }
