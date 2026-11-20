@@ -705,16 +705,6 @@ pub fn apply_album_delta(
     use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
     use redb::ReadableTable;
 
-    if let Some(member) = &delta.member {
-        if delta.is_update {
-            // Member row stays in place; nothing to re-key.
-        } else if delta.is_add {
-            add_album_member(txn, album_id, member.as_str())?;
-        } else {
-            remove_album_member(txn, album_id, member.as_str())?;
-        }
-    }
-
     let id_table = txn
         .open_table(ASSET_BY_ID)
         .context("Failed to open ASSET_BY_ID")?;
@@ -752,6 +742,20 @@ pub fn apply_album_delta(
         _ => return Ok(()),
     };
     let _ = record;
+
+    // Mutate the member row only once the album is known to exist, so a
+    // delta for a missing or non-album id cannot leave an orphan
+    // `ASSET_BY_ALBUM` row behind. Runs inside the same transaction as the
+    // aggregate write below.
+    if let Some(member) = &delta.member {
+        if delta.is_update {
+            // Member row stays in place; nothing to re-key.
+        } else if delta.is_add {
+            add_album_member(txn, album_id, member.as_str())?;
+        } else {
+            remove_album_member(txn, album_id, member.as_str())?;
+        }
+    }
 
     let mut size_delta = delta.size_delta;
     let member_ts = match delta.member_timestamp {
@@ -1765,5 +1769,57 @@ mod tests {
         assert_eq!(payload_b.item_size, 42);
         assert_album_aggregates_exact(album_a.as_str());
         assert_album_aggregates_exact(album_b.as_str());
+    }
+
+    /// A delta for a missing or non-album `album_id` must not leave an orphan
+    /// `ASSET_BY_ALBUM` member row behind: the album-existence check runs before
+    /// any member-row mutation.
+    #[test]
+    fn apply_album_delta_missing_or_nonalbum_leaves_no_member_row() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let missing: ArrayString<64> = "missing-album".parse().expect("missing id fits");
+        let member_missing = crate::process::hash::generate_random_hash();
+        apply_in_txn(
+            missing,
+            AlbumDelta {
+                count_delta: 1,
+                member: Some(member_missing),
+                is_add: true,
+                ..Default::default()
+            },
+        );
+        assert!(
+            album_member_ids("missing-album").is_empty(),
+            "a missing album must not gain a member row"
+        );
+
+        let media = AssetRecord::new_media(
+            AssetKind::Image,
+            "/orphan/photo.jpg".into(),
+            None,
+            7,
+            "jpg".into(),
+            0,
+        );
+        put_asset_by_id(&media).expect("seed media record");
+        let member_nonalbum = crate::process::hash::generate_random_hash();
+        apply_in_txn(
+            media.asset_id,
+            AlbumDelta {
+                count_delta: 1,
+                member: Some(member_nonalbum),
+                is_add: true,
+                ..Default::default()
+            },
+        );
+        assert!(
+            album_member_ids(media.asset_id.as_str()).is_empty(),
+            "a non-album id must not gain a member row"
+        );
     }
 }
