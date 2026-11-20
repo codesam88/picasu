@@ -16,6 +16,7 @@ use crate::tests::bootstrap::{
     TEST_ENV, album_member_ids, assert_album_aggregates_exact, lock, read_album_payload,
     reset_backend_state, test_image_home,
 };
+use proptest::prelude::*;
 
 fn make_jpeg(dir: &Path, name: &str, side: u32) -> PathBuf {
     generate_batch(&[PhotoSpec {
@@ -287,4 +288,51 @@ fn deleted_album_delta_does_not_resurrect_member_row() {
 
     std::fs::remove_dir_all(&dir).ok();
     reset_backend_state();
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 20, ..Default::default() })]
+
+    #[test]
+    fn prop_trash_toggle_interleave_store_level(
+        ops in prop::collection::vec(any::<bool>(), 0..=16)
+    ) {
+        let _guard = lock();
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        let (album_id, dir) = create_album("trash_prop");
+        let path = flush_member(&dir, "photo.jpg", 4, album_id);
+        let asset_id = member_id_at(&path);
+
+        let view = crate::process::transitor::compose_by_asset_id(asset_id.as_str())
+            .expect("compose member")
+            .expect("member view exists");
+
+        let mut trashed = false;
+        for want in ops {
+            if want != trashed {
+                crate::process::transitor::store_metadata_record(asset_id.as_str(), &view, Some(want))
+                    .expect("toggle trash");
+                trashed = want;
+            }
+            if trashed {
+                assert_eq!(album_member_ids(album_id.as_str()), Vec::<String>::new());
+            } else {
+                assert_eq!(
+                    album_member_ids(album_id.as_str()),
+                    vec![asset_id.to_string()]
+                );
+            }
+            let payload = read_album_payload(album_id.as_str());
+            if trashed {
+                assert_eq!(payload.item_count, 0);
+            } else {
+                assert_eq!(payload.item_count, 1);
+            }
+            assert_album_aggregates_exact(album_id.as_str());
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+        reset_backend_state();
+    }
 }
