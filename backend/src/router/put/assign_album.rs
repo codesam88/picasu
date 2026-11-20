@@ -2,7 +2,9 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::openapi_components::Unauthorized;
 
 use crate::model::asset::AssetRecord;
-use crate::process::dir_album::{get_dir_path_for_album, rewrite_dir_album_cache_prefix};
+use crate::process::dir_album::{
+    get_dir_path_for_album, get_parent_album_id, rewrite_dir_album_cache_prefix,
+};
 use crate::process::sanitize::find_unique_path;
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
@@ -304,7 +306,7 @@ fn move_asset_into_album(
 #[allow(clippy::too_many_lines)]
 fn move_album_into_album(
     album_id: ArrayString<64>,
-    _target_album_id: ArrayString<64>,
+    target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
     caller: &str,
@@ -371,6 +373,11 @@ fn move_album_into_album(
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album directory has no name"))?;
     let base_dest = target_dir.join(dir_name);
 
+    // Snapshot the old parent album id before any transaction / cache mutation:
+    // `get_parent_album_id` locks `DIR_ALBUM_CACHE`, which must never be
+    // acquired while holding a write txn (lock-order convention).
+    let old_parent_id = get_parent_album_id(&source_dir);
+
     // Lease the source subtree before the rename creates a window where the old
     // directory is absent but the rows still point at it. The lease itself
     // bumps and (on drop) releases the per-path generation.
@@ -406,10 +413,24 @@ fn move_album_into_album(
     if let Some(new_dir) = new_dir {
         let _dest_lease = crate::tasks::path_epoch::lease_subtree(new_dir.clone());
         rewrite_dir_album_cache_prefix(&source_dir, &new_dir);
-        // Update asset tables for all moved files. Path rewrites live
-        // exclusively on the AssetRecords now — the metadata payload holds
-        // no paths.
-        update_asset_tables_after_dir_move(&source_dir, &new_dir).or_raise(|| {
+        // Collect the descendant set up front (read txn / scans outside the
+        // write transaction), then land every path re-key plus the dirty marks
+        // for the affected albums (moved album + old/new parents) in a single
+        // write transaction. The fs rename stays where it is above.
+        let source_str = source_dir.to_string_lossy().into_owned();
+        let mut plans = collect_dir_move_plans(&source_dir, &new_dir)
+            .or_raise(|| (ErrorKind::Database, "Failed to collect dir move plans"))?;
+        for plan in &mut plans {
+            if plan.old_path == source_str {
+                plan.record.album_id = Some(target_album_id);
+            }
+        }
+        let ctx = DirMoveAlbumContext {
+            moved_album: album_id,
+            target_album: target_album_id,
+            old_parent: old_parent_id,
+        };
+        apply_dir_move_plans_with_albums(&plans, Some(ctx)).or_raise(|| {
             (
                 ErrorKind::Database,
                 "Failed to update asset tables after dir move",
@@ -500,6 +521,15 @@ pub(crate) fn collect_dir_move_plans(
     Ok(plans)
 }
 
+/// Context for dirty-marking albums while applying a directory move's path
+/// rewrites, all inside the same write transaction.
+#[derive(Clone, Debug)]
+pub(crate) struct DirMoveAlbumContext {
+    pub moved_album: ArrayString<64>,
+    pub target_album: ArrayString<64>,
+    pub old_parent: Option<ArrayString<64>>,
+}
+
 /// Apply every plan in `plans` in a single write transaction. A failure on any
 /// plan aborts the whole transaction (the dropped `txn` rolls back), so no
 /// partial prefix rewrite is ever committed. On success all path-map removes/
@@ -507,6 +537,18 @@ pub(crate) fn collect_dir_move_plans(
 #[quint::operation("OP-5")]
 #[allow(warnings)]
 pub(crate) fn apply_dir_move_plans(plans: &[DirMovePlan]) -> Result<(), AppError> {
+    apply_dir_move_plans_with_albums(plans, None)
+}
+
+/// Like [`apply_dir_move_plans`], but additionally applies album-membership
+/// deltas and dirty-marks for the affected albums inside the same transaction.
+#[quint::operation("OP-5")]
+#[allow(warnings, clippy::too_many_lines)]
+pub(crate) fn apply_dir_move_plans_with_albums(
+    plans: &[DirMovePlan],
+    ctx: Option<DirMoveAlbumContext>,
+) -> Result<(), AppError> {
+    use crate::storage::asset_store::{self, AlbumDelta};
     use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, TREE};
 
     #[cfg(test)]
@@ -550,7 +592,72 @@ pub(crate) fn apply_dir_move_plans(plans: &[DirMovePlan]) -> Result<(), AppError
                 .insert(&*plan.record.asset_id, json.as_str())
                 .or_raise(|| (ErrorKind::Database, "Failed to update asset record"))?;
         }
+
+        drop(path_table);
+        drop(id_table);
+
+        // Dirty marks for affected albums, same txn. NOTE: sub-albums are
+        // not members of their parents in ASSET_BY_ALBUM (membership is
+        // direct media only; the parent_album relation is path-derived at
+        // query time), so a cross-parent move must not add or remove member
+        // rows — only the dirty flags. The moved album itself is marked
+        // dirty (cover fallback may change with its new path).
+        if let Some(ctx) = ctx {
+            let moved = ctx.moved_album;
+            let target = ctx.target_album;
+            let old_parent = ctx.old_parent;
+
+            // Dirty-mark the old and new parents (deduplicated when same).
+            let mut dirty_parents = Vec::new();
+            if let Some(old) = old_parent {
+                if old != target {
+                    dirty_parents.push(old);
+                }
+            }
+            dirty_parents.push(target);
+            for parent in dirty_parents {
+                asset_store::apply_album_delta(
+                    &txn,
+                    parent.as_str(),
+                    AlbumDelta {
+                        count_delta: 0,
+                        size_delta: 0,
+                        member: None,
+                        is_add: false,
+                        member_timestamp: None,
+                        member_size_override: None,
+                        is_update: false,
+                    },
+                )
+                .or_raise(|| {
+                    (
+                        ErrorKind::Database,
+                        "Failed to mark parent album dirty after dir move",
+                    )
+                })?;
+            }
+
+            // Mark the moved album itself dirty (cover fallback may change).
+            asset_store::apply_album_delta(
+                &txn,
+                moved.as_str(),
+                AlbumDelta {
+                    count_delta: 0,
+                    size_delta: 0,
+                    member: None,
+                    is_add: false,
+                    member_timestamp: None,
+                    member_size_override: None,
+                    is_update: false,
+                },
+            )
+            .or_raise(|| (ErrorKind::Database, "Failed to mark moved album dirty"))?;
+        }
     }
+
+    // Injection seam after path+dirty work? Keep existing semantics: injected
+    // failure at plan index returns before commit. Additional injection points
+    // are not required.
     txn.commit()
         .or_raise(|| (ErrorKind::Database, "Failed to commit dir move"))?;
 
@@ -1277,6 +1384,100 @@ mod tests {
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 1);
         assert_album_aggregates_exact(album_id.as_str());
+
+        std::fs::remove_dir_all(&root).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn cross_parent_album_move_marks_dirty_without_changing_membership() {
+        use crate::model::abstract_data::AbstractData;
+        use crate::process::hash::blake3_hasher;
+        use crate::storage::asset_store;
+        use crate::tests::bootstrap::{
+            TEST_ENV, album_member_ids, assert_album_aggregates_exact, lock, read_album_payload,
+            reset_backend_state, test_image_home,
+        };
+        use std::fs::File;
+
+        let _guard = lock();
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let root = test_image_home().join("cross_parent_move");
+        let dir_a = root.join("a");
+        let dir_b = root.join("b");
+        std::fs::create_dir_all(&dir_a).expect("create album dir a");
+        std::fs::create_dir_all(&dir_b).expect("create album dir b");
+        let album_a =
+            crate::process::dir_album::get_or_create_dir_album(dir_a.clone()).expect("album a");
+        let album_b =
+            crate::process::dir_album::get_or_create_dir_album(dir_b.clone()).expect("album b");
+
+        for (dir, name, album) in [(&dir_a, "a.jpg", album_a), (&dir_b, "b.jpg", album_b)] {
+            let path = dir.join(name);
+            snapfab::generate_batch(&[snapfab::PhotoSpec {
+                output: Some(path.to_string_lossy().into_owned()),
+                format: Some("jpeg".into()),
+                width: Some(8),
+                height: Some(8),
+                tags: None,
+                exif_date: None,
+                minimal: false,
+            }])
+            .expect("generate photo");
+            let hash = blake3_hasher(File::open(&path).expect("open photo")).expect("hash photo");
+            let mut data = AbstractData::new(&path, hash).expect("build photo data");
+            data.set_album(Some(album));
+            crate::tasks::batcher::flush_tree::flush_tables(&[data], &[]).expect("flush member");
+        }
+
+        let member_a = asset_store::get_asset_id_by_path(&dir_a.join("a.jpg").to_string_lossy())
+            .expect("read member a")
+            .expect("member a exists");
+        let member_b = asset_store::get_asset_id_by_path(&dir_b.join("b.jpg").to_string_lossy())
+            .expect("read member b")
+            .expect("member b exists");
+
+        // Heal derivation state so the move starts from clean albums.
+        let _ = asset_store::refresh_album_derived_if_dirty(album_a.as_str());
+        let _ = asset_store::refresh_album_derived_if_dirty(album_b.as_str());
+        assert!(!read_album_payload(album_a.as_str()).aggregates_dirty);
+        assert!(!read_album_payload(album_b.as_str()).aggregates_dirty);
+
+        move_album_into_album(album_a, album_b, &dir_b, OnConflict::Rename, "test")
+            .expect("move album a into b");
+
+        // Membership is direct media only: no album row may appear in a
+        // parent's member list, and counts are unchanged by the move.
+        assert_eq!(
+            album_member_ids(album_b.as_str()),
+            vec![member_b.to_string()],
+            "moving a sub-album in must not add a member row"
+        );
+        assert_eq!(
+            album_member_ids(album_a.as_str()),
+            vec![member_a.to_string()],
+            "the moved album keeps its own member"
+        );
+        assert_eq!(read_album_payload(album_b.as_str()).item_count, 1);
+        assert_eq!(read_album_payload(album_a.as_str()).item_count, 1);
+        // The move dirty-marks the moved album and the new parent.
+        assert!(read_album_payload(album_b.as_str()).aggregates_dirty);
+        assert!(read_album_payload(album_a.as_str()).aggregates_dirty);
+        assert_album_aggregates_exact(album_a.as_str());
+        assert_album_aggregates_exact(album_b.as_str());
+
+        let moved = asset_store::get_asset_by_id(member_a.as_str())
+            .expect("read moved member")
+            .expect("moved member exists");
+        assert!(
+            moved
+                .path
+                .starts_with(dir_b.join("a").to_string_lossy().as_ref()),
+            "member path must live under the destination: {}",
+            moved.path
+        );
 
         std::fs::remove_dir_all(&root).ok();
         reset_backend_state();
