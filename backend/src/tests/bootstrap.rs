@@ -109,7 +109,7 @@ pub fn assert_album_aggregates_exact(album_id: &str) {
     let mut min_ts = i64::MAX;
     let mut max_ts = i64::MIN;
     let mut cover: Option<arrayvec::ArrayString<64>> = None;
-    let mut cover_ts = i64::MIN;
+    let mut cover_ts = i64::MAX;
     for member in &members {
         let record = crate::storage::asset_store::get_asset_by_id(member)
             .expect("read member record")
@@ -121,7 +121,7 @@ pub fn assert_album_aggregates_exact(album_id: &str) {
         min_ts = min_ts.min(ts);
         max_ts = max_ts.max(ts);
         expected_size += record.file_size;
-        if ts > cover_ts {
+        if ts < cover_ts {
             cover_ts = ts;
             cover = Some(record.asset_id);
         }
@@ -153,7 +153,7 @@ pub fn assert_album_aggregates_exact(album_id: &str) {
             );
             assert_eq!(
                 payload.cover, cover,
-                "album {album_id} cover must be the newest member"
+                "album {album_id} cover must be the oldest member"
             );
         }
     }

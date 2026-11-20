@@ -814,68 +814,293 @@ pub fn apply_album_delta(
     Ok(())
 }
 
-/// Refresh an empty album's cover from its descendants (no-op when the album
-/// has direct members). Used for ancestor albums after a membership change.
-#[allow(warnings)]
-pub fn refresh_empty_album_cover(
-    txn: &redb::WriteTransaction,
-    album_id: &str,
-) -> anyhow::Result<()> {
+/// Recompute an album's derived aggregates (time range + cover) from its
+/// members when `aggregates_dirty` is set. Read-phase runs in a read
+/// transaction; the update (if any) is a short write transaction. Never holds
+/// a write transaction across the scan.
+///
+/// Cover rule (slice C):
+/// - manual cover wins when it still points at a live, untrashed direct
+///   member; its marker is preserved.
+/// - otherwise the oldest direct member becomes cover and the manual marker
+///   is cleared.
+/// - when there are no direct members, fall back to the alphanumerically
+///   first direct sub-album's stored cover (non-recursive).
+#[allow(
+    clippy::too_many_lines,
+    clippy::single_match_else,
+    clippy::clone_on_copy,
+    clippy::map_unwrap_or,
+    clippy::if_not_else
+)]
+pub fn refresh_album_derived_if_dirty(album_id: &str) -> anyhow::Result<()> {
     use crate::model::abstract_data::AbstractData;
     use crate::model::metadata_record::{
         MetadataRecord, compose_abstract_data, to_metadata_record,
     };
-    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
+    use crate::storage::db::{ASSET_BY_ALBUM, ASSET_BY_ID, METADATA_TABLE};
     use redb::ReadableTable;
+    use std::path::Path;
 
-    let id_table = txn
+    // --- Read phase ---
+    let read_txn = TREE
+        .in_disk
+        .begin_read()
+        .context("Failed to begin read txn for refresh")?;
+    let id_table = read_txn
         .open_table(ASSET_BY_ID)
-        .context("Failed to open ASSET_BY_ID")?;
-    let meta_table = txn
+        .context("Failed to open ASSET_BY_ID for refresh")?;
+    let meta_table = read_txn
         .open_table(METADATA_TABLE)
-        .context("Failed to open METADATA_TABLE")?;
+        .context("Failed to open METADATA_TABLE for refresh")?;
 
     let record_json = id_table
         .get(album_id)
-        .with_context(|| format!("Failed to read album record for {album_id}"))?;
+        .context("Failed to read album record for refresh")?;
     let record: Option<crate::model::asset::AssetRecord> = record_json
         .map(|g| {
             serde_json::from_str(g.value())
-                .with_context(|| format!("Failed to deserialize album record for {album_id}"))
+                .context("Failed to deserialize album record for refresh")
         })
         .transpose()?;
     let payload = meta_table
         .get(album_id)
-        .with_context(|| format!("Failed to read album metadata for {album_id}"))?
+        .context("Failed to read album payload for refresh")?
         .map(|g| g.value());
-    let (record, mut album) = match (record, payload.clone()) {
+
+    let (record, album) = match (record, payload.clone()) {
         (Some(r), Some(MetadataRecord::Album(_))) => {
             let ad = compose_abstract_data(&r, payload.as_ref());
             match ad {
                 AbstractData::Album(a) => (r, a),
-                _ => return Ok(()),
+                _ => {
+                    drop(id_table);
+                    drop(meta_table);
+                    drop(read_txn);
+                    return Ok(());
+                }
             }
         }
-        _ => return Ok(()),
+        _ => {
+            drop(id_table);
+            drop(meta_table);
+            drop(read_txn);
+            return Ok(());
+        }
     };
     let _ = record;
-    if album.metadata.item_count != 0 {
+
+    let was_dirty = album.metadata.aggregates_dirty;
+    // Non-empty clean albums have nothing to heal. Empty albums are always
+    // re-evaluated so descendant/sub-album covers can heal on read.
+    if !was_dirty && album.metadata.item_count != 0 {
+        drop(id_table);
+        drop(meta_table);
+        drop(read_txn);
         return Ok(());
     }
+
+    let album_dir = album.metadata.dir_path.clone();
+    let old_start = album.metadata.start_time;
+    let old_end = album.metadata.end_time;
+    let old_cover = album.metadata.cover;
+    let old_thumb = album.object.thumbhash.clone();
+    let old_manual = album.metadata.manual_cover;
+
+    // Direct members.
+    let prefix = format!("{album_id}/");
+    let mut members: Vec<String> = Vec::new();
+    {
+        let album_table = read_txn
+            .open_table(ASSET_BY_ALBUM)
+            .context("Failed to open ASSET_BY_ALBUM for refresh")?;
+        for row in album_table
+            .range(prefix.as_str()..)
+            .context("Failed to range scan members for refresh")?
+        {
+            let (k, v) = row.context("Failed to read member row for refresh")?;
+            let key = k.value();
+            if !key.starts_with(&prefix) {
+                break;
+            }
+            members.push(v.value().to_string());
+        }
+    }
+
+    // Member info (ts, size, thumbhash) for each direct member.
+    let mut member_info: Vec<(String, i64, Option<Vec<u8>>)> = Vec::with_capacity(members.len());
+    for mid in &members {
+        let idt = read_txn
+            .open_table(ASSET_BY_ID)
+            .context("Failed to open ASSET_BY_ID for member info")?;
+        let met = read_txn
+            .open_table(METADATA_TABLE)
+            .context("Failed to open METADATA_TABLE for member info")?;
+        let Some(record_json) = idt
+            .get(mid.as_str())
+            .context("Failed to read member record for refresh")?
+        else {
+            member_info.push((mid.clone(), 0, None));
+            continue;
+        };
+        let rec: crate::model::asset::AssetRecord = serde_json::from_str(record_json.value())
+            .context("Failed to deserialize member record for refresh")?;
+        let payload = met
+            .get(mid.as_str())
+            .context("Failed to read member payload for refresh")?
+            .map(|g| g.value());
+        let ad = compose_abstract_data(&rec, payload.as_ref());
+        let ts = ad.compute_timestamp(ALBUM_PRIORITY_LIST);
+        let th = ad.thumbhash().cloned();
+        member_info.push((mid.clone(), ts, th));
+    }
+
+    let manual_valid = match &old_manual {
+        Some(mc) => members.contains(&mc.to_string()),
+        None => false,
+    };
+
+    let (new_start, new_end) = if members.is_empty() {
+        (None, None)
+    } else {
+        let mut min = i64::MAX;
+        let mut max = i64::MIN;
+        for (_, ts, _) in &member_info {
+            min = min.min(*ts);
+            max = max.max(*ts);
+        }
+        (Some(min), Some(max))
+    };
+
+    let (new_cover, new_thumb, new_manual) = if manual_valid {
+        let mc = old_manual.expect("manual valid implies Some");
+        let th = member_info
+            .iter()
+            .find(|(id, _, _)| id == mc.as_str())
+            .map_or_else(|| old_thumb.clone(), |(_, _, t)| t.clone());
+        (Some(mc), th, old_manual)
+    } else {
+        // clear manual marker
+        let manual_cleared = None;
+        if !members.is_empty() {
+            // oldest direct member
+            let mut best: Option<(i64, String, Option<Vec<u8>>)> = None;
+            for (id, ts, th) in &member_info {
+                match &best {
+                    None => best = Some((*ts, id.clone(), th.clone())),
+                    Some((best_ts, best_id, _)) => {
+                        if *ts < *best_ts || (*ts == *best_ts && id.as_str() < best_id.as_str()) {
+                            best = Some((*ts, id.clone(), th.clone()));
+                        }
+                    }
+                }
+            }
+            match best {
+                Some((_, id, th)) => {
+                    let parsed: ArrayString<64> = id
+                        .parse()
+                        .map_err(|_| anyhow::anyhow!("member id exceeds 64 bytes"))?;
+                    (Some(parsed), th, manual_cleared)
+                }
+                None => (None, None, manual_cleared),
+            }
+        } else {
+            // fallback: alphanumerically first direct sub-album's stored cover
+            let mut children: Vec<(String, Option<ArrayString<64>>, Option<Vec<u8>>)> = Vec::new();
+            for row in id_table
+                .iter()
+                .context("Failed to scan albums for sub-album fallback")?
+            {
+                let (_, v) = row.context("Failed to read ASSET_BY_ID row")?;
+                let rec: crate::model::asset::AssetRecord =
+                    serde_json::from_str(v.value()).context("Failed to deserialize record")?;
+                if rec.kind != crate::model::asset::AssetKind::Album {
+                    continue;
+                }
+                if rec.is_trashed {
+                    continue;
+                }
+                if Path::new(&rec.path).parent() != Some(Path::new(&album_dir)) {
+                    continue;
+                }
+                // Heal a dirty child before reading its stored cover.
+                let _ = refresh_album_derived_if_dirty(rec.asset_id.as_str());
+                let child_payload = meta_table
+                    .get(&*rec.asset_id)
+                    .context("Failed to read sub-album payload")?
+                    .map(|g| g.value());
+                let (cov, th) = match child_payload {
+                    Some(MetadataRecord::Album(ap)) => (ap.cover, ap.thumbhash),
+                    _ => (None, None),
+                };
+                children.push((rec.path.clone(), cov, th));
+            }
+            children.sort_by(|a, b| {
+                let an = Path::new(&a.0)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                let bn = Path::new(&b.0)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                an.cmp(bn)
+            });
+            match children.into_iter().next() {
+                Some((_, cov, th)) => (cov, th, manual_cleared),
+                None => (None, None, manual_cleared),
+            }
+        }
+    };
+
+    // Empty clean albums that resolve to the same values need no write.
+    if !was_dirty
+        && new_start == old_start
+        && new_end == old_end
+        && new_cover == old_cover
+        && new_thumb == old_thumb
+        && new_manual == old_manual
+    {
+        drop(id_table);
+        drop(meta_table);
+        drop(read_txn);
+        return Ok(());
+    }
+
+    // Drop read handles before opening the write transaction.
     drop(id_table);
     drop(meta_table);
-    let (cover, th) = descendant_cover(txn, &album.metadata.dir_path)?;
-    if cover != album.metadata.cover {
-        album.metadata.cover = cover;
-        album.object.thumbhash = th;
+    drop(read_txn);
+
+    // --- Write phase (short) ---
+    // Always clear the dirty flag; values may be unchanged but the flag must flip.
+    let mut album = album;
+    album.metadata.start_time = new_start;
+    album.metadata.end_time = new_end;
+    album.metadata.cover = new_cover;
+    album.metadata.manual_cover = new_manual;
+    album.metadata.aggregates_dirty = false;
+    album.object.thumbhash = new_thumb;
+
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .context("Failed to begin write txn for refresh")?;
+    {
         let mut meta_table = txn
             .open_table(METADATA_TABLE)
-            .context("Failed to reopen METADATA_TABLE")?;
+            .context("Failed to open METADATA_TABLE for refresh write")?;
         let new_payload = to_metadata_record(&AbstractData::Album(album));
         meta_table
             .insert(album_id, new_payload)
-            .context("Failed to write album metadata")?;
+            .context("Failed to write refreshed album metadata")?;
     }
+    txn.commit()
+        .context("Failed to commit refreshed album metadata")?;
+
+    // Suppress unused warnings for captured old values (used for clarity).
+    let _ = (old_start, old_end, old_cover, old_thumb, old_manual);
+
     Ok(())
 }
 
@@ -2067,23 +2292,47 @@ mod tests {
             .expect("create empty album");
         // Force item_count 0 (already 0) and ensure no members.
         {
-            let txn = crate::storage::db::TREE
-                .in_disk
-                .begin_write()
-                .expect("begin write");
-            let (_cover, _th) =
-                descendant_cover(&txn, empty_dir.to_string_lossy().as_ref()).expect("desc");
-            // make album empty cover path by calling refresh
-            drop(txn);
-            let txn = crate::storage::db::TREE
-                .in_disk
-                .begin_write()
-                .expect("begin write");
+            // Mark album dirty so refresh does work.
+            {
+                use crate::model::abstract_data::AbstractData;
+                use crate::model::metadata_record::{
+                    MetadataRecord, compose_abstract_data, to_metadata_record,
+                };
+                use crate::storage::db::METADATA_TABLE;
+                let txn = crate::storage::db::TREE
+                    .in_disk
+                    .begin_write()
+                    .expect("begin write");
+                {
+                    let mut table = txn.open_table(METADATA_TABLE).expect("open meta");
+                    let payload = table
+                        .get(empty_album_id.as_str())
+                        .expect("read")
+                        .map(|g| g.value());
+                    if let Some(MetadataRecord::Album(_)) = payload {
+                        let id_table = txn
+                            .open_table(crate::storage::db::ASSET_BY_ID)
+                            .expect("open id");
+                        let rj = id_table
+                            .get(empty_album_id.as_str())
+                            .expect("read")
+                            .expect("record");
+                        let rec: crate::model::asset::AssetRecord =
+                            serde_json::from_str(rj.value()).expect("deser");
+                        let ad = compose_abstract_data(&rec, payload.as_ref());
+                        if let AbstractData::Album(mut a) = ad {
+                            a.metadata.aggregates_dirty = true;
+                            let np = to_metadata_record(&AbstractData::Album(a));
+                            table.insert(empty_album_id.as_str(), np).expect("write");
+                        }
+                    }
+                }
+                txn.commit().expect("commit");
+            }
             let t0 = std::time::Instant::now();
-            refresh_empty_album_cover(&txn, empty_album_id.as_str()).expect("refresh empty");
+            refresh_album_derived_if_dirty(empty_album_id.as_str()).expect("refresh empty");
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
-            println!("MEASURE refresh_empty_album_cover N={n} ms={ms:.3}");
-            txn.commit().expect("commit");
+            println!("MEASURE refresh_album_derived_if_dirty N={n} ms={ms:.3}");
         }
 
         // --- apply_album_delta update (O(N) recompute) ---
@@ -2231,5 +2480,115 @@ mod tests {
         std::fs::remove_dir_all(&album_dir).ok();
         std::fs::remove_dir_all(&empty_dir).ok();
         bootstrap::reset_backend_state();
+    }
+
+    #[test]
+    fn refresh_album_derived_if_dirty_heals_oldest_cover() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        let (album_id, dir) = prepare_album("refresh_heal");
+        let m1 = seed_member(&dir, "a.jpg", album_id, 10, 100);
+        let m2 = seed_member(&dir, "b.jpg", album_id, 20, 200);
+        apply_in_txn(album_id, add_delta(m1));
+        apply_in_txn(album_id, add_delta(m2));
+
+        let payload = read_album_payload(album_id.as_str());
+        assert!(payload.aggregates_dirty);
+
+        refresh_album_derived_if_dirty(album_id.as_str()).expect("refresh");
+
+        let payload = read_album_payload(album_id.as_str());
+        assert!(!payload.aggregates_dirty);
+        assert_eq!(payload.cover, Some(m1));
+        assert_eq!(payload.start_time, Some(100));
+        assert_eq!(payload.end_time, Some(200));
+
+        std::fs::remove_dir_all(&dir).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn refresh_album_derived_if_dirty_manual_removed_falls_back_and_clears() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        let (album_id, dir) = prepare_album("refresh_manual");
+        let m1 = seed_member(&dir, "a.jpg", album_id, 10, 100);
+        let m2 = seed_member(&dir, "b.jpg", album_id, 20, 200);
+        apply_in_txn(album_id, add_delta(m1));
+        apply_in_txn(album_id, add_delta(m2));
+
+        // Mark manual cover pointing at m2 (a live member) and dirty.
+        {
+            use redb::ReadableTable;
+            let txn = TREE.in_disk.begin_write().expect("begin");
+            {
+                let mut table = txn
+                    .open_table(crate::storage::db::METADATA_TABLE)
+                    .expect("open");
+                let stored = table
+                    .get(album_id.as_str())
+                    .expect("read")
+                    .expect("payload")
+                    .value();
+                let MetadataRecord::Album(mut alb) = stored else {
+                    panic!("album");
+                };
+                alb.cover = Some(m2);
+                alb.manual_cover = Some(m2);
+                alb.aggregates_dirty = true;
+                table
+                    .insert(album_id.as_str(), MetadataRecord::Album(alb))
+                    .expect("write");
+            }
+            txn.commit().expect("commit");
+        }
+
+        // Validate manual: keep manual + cover m2.
+        refresh_album_derived_if_dirty(album_id.as_str()).expect("refresh manual");
+        let payload = read_album_payload(album_id.as_str());
+        assert!(!payload.aggregates_dirty);
+        assert_eq!(payload.manual_cover, Some(m2));
+        assert_eq!(payload.cover, Some(m2));
+
+        // Now point manual at a non-member and dirty.
+        {
+            let phantom: ArrayString<64> = "phantom-id".parse().expect("fits");
+            let txn = TREE.in_disk.begin_write().expect("begin");
+            {
+                let mut table = txn
+                    .open_table(crate::storage::db::METADATA_TABLE)
+                    .expect("open");
+                let stored = table
+                    .get(album_id.as_str())
+                    .expect("read")
+                    .expect("payload")
+                    .value();
+                let MetadataRecord::Album(mut alb) = stored else {
+                    panic!("album");
+                };
+                alb.manual_cover = Some(phantom);
+                alb.aggregates_dirty = true;
+                table
+                    .insert(album_id.as_str(), MetadataRecord::Album(alb))
+                    .expect("write");
+            }
+            txn.commit().expect("commit");
+        }
+
+        refresh_album_derived_if_dirty(album_id.as_str()).expect("refresh fallback");
+        let payload = read_album_payload(album_id.as_str());
+        assert!(!payload.aggregates_dirty);
+        assert_eq!(payload.manual_cover, None);
+        // oldest direct member m1
+        assert_eq!(payload.cover, Some(m1));
+
+        std::fs::remove_dir_all(&dir).ok();
+        reset_backend_state();
     }
 }

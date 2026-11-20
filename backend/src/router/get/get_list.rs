@@ -157,6 +157,18 @@ pub async fn get_albums(auth: GuardResult<GuardUser>) -> AppResult<Json<Vec<Albu
         let album_list = TREE
             .read_albums()
             .map_err(|e| e.context("Failed to read albums"))?;
+        // Heal any dirty albums before serving.
+        let dirty_ids: Vec<String> = album_list
+            .iter()
+            .filter(|a| a.metadata.aggregates_dirty || a.metadata.item_count == 0)
+            .map(|a| a.object.id.to_string())
+            .collect();
+        for id in dirty_ids {
+            let _ = crate::storage::asset_store::refresh_album_derived_if_dirty(&id);
+        }
+        let album_list = TREE
+            .read_albums()
+            .map_err(|e| e.context("Failed to read albums"))?;
         let mut album_info_list = Vec::new();
         for album in album_list {
             let classification =

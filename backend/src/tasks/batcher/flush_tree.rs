@@ -165,12 +165,6 @@ pub(crate) fn flush_tables(
         let json =
             serde_json::to_string(&record).context("Failed to serialize AssetRecord for flush")?;
 
-        // Snapshot ancestor album IDs before taking the write transaction:
-        // `ancestor_album_ids_for_path` locks `DIR_ALBUM_CACHE`, which must
-        // never be acquired while holding a write txn (lock-order convention).
-        let ancestor_ids =
-            crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(&path));
-
         {
             let write_txn = TREE
                 .in_disk
@@ -364,16 +358,6 @@ pub(crate) fn flush_tables(
                             }
                         }
                     }
-                    // Refresh empty ancestor album covers (descendant changes).
-                    for alb in &ancestor_ids {
-                        crate::storage::asset_store::refresh_empty_album_cover(
-                            &write_txn,
-                            alb.as_str(),
-                        )
-                        .with_context(|| {
-                            format!("Failed to refresh ancestor album cover {alb} during flush")
-                        })?;
-                    }
                 }
             }
             write_txn.commit().context("Failed to commit asset flush")?;
@@ -512,12 +496,6 @@ pub(crate) fn remove_asset_record_from_tables(
             None => (None, false, 0),
         };
 
-    // Snapshot ancestor album IDs before taking the write transaction:
-    // `ancestor_album_ids_for_path` locks `DIR_ALBUM_CACHE`, which must
-    // never be acquired while holding a write txn (lock-order convention).
-    let ancestor_ids =
-        crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(path));
-
     let write_txn = TREE
         .in_disk
         .begin_write()
@@ -588,15 +566,6 @@ pub(crate) fn remove_asset_record_from_tables(
                 },
             )
             .with_context(|| format!("Failed to apply removal delta for album {alb}"))?;
-            for anc in &ancestor_ids {
-                if *anc != alb {
-                    crate::storage::asset_store::refresh_empty_album_cover(
-                        &write_txn,
-                        anc.as_str(),
-                    )
-                    .with_context(|| format!("Failed to refresh ancestor album cover {anc}"))?;
-                }
-            }
         }
     }
     write_txn

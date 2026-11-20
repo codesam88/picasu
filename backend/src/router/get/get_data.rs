@@ -1,14 +1,16 @@
 // src/router/get/get_data.rs
 
 use crate::model::asset::{AssetKind, AssetRecord};
-use crate::model::metadata_record::compose_abstract_data;
+use crate::model::metadata_record::{MetadataRecord, compose_abstract_data};
 use crate::model::response::DataBaseTimestampReturn;
 use crate::model::response::{Row, ScrollBarData};
 use crate::openapi_components::Unauthorized;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::{cover_content_hash_from_data, lean_media_abstract_data};
 use crate::storage::cache::{SnapshotReadError, TREE_SNAPSHOT};
-use crate::storage::db::{ASSET_BY_ID, TREE, open_metadata_table, open_tree_snapshot_table};
+use crate::storage::db::{
+    ASSET_BY_ID, METADATA_TABLE, TREE, open_metadata_table, open_tree_snapshot_table,
+};
 
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::router::auth::GuardSnapshot;
@@ -140,22 +142,88 @@ pub async fn get_data(
                             // title/cover/counts; identity (dir_path, id, trash)
                             // is composed from the AssetRecord.
                             AssetKind::Album => {
-                                let payload = metadata_table
-                            .get(&*asset_id)
-                            .or_raise(|| {
-                                (
-                                    ErrorKind::Database,
-                                    format!("Failed to read album payload for asset_id {asset_id}"),
-                                )
-                            })?
-                            .ok_or_else(|| {
-                                AppError::new(
-                                    ErrorKind::Database,
-                                    format!("Failed to retrieve album for asset_id {asset_id}"),
-                                )
-                            })?
-                            .value();
-                                let abstract_data = compose_abstract_data(&record, Some(&payload));
+                                // Heal a dirty album on read before serving.
+                                let stored_payload = metadata_table
+                                    .get(&*asset_id)
+                                    .ok()
+                                    .flatten()
+                                    .map(|g| g.value());
+                                let is_dirty = matches!(
+                                    &stored_payload,
+                                    Some(MetadataRecord::Album(p)) if p.aggregates_dirty || p.item_count == 0
+                                );
+                                if is_dirty {
+                                    let _ =
+                                        crate::storage::asset_store::refresh_album_derived_if_dirty(
+                                            &asset_id,
+                                        );
+                                }
+                                // Re-read from a fresh transaction when a refresh committed,
+                                // so the served row reflects the healed values.
+                                let (fresh_record, payload) = if is_dirty {
+                                    let rtxn = TREE.in_disk.begin_read().or_raise(|| {
+                                        (ErrorKind::Database, "Failed to begin read txn")
+                                    })?;
+                                    let idt = rtxn.open_table(ASSET_BY_ID).or_raise(|| {
+                                        (ErrorKind::Database, "Failed to open ASSET_BY_ID")
+                                    })?;
+                                    let mt = rtxn.open_table(METADATA_TABLE).or_raise(|| {
+                                        (ErrorKind::Database, "Failed to open METADATA_TABLE")
+                                    })?;
+                                    let rj = idt
+                                        .get(&*asset_id)
+                                        .or_raise(|| {
+                                            (
+                                                ErrorKind::Database,
+                                                format!(
+                                                    "Failed to read ASSET_BY_ID for {asset_id}"
+                                                ),
+                                            )
+                                        })?
+                                        .ok_or_else(|| {
+                                            AppError::new(
+                                                ErrorKind::Database,
+                                                format!("No ASSET_BY_ID record for {asset_id}"),
+                                            )
+                                        })?;
+                                    let rec: AssetRecord = serde_json::from_str(rj.value())
+                                        .or_raise(|| {
+                                            (
+                                                ErrorKind::Database,
+                                                format!(
+                                                    "Failed to parse AssetRecord for {asset_id}"
+                                                ),
+                                            )
+                                        })?;
+                                    let pl = mt
+                                        .get(&*asset_id)
+                                        .or_raise(|| {
+                                            (
+                                                ErrorKind::Database,
+                                                format!(
+                                                    "Failed to read album payload for {asset_id}"
+                                                ),
+                                            )
+                                        })?
+                                        .ok_or_else(|| {
+                                            AppError::new(
+                                                ErrorKind::Database,
+                                                format!("Failed to retrieve album for {asset_id}"),
+                                            )
+                                        })?
+                                        .value();
+                                    (rec, pl)
+                                } else {
+                                    let pl = stored_payload.ok_or_else(|| {
+                                        AppError::new(
+                                            ErrorKind::Database,
+                                            format!("Failed to retrieve album for {asset_id}"),
+                                        )
+                                    })?;
+                                    (record.clone(), pl)
+                                };
+                                let abstract_data =
+                                    compose_abstract_data(&fresh_record, Some(&payload));
                                 let cover = cover_content_hash_from_data(&abstract_data);
                                 (abstract_data, cover)
                             }
