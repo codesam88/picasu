@@ -22,6 +22,11 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use proptest::prelude::*;
@@ -462,6 +467,65 @@ fn drive_op_sequence(client: &Client, ops: &[u8]) {
 
     run_index(client);
     assert_converged(&model, "final");
+}
+
+/// Drive one generated sequence while a real task mix runs concurrently:
+/// a writer barrier (draining the serial writer) and `get_or_create_dir_album`
+/// on a shared directory, both looping with short sleeps. This exercises the
+/// writer-flush + dir-album lock interleave that the sequential harness cannot
+/// reach. On completion the background mix is stopped and joined under a
+/// bounded deadlock detector; then every album record's aggregates are checked
+/// for exactness (no orphan member rows, `item_count` == `members.len()`).
+fn drive_op_sequence_concurrent(client: &Client, ops: &[u8]) {
+    let bg_dir = crate::tests::bootstrap::test_image_home().join("concurrent_bg_album");
+    let _ = std::fs::create_dir_all(&bg_dir);
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_bg = stop.clone();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let bg = thread::spawn(move || {
+        while !stop_bg.load(Ordering::Relaxed) {
+            crate::tasks::queue::writer::barrier_sync();
+            let _ = crate::process::dir_album::get_or_create_dir_album(bg_dir.clone());
+            thread::sleep(Duration::from_millis(20));
+        }
+        let _ = done_tx.send(());
+    });
+
+    drive_op_sequence(client, ops);
+
+    stop.store(true, Ordering::Relaxed);
+    done_rx
+        .recv_timeout(Duration::from_secs(30))
+        .expect("concurrent task mix did not finish within 30s (possible deadlock)");
+    let _ = bg.join();
+
+    // Cross-table exactness: every album record's aggregates must match a
+    // fresh recompute from its member rows (no orphans, exact item_count).
+    for record in crate::storage::asset_store::get_all_assets().unwrap_or_default() {
+        if record.kind == crate::model::asset::AssetKind::Album {
+            crate::tests::bootstrap::assert_album_aggregates_exact(&record.asset_id);
+        }
+    }
+}
+
+/// Case cap for the concurrent variant: fewer cases than the sequential
+/// harness because each case also runs a live task mix; raise via
+/// `PROPTEST_CASES` for deeper exploration.
+const CONCURRENT_OP_CASES: u32 = 30;
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(CONCURRENT_OP_CASES))]
+
+    /// Concurrent variant of `random_op_sequences_converge`: the same operation
+    /// sequences run while a writer-flush + dir-album task mix interleaves,
+    /// with a bounded deadlock detector and cross-table exactness checks.
+    #[test]
+    fn concurrent_op_sequences_converge(ops in op_sequence_strategy()) {
+        let _guard = lock();
+        let client = setup_image_home();
+        drive_op_sequence_concurrent(&client, &ops);
+    }
 }
 
 /// Case cap: one case (backend reset + up to six ops, each rescan walking
