@@ -232,3 +232,59 @@ fn membership_mutations_leave_members_and_aggregates_exact() {
     std::fs::remove_dir_all(&dir_b).ok();
     reset_backend_state();
 }
+
+#[test]
+fn deleted_album_delta_does_not_resurrect_member_row() {
+    let _guard = lock();
+    let _ = &*TEST_ENV;
+    reset_backend_state();
+    let (album_id, dir) = create_album("resurrect");
+    let path = flush_member(&dir, "photo.jpg", 4, album_id);
+    let asset_id = member_id_at(&path);
+
+    let mut album_data = crate::process::transitor::compose_by_asset_id(album_id.as_str())
+        .expect("compose album")
+        .expect("album view exists");
+    let AbstractData::Album(album) = &mut album_data else {
+        panic!("album view expected");
+    };
+    album.metadata.dir_path.clear();
+
+    crate::router::delete::cleanup_album_descendants(&[album_data]).expect("detach deleted album");
+
+    {
+        use crate::storage::db::METADATA_TABLE;
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_write()
+            .expect("begin album payload removal");
+        {
+            let mut table = txn.open_table(METADATA_TABLE).expect("open metadata");
+            let _ = table.remove(album_id.as_str());
+        }
+        txn.commit().expect("commit album payload removal");
+    }
+
+    let delta = crate::storage::asset_store::AlbumDelta {
+        count_delta: 1,
+        member: Some(asset_id),
+        is_add: true,
+        ..Default::default()
+    };
+    let txn = crate::storage::db::TREE
+        .in_disk
+        .begin_write()
+        .expect("begin stale delta");
+    crate::storage::asset_store::apply_album_delta(&txn, album_id.as_str(), delta)
+        .expect("apply stale delta");
+    txn.commit().expect("commit stale delta");
+
+    assert_eq!(
+        album_member_ids(album_id.as_str()),
+        Vec::<String>::new(),
+        "a deleted album must not resurrect a member row"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+    reset_backend_state();
+}
