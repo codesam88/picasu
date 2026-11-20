@@ -9,6 +9,7 @@ mod constant;
 mod error;
 mod frontend;
 mod init;
+mod lock_order;
 mod model;
 pub mod openapi;
 pub mod openapi_components;

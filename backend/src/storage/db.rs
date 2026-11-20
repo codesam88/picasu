@@ -11,7 +11,7 @@ use crate::model::response::DatabaseTimestamp;
 use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64, atomic::AtomicU64};
 
 pub struct Tree {
-    pub in_disk: &'static redb::Database,
+    pub in_disk: &'static TrackedDatabase,
     pub in_memory: &'static Arc<RwLock<Arc<Vec<DatabaseTimestamp>>>>,
 }
 
@@ -32,14 +32,14 @@ pub static INVALIDATION_VERSION: AtomicU64 = AtomicU64::new(0);
 static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Arc<Vec<DatabaseTimestamp>>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(Arc::new(vec![]))));
 
-static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
+static TREE_SNAPSHOT_IN_DISK: LazyLock<TrackedDatabase> = LazyLock::new(|| {
     let path = get_data_path().join("db/index_v5.redb");
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
         std::fs::create_dir_all(parent).expect("failed to create db directory for index database");
     }
-    redb::Database::create(path).expect("failed to create index database")
+    TrackedDatabase::new(redb::Database::create(path).expect("failed to create index database"))
 });
 
 impl Tree {
@@ -110,7 +110,6 @@ impl Tree {
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
         use crate::model::asset::AssetRecord;
         use crate::model::metadata_record::{MetadataRecord, compose_abstract_data};
-        use redb::ReadableDatabase;
 
         let read_txn = self
             .in_disk
@@ -273,6 +272,126 @@ pub fn clear_all_asset_tables_drop() -> anyhow::Result<()> {
 
     txn.commit().context("commit asset table drop")?;
     Ok(())
+}
+
+// ── Lock-order tracked wrappers (cfg(test)-active) ───────────────────────────
+
+/// Wrapper around `redb::Database` that registers `Tree` acquisitions with the
+/// runtime lock-order checker.
+pub struct TrackedDatabase {
+    inner: redb::Database,
+}
+
+impl TrackedDatabase {
+    pub fn new(inner: redb::Database) -> Self {
+        Self { inner }
+    }
+
+    pub fn begin_write(&self) -> Result<TrackedWriteTxn, redb::Error> {
+        crate::lock_order::acquire(
+            crate::lock_order::Resource::Tree,
+            "TREE.in_disk.begin_write",
+        );
+        let inner = match self.inner.begin_write() {
+            Ok(txn) => txn,
+            Err(e) => {
+                crate::lock_order::release(crate::lock_order::Resource::Tree);
+                return Err(e.into());
+            }
+        };
+        Ok(TrackedWriteTxn {
+            inner: Some(inner),
+            released: false,
+        })
+    }
+
+    pub fn begin_read(&self) -> Result<TrackedReadTxn, redb::Error> {
+        crate::lock_order::acquire(crate::lock_order::Resource::Tree, "TREE.in_disk.begin_read");
+        let inner = match self.inner.begin_read() {
+            Ok(txn) => txn,
+            Err(e) => {
+                crate::lock_order::release(crate::lock_order::Resource::Tree);
+                return Err(e.into());
+            }
+        };
+        Ok(TrackedReadTxn {
+            inner: Some(inner),
+            released: false,
+        })
+    }
+}
+
+impl std::ops::Deref for TrackedDatabase {
+    type Target = redb::Database;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct TrackedWriteTxn {
+    inner: Option<redb::WriteTransaction>,
+    released: bool,
+}
+
+impl std::ops::Deref for TrackedWriteTxn {
+    type Target = redb::WriteTransaction;
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_ref().expect("transaction already consumed")
+    }
+}
+
+impl std::ops::DerefMut for TrackedWriteTxn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner.as_mut().expect("transaction already consumed")
+    }
+}
+
+impl TrackedWriteTxn {
+    pub fn commit(mut self) -> Result<(), redb::CommitError> {
+        let inner = self.inner.take().expect("transaction already consumed");
+        let res = inner.commit();
+        if !self.released {
+            crate::lock_order::release(crate::lock_order::Resource::Tree);
+            self.released = true;
+        }
+        res
+    }
+}
+
+impl Drop for TrackedWriteTxn {
+    fn drop(&mut self) {
+        if !self.released {
+            crate::lock_order::release(crate::lock_order::Resource::Tree);
+            self.released = true;
+        }
+    }
+}
+
+pub struct TrackedReadTxn {
+    inner: Option<redb::ReadTransaction>,
+    released: bool,
+}
+
+impl std::ops::Deref for TrackedReadTxn {
+    type Target = redb::ReadTransaction;
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_ref().expect("transaction already consumed")
+    }
+}
+
+impl std::ops::DerefMut for TrackedReadTxn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner.as_mut().expect("transaction already consumed")
+    }
+}
+
+impl Drop for TrackedReadTxn {
+    fn drop(&mut self) {
+        if !self.released {
+            crate::lock_order::release(crate::lock_order::Resource::Tree);
+            self.released = true;
+        }
+    }
 }
 
 #[cfg(test)]

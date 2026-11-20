@@ -15,7 +15,7 @@ use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::tests::bootstrap::{cookie, lock, seed, setup_image_home};
 use crate::tests::fixtures::authz::create_album;
 use crate::tests::fixtures::test_password;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
 
 /// Non-secret handle for a share bearer: mirrors `Share::fingerprint`.
 fn share_fingerprint_for(token: &str) -> String {

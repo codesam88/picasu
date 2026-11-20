@@ -16,13 +16,62 @@ use crate::process::hash::generate_random_hash;
 use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
+
+/// Mutex wrapper for `DIR_ALBUM_CACHE` that registers acquisitions with the
+/// runtime lock-order checker.
+pub struct DirAlbumCacheMutex {
+    inner: std::sync::Mutex<std::collections::HashMap<PathBuf, ArrayString<64>>>,
+}
+
+impl DirAlbumCacheMutex {
+    pub fn lock(&self) -> DirAlbumCacheGuard<'_> {
+        let guard = self.inner.lock().expect("lock poisoned");
+        crate::lock_order::acquire(
+            crate::lock_order::Resource::DirAlbumCache,
+            "DIR_ALBUM_CACHE.lock",
+        );
+        DirAlbumCacheGuard {
+            inner: guard,
+            released: false,
+        }
+    }
+}
+
+/// Guard for `DirAlbumCacheMutex` that deregisters on drop.
+pub struct DirAlbumCacheGuard<'a> {
+    inner: std::sync::MutexGuard<'a, std::collections::HashMap<PathBuf, ArrayString<64>>>,
+    released: bool,
+}
+
+impl std::ops::Deref for DirAlbumCacheGuard<'_> {
+    type Target = std::collections::HashMap<PathBuf, ArrayString<64>>;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for DirAlbumCacheGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl Drop for DirAlbumCacheGuard<'_> {
+    fn drop(&mut self) {
+        if !self.released {
+            crate::lock_order::release(crate::lock_order::Resource::DirAlbumCache);
+            self.released = true;
+        }
+    }
+}
 
 /// In-memory cache: dir path → album ID.
 /// The mutex is held for the full duration of `get_or_create_dir_album` to
 /// prevent races under concurrent file indexing.
-static DIR_ALBUM_CACHE: LazyLock<Mutex<HashMap<PathBuf, ArrayString<64>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static DIR_ALBUM_CACHE: LazyLock<DirAlbumCacheMutex> = LazyLock::new(|| DirAlbumCacheMutex {
+    inner: Mutex::new(HashMap::new()),
+});
 
 /// Populate `DIR_ALBUM_CACHE` from the database at startup by scanning all
 /// albums that have a stored metadata payload, joining each with its
@@ -32,7 +81,7 @@ static DIR_ALBUM_CACHE: LazyLock<Mutex<HashMap<PathBuf, ArrayString<64>>>> =
 /// If filesystem albums are enabled, all cached albums are also queued for a
 /// stats self-update so their counts are correct from first request.
 pub fn init_dir_album_cache() {
-    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let mut cache = DIR_ALBUM_CACHE.lock();
 
     let read_txn = TREE
         .in_disk
@@ -107,11 +156,7 @@ pub fn derive_default_title(dir_path: &str) -> String {
 /// top-level dir album directly under a sync root).
 pub fn get_parent_album_id(dir_path: &Path) -> Option<ArrayString<64>> {
     let parent = dir_path.parent()?;
-    DIR_ALBUM_CACHE
-        .lock()
-        .expect("lock poisoned")
-        .get(parent)
-        .copied()
+    DIR_ALBUM_CACHE.lock().get(parent).copied()
 }
 
 /// Return the album ID for `dir_path` itself, if it is already a known
@@ -119,36 +164,25 @@ pub fn get_parent_album_id(dir_path: &Path) -> Option<ArrayString<64>> {
 /// `ensure_dir_albums`'s sync-root walk or some other path (e.g. created
 /// directly by a test, or loaded at startup by `init_dir_album_cache`).
 pub fn get_album_id_for_dir(dir_path: &Path) -> Option<ArrayString<64>> {
-    DIR_ALBUM_CACHE
-        .lock()
-        .expect("lock poisoned")
-        .get(dir_path)
-        .copied()
+    DIR_ALBUM_CACHE.lock().get(dir_path).copied()
 }
 
 /// Return the directory path corresponding to `album_id`, or `None` if it is
 /// not a filesystem-hierarchy album (or has not been loaded into the cache yet).
 pub fn get_dir_path_for_album(album_id: ArrayString<64>) -> Option<PathBuf> {
-    DIR_ALBUM_CACHE
-        .lock()
-        .expect("lock poisoned")
-        .iter()
-        .find_map(|(path, &id)| {
-            if id == album_id {
-                Some(path.clone())
-            } else {
-                None
-            }
-        })
+    DIR_ALBUM_CACHE.lock().iter().find_map(|(path, &id)| {
+        if id == album_id {
+            Some(path.clone())
+        } else {
+            None
+        }
+    })
 }
 
 /// Remove a single directory album entry from `DIR_ALBUM_CACHE`.
 /// Called when an album directory is deleted from disk.
 pub fn evict_dir_album(dir_path: &Path) {
-    DIR_ALBUM_CACHE
-        .lock()
-        .expect("lock poisoned")
-        .remove(dir_path);
+    DIR_ALBUM_CACHE.lock().remove(dir_path);
 }
 
 /// Rewrite `DIR_ALBUM_CACHE` entries after a directory (and everything
@@ -156,7 +190,7 @@ pub fn evict_dir_album(dir_path: &Path) {
 /// `new_prefix` — the moved album's own entry and any nested sub-album
 /// entries all get re-keyed under the new location.
 pub fn rewrite_dir_album_cache_prefix(old_prefix: &Path, new_prefix: &Path) {
-    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let mut cache = DIR_ALBUM_CACHE.lock();
     let matching: Vec<(PathBuf, ArrayString<64>)> = cache
         .iter()
         .filter(|(path, _)| path.starts_with(old_prefix))
@@ -173,7 +207,7 @@ pub fn rewrite_dir_album_cache_prefix(old_prefix: &Path, new_prefix: &Path) {
 /// Return the album IDs of every directory album whose path is a prefix of
 /// `file_path` (i.e. the ancestors that may need a descendant-cover refresh).
 pub fn ancestor_album_ids_for_path(file_path: &Path) -> Vec<ArrayString<64>> {
-    let cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let cache = DIR_ALBUM_CACHE.lock();
     cache
         .iter()
         .filter(|(dir_path, _)| file_path.starts_with(dir_path))
@@ -188,7 +222,7 @@ pub fn ancestor_album_ids_for_path(file_path: &Path) -> Vec<ArrayString<64>> {
 /// Called from test teardown and from the HTTP reset path so stale album IDs
 /// are not reused after the asset tables are dropped.
 pub fn reset_dir_album_cache() {
-    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let mut cache = DIR_ALBUM_CACHE.lock();
     cache.clear();
 }
 
@@ -196,11 +230,8 @@ pub fn reset_dir_album_cache() {
 /// tests to hold the mutex while exercising a code path that must not take
 /// it while holding a write transaction.
 #[cfg(test)]
-pub fn lock_dir_album_cache_for_test() -> std::sync::MutexGuard<
-    'static,
-    std::collections::HashMap<std::path::PathBuf, arrayvec::ArrayString<64>>,
-> {
-    DIR_ALBUM_CACHE.lock().expect("lock poisoned")
+pub fn lock_dir_album_cache_for_test() -> DirAlbumCacheGuard<'static> {
+    DIR_ALBUM_CACHE.lock()
 }
 
 /// Find or create the album corresponding to `dir_path`.
@@ -209,7 +240,7 @@ pub fn lock_dir_album_cache_for_test() -> std::sync::MutexGuard<
 /// Holds `DIR_ALBUM_CACHE`'s mutex for the entire duration to guarantee
 /// at-most-once album creation per directory under concurrent indexing.
 pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
-    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let mut cache = DIR_ALBUM_CACHE.lock();
 
     if let Some(&id) = cache.get(&dir_path) {
         return Ok(id);
@@ -361,16 +392,25 @@ mod tests {
         assert_eq!(prettify_dir_name("été_photos"), "Été Photos");
     }
 
+    /// Runtime lock-order checker must fire on an inverted acquisition:
+    /// holding the `TREE.in_disk` write transaction while locking
+    /// `DIR_ALBUM_CACHE` is the inversion the checker exists to catch.
+    #[test]
+    #[should_panic(expected = "lock-order inversion")]
+    fn lock_order_checker_catches_inverted_acquisition() {
+        let txn = TREE.in_disk.begin_write().expect("begin write");
+        // Inverted: cache (level 1) acquired while tree (level 2) is held.
+        let _cache = DIR_ALBUM_CACHE.lock();
+        drop(txn);
+    }
+
     #[test]
     fn evict_dir_album_removes_entry_from_cache() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().to_path_buf();
 
         let id: ArrayString<64> = "test-album-id".parse().expect("valid ArrayString<64> id");
-        DIR_ALBUM_CACHE
-            .lock()
-            .expect("cache lock is not poisoned")
-            .insert(path.clone(), id);
+        DIR_ALBUM_CACHE.lock().insert(path.clone(), id);
 
         assert_eq!(get_album_id_for_dir(&path), Some(id));
 

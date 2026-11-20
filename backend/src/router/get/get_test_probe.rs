@@ -1,6 +1,5 @@
 // src/router/get/get_test_probe.rs
 use arrayvec::ArrayString;
-use redb::ReadableDatabase;
 use rocket::get;
 use rocket::serde::json::Json;
 use serde::Serialize;

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
-use redb::ReadableDatabase;
 use redb::ReadableTable;
 use tempfile::TempDir;
 

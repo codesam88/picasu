@@ -5,7 +5,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAdmin;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
 use rocket::get;
 use rocket::response::stream::ByteStream;
 use serde::Serialize;
