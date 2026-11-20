@@ -151,6 +151,13 @@ pub(crate) fn flush_tables(
         // Write to ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, and METADATA_TABLE.
         let json =
             serde_json::to_string(&record).context("Failed to serialize AssetRecord for flush")?;
+
+        // Snapshot ancestor album IDs before taking the write transaction:
+        // `ancestor_album_ids_for_path` locks `DIR_ALBUM_CACHE`, which must
+        // never be acquired while holding a write txn (lock-order convention).
+        let ancestor_ids =
+            crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(&path));
+
         {
             let write_txn = TREE
                 .in_disk
@@ -345,9 +352,7 @@ pub(crate) fn flush_tables(
                         }
                     }
                     // Refresh empty ancestor album covers (descendant changes).
-                    for alb in crate::process::dir_album::ancestor_album_ids_for_path(
-                        std::path::Path::new(&path),
-                    ) {
+                    for alb in &ancestor_ids {
                         crate::storage::asset_store::refresh_empty_album_cover(
                             &write_txn,
                             alb.as_str(),
@@ -1389,6 +1394,79 @@ mod tests {
                 .expect("read swept record")
                 .is_none()
         );
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Lock-order guard for the flush site: `flush_tables` must not hold the
+    /// `TREE.in_disk` write transaction while locking `DIR_ALBUM_CACHE`.
+    /// Pre-fix the flush thread takes the txn first and then blocks on the
+    /// mutex, so the test thread's `begin_write` times out. Post-fix the
+    /// flush thread blocks on the mutex before taking the txn, so the test
+    /// thread's `begin_write` succeeds.
+    #[test]
+    fn flush_site_does_not_hold_write_txn_across_dir_album_cache_lock() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        let dir = test_image_home().join("lock_order_flush");
+        std::fs::create_dir_all(&dir).expect("create lock-order test dir");
+        let path = make_jpeg(&dir, "photo.jpg", 4);
+        let hash = hash_file(&path);
+        let data = AbstractData::new(&path, hash).expect("build AbstractData");
+
+        // Hold the dir-album cache mutex for the whole critical section.
+        let cache_guard = crate::process::dir_album::lock_dir_album_cache_for_test();
+
+        let (done_tx, done_rx) = mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let res = flush_tables(std::slice::from_ref(&data), &[]);
+            let _ = done_tx.send(res);
+        });
+
+        // Give the flush thread time to reach (and block on) the mutex.
+        std::thread::sleep(Duration::from_millis(300));
+
+        // Attempt to begin + commit a write transaction from this thread.
+        // Pre-fix: the flush thread holds it -> timeout -> panic naming inversion.
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let txn = TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write for lock-order probe");
+            txn.commit().expect("commit lock-order probe");
+            let _ = tx.send(());
+        });
+
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(()) => {
+                // Post-fix path: flush is blocked on the mutex, txn free.
+            }
+            Err(err) => {
+                panic!(
+                    "lock-order inversion: flush thread held the write txn while \
+                     waiting for DIR_ALBUM_CACHE: {err}"
+                );
+            }
+        }
+
+        // Release the mutex so the (blocked) flush thread can finish.
+        drop(cache_guard);
+
+        let res = done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("flush thread must finish after mutex release");
+        res.expect("flush must succeed");
+
+        handle.join().expect("join flush thread");
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();

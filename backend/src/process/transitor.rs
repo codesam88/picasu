@@ -62,6 +62,18 @@ pub fn store_metadata_record(
     use crate::storage::asset_store;
 
     let payload = to_metadata_record(data);
+
+    // Snapshot the ancestor album IDs before taking the write transaction:
+    // `ancestor_album_ids_for_path` locks `DIR_ALBUM_CACHE`, which must never
+    // be acquired while holding a write txn (lock-order convention).
+    let ancestor_ids = crate::storage::asset_store::get_asset_by_id(asset_id)
+        .ok()
+        .flatten()
+        .map(|r| {
+            crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(&r.path))
+        })
+        .unwrap_or_default();
+
     let txn = TREE.in_disk.begin_write()?;
     {
         let mut metadata_table = txn.open_table(METADATA_TABLE)?;
@@ -77,7 +89,6 @@ pub fn store_metadata_record(
                 let old_trashed = record.is_trashed;
                 let album_id = record.album_id;
                 let file_size = record.file_size;
-                let path = record.path.clone();
                 record.is_trashed = is_trashed;
                 let updated = serde_json::to_string(&record)?;
                 id_table.insert(asset_id, updated.as_str())?;
@@ -122,10 +133,8 @@ pub fn store_metadata_record(
                     asset_store::apply_album_delta(&txn, alb.as_str(), delta).with_context(
                         || format!("Failed to apply album delta for album {alb} asset {asset_id}"),
                     )?;
-                    for anc in crate::process::dir_album::ancestor_album_ids_for_path(
-                        std::path::Path::new(&path),
-                    ) {
-                        if anc != alb {
+                    for anc in &ancestor_ids {
+                        if *anc != alb {
                             asset_store::refresh_empty_album_cover(&txn, anc.as_str())
                                 .with_context(|| {
                                     format!("Failed to refresh ancestor album cover {anc}")
