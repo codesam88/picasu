@@ -36,6 +36,9 @@ static INTAKE_HOLD_ENTERED: tokio::sync::Notify = tokio::sync::Notify::const_new
 #[cfg(test)]
 static INTAKE_HOLD_RELEASE: tokio::sync::Notify = tokio::sync::Notify::const_new();
 
+#[cfg(test)]
+static INTAKE_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Hold every worker at the dequeue/dispatch boundary until [`release_intake`].
 #[cfg(test)]
 pub(crate) fn hold_intake() {
@@ -47,6 +50,21 @@ pub(crate) fn hold_intake() {
 pub(crate) fn release_intake() {
     HOLD_INTAKE.store(false, std::sync::atomic::Ordering::SeqCst);
     INTAKE_HOLD_RELEASE.notify_waiters();
+}
+
+/// Cancel any worker currently parked on the intake hold: it drops its dequeued
+/// item instead of dispatching it. Used by the reset fence so a parked item
+/// cannot resurrect rows after the wipe. Test-only.
+#[cfg(test)]
+pub(crate) fn cancel_intake() {
+    INTAKE_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
+    INTAKE_HOLD_RELEASE.notify_waiters();
+}
+
+/// Clear the intake cancel flag after the reset fence finishes.
+#[cfg(test)]
+pub(crate) fn clear_intake_cancel() {
+    INTAKE_CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Wait until at least one worker has parked on the hold.
@@ -62,18 +80,27 @@ pub(crate) fn intake_in_flight() -> usize {
 }
 
 /// Park a worker after dequeue while the test hold is set.
+///
+/// Returns `true` when the worker was cancelled by the reset fence and must
+/// skip dispatch of its item; `false` when it was released normally.
 #[cfg(test)]
-async fn wait_while_intake_held() {
+async fn wait_while_intake_held() -> bool {
+    if INTAKE_CANCEL.load(std::sync::atomic::Ordering::SeqCst) {
+        return true;
+    }
     if !HOLD_INTAKE.load(std::sync::atomic::Ordering::SeqCst) {
-        return;
+        return false;
     }
     INTAKE_HOLD_ENTERED.notify_one();
     loop {
         let notified = INTAKE_HOLD_RELEASE.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
+        if INTAKE_CANCEL.load(std::sync::atomic::Ordering::SeqCst) {
+            return true;
+        }
         if !HOLD_INTAKE.load(std::sync::atomic::Ordering::SeqCst) {
-            return;
+            return false;
         }
         notified.await;
     }
@@ -91,7 +118,12 @@ pub(crate) async fn worker_loop() {
         // dispatch after the wipe.
         INTAKE_IN_FLIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         #[cfg(test)]
-        wait_while_intake_held().await;
+        let intake_cancelled = wait_while_intake_held().await;
+        #[cfg(test)]
+        if intake_cancelled {
+            INTAKE_IN_FLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            continue;
+        }
         dispatch_item(item).await;
         #[cfg(test)]
         INTAKE_IN_FLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);

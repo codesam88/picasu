@@ -22,7 +22,7 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
 - Proof: 33 convergence runs + 31 asset-aspect runs (64 executed including imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
-- Requirements: 14 verified, 2 open (REQ-1, REQ-8).
+- Requirements: 15 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
@@ -406,6 +406,14 @@ Derived from: G5. Owner: storage/asset_store.rs::apply_album_delta; flush_tables
 
 Gate: Backend tests per delta site; OP-8 marker on apply_album_delta.
 
+### REQ-17: Lock-order convention for cache mutex and tree transaction (status: verified)
+
+Lock acquisition follows the registered order: the DIR_ALBUM_CACHE mutex is acquired before any TREE.in_disk transaction, and no higher-ordered resource may be held when acquiring a lower-ordered one. Inversions panic under the runtime checker.
+
+Derived from: G0. Owner: lock_order checker (backend/src/lock_order.rs) and tests/architecture.rs guards.
+
+Gate: Cargo test: source-level guards in tests/architecture.rs plus the cfg(test) runtime checker in lock_order.rs panic on any inversion.
+
 ## Implementation
 
 How each requirement was satisfied, its gate tests, and known limits.
@@ -610,6 +618,18 @@ Tests:
 - `tests::album_delta::membership_mutations_leave_members_and_aggregates_exact`
 - `tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact`
 - `tasks::actor::album_index::tests::reset_rescan_reseeds_album_member_rows_and_aggregates`
+
+### REQ-17: Lock-order convention for cache mutex and tree transaction (status: verified)
+
+Implementation: Thread-local acquisition-order registry (lock_order::acquire/release) registers DIR_ALBUM_CACHE, TREE and REBUILD_LOCK; architecture.rs scans the three known call sites. No model changes.
+
+Tests:
+
+- `tests::architecture::transitor_does_not_lock_dir_album_cache_inside_write_txn`
+- `tests::architecture::assign_album_does_not_lock_dir_album_cache_inside_write_txn`
+- `tests::architecture::delete_does_not_call_evict_dir_album_inside_tree_txn`
+
+Limits: Textual approximation for helper call sites; the runtime checker covers only instrumented acquisition points.
 
 ## Events
 
