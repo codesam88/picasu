@@ -138,16 +138,6 @@ fn assert_no_dir_album_call_inside_txn(path: &str, source: &str, calls: &[&str])
 }
 
 #[test]
-fn transitor_does_not_lock_dir_album_cache_inside_write_txn() {
-    let source = include_str!("../process/transitor.rs");
-    assert_no_dir_album_call_inside_txn(
-        "process/transitor.rs",
-        source,
-        &["ancestor_album_ids_for_path("],
-    );
-}
-
-#[test]
 fn assign_album_does_not_lock_dir_album_cache_inside_write_txn() {
     let source = include_str!("../router/put/assign_album.rs");
     assert_no_dir_album_call_inside_txn(

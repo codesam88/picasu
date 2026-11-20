@@ -204,20 +204,6 @@ pub fn rewrite_dir_album_cache_prefix(old_prefix: &Path, new_prefix: &Path) {
     }
 }
 
-/// Return the album IDs of every directory album whose path is a prefix of
-/// `file_path` (i.e. the ancestors that may need a descendant-cover refresh).
-pub fn ancestor_album_ids_for_path(file_path: &Path) -> Vec<ArrayString<64>> {
-    let cache = DIR_ALBUM_CACHE.lock();
-    cache
-        .iter()
-        .filter(|(dir_path, _)| file_path.starts_with(dir_path))
-        .map(|(_, &album_id)| album_id)
-        .collect()
-}
-
-/// Mark every directory album whose path is a prefix of `file_path` for a
-/// stats self-update.  Called from `flush_tree_task` after a media item is
-/// written to the database.
 /// Clear `DIR_ALBUM_CACHE`.
 /// Called from test teardown and from the HTTP reset path so stale album IDs
 /// are not reused after the asset tables are dropped.
