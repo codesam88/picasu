@@ -512,6 +512,12 @@ pub(crate) fn remove_asset_record_from_tables(
             None => (None, false, 0),
         };
 
+    // Snapshot ancestor album IDs before taking the write transaction:
+    // `ancestor_album_ids_for_path` locks `DIR_ALBUM_CACHE`, which must
+    // never be acquired while holding a write txn (lock-order convention).
+    let ancestor_ids =
+        crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(path));
+
     let write_txn = TREE
         .in_disk
         .begin_write()
@@ -582,10 +588,8 @@ pub(crate) fn remove_asset_record_from_tables(
                 },
             )
             .with_context(|| format!("Failed to apply removal delta for album {alb}"))?;
-            for anc in
-                crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(path))
-            {
-                if anc != alb {
+            for anc in &ancestor_ids {
+                if *anc != alb {
                     crate::storage::asset_store::refresh_empty_album_cover(
                         &write_txn,
                         anc.as_str(),
@@ -1480,6 +1484,78 @@ mod tests {
         res.expect("flush must succeed");
 
         handle.join().expect("join flush thread");
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Deterministic concurrent barrier seed for R1: a flush-remove runs
+    /// concurrently with a `get_or_create_dir_album` call (which may take the
+    /// `DIR_ALBUM_CACHE` mutex) and both must complete within a bounded
+    /// window. After quiesce the album aggregates and member rows must be
+    /// exact (no orphans). Exercises the lock-order fix under a real
+    /// interleave rather than the static ordering probe above.
+    #[test]
+    fn concurrent_flush_remove_and_dir_album_get_or_create_converges() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        let (album_id, dir) = prepare_album_dir("concurrent_barrier");
+        let (path, data) = album_member_data(&dir, "photo.jpg", 4, album_id);
+        flush_tables(std::slice::from_ref(&data), &[]).expect("flush album member");
+        assert_eq!(read_album_payload(album_id.as_str()).item_count, 1);
+
+        // Slow the flush remove so the get_or_create call can interleave.
+        crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .store(100, std::sync::atomic::Ordering::SeqCst);
+
+        let (done_tx, done_rx) = mpsc::channel();
+        let data_clone = data.clone();
+        let handle = std::thread::spawn(move || {
+            let res = flush_tables(&[], std::slice::from_ref(&data_clone));
+            let _ = done_tx.send(res);
+        });
+
+        // Give the flush thread time to enter its delay (before any lock/txn).
+        std::thread::sleep(Duration::from_millis(30));
+
+        // Concurrent call that takes DIR_ALBUM_CACHE while the flush is in
+        // flight. Must not deadlock and must return the same album id.
+        let concurrent_id = crate::process::dir_album::get_or_create_dir_album(dir.clone())
+            .expect("concurrent get_or_create must succeed");
+        assert_eq!(concurrent_id, album_id, "album id must be stable");
+
+        let res = done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("flush remove must complete within bound");
+        res.expect("flush remove must succeed");
+        handle.join().expect("join flush remove thread");
+
+        crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+
+        // Exactness after quiesce.
+        assert!(
+            album_member_ids(album_id.as_str()).is_empty(),
+            "remove must drop the member row"
+        );
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 0);
+        assert_eq!(payload.item_size, 0);
+        assert_eq!(payload.cover, None);
+        assert_album_aggregates_exact(album_id.as_str());
+        assert!(
+            asset_store::get_asset_id_by_path(&path.to_string_lossy())
+                .expect("read removed path")
+                .is_none(),
+            "removed path mapping must be gone"
+        );
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();
