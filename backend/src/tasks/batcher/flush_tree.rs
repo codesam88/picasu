@@ -8,6 +8,9 @@ use crate::{
     storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, METADATA_TABLE, TREE},
 };
 
+#[cfg(test)]
+pub static FLUSH_DELAY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub struct FlushTreeTask {
     pub insert_list: Vec<AbstractData>,
     pub remove_list: Vec<AbstractData>,
@@ -70,6 +73,16 @@ pub(crate) fn flush_tables(
     use crate::process::hash::generate_random_hash;
     use crate::storage::asset_store;
     use redb::ReadableTable;
+
+    // Test-only hook: slow down a flush so a reset can race it deterministically.
+    #[cfg(test)]
+    {
+        let delay = crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .load(std::sync::atomic::Ordering::SeqCst);
+        if delay > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
+    }
 
     log::debug!(
         "flush_tree_task: {} inserts, {} removes",
