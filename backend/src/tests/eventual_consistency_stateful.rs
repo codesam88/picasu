@@ -484,10 +484,42 @@ fn drive_op_sequence_concurrent(client: &Client, ops: &[u8]) {
     let stop_bg = stop.clone();
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     let bg = thread::spawn(move || {
+        // Store-level move axis: alternates a single asset record between
+        // two `.scratch` paths via `move_asset_mapping`, exercising the
+        // ASSET_BY_ID/ASSET_BY_PATH write transaction (and any album delta)
+        // against the writer-flush + dir-album mix. Paths stay under
+        // `.scratch` so the harness completeness scan skips them.
+        let image_home = crate::tests::bootstrap::test_image_home();
+        let scratch = image_home.join(".scratch");
+        let _ = std::fs::create_dir_all(&scratch);
+        let path_a = scratch.join("bg_move_a.jpg");
+        let path_b = scratch.join("bg_move_b.jpg");
+        let base = crate::model::asset::AssetRecord::new_media(
+            crate::model::asset::AssetKind::Image,
+            path_a.to_string_lossy().into_owned(),
+            None,
+            1,
+            "jpg".into(),
+            0,
+        );
+        let mut toggle = false;
         while !stop_bg.load(Ordering::Relaxed) {
             crate::tasks::queue::writer::barrier_sync();
             let _ = crate::process::dir_album::get_or_create_dir_album(bg_dir.clone());
-            thread::sleep(Duration::from_millis(20));
+            let (old_path, new_path) = if toggle {
+                (path_a.clone(), path_b.clone())
+            } else {
+                (path_b.clone(), path_a.clone())
+            };
+            let mut rec = base.clone();
+            rec.path = new_path.to_string_lossy().into_owned();
+            let _ = crate::storage::asset_store::move_asset_mapping(
+                &old_path.to_string_lossy(),
+                &new_path.to_string_lossy(),
+                &rec,
+            );
+            toggle = !toggle;
+            thread::sleep(Duration::from_millis(10));
         }
         let _ = done_tx.send(());
     });
