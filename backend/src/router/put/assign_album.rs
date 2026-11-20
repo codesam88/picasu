@@ -2,9 +2,7 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::openapi_components::Unauthorized;
 
 use crate::model::asset::AssetRecord;
-use crate::process::dir_album::{
-    get_dir_path_for_album, get_parent_album_id, rewrite_dir_album_cache_prefix,
-};
+use crate::process::dir_album::{get_dir_path_for_album, rewrite_dir_album_cache_prefix};
 use crate::process::sanitize::find_unique_path;
 use crate::router::auth::GuardMutate;
 use crate::router::auth::GuardUser;
@@ -306,7 +304,7 @@ fn move_asset_into_album(
 #[allow(clippy::too_many_lines)]
 fn move_album_into_album(
     album_id: ArrayString<64>,
-    target_album_id: ArrayString<64>,
+    _target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
     caller: &str,
@@ -418,29 +416,6 @@ fn move_album_into_album(
             )
         })?;
     }
-
-    // Snapshot the old parent album id before taking the write transaction:
-    // `get_parent_album_id` locks `DIR_ALBUM_CACHE`, which must never be
-    // acquired while holding a write txn (lock-order convention).
-    let old_parent_id = get_parent_album_id(&source_dir);
-
-    let txn = crate::storage::db::TREE
-        .in_disk
-        .begin_write()
-        .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-    if let Some(old_parent_id) = old_parent_id {
-        crate::storage::asset_store::refresh_empty_album_cover(&txn, old_parent_id.as_str())
-            .or_raise(|| {
-                (
-                    ErrorKind::Database,
-                    "Failed to refresh old parent album cover",
-                )
-            })?;
-    }
-    crate::storage::asset_store::refresh_empty_album_cover(&txn, target_album_id.as_str())
-        .or_raise(|| (ErrorKind::Database, "Failed to refresh target album cover"))?;
-    txn.commit()
-        .or_raise(|| (ErrorKind::Database, "Failed to commit album refresh"))?;
 
     Ok(outcome)
 }
