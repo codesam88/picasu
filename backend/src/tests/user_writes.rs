@@ -93,6 +93,33 @@ fn anon_denied(resp_status: Status, route: &str) {
     );
 }
 
+#[test]
+fn set_album_cover_persists_sidecar() {
+    let _guard = lock();
+    let client = setup_image_home();
+    let (album_id, asset_id) = create_album(&client, "/writes/photo.jpg");
+    seed("writer", false, Some(test_password("t-writer-pw").as_str()));
+    let viewer = cookie("writer", false);
+
+    let resp = client
+        .put("/put/set_album_cover")
+        .cookie(viewer.clone())
+        .header(ContentType::JSON)
+        .body(json!({ "albumId": album_id, "coverAssetId": asset_id }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok, "set album cover: {resp:?}");
+
+    let sidecar = test_image_home().join("writes").join(".albuminfo.xmp");
+    assert!(sidecar.exists(), "sidecar must be created");
+    let bytes = std::fs::read(&sidecar).expect("read sidecar");
+    let data = crate::process::xmp::extract_xmp_data_from_packet(&bytes);
+    assert_eq!(
+        data.cover_asset_id.as_deref(),
+        Some(asset_id.as_str()),
+        "sidecar must carry the chosen cover asset id"
+    );
+}
+
 fn upload_multipart(file_data: &[u8], filename: &str) -> (Vec<u8>, String) {
     let boundary = "----picasu-test-upload-boundary";
     let mut body = Vec::new();
