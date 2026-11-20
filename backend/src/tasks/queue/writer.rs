@@ -303,6 +303,19 @@ pub async fn barrier() {
     }
 }
 
+/// Synchronous variant of [`barrier`] for callers without an async context
+/// (e.g. the test harness reset path). Runs the barrier on the shared runtime
+/// from a dedicated thread so it never nests `block_on` on a runtime worker.
+#[cfg(test)]
+pub fn barrier_sync() {
+    let handle = std::thread::spawn(|| {
+        crate::tasks::runtime::RUNTIME.block_on(barrier());
+    });
+    if let Err(err) = handle.join() {
+        log::error!("writer barrier thread panicked: {err:?}");
+    }
+}
+
 /// Drain both stages at shutdown: wait until everything submitted so far —
 /// writes and cascades — has completed, then close both inboxes and join
 /// both tasks. The cascade channel drains its buffer before its loop exits,

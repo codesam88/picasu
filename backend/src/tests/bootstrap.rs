@@ -266,6 +266,10 @@ fn reset_login_throttle_knobs(config: &mut AppConfig) {
 /// This prevents data contamination across serialized scenarios
 /// by clearing the database, caches, filesystem, and config mutations.
 pub fn reset_backend_state() {
+    // Drain the serial writer + cascade queues first so no in-flight flush
+    // can land on disk between/after the table wipes below.
+    crate::tasks::queue::writer::barrier_sync();
+
     // Quiesce any in-flight index job before wiping shared state, so a
     // leaked job from a previous scenario cannot race the wipe or compete
     // for the shared writer/cascade/worker resources.
@@ -559,9 +563,71 @@ mod tests {
         assert!(test_image_home().exists(), "image_home must be recreated");
     }
 
-    /// `reset_backend_state` must clear the user store (redb `SESSIONS` table)
-    /// and remove the password file, so authenticated scenarios never leak
-    /// users or password hashes into later (empty-store) scenarios.
+    /// After `reset_backend_state` returns, no previously submitted writer
+    /// queue item may still land on disk.
+    #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)]
+    async fn reset_backend_state_drains_writer_queue() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+
+        reset_backend_state();
+
+        let root = test_image_home().join("reset_drain");
+        std::fs::create_dir_all(&root).expect("create reset_drain dir");
+        let path = root.join("photo.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(path.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate reset-drain photo");
+        let hash = crate::process::hash::blake3_hasher(
+            std::fs::File::open(&path).expect("open reset-drain photo"),
+        )
+        .expect("hash reset-drain photo");
+        let data = crate::model::abstract_data::AbstractData::new(&path, hash)
+            .expect("build reset-drain data");
+
+        // Slow the flush so it cannot finish before reset runs.
+        crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .store(200, std::sync::atomic::Ordering::SeqCst);
+
+        // Submit a flush without waiting for it to complete, then reset
+        // immediately so the item is (pre-fix) still pending during the wipe.
+        crate::tasks::queue::writer::submit_flush_insert(vec![data])
+            .await
+            .expect("submit reset-drain flush");
+
+        reset_backend_state();
+
+        // Release the delay for any later flush.
+        crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+
+        // Let any (pre-fix) still-pending flush finish.
+        crate::tasks::queue::writer::barrier().await;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        let txn = TREE.in_disk.begin_read().expect("begin read after reset");
+        let table = txn
+            .open_table(METADATA_TABLE)
+            .expect("open METADATA_TABLE after reset");
+        let count = table.iter().expect("iterate METADATA_TABLE").count();
+        assert_eq!(
+            count, 0,
+            "reset_backend_state must drain the writer queue; {count} rows survived"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
     #[test]
     fn reset_backend_state_clears_user_store() {
         let _guard = TEST_SERIAL_GUARD
