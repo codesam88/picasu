@@ -1,4 +1,4 @@
-# Accepted benchmark bands for the gate battery.
+# Accepted benchmark bands for the micro and gate batteries.
 #
 # `battery-check` compares against the `:median` rows only; repeat rows
 # are recorded but never checked, so baselines use `<cell>:median` names.
@@ -18,72 +18,94 @@
 #   recorded  date or commit the value was accepted on
 #   note      why the band is what it is
 #
-# Recording is deliberate: run the battery, review report.tsv, then edit
-# the row by hand. A cell outside its band fails until the move is
-# explained and the row re-recorded. `battery-check` never writes here.
 cell	metric	baseline	rel_tol	abs_tol	recorded	note
-# First recording: gate2 medians, set-100, release, commit 0d9f3265, 2026-11-15.
-# Bands are wide on purpose (single battery; gate1 showed up to ~40% swings
-# under contention). Tighten after a confirming run.
-gate-control:median	scan_wall_s	9.9	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	scan_prefetch_p50_ms	11.9	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	scan_prefetch_max_ms	14.3	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	scan_thumb_p50_ms	6.7	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	scan_thumb_max_ms	17.8	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	scan_edit_p50_ms	10.6	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	scan_edit_max_ms	14.1	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	idle_thumb_p50_ms	7.6	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	idle_prefetch_p50_ms	6.9	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	idle_edit_p50_ms	7.3	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	tree_refresh_build_p50_us	803.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	tree_refresh_build_max_us	4391.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	filter_snapshot_clone_p50_us	1154.0	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
-gate-control:median	filter_snapshot_clone_max_us	3507.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	scan_wall_s	10.096	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	idle_thumb_p50_ms	7.75	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	idle_prefetch_p50_ms	6.95	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	idle_edit_p50_ms	7.3	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	tree_refresh_build_p50_us	774.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	tree_refresh_build_max_us	1652.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	filter_snapshot_clone_p50_us	996.5	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-read:median	filter_snapshot_clone_max_us	1090.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	scan_wall_s	9.8905	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	idle_thumb_p50_ms	7.5	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	idle_prefetch_p50_ms	7.3	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	idle_edit_p50_ms	7.5	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	tree_refresh_build_p50_us	785.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	tree_refresh_build_max_us	2925.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	filter_snapshot_clone_p50_us	890.0	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-thumb:median	filter_snapshot_clone_max_us	890.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	scan_wall_s	6.6665	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	idle_thumb_p50_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	idle_prefetch_p50_ms	7.0	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	idle_edit_p50_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	tree_refresh_build_p50_us	788.5	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	tree_refresh_build_max_us	1486.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	filter_snapshot_clone_p50_us	743.5	0.5	300.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-diff:median	filter_snapshot_clone_max_us	832.5	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-idle:median	scan_wall_s	10.09	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-idle:median	idle_thumb_p50_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-idle:median	idle_prefetch_p50_ms	7.1	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-idle:median	idle_edit_p50_ms	7.5	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-idle:median	tree_refresh_build_p50_us	555.0	0.5	200.0	2026-11-15	gate2 set-100 release; first recording
-gate-storm-idle:median	tree_refresh_build_max_us	2238.0	1.0	1000.0	2026-11-15	gate2 set-100 release; first recording needs confirming run; max doubled vs gate1 rep-level 1117
-gate-storm-idle:median	filter_snapshot_clone_p50_us	0.0	0.0	500.0	2026-11-15	gate2 set-100 release; true zero, no prefetch during idle populate scan
-gate-storm-idle:median	filter_snapshot_clone_max_us	0.0	0.0	500.0	2026-11-15	gate2 set-100 release; true zero, no prefetch during idle populate scan
-gate-upload:median	scan_wall_s	18.666	0.5	3.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	uscan_prefetch_p50_ms	10.0	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	uscan_prefetch_max_ms	10.7	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	uscan_thumb_p50_ms	2.2	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	uscan_thumb_max_ms	2.3	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	uscan_edit_p50_ms	10.6	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	uscan_edit_max_ms	11.0	1.0	5.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	idle_thumb_p50_ms	7.7	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	idle_prefetch_p50_ms	7.45	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	idle_edit_p50_ms	7.4	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	upload_submit_p50_ms	3.0	0.5	2.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	upload_visible_p50_ms	636.0	0.5	300.0	2026-11-15	gate2 set-100 release; first recording; worst file 9.3s in gate1 rerun
-gate-upload:median	tree_refresh_build_p50_us	1943.0	0.5	500.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	tree_refresh_build_max_us	4858.0	1.0	1500.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	filter_snapshot_clone_p50_us	2847.5	0.5	500.0	2026-11-15	gate2 set-100 release; first recording
-gate-upload:median	filter_snapshot_clone_max_us	4297.0	1.0	1500.0	2026-11-15	gate2 set-100 release; first recording
+micro-control-50:median	scan_wall_s	5.2495	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	scan_prefetch_p50_ms	8.1	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	scan_prefetch_max_ms	9.0	1.0	5.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	scan_thumb_p50_ms	1.9	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	scan_thumb_max_ms	4.7	1.0	5.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	scan_edit_p50_ms	8.7	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	scan_edit_max_ms	9.8	1.0	5.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	idle_thumb_p50_ms	7.7	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	idle_prefetch_p50_ms	7.0	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	idle_edit_p50_ms	7.5	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	tree_refresh_build_p50_us	422.5	0.5	200.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	tree_refresh_build_max_us	619.0	1.0	1000.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	filter_snapshot_clone_p50_us	510.5	0.5	300.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	filter_snapshot_clone_max_us	769.5	1.0	1000.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-200:median	scan_wall_s	18.061	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	scan_prefetch_p50_ms	8.0	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	scan_prefetch_max_ms	15.2	1.0	5.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	scan_thumb_p50_ms	3.1	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	scan_thumb_max_ms	9.3	1.0	5.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	scan_edit_p50_ms	8.6	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	scan_edit_max_ms	10.0	1.0	5.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	idle_thumb_p50_ms	7.8	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	idle_prefetch_p50_ms	7.1	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	idle_edit_p50_ms	7.6	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	tree_refresh_build_p50_us	1588.0	0.5	200.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	tree_refresh_build_max_us	2424.5	1.0	1000.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	filter_snapshot_clone_p50_us	2018.5	0.5	300.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	filter_snapshot_clone_max_us	2914.5	1.0	1000.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+gate-control:median	scan_wall_s	9.3855	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	scan_prefetch_p50_ms	8.1	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	scan_prefetch_max_ms	13.8	1.0	5.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	scan_thumb_p50_ms	3.2	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	scan_thumb_max_ms	8.8	1.0	5.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	scan_edit_p50_ms	8.6	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	scan_edit_max_ms	10.3	1.0	5.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	idle_thumb_p50_ms	11.5	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	idle_prefetch_p50_ms	11.6	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	idle_edit_p50_ms	12.4	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	tree_refresh_build_p50_us	904.0	0.5	200.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	tree_refresh_build_max_us	1269.0	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	filter_snapshot_clone_p50_us	1132.0	0.5	300.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-control:median	filter_snapshot_clone_max_us	1499.5	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	scan_wall_s	9.3895	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	idle_thumb_p50_ms	12.4	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	idle_prefetch_p50_ms	11.6	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	idle_edit_p50_ms	12.5	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	tree_refresh_build_p50_us	726.5	0.5	200.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	tree_refresh_build_max_us	742.0	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	filter_snapshot_clone_p50_us	832.5	0.5	300.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-read:median	filter_snapshot_clone_max_us	1383.0	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	scan_wall_s	9.3815	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	idle_thumb_p50_ms	12.7	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	idle_prefetch_p50_ms	11.6	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	idle_edit_p50_ms	12.5	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	tree_refresh_build_p50_us	516.0	0.5	200.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	tree_refresh_build_max_us	577.5	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	filter_snapshot_clone_p50_us	541.5	0.5	300.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-thumb:median	filter_snapshot_clone_max_us	598.5	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	scan_wall_s	6.2565	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	idle_thumb_p50_ms	12.4	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	idle_prefetch_p50_ms	11.3	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	idle_edit_p50_ms	12.4	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	tree_refresh_build_p50_us	729.0	0.5	200.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	tree_refresh_build_max_us	729.0	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	filter_snapshot_clone_p50_us	867.5	0.5	300.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-diff:median	filter_snapshot_clone_max_us	867.5	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	scan_wall_s	9.688	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	idle_thumb_p50_ms	7.4	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	idle_prefetch_p50_ms	6.9	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	idle_edit_p50_ms	7.4	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	tree_refresh_build_p50_us	0.0	0.5	200.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	tree_refresh_build_max_us	0.0	1.0	1000.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	filter_snapshot_clone_p50_us	0.0	0.0	500.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-storm-idle:median	filter_snapshot_clone_max_us	0.0	0.0	500.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	scan_wall_s	17.5515	0.5	3.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	uscan_prefetch_p50_ms	13.0	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	uscan_prefetch_max_ms	17.5	1.0	5.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	uscan_thumb_p50_ms	2.6	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	uscan_thumb_max_ms	3.3	1.0	5.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	uscan_edit_p50_ms	13.7	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	uscan_edit_max_ms	18.6	1.0	5.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	idle_thumb_p50_ms	8.0	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	idle_prefetch_p50_ms	11.7	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	idle_edit_p50_ms	13.2	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	upload_submit_p50_ms	4.0	0.5	2.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	upload_visible_p50_ms	640.0	0.5	300.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	tree_refresh_build_p50_us	1906.0	0.5	500.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	tree_refresh_build_max_us	2480.0	1.0	1500.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	filter_snapshot_clone_p50_us	2465.0	0.5	500.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
+gate-upload:median	filter_snapshot_clone_max_us	3438.0	1.0	1500.0	2026-11-19	perf/new-baseline set-100 release commit 3f1040c1
