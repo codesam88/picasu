@@ -28,6 +28,9 @@ use log::{debug, warn};
 static HOLD_INTAKE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(test)]
+static INTAKE_IN_FLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
 static INTAKE_HOLD_ENTERED: tokio::sync::Notify = tokio::sync::Notify::const_new();
 
 #[cfg(test)]
@@ -50,6 +53,12 @@ pub(crate) fn release_intake() {
 #[cfg(test)]
 pub(crate) async fn wait_until_intake_held() {
     INTAKE_HOLD_ENTERED.notified().await;
+}
+
+/// Number of intake items currently being dispatched (test-only).
+#[cfg(test)]
+pub(crate) fn intake_in_flight() -> usize {
+    INTAKE_IN_FLIGHT.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// Park a worker after dequeue while the test hold is set.
@@ -77,8 +86,15 @@ pub(crate) async fn worker_loop() {
             return;
         };
         #[cfg(test)]
+        // Count before the hold wait so a worker parked in the hold still
+        // blocks the reset fence; otherwise a dequeued-but-parked item would
+        // dispatch after the wipe.
+        INTAKE_IN_FLIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(test)]
         wait_while_intake_held().await;
         dispatch_item(item).await;
+        #[cfg(test)]
+        INTAKE_IN_FLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
