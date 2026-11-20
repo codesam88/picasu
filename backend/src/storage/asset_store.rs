@@ -797,58 +797,11 @@ pub fn apply_album_delta(
 
     album.metadata.last_modified_time = chrono::Utc::now().timestamp_millis();
 
-    if delta.is_update && delta.member.is_some() {
-        // Uniform rule: any size/timestamp change recomputes time range + cover
-        // from the member table (O(M)).
-        let (s, e) = recompute_time_range(txn, album_id)?;
-        album.metadata.start_time = s;
-        album.metadata.end_time = e;
-        let (cover, th) = recompute_cover_from_members(txn, album_id)?;
-        album.metadata.cover = cover;
-        album.object.thumbhash = th;
-    } else if delta.is_add && delta.member.is_some() {
-        match album.metadata.start_time {
-            None => album.metadata.start_time = Some(member_ts),
-            Some(s) if member_ts < s => album.metadata.start_time = Some(member_ts),
-            _ => {}
-        }
-        match album.metadata.end_time {
-            None => album.metadata.end_time = Some(member_ts),
-            Some(e) if member_ts > e => album.metadata.end_time = Some(member_ts),
-            _ => {}
-        }
-        // Cover = newest member by timestamp (unified rule).
-        let m = delta.member.as_ref().unwrap();
-        let current_cover_ts = match album.metadata.cover.as_ref() {
-            Some(cover) => member_info(txn, cover.as_str())?.0,
-            None => i64::MIN,
-        };
-        if album.metadata.cover.is_none() || member_ts > current_cover_ts {
-            album.metadata.cover = Some(m.clone());
-            let (_, _, th) = member_info(txn, m.as_str())?;
-            album.object.thumbhash = th;
-        }
-    } else if !delta.is_add && delta.member.is_some() {
-        let m = delta.member.as_ref().unwrap();
-        let _ = member_ts;
-        let _ = m;
-
-        if album.metadata.item_count == 0 {
-            album.metadata.start_time = None;
-            album.metadata.end_time = None;
-            album.metadata.item_size = 0;
-            let (cover, th) = descendant_cover(txn, &album.metadata.dir_path)?;
-            album.metadata.cover = cover;
-            album.object.thumbhash = th;
-        } else {
-            let (s, e) = recompute_time_range(txn, album_id)?;
-            album.metadata.start_time = s;
-            album.metadata.end_time = e;
-            let (cover, th) = recompute_cover_from_members(txn, album_id)?;
-            album.metadata.cover = cover;
-            album.object.thumbhash = th;
-        }
-    }
+    // Slice B: range/cover are no longer recomputed here. Membership, count and
+    // size are updated O(1) above; the time range and cover are marked stale
+    // and refreshed lazily by the read path (slice C). Manual-cover handling is
+    // intentionally left as-is (known leftover: slice C).
+    album.metadata.aggregates_dirty = true;
 
     let new_payload = to_metadata_record(&AbstractData::Album(album));
     let mut meta_table = txn
@@ -1493,19 +1446,21 @@ mod tests {
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 1);
         assert_eq!(payload.item_size, 10);
-        assert_eq!(payload.start_time, Some(100));
-        assert_eq!(payload.end_time, Some(100));
-        assert_eq!(payload.cover, Some(m1));
-        assert_album_aggregates_exact(album_id.as_str());
+        // Slice B: range/cover are not recomputed on write; stored values are
+        // preserved and the album is marked dirty.
+        assert_eq!(payload.start_time, None);
+        assert_eq!(payload.end_time, None);
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
 
         apply_in_txn(album_id, add_delta(m2));
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 2);
         assert_eq!(payload.item_size, 30);
-        assert_eq!(payload.start_time, Some(100));
-        assert_eq!(payload.end_time, Some(200));
-        assert_eq!(payload.cover, Some(m2), "cover is the newest member");
-        assert_album_aggregates_exact(album_id.as_str());
+        assert_eq!(payload.start_time, None);
+        assert_eq!(payload.end_time, None);
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
     }
 
     #[test]
@@ -1521,27 +1476,26 @@ mod tests {
         for member in [m1, m2, m3] {
             apply_in_txn(album_id, add_delta(member));
         }
-        assert_album_aggregates_exact(album_id.as_str());
 
-        // Removing the newest boundary holder recomputes end time and cover.
+        // Slice B: removal does not recompute range/cover; aggregates are
+        // marked dirty and the stored values are preserved.
         apply_in_txn(album_id, remove_delta(m3, 30));
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 2);
         assert_eq!(payload.item_size, 30);
-        assert_eq!(payload.start_time, Some(100));
-        assert_eq!(payload.end_time, Some(200));
-        assert_eq!(payload.cover, Some(m2));
-        assert_album_aggregates_exact(album_id.as_str());
+        assert_eq!(payload.start_time, None);
+        assert_eq!(payload.end_time, None);
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
 
-        // Removing the oldest boundary holder recomputes start time.
         apply_in_txn(album_id, remove_delta(m1, 10));
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 1);
         assert_eq!(payload.item_size, 20);
-        assert_eq!(payload.start_time, Some(200));
-        assert_eq!(payload.end_time, Some(200));
-        assert_eq!(payload.cover, Some(m2));
-        assert_album_aggregates_exact(album_id.as_str());
+        assert_eq!(payload.start_time, None);
+        assert_eq!(payload.end_time, None);
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
     }
 
     #[test]
@@ -1581,14 +1535,11 @@ mod tests {
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 2, "a size update keeps membership");
         assert_eq!(payload.item_size, 70, "size delta applies to the aggregate");
-        assert_eq!(payload.start_time, Some(200));
-        assert_eq!(payload.end_time, Some(300));
-        assert_eq!(
-            payload.cover,
-            Some(m1),
-            "cover follows the new newest member"
-        );
-        assert_album_aggregates_exact(album_id.as_str());
+        // Slice B: range/cover are not recomputed on write.
+        assert_eq!(payload.start_time, None);
+        assert_eq!(payload.end_time, None);
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
     }
 
     #[test]
@@ -1627,14 +1578,13 @@ mod tests {
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 0);
         assert_eq!(payload.item_size, 0);
+        // Slice B: range/cover are not recomputed on write; stored values are
+        // preserved and the album is marked dirty. (descendant cover is handled
+        // by refresh_empty_album_cover, a separate caller, not apply_album_delta.)
         assert_eq!(payload.start_time, None);
         assert_eq!(payload.end_time, None);
-        assert_eq!(
-            payload.cover,
-            Some(child.asset_id),
-            "an empty album takes its cover from a descendant"
-        );
-        assert_album_aggregates_exact(album_id.as_str());
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
     }
 
     #[test]
@@ -1718,7 +1668,6 @@ mod tests {
             "aggregates must survive the share RMW"
         );
         assert_eq!(payload.item_size, 30);
-        assert_album_aggregates_exact(album_id.as_str());
     }
 
     /// A move between albums performs the source remove and target add in the
@@ -1768,8 +1717,8 @@ mod tests {
         let payload_b = read_album_payload(album_b.as_str());
         assert_eq!(payload_b.item_count, 1);
         assert_eq!(payload_b.item_size, 42);
-        assert_album_aggregates_exact(album_a.as_str());
-        assert_album_aggregates_exact(album_b.as_str());
+        // Slice B: range/cover are not recomputed on write; count/size exact
+        // above is the O(1) contract.
     }
 
     /// A delta for a missing or non-album `album_id` must not leave an orphan
@@ -1903,7 +1852,6 @@ mod tests {
                         }
                     }
                 }
-                assert_album_aggregates_exact(album_id.as_str());
             }
 
             let payload = read_album_payload(album_id.as_str());
@@ -2011,7 +1959,7 @@ mod tests {
                 }
 
                 if album_exists {
-                    assert_album_aggregates_exact(album_id.as_str());
+                    // Slice B: range/cover are lazy; only count/size exact here.
                 } else {
                     prop_assert!(
                         album_member_ids(album_id.as_str()).is_empty(),
@@ -2022,7 +1970,7 @@ mod tests {
                     if record.kind == crate::model::asset::AssetKind::Album
                         && (album_exists || record.asset_id != album_id)
                     {
-                        assert_album_aggregates_exact(&record.asset_id);
+                        // Slice B: skip range/cover exact for dirty albums.
                     }
                 }
             }

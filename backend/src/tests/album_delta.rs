@@ -105,8 +105,9 @@ fn trash_toggle_adds_and_removes_member() {
     );
     let payload = read_album_payload(album_id.as_str());
     assert_eq!(payload.item_count, 1);
-    assert_eq!(payload.cover, Some(asset_id));
-    assert_album_aggregates_exact(album_id.as_str());
+    // Slice B: range/cover are not recomputed on write.
+    assert_eq!(payload.cover, None);
+    assert!(payload.aggregates_dirty);
 
     std::fs::remove_dir_all(&dir).ok();
     reset_backend_state();

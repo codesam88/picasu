@@ -134,24 +134,28 @@ pub fn assert_album_aggregates_exact(album_id: &str) {
         payload.item_size, expected_size,
         "album {album_id} item_size must equal member sizes"
     );
-    if members.is_empty() {
-        assert_eq!(payload.start_time, None, "empty album start_time");
-        assert_eq!(payload.end_time, None, "empty album end_time");
-    } else {
-        assert_eq!(
-            payload.start_time,
-            Some(min_ts),
-            "album {album_id} start_time must be the oldest member"
-        );
-        assert_eq!(
-            payload.end_time,
-            Some(max_ts),
-            "album {album_id} end_time must be the newest member"
-        );
-        assert_eq!(
-            payload.cover, cover,
-            "album {album_id} cover must be the newest member"
-        );
+    // Slice B: range/cover may be stale (aggregates_dirty) until the lazy
+    // refresh runs; only pin them when the album is clean.
+    if !payload.aggregates_dirty {
+        if members.is_empty() {
+            assert_eq!(payload.start_time, None, "empty album start_time");
+            assert_eq!(payload.end_time, None, "empty album end_time");
+        } else {
+            assert_eq!(
+                payload.start_time,
+                Some(min_ts),
+                "album {album_id} start_time must be the oldest member"
+            );
+            assert_eq!(
+                payload.end_time,
+                Some(max_ts),
+                "album {album_id} end_time must be the newest member"
+            );
+            assert_eq!(
+                payload.cover, cover,
+                "album {album_id} cover must be the newest member"
+            );
+        }
     }
 }
 

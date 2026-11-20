@@ -201,6 +201,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
                 last_modified_time: record.modified,
                 cover: None,
                 manual_cover: None,
+                aggregates_dirty: false,
                 item_count: 0,
                 item_size: 0,
                 share_list: std::collections::HashMap::new(),

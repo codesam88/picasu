@@ -804,6 +804,7 @@ mod tests {
                     last_modified_time: 0,
                     cover: None,
                     manual_cover: None,
+                    aggregates_dirty: false,
                     item_count: 0,
                     item_size: 0,
                     share_list: HashMap::default(),
