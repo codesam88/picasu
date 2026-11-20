@@ -8,9 +8,9 @@
 //!
 //! [`commit_metadata_edits`] is the whole of that contract, and every endpoint
 //! that edits metadata goes through it: `/put/edit_tag`,
-//! `/put/set_user_defined_description`, `/put/edit_rating` and
-//! `/put/set_album_title` (whose album-sidecar half of the picture is
-//! `.albuminfo.xmp`).
+//! `/put/set_user_defined_description`, `/put/edit_rating`,
+//! `/put/set_album_title` and `/put/set_album_cover` (whose album-sidecar half
+//! of the picture is `.albuminfo.xmp`).
 //!
 //! # What a failed write leaves behind
 //!

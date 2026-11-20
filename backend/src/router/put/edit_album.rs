@@ -107,9 +107,10 @@ pub struct SetAlbumCover {
 /// overwritten with the cover's, and the in-memory tree is rebuilt before the
 /// call returns.
 ///
-/// Corner cases: the cover's kind is never checked, so any asset can serve as
-/// the cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is
-/// stored in the database only.
+/// The new cover is persisted to the album's `.albuminfo.xmp` sidecar (as
+/// `picasu:CoverAssetId`) via the shared sidecar-then-store contract, so it
+/// survives a database rebuild. The cover's kind is never checked, so any
+/// asset can serve as the cover.
 ///
 /// Errors: 400 `albumId` names a media record — 401 missing or invalid
 /// credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
@@ -214,9 +215,17 @@ pub async fn set_album_cover(
 
             album.set_cover(&cover_data, cover_asset_id);
             let abstract_data = AbstractData::Album(album);
-            metadata_table
-                .insert(&*album_id, to_metadata_record(&abstract_data))
-                .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
+
+            let edited = [EditedItem {
+                asset_id: album_id,
+                data: abstract_data,
+            }];
+            commit_metadata_edits(&edited, |id, data: &AbstractData| {
+                metadata_table
+                    .insert(&**id, to_metadata_record(data))
+                    .map(|_previous| ())
+                    .or_raise(|| (ErrorKind::Database, "Failed to update album"))
+            })?;
         }
         txn.commit()
             .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
