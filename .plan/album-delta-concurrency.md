@@ -19,6 +19,19 @@ Dominant lock convention: `DIR_ALBUM_CACHE` mutex is acquired before
 `TREE.in_disk.begin_write/read` (`process/dir_album.rs:201,280`,
 `init_dir_album_cache`). The bug sites invert this.
 
+### Status (2026-11-20, branch `fix/album-concurrency`)
+
+Landed, pending full `just backend-test`: R2 checker (`d1a6a34d`),
+A/1 snapshots (`15c71a25`), fenced reset (`e3b386c5`), 1b remove-path
+snapshot + barrier (`c69c11fd`), 6 check-before-write + no-orphan tests
+(`467910e3`), 2 delete read-txn release (`d960e1be`), intake fence +
+mid-flight reset test (`042706e1`; parked-item counting fixed in
+review). Leftovers: deterministic intake-pause hook for a true
+intake-race red, full 30-case concurrent stateful harness (only barrier
+seed landed), general album-sequence/detach/trash proptests, perf 3/4,
+product call 5. R2 → R1 → Phase-1 order held; every fix TDD red/green
+with bounded waits.
+
 ### Fix now (this branch)
 
 - **A. ABBA at flush site (CI flake).** `flush_tables` holds the
