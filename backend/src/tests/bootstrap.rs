@@ -261,6 +261,22 @@ fn reset_login_throttle_knobs(config: &mut AppConfig) {
     config.login_user_long_max_ban_secs = throttle::LOGIN_USER_LONG_MAX_BAN_SECS;
 }
 
+/// Test-harness fence for the intake queues: hold workers, drop queued items,
+/// wait for in-flight dispatch to finish, drain the writer, then release.
+#[cfg(test)]
+fn fence_intake_queue() {
+    crate::tasks::queue::worker::hold_intake();
+    crate::tasks::queue::intake::drain_intake_channels();
+    let intake_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while crate::tasks::queue::worker::intake_in_flight() > 0
+        && std::time::Instant::now() < intake_deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    crate::tasks::queue::writer::barrier_sync();
+    crate::tasks::queue::worker::release_intake();
+}
+
 /// Reset all shared backend state between scenario tests.
 /// This prevents data contamination across serialized scenarios
 /// by clearing the database, caches, filesystem, and config mutations.
@@ -275,6 +291,9 @@ pub fn reset_backend_state() {
     crate::tasks::actor::album_index::cancel_and_wait_index_idle(
         crate::tests::fixtures::wait::index_timeout_ms(),
     );
+
+    // Fence the intake queues (test harness only).
+    fence_intake_queue();
 
     // Clear in-memory caches.
     TREE_SNAPSHOT.in_memory.clear();
@@ -622,6 +641,101 @@ mod tests {
         assert_eq!(
             count, 0,
             "reset_backend_state must drain the writer queue; {count} rows survived"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)]
+    async fn reset_backend_state_drains_all_asset_tables_and_snapshot() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+
+        reset_backend_state();
+
+        let root = test_image_home().join("reset_fuzz");
+        std::fs::create_dir_all(&root).expect("create reset_fuzz dir");
+        let path = root.join("photo.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(path.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate reset-fuzz photo");
+        let hash = crate::process::hash::blake3_hasher(
+            std::fs::File::open(&path).expect("open reset-fuzz photo"),
+        )
+        .expect("hash reset-fuzz photo");
+        let data = crate::model::abstract_data::AbstractData::new(&path, hash)
+            .expect("build reset-fuzz data");
+
+        // Slow the flush so it cannot finish before reset runs.
+        crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .store(200, std::sync::atomic::Ordering::SeqCst);
+
+        // Submit a flush without waiting for it to complete, then reset
+        // immediately so the item is still pending during the wipe.
+        crate::tasks::queue::writer::submit_flush_insert(vec![data])
+            .await
+            .expect("submit reset-fuzz flush");
+
+        reset_backend_state();
+
+        // Release the delay for any later flush.
+        crate::tasks::batcher::flush_tree::FLUSH_DELAY_MS
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+
+        // Let any (pre-fix) still-pending flush finish.
+        crate::tasks::queue::writer::barrier().await;
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // All asset tables must be empty.
+        let txn = TREE.in_disk.begin_read().expect("begin read after reset");
+        for (name, count) in [
+            ("METADATA_TABLE", {
+                let t = txn.open_table(METADATA_TABLE).expect("open METADATA_TABLE");
+                t.iter().expect("iter").count()
+            }),
+            ("ASSET_BY_PATH", {
+                let t = txn
+                    .open_table(crate::storage::db::ASSET_BY_PATH)
+                    .expect("open ASSET_BY_PATH");
+                t.iter().expect("iter").count()
+            }),
+            ("ASSET_BY_ID", {
+                let t = txn
+                    .open_table(crate::storage::db::ASSET_BY_ID)
+                    .expect("open ASSET_BY_ID");
+                t.iter().expect("iter").count()
+            }),
+            ("ASSET_BY_ALBUM", {
+                let t = txn
+                    .open_table(crate::storage::db::ASSET_BY_ALBUM)
+                    .expect("open ASSET_BY_ALBUM");
+                t.iter().expect("iter").count()
+            }),
+            ("DUPE_INDEX", {
+                let t = txn
+                    .open_table(crate::storage::db::DUPE_INDEX)
+                    .expect("open DUPE_INDEX");
+                t.iter().expect("iter").count()
+            }),
+        ] {
+            assert_eq!(count, 0, "reset must drain {name}; {count} rows survived");
+        }
+        drop(txn);
+
+        // In-memory snapshot cache must be empty.
+        assert!(
+            TREE_SNAPSHOT.in_memory.is_empty(),
+            "reset must clear TREE_SNAPSHOT in_memory"
         );
 
         std::fs::remove_dir_all(&root).ok();

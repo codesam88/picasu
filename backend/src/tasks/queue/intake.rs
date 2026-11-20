@@ -194,6 +194,16 @@ pub(crate) fn is_shutting_down() -> bool {
     SHUTTING_DOWN.load(Ordering::SeqCst)
 }
 
+/// Test-only: drop every queued intake item without dispatching it.
+/// Used by the harness reset path to fence in-flight intake against the wipe.
+#[cfg(test)]
+pub(crate) fn drain_intake_channels() {
+    for lane in LANES.iter() {
+        let mut rx = lane.rx.lock().expect("lane lock poisoned");
+        while rx.try_recv().is_ok() {}
+    }
+}
+
 /// Wakes `drain_intake` waiters when a job is cancelled.
 static JOB_CANCEL_NOTIFY: Notify = Notify::const_new();
 
