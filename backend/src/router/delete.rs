@@ -329,6 +329,7 @@ fn validate_paths_unchanged(
 ///    same content hash (checked via `DUPE_INDEX`).
 /// 4. Collect affected album IDs for later self-update.
 #[quint::operation("OP-3")]
+#[allow(clippy::too_many_lines)]
 fn process_deletes(
     asset_ids: &[String],
     _timestamp: i64,
@@ -349,6 +350,7 @@ fn process_deletes(
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
+    let mut album_dirs_to_evict: Vec<std::path::PathBuf> = Vec::new();
 
     // First pass: resolve every entry and enforce the write gate before any
     // filesystem mutation, so a forbidden entry aborts the whole request with
@@ -397,13 +399,15 @@ fn process_deletes(
                 .map_err(|_| AppError::new(ErrorKind::PermissionDenied, "Asset not writable"))?;
         }
 
-        // Collect affected albums.
+        // Collect affected albums. Directory-album cache eviction is deferred to
+        // after the read transaction is dropped (see below) so it does not run
+        // while `TREE.in_disk` is held.
         let affected_albums: Vec<ArrayString<64>> = match &abstract_data {
             AbstractData::Image(img) => img.metadata.album.iter().copied().collect(),
             AbstractData::Video(vid) => vid.metadata.album.iter().copied().collect(),
             AbstractData::Album(alb) => {
                 if !alb.metadata.dir_path.is_empty() {
-                    evict_dir_album(Path::new(&alb.metadata.dir_path));
+                    album_dirs_to_evict.push(std::path::PathBuf::from(&alb.metadata.dir_path));
                 }
                 vec![alb.object.id]
             }
@@ -421,6 +425,18 @@ fn process_deletes(
     // confirm its path has not moved since resolution, closing the TOCTOU
     // window between resolving the asset id and acquiring the path lease.
     validate_paths_unchanged(&collected, &id_table)?;
+
+    // Drop the read transaction (and its table handles) before any filesystem
+    // mutation or cache eviction, so `DIR_ALBUM_CACHE` is never locked while
+    // `TREE.in_disk` is held.
+    drop(id_table);
+    drop(metadata_table);
+    drop(txn);
+
+    // Evict directory-album cache entries now that the read txn is released.
+    for dir in &album_dirs_to_evict {
+        evict_dir_album(dir);
+    }
 
     // Second pass: perform deletions now that all entries validated.
     for (_, abstract_data, affected_albums) in collected {
