@@ -19,22 +19,71 @@ Dominant lock convention: `DIR_ALBUM_CACHE` mutex is acquired before
 `TREE.in_disk.begin_write/read` (`process/dir_album.rs:201,280`,
 `init_dir_album_cache`). The bug sites invert this.
 
-### Status (2026-11-20, branch `fix/album-concurrency`)
+### Status (2026-11-21, branch `fix/album-concurrency`)
 
-Landed, pending full `just backend-test`: R2 checker (`d1a6a34d`),
-A/1 snapshots (`15c71a25`), fenced reset (`e3b386c5`), 1b remove-path
-snapshot + barrier (`c69c11fd`), 6 check-before-write + no-orphan tests
-(`467910e3`), 2 delete read-txn release (`d960e1be`), intake fence +
-mid-flight reset test (`042706e1`; parked-item counting fixed in
-review). Leftovers: deterministic intake-pause hook for a true
-intake-race red, general album-sequence/detach/trash proptests, perf 3/4,
-product call 5. R2 → R1 → Phase-1 order held; every fix TDD red/green
-with bounded waits.
+Landed: R2 checker (`d1a6a34d`), A/1 snapshots (`15c71a25`), fenced
+reset (`e3b386c5`), 1b remove-path snapshot + barrier (`c69c11fd`), 6
+check-before-write + no-orphan tests (`467910e3`), 2 delete read-txn
+release (`d960e1be`), intake fence + mid-flight reset test (`042706e1`),
+concurrent harness (`61e1a6a7`), harness move axis (`fb3a1eaa`),
+aggregate proptests (`85c86027`), intake cancel + parked test + REQ-17
+(`56dc5893`), ignored txn-hold probe (`d089ee7e`). Every fix TDD
+red/green with bounded waits; `just backend-test` green.
+Rejected: split-txn narrowing refactor (separate read/write txns for
+member row vs aggregate — breaks I2 same-txn atomicity for ~15% gain;
+see item 3). Lazy-split design decided (next section); XMP cover
+attribute round-trip dispatched as first worker item.
 
-Full harness (`61e1a6a7`): `concurrent_op_sequences_converge` (30 cases,
-writer-flush + dir-album mix, 30 s detector, exactness after quiesce)
-green alongside sequential suite. Mix does not yet include
-assign/transitor requests or sweeps — same wrapper pattern extends.
+Full harness: `concurrent_op_sequences_converge` (30 cases, writer-flush
+
+- dir-album + store-level move mix, 30 s detector, exactness after
+  quiesce). Mix does not yet include assign/transitor requests or sweeps
+  — same wrapper pattern extends.
+
+### Album aggregates lazy split (decided 2026-11-21)
+
+Probe (`measure_txn_hold_scaling`, ignored by default, N=1000):
+`descendant_cover` 143 ms, `apply_album_delta` recompute ~400 ms,
+linear; write-hold ~= read time (scan CPU dominates). Split-txn
+refactor rejected: separate txns for member row vs aggregate break I2
+same-txn atomicity for ~15% gain. The O(N²) term is per-asset ancestor
+`descendant_cover` fan-out in flush, not lock type.
+
+1. Same-txn `apply_album_delta` keeps O(1) member row + `item_count` /
+   `item_size` + dirty-mark. Always-exact for count/size/member (grid
+   counts, filters). I1/I2 hold for these fields.
+2. Range/cover go lazy: recompute-on-read-if-dirty. FS events mark dirty
+   via the same delta path; the read path recomputes and writes back in
+   a short txn. I1/I4 and harness exactness scope to quiescence for
+   range/cover only.
+3. Cover rule changes newest → oldest direct member (range scan already
+   yields min-ts; pins at `asset_store.rs:1507` updated). Non-recursive
+   fallback: no direct members → alphanumeric first sub-album cover
+   (timestamp order would need lazy ranges first — circular).
+   Manual cover exists (`PUT /put/set_album_cover` + `ItemSetAsCover`,
+   DB-only, no kind/membership check) with no manual-vs-auto flag —
+   add the marker; lazy pass validates manual first (live member → keep;
+   removed/trashed → oldest-pick fallback + clear marker). Unconditional
+   recompute on update/remove (`asset_store.rs:800-850`) and
+   newer-wins on add (`:822-830`) currently clobber manual covers.
+4. Bulk moves use batch-form deltas grouped by album (one member-set +
+   one count/size patch + one dirty-mark per affected album); single
+   asset = one-element batch. Same function, not two.
+5. Sidecar stays XMP: `.albuminfo.xmp` is already read (`dir_album.rs:
+262-315`) and written (`sidecar_edit` → `xmp_write`, all edit
+   endpoints) for title/desc/tags/rating/trash; only the cover was
+   DB-only (`edit_album.rs:110-112`). Add the cover attribute to the
+   picasu XMP namespace instead of a new TOML format (no directory-XMP
+   interop exists — digiKam keeps album metadata DB-only, Picasa used
+   per-folder `.picasa.ini` — but XMP keeps one parser and the existing
+   read/write/ignore paths). `set_album_cover` persists via sidecar;
+   rebuilds keep manual covers.
+
+Slices: A) contract + dirty flag + manual marker + invariant scoping;
+B) strip range/cover from `apply_album_delta`, mark dirty; C) read-
+if-dirty refresh (validate-then-oldest + alphanumeric fallback); D)
+batch-form deltas for bulk paths (flush batch, detach, directory
+moves).
 
 ### Fix now (this branch)
 
@@ -78,14 +127,14 @@ flush submitted, reset returns, tables stay empty).
 
 - **2. Delete path** holds read txn across mutex + file deletes
   (`router/delete.rs:340-452`): snapshot bloat + same inversion.
-- **3. Write txns held across O(N) scans** — `apply_album_delta`
-  (`storage/asset_store.rs:697`) and `refresh_empty_album_cover`
-  (`:864`) run member listing + full `ASSET_BY_ID` scans inside the
-  caller's write txn; callers include `flush_tree.rs:155-361`,
-  `transitor.rs:65-139`, `assign_album.rs:423-439`. Single-writer
-  stall class; candidate explanation for item 2 rebuild discrepancy
-  and writer-cascade lag in `.plan/perf-investigation.md`. Fix with
-  measurements, alongside the perf roadmap.
+- **3. Write txns held across O(N) scans** — SUPERSEDED by the lazy
+  split above: per-asset scans stay in-txn only for the O(1) member/
+  count/size path; range/cover move to read-if-dirty; bulk fan-out
+  fixed by batch-form deltas (slice D). Probe kept as
+  `measure_txn_hold_scaling` (ignored). Original sites:
+  `apply_album_delta` (`storage/asset_store.rs:697`) and
+  `refresh_empty_album_cover` (`:864`); callers `flush_tree.rs:155-361`,
+  `transitor.rs:65-139`, `assign_album.rs:423-439`.
 - **4. Blocking under async**: `writer_loop` runs `flush_tables` /
   `sweep_remove_batch` / `cascade_update_expire` sync on tokio workers,
   bypassing `run_cpu`/`run_io` (`tasks/queue/writer.rs:354-402,499-508`).
@@ -152,11 +201,9 @@ data state and convergence, not _resource holdings_ — deadlock
 invariants do not survive that abstraction, so simulation cannot see
 this bug class. Options, cheapest first:
 
-1. **Registry REQ (cheap, do with step 2)**: register the lock-order
-   convention as a `REQ-N` in `utils/quint/pipeline/requirements.json`
-   with the #203 span guards + runtime checker as its live gate, so
-   the invariant enters the traceability map instead of living only
-   in review notes.
+1. **Registry REQ (landed as REQ-17 in `56dc5893`)**: lock-order
+   convention registered with the #203 span guards + runtime checker
+   as its live gate.
 2. **Small resource-hold model (the substantive use)**: a bounded
    model of the two-resource protocol — actions are acquire/release
    of {cache mutex, write slot} by the three actor roles (flush,
