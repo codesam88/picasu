@@ -622,6 +622,43 @@ at ~100k states or ~10 min — narrow it, do not raise budgets. Keep
 real bug, reproduce with `quint run` and fix `merged.qnt` by TDD on the parent
 track.
 
+### L1 results (2026-11-20)
+
+Files: `utils/quint/local/local-common.qnt` (action-free: 4 record types,
+13 vars, local `PATHS`/`SECOND_ROOT_PATHS`/`ROOTS`/`rootOf`, `initialId` plus
+4 record helpers, verbatim `NoPermanentStale`) and
+`utils/quint/local/local-sweep.qnt` (`initSweepTwoRoot`, verbatim
+`SweepEnumerate`/`SweepRecheck`/`SweepRemoveBatchApply` with
+`@mirrors-merged` citations, `stepSweep`, local contract vals).
+No pipeline file was touched.
+
+- Contract scope: `NoPermanentStale` is quiescence-scoped —
+  `(SweepQuiescent implies NoPermanentStale)` — because the predicate is a
+  quiescence assertion in `merged.qnt` (used only in `run` assertions) and
+  is transiently false in every post-`SweepEnumerate` intermediate state,
+  where the queued-but-unapplied batch satisfies none of its absent
+  disjuncts. Scoping it preserves the checked property at every settled
+  state and changes no action.
+- GREEN (fold-preserving batch body): `quint verify --init
+initSweepTwoRoot --step stepSweep --invariant SweepContracts --backend
+tlc` → `No error has been found` / `[ok] No violation found`,
+  17 generated / 9 distinct, 0 left on queue, complete-depth 4.
+- RED canary (scratch copy with the pre-fix replacing batch body, since
+  deleted): counterexample at a quiescent state — the r2 enumeration
+  replaces the batch (`[p2]`, losing r1's submission) and the apply leaves
+  `assetByPath = [p1, p3]` with p1 absent (19 generated / 12 distinct,
+  queue 0, depth 5).
+- Witness `SweepQuiescentReached`: counterexample trace reaches
+  quiescence (batch `[p1]` → `[p1, p2]` → empty, both pending
+  false), 17 generated / 9 distinct, queue 0, depth 4. The quiescence
+  antecedent is reachable; the contract is not vacuous.
+- Claim: over all interleavings of the three sweep actions on the pinned
+  3-path/2-root instance with two missing rows and one present row, TLC
+  exhausts the reachable graph with no violation of `SweepContracts`.
+- Slice scope: the three sweep actions only; no environment events and no
+  generation bumps after init. L1/L2/L3 compose only by explicit separate
+  argument — no per-slice result implies `CompletionInvariant`.
+
 ### Claims
 
 Quote only per-slice facts with the exact instance, pinned init, and budgets:
