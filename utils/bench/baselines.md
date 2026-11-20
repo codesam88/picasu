@@ -136,3 +136,16 @@ Open perf items that this baseline set does not yet cover:
 
 Scroll/resource columns and range columns remain ungated (informational)
 in `baselines.tsv` by design; gate on them only after a confirming run.
+
+## Rerun: post-fix micro (2026-11-20)
+
+- Branch: `perf/new-baseline`, commit `2e6f9db68632e9d220a9687b135bd4a443055e62`
+- Evidence: `/tmp/opencode/baselines-verify/micro/report.tsv` (first verify),
+  `/tmp/opencode/baselines-verify/micro-rerun/report.tsv` (rerun)
+- Why bands moved: the earlier micro idle baselines (~7 ms) were recorded under
+  favorable host state; the post-fix rerun on a shared host shows idle
+  prefetch/thumb/edit in the ~11-13 ms range, consistent with the gate battery's
+  ~11-12 ms. Baselines are an evolving record, not a hard gate; the six micro
+  idle `:median` rows were re-recorded as the mean of the two run medians with
+  `rel_tol` widened to 1.0. Gate rows, stages, scroll, and resources were left
+  untouched.

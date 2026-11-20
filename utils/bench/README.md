@@ -3,18 +3,18 @@
 Benchmark and debug cells for the Picasu backend. The harness is stdlib-only
 Python; it is not part of the server binary.
 
-| Path                  | Role                                                                              |
-| --------------------- | --------------------------------------------------------------------------------- |
-| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`  |
-| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts           |
-| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown              |
-| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON + report extract |
-| `baselines.tsv`       | Checked-in accepted bands for the gate battery                                    |
-| `extract_bench.py`    | Summarise one or more harness output directories                                  |
-| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                |
-| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT      |
-| `config.py`           | Typed, validated per-layer configuration shared by every module                   |
-| `manifests/`          | PhotoSpec manifests for fixed image sets                                          |
+| Path                  | Role                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`         |
+| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts                  |
+| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown                     |
+| `battery.py`          | Pinned cell batteries, TSV run report, baseline band check, JSON + report extract        |
+| `baselines.tsv`       | Checked-in accepted bands for the gate battery (evolving record, updated with rationale) |
+| `extract_bench.py`    | Summarise one or more harness output directories                                         |
+| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                       |
+| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT             |
+| `config.py`           | Typed, validated per-layer configuration shared by every module                          |
+| `manifests/`          | PhotoSpec manifests for fixed image sets                                                 |
 
 The environment contracts live in the module docstrings. Each producer writes
 into `$OUT`; the launcher writes `launcher-info.json`, which the workload

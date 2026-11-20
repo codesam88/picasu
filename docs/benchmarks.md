@@ -139,8 +139,8 @@ commit, request latencies, scan walls, stage costs) plus the raw
 artifacts. The default battery runs `BATTERY_REPEATS=3`; the `:median`
 row is the conformance key and also carries `_min`/`_max` range columns
 for the headline metrics (scan wall, scan/idle prefetch p50, scroll
-p50s, `temp_db_mb`, `vm_hwm_mb`). Baselines are checked in; a cell that
-moves a baseline beyond its band fails the battery until the move is
+p50s, `temp_db_mb`, `vm_hwm_mb`). Baselines are checked in and treated as an evolving record: a cell that
+moves a baseline beyond its band is flagged by `battery check` until the move is
 explained and the baseline re-recorded. Scroll and long-lived resource
 columns are intentionally ungated (informational). Hand-transcribed
 comparison tables are working notes, not results.

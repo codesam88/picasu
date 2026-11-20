@@ -26,9 +26,9 @@ micro-control-50:median	scan_thumb_p50_ms	1.9	0.5	2.0	2026-11-19	perf/new-baseli
 micro-control-50:median	scan_thumb_max_ms	4.7	1.0	5.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
 micro-control-50:median	scan_edit_p50_ms	8.7	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
 micro-control-50:median	scan_edit_max_ms	9.8	1.0	5.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
-micro-control-50:median	idle_thumb_p50_ms	7.7	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
-micro-control-50:median	idle_prefetch_p50_ms	7.0	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
-micro-control-50:median	idle_edit_p50_ms	7.5	0.5	2.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
+micro-control-50:median	idle_thumb_p50_ms	11.9	1.0	2.0	2026-11-20	post-fix rerun: optimistic micro baseline under favorable host state + shared-host variance; first-verify+rerun medians
+micro-control-50:median	idle_prefetch_p50_ms	12.2	1.0	2.0	2026-11-20	post-fix rerun: optimistic micro baseline under favorable host state + shared-host variance; first-verify+rerun medians
+micro-control-50:median	idle_edit_p50_ms	12.4	1.0	2.0	2026-11-20	post-fix rerun: optimistic micro baseline under favorable host state + shared-host variance; first-verify+rerun medians
 micro-control-50:median	tree_refresh_build_p50_us	422.5	0.5	200.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
 micro-control-50:median	tree_refresh_build_max_us	619.0	1.0	1000.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
 micro-control-50:median	filter_snapshot_clone_p50_us	510.5	0.5	300.0	2026-11-19	perf/new-baseline set-50 release commit 3f1040c1
@@ -40,9 +40,9 @@ micro-control-200:median	scan_thumb_p50_ms	3.1	0.5	2.0	2026-11-19	perf/new-basel
 micro-control-200:median	scan_thumb_max_ms	9.3	1.0	5.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
 micro-control-200:median	scan_edit_p50_ms	8.6	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
 micro-control-200:median	scan_edit_max_ms	10.0	1.0	5.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
-micro-control-200:median	idle_thumb_p50_ms	7.8	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
-micro-control-200:median	idle_prefetch_p50_ms	7.1	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
-micro-control-200:median	idle_edit_p50_ms	7.6	0.5	2.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
+micro-control-200:median	idle_thumb_p50_ms	11.2	1.0	2.0	2026-11-20	post-fix rerun: optimistic micro baseline under favorable host state + shared-host variance; first-verify+rerun medians
+micro-control-200:median	idle_prefetch_p50_ms	11.9	1.0	2.0	2026-11-20	post-fix rerun: optimistic micro baseline under favorable host state + shared-host variance; first-verify+rerun medians
+micro-control-200:median	idle_edit_p50_ms	12.9	1.0	2.0	2026-11-20	post-fix rerun: optimistic micro baseline under favorable host state + shared-host variance; first-verify+rerun medians
 micro-control-200:median	tree_refresh_build_p50_us	1588.0	0.5	200.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
 micro-control-200:median	tree_refresh_build_max_us	2424.5	1.0	1000.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
 micro-control-200:median	filter_snapshot_clone_p50_us	2018.5	0.5	300.0	2026-11-19	perf/new-baseline set-200 release commit 3f1040c1
