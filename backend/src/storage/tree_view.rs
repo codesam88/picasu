@@ -206,7 +206,7 @@ fn rebuild(epoch: u64) {
 fn build_from_asset_tables(priority_list: &[&str]) -> Result<Vec<DatabaseTimestamp>, ()> {
     use crate::model::metadata_record::compose_abstract_data;
     use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE};
-    use redb::{ReadableDatabase, ReadableTable};
+    use redb::ReadableTable;
 
     let Ok(txn) = TREE.in_disk.begin_read() else {
         log::warn!("build_from_asset_tables: failed to begin read transaction");

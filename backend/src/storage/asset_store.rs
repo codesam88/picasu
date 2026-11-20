@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
-use redb::ReadableDatabase;
 
 use crate::model::asset::AssetKind;
 use crate::model::asset::AssetRecord;

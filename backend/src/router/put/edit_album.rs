@@ -14,7 +14,7 @@ use crate::storage::db::TREE;
 use crate::storage::files::write_gate;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 

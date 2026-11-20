@@ -11,7 +11,6 @@ use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 
 use arrayvec::ArrayString;
-use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1230,6 +1229,7 @@ mod tests {
             _ => panic!("expected image payload"),
         }
 
+        drop(txn);
         std::fs::remove_dir_all(root.join("move_crash")).ok();
         reset_backend_state();
     }

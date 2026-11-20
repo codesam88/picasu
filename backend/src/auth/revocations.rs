@@ -11,7 +11,7 @@
 //! runtime state, not identity, and the index database is the file that
 //! holds transient state.
 
-use redb::{ReadableDatabase as _, ReadableTable as _};
+use redb::ReadableTable as _;
 
 use crate::error::{AppError, ErrorKind};
 use crate::storage::db::{REVOCATIONS, TREE};

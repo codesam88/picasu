@@ -16,7 +16,6 @@ use crate::router::{AppResult, GuardResult};
 use anyhow::Result;
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use redb::ReadableDatabase;
 use rocket::serde::json::Json;
 use std::time::Instant;
 

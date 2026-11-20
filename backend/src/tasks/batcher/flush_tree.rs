@@ -680,7 +680,7 @@ mod tests {
     use crate::process::hash::blake3_hasher;
     use crate::storage::asset_store;
     use crate::tests::bootstrap::*;
-    use redb::{ReadableDatabase, ReadableTable, TableDefinition};
+    use redb::{ReadableTable, TableDefinition};
     use std::path::{Path, PathBuf};
 
     fn clear_table<V: redb::Value>(table_def: TableDefinition<'static, &'static str, V>) {
