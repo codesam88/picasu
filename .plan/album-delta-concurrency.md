@@ -27,10 +27,14 @@ snapshot + barrier (`c69c11fd`), 6 check-before-write + no-orphan tests
 (`467910e3`), 2 delete read-txn release (`d960e1be`), intake fence +
 mid-flight reset test (`042706e1`; parked-item counting fixed in
 review). Leftovers: deterministic intake-pause hook for a true
-intake-race red, full 30-case concurrent stateful harness (only barrier
-seed landed), general album-sequence/detach/trash proptests, perf 3/4,
+intake-race red, general album-sequence/detach/trash proptests, perf 3/4,
 product call 5. R2 → R1 → Phase-1 order held; every fix TDD red/green
 with bounded waits.
+
+Full harness (`61e1a6a7`): `concurrent_op_sequences_converge` (30 cases,
+writer-flush + dir-album mix, 30 s detector, exactness after quiesce)
+green alongside sequential suite. Mix does not yet include
+assign/transitor requests or sweeps — same wrapper pattern extends.
 
 ### Fix now (this branch)
 
