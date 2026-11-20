@@ -318,6 +318,37 @@ album aggregates on torn states.
 - A missing lock cannot be patched at step level; an action that should
   hold a mutex but does not is a finding, not a modeling gap.
 
+## Method findings (2026-11-20)
+
+The bounded lane was closed on a method mismatch, not a budget shortfall:
+
+- `CompletionInvariant` (`utils/quint/pipeline/merged.qnt:2696-2712`) is a
+  quiescence-guarded **safety implication**. It does not assert that the
+  antecedent is reached; the spec has no `WF`/`SF`, so infinite stuttering is
+  permitted (`merged.qnt:272-276`). A terminating TLC pass proves “no bad
+  quiescent state in the checked graph,” not convergence.
+- A non-terminating exhaustive run proves nothing. T1 reached 1.47B generated /
+  402.6M distinct / 392.7M queued in 2 h, with the frontier 97.5% undrained and
+  growing at ~3.35M distinct/min. Shrinking constants or adding scheduler caps
+  changes the system under check instead of producing a smaller proof of the
+  same system; SCOPE-14/15/16 remain provisional without mover checks.
+- The 16,670-state verdict applies only to the fault-free, rescan-bounded suffix
+  (`faults'=1`, R=8). It cannot be composed into a full-machine claim.
+- Small-scope exhaustive search is a falsifier: it finds shallow bugs (the
+  round-5 sweep bug) but yields no cutoff theorem for scope N+1, and TLC checks
+  one concrete instance, not all instances of that size.
+- T2’s 47/47 QNT409 failures are a harness defect (`initP<k>` used as both init
+  and step via generated `initAllPinned`), not model evidence.
+- Exits from this method family: inductive invariants plus ranking/fairness
+  (cost scales with the transition relation, not states), abstraction/refinement,
+  or local assume–guarantee models. Further enumeration is predicted waste.
+
+Primary references used for these distinctions: Lamport, _Safety, Liveness, and
+Fairness_ (lamport.org/tla/safety-liveness.pdf); Apalache running theory and
+bounded-model-checking docs; Quint model-checker and checking-properties docs;
+Yu–Manolios–Lamport on TLC; Jackson, _Software Abstractions_ (small-scope
+hypothesis).
+
 ## Decisions
 
 - 2026-11-15: API calls are environment actors; the system under proof
@@ -338,6 +369,13 @@ album aggregates on torn states.
   artifact).
 - 2026-11-19: exploration concluded on the measured evidence above;
   landing decision per the follow-on options.
+- 2026-11-20: full-machine bounded lane CLOSED. Harness fix `9ae4c749` landed;
+  T1 (2 h) and T2 (47/47 QNT409) produced no machine-checked verdict. No further
+  full-machine TLC, T2 smoke, or new scheduler reductions are authorized.
+- 2026-11-20: user approved LOCAL PROTOCOL PROOFS. Update the two existing lane
+  files only; do not open new plan documents. Local models must carry their own
+  instance/budget scope, anti-vacuity witnesses, and an explicit non-composition
+  statement. No edits to `Converged`, `AspectsAligned`, or `CompletionInvariant`.
 
 ## Iteration-1 seeds (for a possible multi-event follow-up)
 

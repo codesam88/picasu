@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: testing
@@ -11,9 +11,38 @@ Audience: an engineer (human or AI) executing this plan **without deep Quint/mod
 experience**. Every step is explicit: exact patches, exact commands, binary pass/fail
 criteria. If a criterion is not met, stop and report — do not improvise.
 
-Status: approved execution playbook. Step 1 done; step 2 controlled A/B in progress.
-Context: `.plan/quint-proof-lane.md` (the concluded exploration and its measurements).
-Model: `utils/quint/pipeline/merged.qnt` (`pipeline_merged`, ~3,300 lines).
+Status: CLOSED. Steps 1–3 and step 4 landed; T1 and T2 executed; no
+machine-checked bounded verdict. The full-machine bounded lane is closed;
+local protocol proofs are the approved follow-on (§9).
+Context: `.plan/quint-proof-lane.md` (the concluded exploration, measurements,
+and method findings). Model: `utils/quint/pipeline/merged.qnt`
+(`pipeline_merged`, ~3,300 lines).
+
+## Execution outcome (2026-11-20)
+
+- Step 1 anchor audit completed (id quotient safe with conditions; generation
+  comparison inventory). Step 2 controlled A/B passed for the fault-free suffix:
+  uncapped arm 600 s timeout at 4.3M distinct / 2.3M queued; with `genSum < 8`
+  on the two phase-1 `ScanRoot` branches, 16,670 distinct, queue 0, complete
+  depth 29, 36 s, `[ok] No violation found`; witnesses alive.
+- Step 3 landed as `24cfb13c` (R=8, G=12, SCOPE-14), `1861b60b` (submit
+  freshness, SCOPE-15), `bd600448` (`val freeId` opaque-id quotient, SCOPE-16).
+  Lint, 70-run suite, `just quint check`, and pre-commit gates passed for each.
+- Step 4 mutation checks were scratch-only: R=0 left the 70-run suite green;
+  removing one freshness conjunct raised reduced TLC distinct states ~8%;
+  removing one phase-0 cap lowered them ~8% in one 300 s sample. The unmutated
+  reduced control timed out at 12,048,992 distinct / 11,710,729 queued / depth 6.
+- Generator fix `9ae4c749` made `prefixes.ts gen` emit 46 classes / 47 elements.
+  T1 (`initAllPinned`, 2 h TLC) timed out at 1,467,806,149 generated /
+  402,641,750 distinct / 392,688,304 queued with no verdict marker; scratch hit
+  74 GB and was cleaned. T2 (`prefixes.ts run`) produced 47/47 QNT409 compile
+  errors because generated `initAllPinned` makes `initP<k>` appear on both the
+  init and step sides. Zero model verdicts from T2.
+- Closure reason: `CompletionInvariant` is a safety implication at quiescence,
+  not a convergence/liveness claim; the caps change the checked system; small
+  scope is a falsifier without a cutoff theorem. Details in
+  `.plan/quint-proof-lane.md`, “Method findings”. No further full-machine TLC,
+  T2 smoke, or scheduler reductions are authorized.
 
 ---
 
@@ -538,14 +567,69 @@ Claim if completed: convergence with no budgets — the strongest statement on t
 table. Decision input: whether Phase-2's bounded claim plus the 70-run suite already
 covers the project's risk appetite. Often it does.
 
-## 9. Complement track — assume–guarantee local models (plan option B, any time)
+## 9. Approved follow-on — local protocol proofs
 
-Small standalone models of the sweep chain, crash recovery, and intake protocol:
-exhaustively checkable in seconds, and demonstrated value (the round-5 bug was a
-local sweep-protocol bug). Not an alternative to Phase 2 — local proofs cover
-protocol internals, Phase 2 covers their composition. If Phases 0–2 stall or are
-deprioritized, this track still lands verified statements and is the cheapest work
-item on this page (days).
+User decision 2026-11-20: after the bounded lane closed, do local protocol proofs.
+Record further work in this file and `.plan/quint-proof-lane.md` only; no new plan
+documents. No edits to `Converged`, `AspectsAligned`, or `CompletionInvariant`.
+
+### Scope and order
+
+1. **L1 sweep chain** (round-5 bug site): `SweepEnumerate`, `SweepRecheck`,
+   `SweepRemoveBatchApply`; two roots, one pinned missing-file row per root.
+   Invariant: absent-file rows pruned, present-file rows never pruned, and a
+   second root's enumeration preserves the first root's batch. No environment
+   events or generation bumps after init; finite by construction.
+2. **L2 crash/heal residue**: the three base faults plus `ScanRoot`,
+   `WorkerApplySuccess`, `WorkerSkipSuperseded`, `WorkerRemoveApply`,
+   `IntakePickupFileGone`; one crash pinned in init. Check the residue
+   characterization on the crash step and `NoLostUpload`/`NoPermanentStale`
+   after heal. Inline the `ScanRoot` body instead of calling `CompleteScan` so
+   `phase`/`faults`/`scannedRoots` stay out of the slice. A small per-path
+   heal-submit budget is required and must be quoted in the claim.
+3. **L3 intake ordering**: three submits, upload/worker actions, and
+   `IntakePickupFileGone`; pinned divergences, no environment events after
+   init, at most two submits per path. Check exactly-one-terminal-outcome per
+   item and `NoLostUpload`. `WorkerSkipUnchanged` pulls the `rows` projection;
+   decide during implementation whether the extra ~40 lines are worth keeping
+   that outcome in the checked action set.
+
+### Layout and drift control
+
+Use `utils/quint/local/` with a shared action-free `local-common.qnt` (four
+types, twelve vars, local `val` bounds, `ROOTS`, `rootOf`, `snapshotMatches`,
+`freeId`, `rows`, `NoLostUpload`, `NoPermanentStale`) plus one file per slice.
+A new directory keeps the closed-world `specs`/`step` gates, SCOPE catalog,
+traceability, and docs run counts untouched; those recipes are pinned to
+`utils/quint/pipeline/`. Keep copied action bodies byte-identical modulo
+indentation with source-line citations in comments; no new SCOPE ids for local
+bounds unless a gate actually requires them. Dependency-closure measurements:
+25/38/36 declarations for L1/L2/L3 (~207/~373/~446 source lines); standalone
+files ~250–380/~400/~490 lines after trimmed init and the L2 scan inlining.
+
+### Verification and anti-vacuity
+
+For each slice: `quint typecheck <file>`, then
+`quint verify <file> --init initX --step stepX --invariant InvX --backend tlc`.
+Classify by output markers, not exit status; require positive state count,
+drained queue, and a complete-depth line. Add a named witness invariant in the
+local module and check its negation for a counterexample trace (antecedent
+reachable). Mutation canaries on scratch copies: L1 re-seed the pre-fix sweep
+batch replacement and require a violation; L2 budget-0 must break the heal
+witness; L3 delete one generation guard and require a violation. Stop a slice
+at ~100k states or ~10 min — narrow it, do not raise budgets. Keep
+`just quint check` and `just quint test` green unchanged; if a slice exposes a
+real bug, reproduce with `quint run` and fix `merged.qnt` by TDD on the parent
+track.
+
+### Claims
+
+Quote only per-slice facts with the exact instance, pinned init, and budgets:
+e.g. “over all interleavings of the three sweep actions on two roots with one
+deletion per root, TLC exhausts the reachable graph with no violation.” Never
+compose L1/L2/L3 into `CompletionInvariant`, `Converged`, or a global
+convergence claim; composition across sweep, worker, and crash remains an
+explicit assumption.
 
 ## 10. Common failure modes (read before starting)
 
