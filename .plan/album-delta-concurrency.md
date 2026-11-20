@@ -30,7 +30,8 @@ proptests (`85c86027`), intake cancel + parked test + REQ-17 (`56dc5893`),
 ignored txn-hold probe (`d089ee7e`), XMP `manual_cover` + sidecar
 persistence (`d3d7f103`, `c9f32c92`), delta strip + dirty flag
 (`5498838c`), read-if-dirty refresh (`81b489f5`), single-txn dir move
-(`bd516e91`), single-txn batched removes (`5001a505`). Every fix TDD
+(`bd516e91`), single-txn batched removes (`5001a505`), single-txn bulk
+edit store phase (`0cf2746d`). Every fix TDD
 red/green with bounded waits; `just backend-test` green.
 Rejected: split-txn narrowing refactor (separate read/write txns for
 member row vs aggregate — breaks I2 same-txn atomicity for ~15% gain;
