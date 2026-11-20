@@ -11,6 +11,11 @@ pub struct XmpData {
     pub rating: Option<u8>,
     /// `dc:title`. Used for the album display name override.
     pub title: Option<String>,
+    /// Manual album cover asset id, from `picasu:Cover` / `picasu:CoverAssetId`.
+    /// `Some` means a manually chosen cover; `None` means "fall back to the
+    /// automatic descendant selection". Stored in the sidecar so a database
+    /// rebuild from the filesystem keeps the user's cover choice.
+    pub cover_asset_id: Option<String>,
     /// Soft-delete state, from the app's own `picasu:Trashed` marker. Stored
     /// in the sidecar so a database rebuild from the filesystem keeps trashed
     /// assets trashed; absent marker means not trashed.
@@ -30,6 +35,12 @@ pub const NS_PICASU_PREFIX: &str = "picasu";
 
 /// Property holding the counter-clockwise display rotation in degrees.
 pub const NS_PICASU_ROTATION: &str = "Rotation";
+
+/// Property holding a manually chosen album cover asset id (short form).
+pub const NS_PICASU_COVER: &str = "Cover";
+
+/// Property holding a manually chosen album cover asset id.
+pub const NS_PICASU_COVER_ASSET_ID: &str = "CoverAssetId";
 
 /// Register [`NS_PICASU`] with xmpkit's namespace registry.
 ///
@@ -113,6 +124,7 @@ fn normalize(meta: &XmpMeta) -> XmpData {
         description: text_from_property(meta.get_property(ns::DC, "description")),
         rating: rating_from_property(meta.get_property(ns::XMP, "Rating")),
         title: text_from_property(meta.get_property(ns::DC, "title")),
+        cover_asset_id: cover_asset_id_from_property(meta),
         trashed: trashed_from_property(meta.get_property(NS_PICASU, "Trashed")),
         rotation: rotation_from_property(meta.get_property(NS_PICASU, NS_PICASU_ROTATION)),
     }
@@ -218,6 +230,19 @@ fn rotation_from_property(value: Option<XmpValue>) -> u32 {
         .ok()
         .filter(|&degrees| matches!(degrees, 0 | 90 | 180 | 270))
         .unwrap_or(0)
+}
+
+/// Read the manual album cover asset id from the picasu namespace.
+///
+/// Several spellings are accepted so packets written by older app versions or
+/// by hand keep round-tripping: the first non-empty value wins.
+fn cover_asset_id_from_property(meta: &XmpMeta) -> Option<String> {
+    for name in [NS_PICASU_COVER_ASSET_ID, NS_PICASU_COVER] {
+        if let Some(value) = text_from_property(meta.get_property(NS_PICASU, name)) {
+            return Some(value);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

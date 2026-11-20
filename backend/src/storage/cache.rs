@@ -778,7 +778,7 @@ mod row_size_tests {
         assert_eq!(std::mem::size_of::<ReducedData>(), 168);
         assert_eq!(
             std::mem::size_of::<crate::model::response::DatabaseTimestamp>(),
-            584
+            656
         );
     }
 }

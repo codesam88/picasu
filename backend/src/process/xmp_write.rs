@@ -1,6 +1,8 @@
 use crate::model::abstract_data::AbstractData;
 use crate::process::sanitize::is_valid_xml_char;
-use crate::process::xmp::{NS_PICASU, NS_PICASU_ROTATION, ensure_picasu_namespace_registered};
+use crate::process::xmp::{
+    NS_PICASU, NS_PICASU_COVER_ASSET_ID, NS_PICASU_ROTATION, ensure_picasu_namespace_registered,
+};
 use log::warn;
 use std::collections::HashSet;
 use std::io;
@@ -60,10 +62,11 @@ enum TitleEdit<'a> {
 /// Sidecar write failures are returned to the caller; callers should log and
 /// treat them as non-fatal.
 pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
-    let (sidecar, title) = if let AbstractData::Album(album) = abstract_data {
+    let (sidecar, title, cover_asset_id) = if let AbstractData::Album(album) = abstract_data {
         (
             Path::new(&album.metadata.dir_path).join(".albuminfo.xmp"),
             TitleEdit::Set(album.metadata.custom_title.as_deref()),
+            album.metadata.manual_cover.map(|id| id.to_string()),
         )
     } else {
         let Some(file_entry) = abstract_data.path() else {
@@ -72,6 +75,7 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
         (
             Path::new(&file_entry.file).with_extension("xmp"),
             TitleEdit::Unmanaged,
+            None,
         )
     };
     let mut meta = load_sidecar(&sidecar)?;
@@ -82,6 +86,7 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
         abstract_data.rating(),
         title,
         abstract_data.is_trashed(),
+        cover_asset_id.as_deref(),
     )?;
     let content = meta.serialize_packet().map_err(|e| xmp_error_to_io(&e))?;
     write_sidecar_content(&sidecar, &content)
@@ -179,6 +184,7 @@ fn apply_managed_fields(
     rating: Option<u8>,
     title: TitleEdit<'_>,
     trashed: bool,
+    cover_asset_id: Option<&str>,
 ) -> io::Result<()> {
     // `dc:subject`: the exact new tag set. The bag is replaced wholesale, so
     // a tag removed in the edit cannot resurface from the previous packet.
@@ -224,6 +230,27 @@ fn apply_managed_fields(
         ensure_picasu_namespace_registered();
         meta.delete_property(NS_PICASU, "Trashed")
             .map_err(|e| xmp_error_to_io(&e))?;
+    }
+
+    // `picasu:Cover` / `picasu:CoverAssetId`: a manually chosen album cover.
+    // Present while a manual cover is set, deleted otherwise (absent means
+    // "use automatic selection"), mirroring the trashed marker's
+    // delete-on-clear contract.
+    let cover_names = [NS_PICASU_COVER_ASSET_ID];
+    if let Some(value) = cover_asset_id.map(sanitize_value).filter(|v| !v.is_empty()) {
+        ensure_picasu_namespace_registered();
+        for name in cover_names {
+            meta.set_property(NS_PICASU, name, XmpValue::String(value.clone()))
+                .map_err(|e| xmp_error_to_io(&e))?;
+        }
+    } else {
+        ensure_picasu_namespace_registered();
+        for name in cover_names {
+            if meta.has_property(NS_PICASU, name) {
+                meta.delete_property(NS_PICASU, name)
+                    .map_err(|e| xmp_error_to_io(&e))?;
+            }
+        }
     }
     Ok(())
 }
@@ -776,6 +803,7 @@ mod tests {
                     end_time: None,
                     last_modified_time: 0,
                     cover: None,
+                    manual_cover: None,
                     item_count: 0,
                     item_size: 0,
                     share_list: HashMap::default(),
@@ -850,6 +878,42 @@ mod tests {
             assert!(!written_packet(&sidecar_path).contains("dc:title"));
             assert!(!written_packet(&sidecar_path).contains("Vacation 2024"));
             assert!(!read_meta(&sidecar_path).has_property(ns::DC, "title"));
+        }
+
+        #[test]
+        fn album_sidecar_cover_round_trips() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let mut album = make_dir_album(
+                dir.path().to_string_lossy().into_owned(),
+                Some("Vacation 2024".to_string()),
+            );
+            if let AbstractData::Album(a) = &mut album {
+                a.metadata.manual_cover = Some(ArrayString::from("cover-id-123").expect("fits"));
+            }
+            write_sidecar_for(&album).expect("failed to write album sidecar");
+
+            let sidecar_path = dir.path().join(".albuminfo.xmp");
+            let data = written_data(&sidecar_path);
+            assert_eq!(data.cover_asset_id.as_deref(), Some("cover-id-123"));
+            assert!(
+                read_meta(&sidecar_path).has_property(NS_PICASU, NS_PICASU_COVER_ASSET_ID),
+                "canonical cover property must be present"
+            );
+
+            // Absence keeps the property out of the packet (auto selection).
+            let dir2 = tempfile::tempdir().expect("failed to create temp dir");
+            let album2 = make_dir_album(
+                dir2.path().to_string_lossy().into_owned(),
+                Some("Vacation 2024".to_string()),
+            );
+            write_sidecar_for(&album2).expect("failed to write album sidecar");
+            let sidecar_path2 = dir2.path().join(".albuminfo.xmp");
+            let data2 = written_data(&sidecar_path2);
+            assert_eq!(data2.cover_asset_id, None);
+            assert!(
+                !read_meta(&sidecar_path2).has_property(NS_PICASU, NS_PICASU_COVER_ASSET_ID),
+                "no manual cover must not leave a cover property behind"
+            );
         }
     }
 }
