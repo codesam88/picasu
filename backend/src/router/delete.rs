@@ -23,7 +23,6 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 
 use log::warn;
-use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::path::Path;
 

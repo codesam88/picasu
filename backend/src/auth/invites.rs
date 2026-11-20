@@ -14,7 +14,7 @@
 
 use base64::{Engine as _, engine::general_purpose};
 use rand::{TryRng, rngs::SysRng};
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 

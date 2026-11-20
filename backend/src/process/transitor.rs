@@ -20,7 +20,6 @@ pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayStr
 /// Read the stored metadata-only payload for `asset_id`, if any.
 pub fn load_metadata_record(asset_id: &str) -> Result<Option<MetadataRecord>> {
     use crate::storage::db::{METADATA_TABLE, TREE};
-    use redb::ReadableDatabase;
 
     let txn = TREE.in_disk.begin_read()?;
     let table = txn.open_table(METADATA_TABLE)?;

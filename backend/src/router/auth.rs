@@ -593,7 +593,6 @@ use crate::storage::db::TREE;
 use anyhow::{Error, Result, anyhow};
 use jsonwebtoken::{DecodingKey, decode};
 use log::info;
-use redb::ReadableDatabase;
 use rocket::Request;
 use serde::de::DeserializeOwned;
 

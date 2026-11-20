@@ -633,8 +633,6 @@ pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
     if let Some(album_id) = path_str.strip_prefix("album/") {
         let album_id = album_id.to_string();
         let exists = tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
-            use redb::ReadableDatabase;
-
             let read_txn = TREE
                 .in_disk
                 .begin_read()

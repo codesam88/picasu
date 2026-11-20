@@ -10,7 +10,6 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::storage::files::visible_to;
 use log::info;
-use redb::ReadableDatabase;
 use rocket::get;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};

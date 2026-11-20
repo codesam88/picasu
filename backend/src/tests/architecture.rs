@@ -99,24 +99,40 @@ fn request_paths_run_on_interactive_pool() {
 /// `TREE.in_disk.begin_write()` ... `commit()` span. The dominant convention is
 /// cache mutex BEFORE write txn; inverting it deadlocks against
 /// `get_or_create_dir_album`, which holds the mutex across `begin_write`.
-fn assert_no_dir_album_call_inside_write_txn(path: &str, source: &str, calls: &[&str]) {
-    let mut in_txn = false;
+/// Source-level guard: no `DIR_ALBUM_CACHE` helper call may occur inside a
+/// `TREE.in_disk.begin_write()` ... `commit()` span, nor inside a
+/// `TREE.in_disk.begin_read()` span (which ends at the next blank line, since
+/// read transactions are short-lived and dropped at scope exit). The dominant
+/// convention is cache mutex BEFORE the tree transaction; inverting it
+/// deadlocks against `get_or_create_dir_album`.
+fn assert_no_dir_album_call_inside_txn(path: &str, source: &str, calls: &[&str]) {
+    let mut in_write = false;
+    let mut in_read = false;
     for (lineno, line) in source.lines().enumerate() {
         if line.contains("begin_write()") {
-            in_txn = true;
+            in_write = true;
+            in_read = false;
         }
+        if line.contains("begin_read()") {
+            in_read = true;
+            in_write = false;
+        }
+        let in_txn = in_write || in_read;
         if in_txn {
             for call in calls {
                 assert!(
                     !line.contains(call),
-                    "{path}:{}: `{call}` must not be called inside a write transaction \
-                     (snapshot before begin_write)",
+                    "{path}:{}: `{call}` must not be called inside a tree transaction \
+                     (snapshot before begin_write/begin_read)",
                     lineno + 1
                 );
             }
         }
-        if in_txn && line.contains("commit()") {
-            in_txn = false;
+        if in_write && line.contains("commit()") {
+            in_write = false;
+        }
+        if in_read && line.trim().is_empty() {
+            in_read = false;
         }
     }
 }
@@ -124,7 +140,7 @@ fn assert_no_dir_album_call_inside_write_txn(path: &str, source: &str, calls: &[
 #[test]
 fn transitor_does_not_lock_dir_album_cache_inside_write_txn() {
     let source = include_str!("../process/transitor.rs");
-    assert_no_dir_album_call_inside_write_txn(
+    assert_no_dir_album_call_inside_txn(
         "process/transitor.rs",
         source,
         &["ancestor_album_ids_for_path("],
@@ -134,9 +150,15 @@ fn transitor_does_not_lock_dir_album_cache_inside_write_txn() {
 #[test]
 fn assign_album_does_not_lock_dir_album_cache_inside_write_txn() {
     let source = include_str!("../router/put/assign_album.rs");
-    assert_no_dir_album_call_inside_write_txn(
+    assert_no_dir_album_call_inside_txn(
         "router/put/assign_album.rs",
         source,
         &["get_parent_album_id("],
     );
+}
+
+#[test]
+fn delete_does_not_call_evict_dir_album_inside_tree_txn() {
+    let source = include_str!("../router/delete.rs");
+    assert_no_dir_album_call_inside_txn("router/delete.rs", source, &["evict_dir_album("]);
 }
