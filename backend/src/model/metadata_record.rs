@@ -87,6 +87,7 @@ pub struct AlbumPayload {
     pub last_modified_time: i64,
     pub cover: Option<ArrayString<64>>,
     pub manual_cover: Option<ArrayString<64>>,
+    pub aggregates_dirty: bool,
     pub item_count: usize,
     pub item_size: u64,
     pub share_list: HashMap<ArrayString<64>, Share>,
@@ -138,6 +139,7 @@ pub fn to_metadata_record(data: &AbstractData) -> MetadataRecord {
             last_modified_time: alb.metadata.last_modified_time,
             cover: alb.metadata.cover,
             manual_cover: alb.metadata.manual_cover,
+            aggregates_dirty: alb.metadata.aggregates_dirty,
             item_count: alb.metadata.item_count,
             item_size: alb.metadata.item_size,
             share_list: alb.metadata.share_list.clone(),
@@ -253,6 +255,7 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
                 metadata.last_modified_time = payload.last_modified_time;
                 metadata.cover = payload.cover;
                 metadata.manual_cover = payload.manual_cover;
+                metadata.aggregates_dirty = payload.aggregates_dirty;
                 metadata.item_count = payload.item_count;
                 metadata.item_size = payload.item_size;
                 metadata.share_list.clone_from(&payload.share_list);

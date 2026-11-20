@@ -312,6 +312,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
             .cover_asset_id
             .as_deref()
             .and_then(|id| ArrayString::from(id).ok()),
+        aggregates_dirty: false,
         item_count: 0,
         item_size: 0,
         share_list: std::collections::HashMap::new(),

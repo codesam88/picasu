@@ -310,6 +310,7 @@ pub struct AlbumMetadata {
     /// means the user explicitly set the cover; `None` means the cover is
     /// auto-selected from album contents (and `cover` may still be `Some`).
     pub manual_cover: Option<ArrayString<64>>,
+    pub aggregates_dirty: bool,
     pub item_count: usize,
     pub item_size: u64,
     pub share_list: HashMap<ArrayString<64>, Share>,
