@@ -68,7 +68,11 @@ same-txn atomicity for ~15% gain. The O(N²) term is per-asset ancestor
    newer-wins on add (`:822-830`) currently clobber manual covers.
 4. Bulk moves use batch-form deltas grouped by album (one member-set +
    one count/size patch + one dirty-mark per affected album); single
-   asset = one-element batch. Same function, not two.
+   asset = one-element batch. Same function, not two. — REJECTED
+   2026-11-21: batching across per-asset txns splits the asset write
+   from its delta (torn rows on crash between commits, no healer covers
+   it, wider blast radius). Per-asset O(1) same-txn deltas retained;
+   the N² term is already gone via lazy refresh (slice C).
 5. Sidecar stays XMP: `.albuminfo.xmp` is already read (`dir_album.rs:
 262-315`) and written (`sidecar_edit` → `xmp_write`, all edit
    endpoints) for title/desc/tags/rating/trash; only the cover was
