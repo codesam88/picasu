@@ -4993,7 +4993,7 @@
     },
     "/put/set_album_cover": {
       "put": {
-        "description": "`albumId` must resolve to an album record and `coverAssetId` to an existing\nrecord. The album's `cover` becomes `coverAssetId` and its `thumbhash` is\noverwritten with the cover's, and the in-memory tree is rebuilt before the\ncall returns.\n\nCorner cases: the cover's kind is never checked, so any asset can serve as\nthe cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is\nstored in the database only.\n\nErrors: 400 `albumId` names a media record — 401 missing or invalid\ncredentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`\nnames no record — 405 read-only mode — 500 storage failure.",
+        "description": "`albumId` must resolve to an album record and `coverAssetId` to an existing\nrecord. The album's `cover` becomes `coverAssetId` and its `thumbhash` is\noverwritten with the cover's, and the in-memory tree is rebuilt before the\ncall returns.\n\nThe new cover is persisted to the album's `.albuminfo.xmp` sidecar (as\n`picasu:CoverAssetId`) via the shared sidecar-then-store contract, so it\nsurvives a database rebuild. The cover's kind is never checked, so any\nasset can serve as the cover.\n\nErrors: 400 `albumId` names a media record — 401 missing or invalid\ncredentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`\nnames no record — 405 read-only mode — 500 storage failure.",
         "operationId": "set_album_cover",
         "requestBody": {
           "content": {
