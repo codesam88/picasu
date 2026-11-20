@@ -143,10 +143,31 @@ pub async fn edit_flags(
                 }
             }
 
-            commit_metadata_edits(&items, |asset_id: &ArrayString<64>, data: &AbstractData| {
-                crate::process::transitor::store_metadata_record(asset_id, data, is_trashed)
-                    .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))
-            })?;
+            // Sidecar phase: write every sidecar first, rolling back all of them
+            // on any failure. The store phase runs after, in one transaction.
+            if !items.is_empty() {
+                // Keep the edited paths leased across both phases.
+                let edited_paths: Vec<std::path::PathBuf> = items
+                    .iter()
+                    .map(|item| match &item.data {
+                        AbstractData::Album(album) => {
+                            std::path::PathBuf::from(&album.metadata.dir_path)
+                        }
+                        _ => item.data.source_path(),
+                    })
+                    .collect();
+                let _lease = crate::tasks::path_epoch::lease_paths(edited_paths);
+
+                commit_metadata_edits(
+                    &items,
+                    |_asset_id: &ArrayString<64>, _data: &AbstractData| Ok(()),
+                )?;
+
+                let bulk_items: Vec<(ArrayString<64>, AbstractData)> =
+                    items.iter().map(|e| (e.asset_id, e.data.clone())).collect();
+                crate::process::transitor::store_metadata_records_bulk(&bulk_items, is_trashed)
+                    .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
+            }
 
             Ok(affected_album_ids)
         })
@@ -163,6 +184,13 @@ pub async fn edit_flags(
 
     Ok(Json(()))
 }
+
+/// Test-only count of write transactions opened by the `edit_flags` store phase.
+/// A bulk trash toggle must land all of its metadata + album deltas in a
+/// single transaction, so this stays at one per request.
+#[cfg(test)]
+pub static EDIT_FLAGS_WRITE_TXN_COUNT: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 #[cfg(test)]
 mod tests {
