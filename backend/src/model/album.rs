@@ -40,12 +40,14 @@ fn path_is_in_album_or_descendant(path: &str, dir_path: &Path) -> bool {
 impl AlbumCombined {
     pub fn set_cover(&mut self, cover_data: &AbstractData, asset_id: ArrayString<64>) {
         self.metadata.cover = Some(asset_id);
+        self.metadata.manual_cover = Some(asset_id);
         self.object.thumbhash = cover_data.thumbhash().cloned();
     }
 
     #[allow(dead_code)]
     fn set_cover_from_info(&mut self, info: &MediaItemInfo) {
         self.metadata.cover = Some(info.asset_id);
+        self.metadata.manual_cover = None;
         self.object.thumbhash.clone_from(&info.thumbhash);
     }
 
@@ -132,6 +134,7 @@ impl AlbumCombined {
             self.metadata.start_time = None;
             self.metadata.end_time = None;
             self.metadata.cover = descendant_data.first().map(|info| info.asset_id);
+            self.metadata.manual_cover = None;
             self.object.thumbhash = descendant_data
                 .first()
                 .and_then(|info| info.thumbhash.clone());
@@ -303,6 +306,10 @@ pub struct AlbumMetadata {
     pub end_time: Option<i64>,
     pub last_modified_time: i64,
     pub cover: Option<ArrayString<64>>,
+    /// Manually chosen cover asset id, persisted in `.albuminfo.xmp`. `Some`
+    /// means the user explicitly set the cover; `None` means the cover is
+    /// auto-selected from album contents (and `cover` may still be `Some`).
+    pub manual_cover: Option<ArrayString<64>>,
     pub item_count: usize,
     pub item_size: u64,
     pub share_list: HashMap<ArrayString<64>, Share>,

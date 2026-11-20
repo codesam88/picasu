@@ -211,7 +211,8 @@ Source: `backend/src/storage/cache.rs`
 
 `size_of::<ReducedData>()` is 168 B on the 64-bit targets the server
 supports, so a resident 5653-row view holds about 0.95 MB of rows. The tree
-view it is built from is `DatabaseTimestamp` at 584 B per row; a rebuild
+view it is built from is `DatabaseTimestamp` at 656 B per row (grown from
+584 B by the album `manual_cover` + `aggregates_dirty` fields); a rebuild
 composes that full row. Both sizes are pinned by a unit test and logged as
 `observe rows:` when observer stats are on.
 
