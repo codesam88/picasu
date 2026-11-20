@@ -25,9 +25,12 @@ Landed: R2 checker (`d1a6a34d`), A/1 snapshots (`15c71a25`), fenced
 reset (`e3b386c5`), 1b remove-path snapshot + barrier (`c69c11fd`), 6
 check-before-write + no-orphan tests (`467910e3`), 2 delete read-txn
 release (`d960e1be`), intake fence + mid-flight reset test (`042706e1`),
-concurrent harness (`61e1a6a7`), harness move axis (`fb3a1eaa`),
-aggregate proptests (`85c86027`), intake cancel + parked test + REQ-17
-(`56dc5893`), ignored txn-hold probe (`d089ee7e`). Every fix TDD
+concurrent harness (`61e1a6a7` + move axis `fb3a1eaa`), aggregate
+proptests (`85c86027`), intake cancel + parked test + REQ-17 (`56dc5893`),
+ignored txn-hold probe (`d089ee7e`), XMP `manual_cover` + sidecar
+persistence (`d3d7f103`, `c9f32c92`), delta strip + dirty flag
+(`5498838c`), read-if-dirty refresh (`81b489f5`), single-txn dir move
+(`bd516e91`), single-txn batched removes (`5001a505`). Every fix TDD
 red/green with bounded waits; `just backend-test` green.
 Rejected: split-txn narrowing refactor (separate read/write txns for
 member row vs aggregate — breaks I2 same-txn atomicity for ~15% gain;
