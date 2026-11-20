@@ -1309,8 +1309,9 @@ mod tests {
         );
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 1);
-        assert_eq!(payload.cover, Some(asset_id));
-        assert_album_aggregates_exact(album_id.as_str());
+        // Slice B: cover is no longer recomputed on flush; album is dirty.
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();
@@ -1326,7 +1327,6 @@ mod tests {
         let (path, first) = album_member_data(&dir, "photo.jpg", 4, album_id);
         flush_tables(&[first], &[]).expect("flush first bytes");
         let first_size = read_album_payload(album_id.as_str()).item_size;
-        let asset_id = asset_id_at(&path);
 
         // Re-scan the same path with a larger payload: the flush takes the
         // size-change delta branch (`is_update`).
@@ -1341,8 +1341,9 @@ mod tests {
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 1, "a re-flush keeps one member");
         assert_ne!(payload.item_size, first_size, "size delta must apply");
-        assert_eq!(payload.cover, Some(asset_id));
-        assert_album_aggregates_exact(album_id.as_str());
+        // Slice B: cover is no longer recomputed on flush; album is dirty.
+        assert_eq!(payload.cover, None);
+        assert!(payload.aggregates_dirty);
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();
