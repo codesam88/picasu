@@ -11,6 +11,11 @@ use crate::{
 #[cfg(test)]
 pub static FLUSH_DELAY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Test-only count of write transactions opened by the remove path (single or
+/// batched). Bulk delete relies on this staying at one for the metadata phase.
+#[cfg(test)]
+pub static FLUSH_REMOVE_WRITE_TXN_COUNT: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 pub struct FlushTreeTask {
     pub insert_list: Vec<AbstractData>,
     pub remove_list: Vec<AbstractData>,
@@ -364,34 +369,123 @@ pub(crate) fn flush_tables(
         }
     }
 
-    // Process removes: delete from asset tables.
+    // Process removes: delete from asset tables, all in ONE write transaction
+    // so a bulk delete commits atomically instead of one txn per asset.
+    use crate::model::asset::AssetKind;
+
+    // Pre-phase (outside any txn): resolve identities, drop thumbnails, snapshot
+    // membership. Filesystem thumbnail deletion stays here, before the txn.
+    struct RemoveItem {
+        asset_id: ArrayString<64>,
+        path: String,
+        content_hash: ArrayString<64>,
+        album_id: Option<ArrayString<64>>,
+        is_trashed: bool,
+        file_size: u64,
+    }
+
+    let mut items: Vec<RemoveItem> = Vec::new();
     for abstract_data in remove_list {
+        let content_hash = abstract_data.hash();
         let path = abstract_data
             .path()
             .map(|a| a.file.clone())
             .unwrap_or_default();
 
         if path.is_empty() {
-            // Path pruned (e.g., by sweep_stale_asset_paths) — `None` maps to
-            // an empty path. Remove any asset in the DUPE_INDEX
-            // group whose path no longer exists on disk.
-            let content_hash = abstract_data.hash();
             for id in asset_store::get_dupe_ids(&content_hash)? {
                 if let Some(record) = asset_store::get_asset_by_id(id.as_ref())?
                     && !std::path::Path::new(&record.path).exists()
                 {
-                    remove_asset_from_tables(abstract_data, &id, &record.path, content_hash)?;
+                    // Thumbnail deletion (best-effort, outside txn).
+                    let other_refs = asset_store::get_dupe_ids(&content_hash)
+                        .map(|v| v.len())
+                        .unwrap_or(0);
+                    if other_refs <= 1 {
+                        delete_thumbnail(&content_hash, record.kind);
+                    }
+                    items.push(RemoveItem {
+                        asset_id: id,
+                        path: record.path,
+                        content_hash,
+                        album_id: record.album_id,
+                        is_trashed: record.is_trashed,
+                        file_size: record.file_size,
+                    });
                 }
             }
-        } else {
-            // Normal case: the record holds its path — remove that
-            // specific asset.
-            if let Some(asset_id) = asset_store::get_asset_id_by_path(&path)? {
-                remove_asset_from_tables(abstract_data, &asset_id, &path, abstract_data.hash())?;
+        } else if let Some(asset_id) = asset_store::get_asset_id_by_path(&path)? {
+            let record = asset_store::get_asset_by_id(asset_id.as_str())?;
+            let (album_id, is_trashed, file_size, kind) = match &record {
+                Some(r) => (r.album_id, r.is_trashed, r.file_size, r.kind),
+                None => (None, false, 0, AssetKind::Image),
+            };
+            let other_refs = asset_store::get_dupe_ids(&content_hash)
+                .map(|v| v.len())
+                .unwrap_or(0);
+            if other_refs <= 1 {
+                delete_thumbnail(&content_hash, kind);
             }
+            items.push(RemoveItem {
+                asset_id,
+                path,
+                content_hash,
+                album_id,
+                is_trashed,
+                file_size,
+            });
         }
     }
+
+    if !items.is_empty() {
+        #[cfg(test)]
+        crate::tasks::batcher::flush_tree::FLUSH_REMOVE_WRITE_TXN_COUNT
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let write_txn = TREE
+            .in_disk
+            .begin_write()
+            .context("Failed to begin write transaction for asset remove")?;
+        for item in &items {
+            remove_asset_record_in_txn(
+                &write_txn,
+                &item.asset_id,
+                &item.path,
+                item.content_hash,
+                item.album_id,
+                item.is_trashed,
+                item.file_size,
+            )?;
+        }
+        write_txn
+            .commit()
+            .context("Failed to commit asset remove transaction")?;
+    }
+
     Ok(())
+}
+
+/// Best-effort thumbnail deletion helper for the remove path.
+fn delete_thumbnail(content_hash: &ArrayString<64>, kind: AssetKind) {
+    let thumbnail = match kind {
+        AssetKind::Image => crate::storage::files::get_data_path().join(format!(
+            "object/compressed/{}/{}.jpg",
+            &content_hash.as_str()[..2],
+            content_hash
+        )),
+        AssetKind::Video => crate::storage::files::get_data_path().join(format!(
+            "object/compressed/{}/{}.mp4",
+            &content_hash.as_str()[..2],
+            content_hash
+        )),
+        AssetKind::Album => std::path::PathBuf::new(),
+    };
+    if !thumbnail.as_os_str().is_empty()
+        && thumbnail.exists()
+        && let Err(err) = std::fs::remove_file(&thumbnail)
+    {
+        log::warn!("Failed to delete thumbnail {}: {err}", thumbnail.display());
+    }
 }
 
 /// Drop `asset_id` from its previous content-hash group (`old_hash`) using
@@ -430,22 +524,6 @@ fn remove_from_old_group(
     }
 }
 
-/// Remove an asset from all tables: `ASSET_BY_ID`, `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`.
-fn remove_asset_from_tables(
-    data: &AbstractData,
-    asset_id: &ArrayString<64>,
-    path: &str,
-    content_hash: ArrayString<64>,
-) -> anyhow::Result<()> {
-    let kind = match data {
-        AbstractData::Image(_) => AssetKind::Image,
-        AbstractData::Video(_) => AssetKind::Video,
-        AbstractData::Album(_) => AssetKind::Album,
-    };
-    // Unified removal happens in remove_asset_record_from_tables (one txn).
-    remove_asset_record_from_tables(asset_id, path, content_hash, kind)
-}
-
 /// Remove one asset record from all tables by its exact identity. Thumbnail
 /// deletion stays with the confirmed removal (other refs <= 1) and the
 /// metadata row is dropped in the same short transaction. Used by both the
@@ -458,9 +536,7 @@ pub(crate) fn remove_asset_record_from_tables(
     kind: AssetKind,
 ) -> anyhow::Result<()> {
     use crate::storage::asset_store;
-    use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, METADATA_TABLE, TREE};
-    use redb::ReadableTable;
-
+    use crate::storage::db::TREE;
     // Thumbnail deletion belongs to the confirmed record removal, not to the
     // sweep/verify pre-check: a path can transiently vanish while a mutation
     // is moving it, and the lease keeps the record alive in that window.
@@ -496,81 +572,111 @@ pub(crate) fn remove_asset_record_from_tables(
             None => (None, false, 0),
         };
 
+    #[cfg(test)]
+    crate::tasks::batcher::flush_tree::FLUSH_REMOVE_WRITE_TXN_COUNT
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
     let write_txn = TREE
         .in_disk
         .begin_write()
         .context("Failed to begin write transaction for asset remove")?;
-    {
-        // Record deletes.
-        let mut t = write_txn
-            .open_table(ASSET_BY_ID)
-            .context("Failed to open ASSET_BY_ID for remove")?;
-        t.remove(&**asset_id)
-            .context("Failed to remove ASSET_BY_ID row")?;
-        drop(t);
-
-        let mut t = write_txn
-            .open_table(ASSET_BY_PATH)
-            .context("Failed to open ASSET_BY_PATH for remove")?;
-        t.remove(path)
-            .context("Failed to remove ASSET_BY_PATH row")?;
-        drop(t);
-
-        // Dupe index: drop this asset from its group.
-        let mut t = write_txn
-            .open_table(DUPE_INDEX)
-            .context("Failed to open DUPE_INDEX for remove")?;
-        let prior: Vec<String> = t
-            .get(content_hash.as_str())
-            .context("Failed to read DUPE_INDEX group")?
-            .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
-            .unwrap_or_default();
-        let retained: Vec<String> = prior
-            .into_iter()
-            .filter(|id| id.as_str() != asset_id.as_str())
-            .collect();
-        if retained.is_empty() {
-            t.remove(content_hash.as_str())
-                .context("Failed to remove DUPE_INDEX group")?;
-        } else {
-            let json = serde_json::to_string(&retained)
-                .context("Failed to serialize retained dupe group")?;
-            t.insert(content_hash.as_str(), json.as_str())
-                .context("Failed to update DUPE_INDEX group")?;
-        }
-        drop(t);
-
-        // Metadata row.
-        let mut t = write_txn
-            .open_table(METADATA_TABLE)
-            .context("Failed to open METADATA_TABLE for remove")?;
-        t.remove(&**asset_id)
-            .context("Failed to remove METADATA_TABLE row")?;
-        drop(t);
-
-        // Member row + album aggregate delta + ancestor cover refresh.
-        if let Some(alb) = album_id
-            && !is_trashed
-        {
-            crate::storage::asset_store::apply_album_delta(
-                &write_txn,
-                alb.as_str(),
-                crate::storage::asset_store::AlbumDelta {
-                    count_delta: -1,
-                    size_delta: -file_size.cast_signed(),
-                    member: Some(*asset_id),
-                    is_add: false,
-                    member_timestamp: None,
-                    member_size_override: Some(file_size),
-                    is_update: false,
-                },
-            )
-            .with_context(|| format!("Failed to apply removal delta for album {alb}"))?;
-        }
-    }
+    remove_asset_record_in_txn(
+        &write_txn,
+        asset_id,
+        path,
+        content_hash,
+        album_id,
+        is_trashed,
+        file_size,
+    )?;
     write_txn
         .commit()
         .context("Failed to commit asset remove transaction")
+}
+
+/// Table writes for one asset removal inside an already-open write transaction.
+/// Owns no transaction lifecycle and no thumbnail deletion.
+#[allow(clippy::too_many_arguments)]
+fn remove_asset_record_in_txn(
+    write_txn: &redb::WriteTransaction,
+    asset_id: &ArrayString<64>,
+    path: &str,
+    content_hash: ArrayString<64>,
+    album_id: Option<ArrayString<64>>,
+    is_trashed: bool,
+    file_size: u64,
+) -> anyhow::Result<()> {
+    use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, METADATA_TABLE};
+    use redb::ReadableTable;
+
+    // Record deletes.
+    let mut t = write_txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID for remove")?;
+    t.remove(&**asset_id)
+        .context("Failed to remove ASSET_BY_ID row")?;
+    drop(t);
+
+    let mut t = write_txn
+        .open_table(ASSET_BY_PATH)
+        .context("Failed to open ASSET_BY_PATH for remove")?;
+    t.remove(path)
+        .context("Failed to remove ASSET_BY_PATH row")?;
+    drop(t);
+
+    // Dupe index: drop this asset from its group.
+    let mut t = write_txn
+        .open_table(DUPE_INDEX)
+        .context("Failed to open DUPE_INDEX for remove")?;
+    let prior: Vec<String> = t
+        .get(content_hash.as_str())
+        .context("Failed to read DUPE_INDEX group")?
+        .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
+        .unwrap_or_default();
+    let retained: Vec<String> = prior
+        .into_iter()
+        .filter(|id| id.as_str() != asset_id.as_str())
+        .collect();
+    if retained.is_empty() {
+        t.remove(content_hash.as_str())
+            .context("Failed to remove DUPE_INDEX group")?;
+    } else {
+        let json =
+            serde_json::to_string(&retained).context("Failed to serialize retained dupe group")?;
+        t.insert(content_hash.as_str(), json.as_str())
+            .context("Failed to update DUPE_INDEX group")?;
+    }
+    drop(t);
+
+    // Metadata row.
+    let mut t = write_txn
+        .open_table(METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE for remove")?;
+    t.remove(&**asset_id)
+        .context("Failed to remove METADATA_TABLE row")?;
+    drop(t);
+
+    // Member row + album aggregate delta.
+    if let Some(alb) = album_id
+        && !is_trashed
+    {
+        crate::storage::asset_store::apply_album_delta(
+            write_txn,
+            alb.as_str(),
+            crate::storage::asset_store::AlbumDelta {
+                count_delta: -1,
+                size_delta: -file_size.cast_signed(),
+                member: Some(*asset_id),
+                is_add: false,
+                member_timestamp: None,
+                member_size_override: Some(file_size),
+                is_update: false,
+            },
+        )
+        .with_context(|| format!("Failed to apply removal delta for album {alb}"))?;
+    }
+
+    Ok(())
 }
 
 /// Batched sweep removal: delete each listed path's record by exact path/id
@@ -1348,6 +1454,46 @@ mod tests {
 
         clear_all_tables();
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn bulk_remove_uses_single_write_txn() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+
+        let (album_a, dir_a) = prepare_album_dir("bulk_a");
+        let dir_b = test_image_home().join("flush_album_delta").join("bulk_b");
+        std::fs::create_dir_all(&dir_b).expect("create album dir b");
+        let album_b = crate::process::dir_album::get_or_create_dir_album(dir_b.clone())
+            .expect("create album b");
+        let (_pa, data_a) = album_member_data(&dir_a, "a.jpg", 4, album_a);
+        let (_pb, data_b) = album_member_data(&dir_b, "b.jpg", 4, album_b);
+
+        flush_tables(&[data_a.clone(), data_b.clone()], &[]).expect("flush members");
+        assert_eq!(read_album_payload(album_a.as_str()).item_count, 1);
+        assert_eq!(read_album_payload(album_b.as_str()).item_count, 1);
+
+        crate::tasks::batcher::flush_tree::FLUSH_REMOVE_WRITE_TXN_COUNT
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+
+        flush_tables(&[], &[data_a, data_b]).expect("bulk remove");
+
+        assert_eq!(
+            crate::tasks::batcher::flush_tree::FLUSH_REMOVE_WRITE_TXN_COUNT
+                .load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "bulk remove metadata phase must use a single write transaction"
+        );
+        assert_eq!(album_member_ids(album_a.as_str()), Vec::<String>::new());
+        assert_eq!(album_member_ids(album_b.as_str()), Vec::<String>::new());
+        assert_eq!(read_album_payload(album_a.as_str()).item_count, 0);
+        assert_eq!(read_album_payload(album_b.as_str()).item_count, 0);
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir_a).ok();
+        std::fs::remove_dir_all(&dir_b).ok();
     }
 
     #[test]
