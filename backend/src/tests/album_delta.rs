@@ -337,3 +337,68 @@ proptest! {
         reset_backend_state();
     }
 }
+
+#[test]
+fn edit_flags_bulk_trash_uses_single_write_txn() {
+    let _guard = lock();
+    let _ = &*TEST_ENV;
+    reset_backend_state();
+
+    let (album_a, dir_a) = create_album("bulk_txn_a");
+    let (album_b, dir_b) = create_album("bulk_txn_b");
+    let path_a = flush_member(&dir_a, "a.jpg", 4, album_a);
+    let path_b = flush_member(&dir_b, "b.jpg", 4, album_b);
+    let asset_a = member_id_at(&path_a);
+    let asset_b = member_id_at(&path_b);
+
+    let view_a = crate::process::transitor::compose_by_asset_id(asset_a.as_str())
+        .expect("compose a")
+        .expect("view a");
+    let view_b = crate::process::transitor::compose_by_asset_id(asset_b.as_str())
+        .expect("compose b")
+        .expect("view b");
+
+    let mut edited_a = view_a;
+    edited_a.set_trashed(true);
+    let mut edited_b = view_b;
+    edited_b.set_trashed(true);
+
+    let items = vec![(asset_a, edited_a), (asset_b, edited_b)];
+
+    crate::router::put::edit_flags::EDIT_FLAGS_WRITE_TXN_COUNT
+        .store(0, std::sync::atomic::Ordering::SeqCst);
+
+    crate::process::transitor::store_metadata_records_bulk(&items, Some(true))
+        .expect("bulk trash toggle");
+
+    assert_eq!(
+        crate::router::put::edit_flags::EDIT_FLAGS_WRITE_TXN_COUNT
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "bulk trash toggle store phase must use a single write transaction"
+    );
+
+    for album_id in [album_a, album_b] {
+        assert_eq!(
+            album_member_ids(album_id.as_str()),
+            Vec::<String>::new(),
+            "trashing must remove member rows"
+        );
+        let payload = read_album_payload(album_id.as_str());
+        assert_eq!(payload.item_count, 0);
+        assert_eq!(payload.item_size, 0);
+        assert_album_aggregates_exact(album_id.as_str());
+    }
+    for asset_id in [asset_a, asset_b] {
+        assert!(
+            crate::storage::asset_store::get_asset_by_id(asset_id.as_str())
+                .expect("read trashed record")
+                .expect("record exists")
+                .is_trashed
+        );
+    }
+
+    std::fs::remove_dir_all(&dir_a).ok();
+    std::fs::remove_dir_all(&dir_b).ok();
+    reset_backend_state();
+}
