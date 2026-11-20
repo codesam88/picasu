@@ -931,6 +931,7 @@ mod tests {
     use super::*;
     use crate::model::asset::{AssetKind, AssetRecord};
     use crate::tests::bootstrap::*;
+    use proptest::prelude::*;
     use redb::{ReadableTable, TableDefinition};
 
     fn ensure_tables() {
@@ -1821,5 +1822,210 @@ mod tests {
             album_member_ids(media.asset_id.as_str()).is_empty(),
             "a non-album id must not gain a member row"
         );
+    }
+
+    // ── Fast store-level property tests ───────────────────────────────────
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 24, ..Default::default() })]
+
+        #[allow(clippy::needless_range_loop, clippy::cast_possible_wrap)]
+        #[test]
+        fn prop_asset_store_album_aggregates_random_sequence(
+            ops in prop::collection::vec((any::<u8>(), any::<u8>()), 0..=16)
+        ) {
+            const N: usize = 4;
+            let _guard = lock();
+            let _ = &*TEST_ENV;
+            let (album_id, dir) = prepare_album("prop_seq");
+
+            let mut member_ids: Vec<Option<ArrayString<64>>> = vec![None; N];
+            let mut sizes = [0u64; N];
+            let mut exists = [false; N];
+            for i in 0..N {
+                sizes[i] = (i as u64 + 1) * 10;
+            }
+            let mut in_album = [false; N];
+
+            for (op_byte, size_byte) in &ops {
+                let idx = (*op_byte as usize) % N;
+                match *op_byte % 3 {
+                    0 => {
+                        if !in_album[idx] {
+                            if !exists[idx] {
+                                let sz = sizes[idx];
+                                let ts = (idx as i64 + 1) * 100;
+                                let m = seed_member(&dir, &format!("m{idx}.jpg"), album_id, sz, ts);
+                                member_ids[idx] = Some(m);
+                                exists[idx] = true;
+                            }
+                            let mid = member_ids[idx].expect("member exists");
+                            apply_in_txn(album_id, add_delta(mid));
+                            in_album[idx] = true;
+                        }
+                    }
+                    1 => {
+                        if in_album[idx] {
+                            let mid = member_ids[idx].expect("member exists");
+                            remove_asset_by_id(mid.as_str()).expect("delete member record");
+                            apply_in_txn(album_id, remove_delta(mid, sizes[idx]));
+                            in_album[idx] = false;
+                            exists[idx] = false;
+                            member_ids[idx] = None;
+                        }
+                    }
+                    _ => {
+                        if in_album[idx] {
+                            let new_size = (u64::from(*size_byte) % 50) + 1;
+                            if new_size != sizes[idx] {
+                                let mid = member_ids[idx].expect("member exists");
+                                let mut rec = get_asset_by_id(mid.as_str())
+                                    .expect("read member")
+                                    .expect("member exists");
+                                let old = rec.file_size;
+                                rec.file_size = new_size;
+                                put_asset_by_id(&rec).expect("rewrite member");
+                                let delta_size = new_size.cast_signed() - old.cast_signed();
+                                apply_in_txn(
+                                    album_id,
+                                    AlbumDelta {
+                                        count_delta: 0,
+                                        size_delta: delta_size,
+                                        member: Some(mid),
+                                        is_add: false,
+                                        member_size_override: Some(new_size),
+                                        is_update: true,
+                                        ..Default::default()
+                                    },
+                                );
+                                sizes[idx] = new_size;
+                            }
+                        }
+                    }
+                }
+                assert_album_aggregates_exact(album_id.as_str());
+            }
+
+            let payload = read_album_payload(album_id.as_str());
+            let expected_count = in_album.iter().filter(|b| **b).count();
+            prop_assert_eq!(payload.item_count, expected_count);
+            let expected_size: u64 = (0..N)
+                .filter(|&i| in_album[i])
+                .map(|i| sizes[i])
+                .sum();
+            prop_assert_eq!(payload.item_size, expected_size);
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 20, ..Default::default() })]
+
+        #[allow(clippy::needless_range_loop, clippy::cast_possible_wrap)]
+        #[test]
+        fn prop_asset_store_detach_delete_no_orphan_member_rows(
+            ops in prop::collection::vec(any::<u8>(), 0..=16)
+        ) {
+            const N: usize = 4;
+            let _guard = lock();
+            let _ = &*TEST_ENV;
+            reset_backend_state();
+            let root = test_image_home().join("album_prop_detach");
+            let dir = root.join("a");
+            std::fs::create_dir_all(&dir).expect("create album dir");
+            let album_id = crate::process::dir_album::get_or_create_dir_album(dir.clone())
+                .expect("create album");
+
+            let mut member_ids: Vec<Option<ArrayString<64>>> = vec![None; N];
+            let mut sizes = [0u64; N];
+            let mut exists = [false; N];
+            let mut in_album = [false; N];
+            for i in 0..N {
+                sizes[i] = (i as u64 + 1) * 7;
+            }
+            let mut album_exists = true;
+
+            for op_byte in &ops {
+                let idx = (*op_byte as usize) % N;
+                match *op_byte % 3 {
+                    0 => {
+                        if album_exists && !in_album[idx] {
+                            if !exists[idx] {
+                                let sz = sizes[idx];
+                                let ts = (idx as i64 + 1) * 50;
+                                let m = seed_member(&dir, &format!("d{idx}.jpg"), album_id, sz, ts);
+                                member_ids[idx] = Some(m);
+                                exists[idx] = true;
+                            }
+                            let mid = member_ids[idx].expect("member exists");
+                            apply_in_txn(album_id, add_delta(mid));
+                            in_album[idx] = true;
+                        }
+                    }
+                    1 => {
+                        if exists[idx] {
+                            let mid = member_ids[idx].expect("member exists");
+                            if in_album[idx] {
+                                remove_asset_by_id(mid.as_str())
+                                    .expect("delete member record");
+                                apply_in_txn(album_id, remove_delta(mid, sizes[idx]));
+                                in_album[idx] = false;
+                            } else {
+                                remove_asset_by_id(mid.as_str())
+                                    .expect("delete member record");
+                            }
+                            exists[idx] = false;
+                            member_ids[idx] = None;
+                        }
+                    }
+                    _ => {
+                        if album_exists {
+                            let mut album_data =
+                                crate::process::transitor::compose_by_asset_id(album_id.as_str())
+                                    .expect("compose album")
+                                    .expect("album view exists");
+                            if let crate::model::abstract_data::AbstractData::Album(a) =
+                                &mut album_data
+                            {
+                                a.metadata.dir_path.clear();
+                            }
+                            crate::router::delete::cleanup_album_descendants(&[album_data])
+                                .expect("detach album");
+                            {
+                                use crate::storage::db::METADATA_TABLE;
+                                let txn = crate::storage::db::TREE
+                                    .in_disk
+                                    .begin_write()
+                                    .expect("begin payload removal");
+                                {
+                                    let mut table = txn.open_table(METADATA_TABLE).expect("open metadata");
+                                    let _ = table.remove(album_id.as_str());
+                                }
+                                txn.commit().expect("commit payload removal");
+                            }
+                            album_exists = false;
+                            for i in 0..N {
+                                in_album[i] = false;
+                            }
+                        }
+                    }
+                }
+
+                if album_exists {
+                    assert_album_aggregates_exact(album_id.as_str());
+                } else {
+                    prop_assert!(
+                        album_member_ids(album_id.as_str()).is_empty(),
+                        "deleted album must have no member rows"
+                    );
+                }
+                for record in get_all_assets().unwrap_or_default() {
+                    if record.kind == crate::model::asset::AssetKind::Album
+                        && (album_exists || record.asset_id != album_id)
+                    {
+                        assert_album_aggregates_exact(&record.asset_id);
+                    }
+                }
+            }
+        }
     }
 }
