@@ -92,6 +92,34 @@ heal must reach them, and the work measure below includes them.
 
 `Covering(s) = not(Converged and AspectsAligned) implies ShapeCatalog(s)`.
 
+### Reachability audit
+
+Reachable shapes carry the heal obligation:
+
+| Shape                                      | Creating action                                               |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| `GhostRow`                                 | `ExternalDelete` leaves the path row behind                   |
+| `MissingRow`                               | `ApiMoveFsOnly` and the rename windows move files before rows |
+| `TornRow`                                  | `RemoveIdOnly` (N5) drops the record before the row           |
+| `StaleContent`                             | `ExternalModify` / `ForceModify` change file bytes            |
+| `StaleMetaHash`, `StaleMtime`, `StaleSize` | share the `StaleContent` witness                              |
+| `StaleSidecar`                             | `ExternalSidecarCreate` changes sidecar bytes                 |
+| `MissingThumb`                             | `ThumbLossReboot` / `LoseThumbs`                              |
+| `QueuedIntake`                             | `SubmitScan` / `SubmitWatcherIndex`                           |
+
+Unreachable by action inspection, no heal obligation:
+
+| Shape              | Reason                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `MissingMeta`      | no action drops metadata while keeping the row and record; removal actions drop the row too                                              |
+| `MissingDupe`      | no action drops a dupe-index entry while keeping the row and record; removal actions drop the row too                                    |
+| `WrongPath`        | move and rename rewrite the record path and the path key together; `ApiMoveFsOnly` leaves a missing row, not a record pointing elsewhere |
+| `NotConvergedFlag` | the converged flag is only ever written `true`                                                                                           |
+
+The audit is by action inspection. A machine-checked reachability run from
+`initCompletion` for each reachable shape is still required by the
+anti-vacuity gate.
+
 ## Generation ordering
 
 The shapes do not mention `generations`; the goal does not read generation
@@ -230,8 +258,8 @@ Gate: reviewed claim and scope.
 - Add `ShapeCatalog` and `Covering`.
 - Add one witness run per shape.
 
-Gate: typecheck; covering check passes; every shape has a reachability
-witness.
+Gate: typecheck; covering check passes; every reachable shape has a
+reachability witness; unreachable shapes are listed with a reason.
 
 Stop: a shape that cannot be expressed as a finite predicate over the model
 state.
@@ -248,7 +276,8 @@ Gate: terminating pass with the anti-vacuity markers.
 ### 4. Heal proof (3–5 days)
 
 - Add `heal.qnt` with `stepHeal`, the shape inits, and the work measure.
-- For each shape, run the heal check and record states, depth, runtime.
+- For each reachable shape, run the heal check and record states, depth,
+  runtime.
 - If TLC does not terminate, apply the generation treatment above.
 
 Gate: every shape terminates with a positive verdict and a heal witness.
@@ -302,6 +331,17 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   unsound at saturation.
 - Composition is the most likely place for a hidden gap; it needs review.
 - Scaling may be expensive even with the abstract proof.
+
+## Status
+
+- `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`.
+- `utils/quint/proof/heal.qnt`: `stepHeal`, seven reachable witness inits,
+  `HealAntecedentReached`. All seven heal checks and antecedent witnesses are
+  green (47-49 distinct states, depth 10-11, about 1 s each).
+- The witness inits are state inits, not reachability runs from
+  `initCompletion`; the reachability audit is by action inspection.
+- Remaining: machine-checked reachability runs, universal shape inits,
+  covering check, composition and review.
 
 ## Decisions
 
