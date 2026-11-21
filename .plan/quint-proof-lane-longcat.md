@@ -346,6 +346,21 @@ Gate: the largest completed rung is recorded; no claim beyond it.
 - 2026-11-21: reachability from `initCompletion` is machine-checked for the
   seven shapes (six deterministic runs, one TLC counterexample for
   `StaleContent`).
+- 2026-11-21: the semi-universal ghost-row init (2304 drawn states) found a
+  heal counterexample, but the drawn state is unreachable from
+  `initCompletion`: it has `dupeIndex[0] = {2}` while `p3`'s row and record
+  are present, and no action removes a dupe entry while keeping the row. The
+  mechanism is real: `WorkerSkipUnchanged` does not test the dupe index, so an
+  incomplete bucket survives to quiescence. Learning: universal shape inits
+  must be constrained by the model's reachability invariants; drawing
+  arbitrary states inside a shape yields unreachable states and vacuous
+  falsifications. `DupeComplete`, `MetadataComplete`, `PathConsistent` and
+  `ConvergedFlagSet` characterize the reachable closure and are the bridge to
+  the deferred inductive track.
+- 2026-11-21: with a singleton `leased` draw, `stepHeal` has no lease release
+  and `BeginScan` requires quiescence, so 1728 of 2304 drawn states satisfy
+  the invariant vacuously. The heal step needs a lease-release path, or the
+  lease dimension must be excluded from the heal family.
 - Open: universal shape inits and the covering check are not done. The heal
   evidence is per-witness, not per-shape-universal.
 
