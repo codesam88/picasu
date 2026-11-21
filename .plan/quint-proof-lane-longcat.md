@@ -224,8 +224,9 @@ Classify from output text, never exit status. Long runs redirect to
 
 ### Anti-vacuity
 
-- **Shape witness:** a deterministic run reaches each shape from
-  `initCompletion` through environment actions.
+- **Shape witness:** a deterministic run reaches each reachable shape from
+  `initCompletion` (`shapes.qnt`); `StaleContent` uses a TLC counterexample
+  because its creating draw can be a no-op.
 - **Heal witness:** a run reaches `phase == 2 and scannedRoots == ROOTS and
 Quiescent` from each shape.
 - **Covering canary:** drop one shape from `ShapeCatalog`; the covering check
@@ -334,14 +335,18 @@ Gate: the largest completed rung is recorded; no claim beyond it.
 
 ## Status
 
-- `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`.
+- `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`,
+  six deterministic reachability runs from `initCompletion`, and the
+  `StaleContentReached` TLC counterexample.
 - `utils/quint/proof/heal.qnt`: `stepHeal`, seven reachable witness inits,
   `HealAntecedentReached`. All seven heal checks and antecedent witnesses are
   green (47-49 distinct states, depth 10-11, about 1 s each).
-- The witness inits are state inits, not reachability runs from
-  `initCompletion`; the reachability audit is by action inspection.
-- Remaining: machine-checked reachability runs, universal shape inits,
-  covering check, composition and review.
+- Reachability witnesses are machine-checked for the seven reachable shapes;
+  the four unreachable shapes are excluded by action inspection.
+- `quint test utils/quint/proof/shapes.qnt --match='Reachable'` runs the
+  proof runs; the imported model runs reference out-of-binding paths and must
+  stay filtered out.
+- Remaining: universal shape inits, covering check, composition and review.
 
 ## Decisions
 
