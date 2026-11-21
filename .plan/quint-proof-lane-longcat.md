@@ -333,6 +333,22 @@ Gate: the largest completed rung is recorded; no claim beyond it.
 - Composition is the most likely place for a hidden gap; it needs review.
 - Scaling may be expensive even with the abstract proof.
 
+## Learnings
+
+- 2026-11-21: `MissingMeta`, `MissingDupe`, `WrongPath` and `NotConvergedFlag`
+  are unreachable by action inspection. The `MissingDupe` heal counterexample
+  was vacuous: the heal step does not repair an incomplete dupe index, but no
+  reachable state has one. Removal actions drop the row and the dupe entry
+  together.
+- 2026-11-21: the seven reachable shapes heal from witness inits, and the
+  heal antecedent is reachable in each. The witness inits are single states,
+  not universal shape inits.
+- 2026-11-21: reachability from `initCompletion` is machine-checked for the
+  seven shapes (six deterministic runs, one TLC counterexample for
+  `StaleContent`).
+- Open: universal shape inits and the covering check are not done. The heal
+  evidence is per-witness, not per-shape-universal.
+
 ## Status
 
 - `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`,
@@ -347,6 +363,8 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   proof runs; the imported model runs reference out-of-binding paths and must
   stay filtered out.
 - Remaining: universal shape inits, covering check, composition and review.
+- The inductive full-model proof is deferred; the shape artifacts feed later
+  invariant discovery.
 
 ## Decisions
 
@@ -354,3 +372,6 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   truth. G2 is out of scope; atomicity stays assumed (SCOPE-6 + REQ-13).
   The active proof plan is this file; `.plan/quint-proof-lane.md` is the
   exploration record.
+- 2026-11-21: shape decomposition continues as discovery and falsification;
+  the inductive full-model proof is deferred. The shape artifacts are inputs
+  to later invariant discovery, not the final proof architecture.
