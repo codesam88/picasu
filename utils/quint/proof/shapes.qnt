@@ -126,4 +126,42 @@ module shapes {
   // Covering: every violation of the goal is explained by the catalog.
   val Covering: bool =
     not(Converged and AspectsAligned) implies ShapeCatalog
+
+  // Anti-vacuity for StaleContent. The content draw in ExternalModify /
+  // ForceModify can be a no-op, so there is no deterministic single run:
+  // this predicate is violated exactly when the shape is reachable.
+  val StaleContentReached: bool = not(StaleContent("p1"))
+
+  // Reachability witnesses. Each deterministic run injects one shape from
+  // `initCompletion`; the trailing `Skip` keeps the phase vars assigned.
+  run ghostRowReachable = initCompletion
+    .then(Stay(ExternalDelete("p1")))
+    .then(all { assert(GhostRow("p1")), Skip })
+
+  // ApiMoveFsOnly moves files without rows, but every initial path has a row,
+  // so first drop p1's file and row, then move p2's file into the rowless p1.
+  run missingRowReachable = initCompletion
+    .then(Stay(ExternalDelete("p1")))
+    .then(Stay(SubmitWatcherRemove("p1")))
+    .then(Stay(WorkerRemoveApply))
+    .then(Stay(ApiMoveFsOnly("p2", "p1")))
+    .then(all { assert(MissingRow("p1")), Skip })
+
+  run tornRowReachable = initCompletion
+    .then(BeginDrain)
+    .then(all { RemoveIdOnly("p1"), faults' = faults + 1, phase' = 0, scannedRoots' = scannedRoots })
+    .then(all { assert(TornRow("p1")), Skip })
+
+  run staleSidecarReachable = initCompletion
+    .then(Stay(ExternalSidecarCreate("p1")))
+    .then(all { assert(StaleSidecar("p1")), Skip })
+
+  run missingThumbReachable = initCompletion
+    .then(BeginDrain)
+    .then(ThumbLossReboot)
+    .then(all { assert(MissingThumb("p1")), Skip })
+
+  run queuedIntakeReachable = initCompletion
+    .then(Stay(SubmitScan("p1")))
+    .then(all { assert(QueuedIntake), Skip })
 }
