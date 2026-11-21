@@ -1,11 +1,10 @@
 // Heal proof: drain+heal suffix over the reduced instance (3 paths / 2 roots).
 //
 // The witness inits below start from a converged base state and inject one
-// shape: a ghost row, stale content, or a queued intake item. Each assigns all
-// 16 state vars explicitly. They do not conjoin `initCompletion` (or `init`)
-// with a second `files'` assignment because Quint actions are formulas: two
-// assignments to the same primed var are a conjunction, not an override, so
-// the pair would be unsatisfiable.
+// shape. Each assigns all 16 state vars explicitly. They do not conjoin
+// `initCompletion` (or `init`) with a second `files'` assignment because Quint
+// actions are formulas: two assignments to the same primed var are a
+// conjunction, not an override, so the pair would be unsatisfiable.
 module heal {
   import pipeline_merged(
     PATHS = Set("p1", "p2", "p3"),
@@ -14,6 +13,30 @@ module heal {
     SECOND_ROOT_PATHS = Set("p3"),
     SUBTREE_PAIRS = [{ src: "p1", dst: "p3" }],
   ).* from "../pipeline/merged"
+
+  // Reachability audit of the shape catalog (by action inspection on this
+  // instance). Unreachable shapes carry no heal obligation.
+  //
+  // Reachable, with a witness init below:
+  //   GhostRow      ExternalDelete leaves the path row behind.
+  //   MissingRow    ApiMoveFsOnly and the rename windows move files before rows.
+  //   TornRow       RemoveIdOnly (N5) drops the record before the row.
+  //   StaleContent  ExternalModify / ForceModify change the file bytes;
+  //                 StaleMetaHash, StaleMtime and StaleSize share the witness.
+  //   StaleSidecar  ExternalSidecarCreate changes the sidecar bytes.
+  //   MissingThumb  ThumbLossReboot / LoseThumbs drop the rendition.
+  //   QueuedIntake  SubmitScan / SubmitWatcherIndex queue intake.
+  //
+  // Unreachable, no heal obligation and no witness init:
+  //   MissingMeta       no action drops metadata while keeping the row and
+  //                     record; RemoveIdOnly drops row, record and metadata
+  //                     together, and an apply rewrites metadata.
+  //   MissingDupe       no action drops a dupe-index entry while keeping the
+  //                     row and record; removal actions drop the row too.
+  //   WrongPath         move and rename rewrite the record path and the path
+  //                     key together; ApiMoveFsOnly leaves the old record with
+  //                     no row (MissingRow), not a record pointing elsewhere.
+  //   NotConvergedFlag  the converged flag is only ever written true.
 
   // GhostRow("p1"): the row survives, the file does not.
   action initGhostRowWitness: bool = all {
@@ -71,6 +94,89 @@ module heal {
     dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
+    sweepPending' = ROOTS.mapBy(_ => false),
+    sweepBatch' = Map(),
+    leasedPaths' = Set(),
+    nextAssetId' = PATHS.size() + 1,
+    unprocessable' = Set(),
+    phase' = 0,
+    scannedRoots' = Set(),
+    faults' = 0,
+  }
+
+  // MissingRow("p1"): the file is present but its path row is gone.
+  action initMissingRowWitness: bool = all {
+    files' = PATHS.mapBy(p => initialFile(p)),
+    generations' = PATHS.mapBy(_ => 0),
+    intake' = Set(),
+    assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+    assetByPath' = PATHS.filter(p => not(p == "p1")).mapBy(p => initialId(p)),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
+    metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
+    thumbPresent' = HASHES.mapBy(h => h == 0),
+    sweepPending' = ROOTS.mapBy(_ => false),
+    sweepBatch' = Map(),
+    leasedPaths' = Set(),
+    nextAssetId' = PATHS.size() + 1,
+    unprocessable' = Set(),
+    phase' = 0,
+    scannedRoots' = Set(),
+    faults' = 0,
+  }
+
+  // TornRow("p1"): the path row survives but its asset record is gone.
+  // Metadata for id 1 is dropped with the record.
+  action initTornRowWitness: bool = all {
+    files' = PATHS.mapBy(p => initialFile(p)),
+    generations' = PATHS.mapBy(_ => 0),
+    intake' = Set(),
+    assetById' = PATHS.filter(p => not(p == "p1")).fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+    assetByPath' = PATHS.mapBy(p => initialId(p)),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
+    metadataPayload' = PATHS.filter(p => not(p == "p1")).fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
+    thumbPresent' = HASHES.mapBy(h => h == 0),
+    sweepPending' = ROOTS.mapBy(_ => false),
+    sweepBatch' = Map(),
+    leasedPaths' = Set(),
+    nextAssetId' = PATHS.size() + 1,
+    unprocessable' = Set(),
+    phase' = 0,
+    scannedRoots' = Set(),
+    faults' = 0,
+  }
+
+  // StaleSidecar("p1"): the file sidecar changed; metadata keeps sidecar 0.
+  action initStaleSidecarWitness: bool = all {
+    files' = PATHS
+      .mapBy(p => initialFile(p))
+      .set("p1", { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }),
+    generations' = PATHS.mapBy(_ => 0),
+    intake' = Set(),
+    assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+    assetByPath' = PATHS.mapBy(p => initialId(p)),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
+    metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
+    thumbPresent' = HASHES.mapBy(h => h == 0),
+    sweepPending' = ROOTS.mapBy(_ => false),
+    sweepBatch' = Map(),
+    leasedPaths' = Set(),
+    nextAssetId' = PATHS.size() + 1,
+    unprocessable' = Set(),
+    phase' = 0,
+    scannedRoots' = Set(),
+    faults' = 0,
+  }
+
+  // MissingThumb: hash 0 has no thumbnail, so every media row misses one.
+  action initMissingThumbWitness: bool = all {
+    files' = PATHS.mapBy(p => initialFile(p)),
+    generations' = PATHS.mapBy(_ => 0),
+    intake' = Set(),
+    assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+    assetByPath' = PATHS.mapBy(p => initialId(p)),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
+    metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
+    thumbPresent' = HASHES.mapBy(_ => false),
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = Map(),
     leasedPaths' = Set(),
