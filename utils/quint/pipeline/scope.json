@@ -6,7 +6,7 @@
     {
       "id": "SCOPE-1",
       "title": "Initial converged state",
-      "bound": "Every run starts from fully matching files and rows (initialFile, initialRow, init in utils/quint/pipeline/merged.qnt).",
+      "bound": "Every run starts from the fully matching initial state (init and the initial* record helpers in utils/quint/pipeline/merged.qnt).",
       "why_safe": "Convergence is about healing divergence, so runs introduce divergence explicitly before asserting the heal.",
       "lifting": "Start runs from arbitrary states (not yet modeled).",
       "provisional": false
@@ -38,7 +38,7 @@
     {
       "id": "SCOPE-5",
       "title": "Synchronous direct writes",
-      "bound": "Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/merged.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.",
+      "bound": "Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/merged.qnt). RotateWriteSidecar/RotateFinish are the two-phase rotate window (SCOPE-10). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.",
       "why_safe": "The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.",
       "lifting": "A writerInbox pending state mirroring the serial writer.",
       "provisional": true
@@ -89,14 +89,6 @@
       "bound": "SweepRemoveBatchApply drains the accumulated re-checked batch (one writer submission per root, applied per path), pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.",
       "why_safe": "Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.",
       "lifting": "Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).",
-      "provisional": true
-    },
-    {
-      "id": "SCOPE-12",
-      "title": "Album stats cascade micro-stage",
-      "bound": "AlbumTaskApply(albumId) is a single step: member snapshot, stats write and albumPending drain happen together; album liveness re-check and re-mark are abstracted into the guard (album record must exist/live) plus MemberWrite's mark_album_for_update effect.",
-      "why_safe": "Matches album_task: stats are computed outside the write txn from a ref_data snapshot, the write txn re-checks album liveness and re-marks pending when an album appears between txns, and member writes re-mark pending via mark_album_for_update so concurrent writes surface as bounded staleness rather than silent loss.",
-      "lifting": "Split into read-album txn + outside-txn compute + write-txn liveness re-check + re-mark; model the ref_data snapshot as a separate action (deferred).",
       "provisional": true
     },
     {

@@ -376,6 +376,14 @@ hypothesis).
   files only; do not open new plan documents. Local models must carry their own
   instance/budget scope, anti-vacuity witnesses, and an explicit non-composition
   statement. No edits to `Converged`, `AspectsAligned`, or `CompletionInvariant`.
+- 2026-11-21: catalog cleanup on `quint/longcat`. Removed G0 and G5 from
+  `goals.json` (their content is assumption/code-level: G5 is ASS-3; G0 is
+  SCOPE-6 + REQ-13). Merged ASS-2 into ASS-5 (duplicate hash/snapshot premise).
+  Removed SCOPE-12 (obsolete `AlbumTaskApply`; album deltas are inline in the
+  membership-mutating actions). Corrected stale names in SCOPE-1 (`initialRow`)
+  and SCOPE-5 (`RotateImage`). Dropped the closed lane's SCOPE-14/15/16 commits
+  from history; the model is back to its pre-cap state. Re-homed REQ-13/15/16 to
+  G1. Proof target remains G1.
 
 ## Iteration-1 seeds (for a possible multi-event follow-up)
 

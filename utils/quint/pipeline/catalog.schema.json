@@ -161,12 +161,10 @@
       "properties": {
         "id": {
           "enum": [
-            "G0",
             "G1",
             "G2",
             "G3",
-            "G4",
-            "G5"
+            "G4"
           ]
         },
         "decision": {
@@ -270,12 +268,10 @@
           "minItems": 1,
           "items": {
             "enum": [
-              "G0",
               "G1",
               "G2",
               "G3",
-              "G4",
-              "G5"
+              "G4"
             ]
           }
         },
@@ -334,7 +330,6 @@
             "SCOPE-9",
             "SCOPE-10",
             "SCOPE-11",
-            "SCOPE-12",
             "SCOPE-13"
           ]
         },
@@ -371,7 +366,6 @@
         "id": {
           "enum": [
             "ASS-1",
-            "ASS-2",
             "ASS-3",
             "ASS-4",
             "ASS-5",

@@ -3,28 +3,6 @@
   "description": "Goals for the index pipeline: outcome claims with a decision (committed, queued, dropped), model or code anchors, and the assumptions they rely on.",
   "goals": [
     {
-      "id": "G0",
-      "decision": "committed",
-      "title": "Safety floor",
-      "description": "The index removes or relocates an asset only in response to an explicit user action; auxiliary and derived writes are atomic.",
-      "anchors": [
-        {
-          "kind": "code",
-          "ref": "backend/src/process/thumbnail.rs:write_atomically"
-        },
-        {
-          "kind": "code",
-          "ref": "backend/src/process/sidecar_edit.rs:write_bytes_atomically"
-        },
-        {
-          "kind": "code",
-          "ref": "backend/src/process/xmp_write.rs:write_sidecar_content"
-        }
-      ],
-      "assumptions": [],
-      "notes": "Non-goal for this model: torn-byte reads are not modeled (the read path is an observer; API_READ_* faults track serving behavior). Byte integrity rests on the fs-first/DB-last crash survey plus atomic writes; transcode atomicity unverified."
-    },
-    {
       "id": "G1",
       "decision": "committed",
       "title": "Quiescent convergence",
@@ -76,22 +54,6 @@
       "anchors": [],
       "assumptions": [],
       "notes": "Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision."
-    },
-    {
-      "id": "G5",
-      "decision": "committed",
-      "title": "FS-primary / derived-secondary convergence roles",
-      "description": "The system converges based on the filesystem as the primary truth \u2014 asset media bytes, the asset's stored path and its sidecar carry user-authored metadata. The redb tables and the thumbnail store are secondary and exist for speed and caching only: loss, orphaning or tearing of derived state is not a goal violation because convergence rebuilds it from the primary state. User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.",
-      "anchors": [
-        {
-          "kind": "code",
-          "ref": "backend/src/router/put/assign_album.rs::move_asset_into_album (sidecar copy-before-rename)"
-        }
-      ],
-      "assumptions": [
-        "ASS-3"
-      ],
-      "notes": "Goal-level statement of the primary/secondary roles; the underlying fs-first adoption axiom is ASS-3. N10 (share edit racing scan flush) is the first designated DB-only exception to guard."
     }
   ]
 }

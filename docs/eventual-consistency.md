@@ -21,9 +21,9 @@ Computed from the catalog statuses and the `run` declarations in `merged.qnt`;
 the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
 - Proof: 70 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
-- Goals: 4 committed, 1 queued, 1 dropped.
+- Goals: 2 committed, 1 queued, 1 dropped.
 - Requirements: 14 verified, 2 open (REQ-1, REQ-8).
-- Assumptions: 4 held, 2 unverified, 1 open.
+- Assumptions: 3 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes, the request phase is crash-free, and the drain admits one budgeted fault per attempt that reboots into the request phase; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply, with batches accumulating across roots; move lease window is visible.
 
@@ -32,18 +32,6 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 Goals for the index pipeline: outcome claims with a decision (committed, queued, dropped), model or code anchors, and the assumptions they rely on.
 
 Source: `utils/quint/pipeline/goals.json`.
-
-### G0: Safety floor (decision: committed)
-
-The index removes or relocates an asset only in response to an explicit user action; auxiliary and derived writes are atomic.
-
-Anchors:
-
-- code: `backend/src/process/thumbnail.rs:write_atomically`
-- code: `backend/src/process/sidecar_edit.rs:write_bytes_atomically`
-- code: `backend/src/process/xmp_write.rs:write_sidecar_content`
-
-Notes: Non-goal for this model: torn-byte reads are not modeled (the read path is an observer; API_READ_* faults track serving behavior). Byte integrity rests on the fs-first/DB-last crash survey plus atomic writes; transcode atomicity unverified.
 
 ### G1: Quiescent convergence (decision: committed)
 
@@ -85,18 +73,6 @@ Anchors: none — unanchored.
 
 Notes: Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision.
 
-### G5: FS-primary / derived-secondary convergence roles (decision: committed)
-
-The system converges based on the filesystem as the primary truth — asset media bytes, the asset's stored path and its sidecar carry user-authored metadata. The redb tables and the thumbnail store are secondary and exist for speed and caching only: loss, orphaning or tearing of derived state is not a goal violation because convergence rebuilds it from the primary state. User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.
-
-Anchors:
-
-- code: `backend/src/router/put/assign_album.rs::move_asset_into_album (sidecar copy-before-rename)`
-
-Holds under: ASS-3.
-
-Notes: Goal-level statement of the primary/secondary roles; the underlying fs-first adoption axiom is ASS-3. N10 (share edit racing scan flush) is the first designated DB-only exception to guard.
-
 ## Assumptions
 
 World-given premises the model relies on, with owner, status, and a status note. They are not implementation obligations.
@@ -109,17 +85,11 @@ Owner: storage layer (path-keyed tables).
 
 Status note: Upheld by construction; no dedicated falsification test.
 
-### ASS-2: content identified by hash (snapshot comparison) (status: held)
-
-Owner: hash function plus skip comparison.
-
-Status note: Imposed and tested; finite model bounds allow collisions the real hash function must not produce.
-
 ### ASS-3: filesystem first: external FS modifications are authoritative and adopted by convergence (status: held)
 
 Owner: operationalized by watcher events (tasks/batcher/start_watcher.rs), rescan on the watcher flag, snapshot comparison and the sweep (process_file, album_index.rs); model encodes adoption via External* actions and fs-wins convergence.
 
-Status note: Design axiom, not falsifiable by a test: any external or user FS modification — edits, renames, deletions, restores from backup, crash residue — is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; see goal G5 for the primary/secondary contract this grounds.
+Status note: Design axiom, not falsifiable by a test: any external or user FS modification — edits, renames, deletions, restores from backup, crash residue — is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; redb tables and the thumbnail store are secondary and rebuildable from the primary state.
 
 ### ASS-4: derived store is pipeline-private (walk roots disjoint) (status: unverified)
 
@@ -131,7 +101,7 @@ Status note: Assumed true; no check that walk roots never cover the derived stor
 
 Owner: hash stage plus snapshotMatches.
 
-Status note: Imposed and tested.
+Status note: Imposed and tested; finite model bounds allow collisions the real hash function must not produce.
 
 ### ASS-6: quiescence (safety invariants asserted at settled state) (status: open)
 
@@ -153,7 +123,7 @@ Source: `utils/quint/pipeline/scope.json`.
 
 ### SCOPE-1: Initial converged state
 
-Bound: Every run starts from fully matching files and rows (initialFile, initialRow, init in utils/quint/pipeline/merged.qnt).
+Bound: Every run starts from the fully matching initial state (init and the initial* record helpers in utils/quint/pipeline/merged.qnt).
 
 Why safe: Convergence is about healing divergence, so runs introduce divergence explicitly before asserting the heal.
 
@@ -187,7 +157,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-5: Synchronous direct writes
 
-Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/merged.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.
+Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/merged.qnt). RotateWriteSidecar/RotateFinish are the two-phase rotate window (SCOPE-10). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.
 
 Why safe: The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.
 
@@ -250,16 +220,6 @@ Bound: SweepRemoveBatchApply drains the accumulated re-checked batch (one writer
 Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
 
 Lifting: Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).
-
-Provisional: the safety argument is weaker than the implementation guarantee.
-
-### SCOPE-12: Album stats cascade micro-stage
-
-Bound: AlbumTaskApply(albumId) is a single step: member snapshot, stats write and albumPending drain happen together; album liveness re-check and re-mark are abstracted into the guard (album record must exist/live) plus MemberWrite's mark_album_for_update effect.
-
-Why safe: Matches album_task: stats are computed outside the write txn from a ref_data snapshot, the write txn re-checks album liveness and re-marks pending when an album appears between txns, and member writes re-mark pending via mark_album_for_update so concurrent writes surface as bounded staleness rather than silent loss.
-
-Lifting: Split into read-album txn + outside-txn compute + write-txn liveness re-check + re-mark; model the ref_data snapshot as a separate action (deferred).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
@@ -378,7 +338,7 @@ Gate: Backend test: interrupt after the sidecar copy and before the asset move; 
 
 A sidecar or albuminfo write either replaces the target completely or leaves the previous bytes untouched; no partial content is ever visible.
 
-Derived from: G0. Owner: sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs).
+Derived from: G1. Owner: sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs).
 
 Gate: Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.
 
@@ -394,7 +354,7 @@ Gate: Scheduler test: a cycle slower than the interval does not overlap itself a
 
 A sidecar that exists is preserved and moved together with the asset file on every move path: copy-before-rename for asset moves, atomic tree rename for dir moves. A crash in the move window never leaves user-authored metadata unreachable: the destination sidecar is present before the file rename, and the crash-heal re-index rebuilds the metadata payload from the destination sidecar. The three move DB writes are additionally performed in one transaction to avoid stale-mapping residue and dupe-group churn (secondary; hygiene).
 
-Derived from: G5. Owner: assign_album.rs::move_asset_into_album / move_album_into_album; asset_store move helper.
+Derived from: G1. Owner: assign_album.rs::move_asset_into_album / move_album_into_album; asset_store move helper.
 
 Gate: Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run aspectsMoveCrashHealsFromSidecarTest asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.
 
@@ -402,7 +362,7 @@ Gate: Backend test: destination sidecar exists after a move (old sidecar removed
 
 Album aggregates (item_count, item_size, last_modified_time, start/end time, cover) are maintained by field-level deltas applied in the same transaction as each membership-mutating write, rather than recomputed by a deferred cascade. Membership truth is ASSET_BY_ALBUM, keyed by album_id.
 
-Derived from: G5. Owner: storage/asset_store.rs::apply_album_delta; flush_tables; assign_album; delete.
+Derived from: G1. Owner: storage/asset_store.rs::apply_album_delta; flush_tables; assign_album; delete.
 
 Gate: Backend tests per delta site; OP-8 marker on apply_album_delta.
 

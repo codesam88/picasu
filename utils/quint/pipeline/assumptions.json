@@ -10,18 +10,11 @@
       "status_note": "Upheld by construction; no dedicated falsification test."
     },
     {
-      "id": "ASS-2",
-      "title": "content identified by hash (snapshot comparison)",
-      "owner": "hash function plus skip comparison",
-      "status": "held",
-      "status_note": "Imposed and tested; finite model bounds allow collisions the real hash function must not produce."
-    },
-    {
       "id": "ASS-3",
       "title": "filesystem first: external FS modifications are authoritative and adopted by convergence",
       "owner": "operationalized by watcher events (tasks/batcher/start_watcher.rs), rescan on the watcher flag, snapshot comparison and the sweep (process_file, album_index.rs); model encodes adoption via External* actions and fs-wins convergence",
       "status": "held",
-      "status_note": "Design axiom, not falsifiable by a test: any external or user FS modification \u2014 edits, renames, deletions, restores from backup, crash residue \u2014 is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; see goal G5 for the primary/secondary contract this grounds."
+      "status_note": "Design axiom, not falsifiable by a test: any external or user FS modification \u2014 edits, renames, deletions, restores from backup, crash residue \u2014 is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; redb tables and the thumbnail store are secondary and rebuildable from the primary state."
     },
     {
       "id": "ASS-4",
@@ -35,7 +28,7 @@
       "title": "hash is the authority (snapshot comparison)",
       "owner": "hash stage plus snapshotMatches",
       "status": "held",
-      "status_note": "Imposed and tested."
+      "status_note": "Imposed and tested; finite model bounds allow collisions the real hash function must not produce."
     },
     {
       "id": "ASS-6",

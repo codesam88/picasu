@@ -219,7 +219,7 @@
       "title": "Sidecar and albuminfo writes are atomic under partial-write failure",
       "statement": "A sidecar or albuminfo write either replaces the target completely or leaves the previous bytes untouched; no partial content is ever visible.",
       "derived_from": [
-        "G0"
+        "G1"
       ],
       "owner": "sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs)",
       "gate": "Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.",
@@ -260,7 +260,7 @@
       "title": "FS-first sidecar preservation across moves",
       "statement": "A sidecar that exists is preserved and moved together with the asset file on every move path: copy-before-rename for asset moves, atomic tree rename for dir moves. A crash in the move window never leaves user-authored metadata unreachable: the destination sidecar is present before the file rename, and the crash-heal re-index rebuilds the metadata payload from the destination sidecar. The three move DB writes are additionally performed in one transaction to avoid stale-mapping residue and dupe-group churn (secondary; hygiene).",
       "derived_from": [
-        "G5"
+        "G1"
       ],
       "owner": "assign_album.rs::move_asset_into_album / move_album_into_album; asset_store move helper",
       "gate": "Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run aspectsMoveCrashHealsFromSidecarTest asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.",
@@ -277,7 +277,7 @@
       "title": "Delta-maintained album aggregates",
       "statement": "Album aggregates (item_count, item_size, last_modified_time, start/end time, cover) are maintained by field-level deltas applied in the same transaction as each membership-mutating write, rather than recomputed by a deferred cascade. Membership truth is ASSET_BY_ALBUM, keyed by album_id.",
       "derived_from": [
-        "G5"
+        "G1"
       ],
       "owner": "storage/asset_store.rs::apply_album_delta; flush_tables; assign_album; delete",
       "gate": "Backend tests per delta site; OP-8 marker on apply_album_delta.",

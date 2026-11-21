@@ -216,18 +216,6 @@ module pipeline_merged {
   // identity by run copyDistinctIdsTest. No predicate here: identity IS
   // the keying.
 
-  // ASS-2: Content has its own identifier.
-  //
-  // The asset's original content is the file content (image, video). A
-  // blake128 content hash makes a unique content identifier assetHash.
-  // The combined content is uniquely identified by its assetHash.
-  //
-  // Compared, never assumed equal: assetHash is compared field-by-field
-  // in snapshotMatches below, in WorkerSkipUnchanged, and in Converged
-  // (see the convergence goal section). Uniqueness beyond finite
-  // bounds is unstatable here: the small HASHES domain admits
-  // collisions, so uniqueness rests on the hash function, not the model.
-
   // ASS-3: The filesystem is the source of truth.
   //
   // The index (rows plus derived artifacts) is a rebuildable cache over
@@ -1036,7 +1024,7 @@ module pipeline_merged {
       it.kind == "remove",
       it.generation == generations.get(it.path),
       not(files.get(it.path).present),
-      // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+      // Album-liveness re-check: apply_album_delta no-ops without the album row.
       metadataPayload.keys().contains(0),
       assetById' = if (assetByPath.keys().contains(it.path)) { assetById.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => assetById.get(k)) } else { assetById },
       assetByPath' = if (assetByPath.keys().contains(it.path)) { assetByPath.keys().exclude(Set(it.path)).mapBy(k => assetByPath.get(k)) } else { assetByPath },
@@ -1191,7 +1179,6 @@ module pipeline_merged {
     .then(WorkerSkipStale)
     .then(all { assert(NoLostUpload and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
-  // @assumes ASS-2
   // @assumes ASS-5
   run skipUnchangedTest = init
     .then(SubmitScan("p1"))
@@ -1200,7 +1187,6 @@ module pipeline_merged {
     .then(WorkerSkipUnchanged)
     .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
-  // @assumes ASS-2
   // @assumes ASS-5
   run restoreSkipsTest = init
     .then(SubmitScan("p1"))
@@ -1689,7 +1675,7 @@ module pipeline_merged {
   // @operation OP-8
   action SweepRemoveBatchApply: bool = all {
     sweepBatch.keys().size() > 0,
-    // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+    // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
     assetByPath' = assetByPath.keys().filter(p =>
       not (sweepBatch.keys().contains(p) and
@@ -2066,7 +2052,7 @@ module pipeline_merged {
     // record (N5); the record reads test resolvability instead of raising.
     all {
       p.in(PATHS),
-      // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+      // Album-liveness re-check: apply_album_delta no-ops without the album row.
       metadataPayload.keys().contains(0),
       intake.exists(i => i.path == p),
       it.path == p,
@@ -2224,7 +2210,7 @@ module pipeline_merged {
   // RemoveIdOnly models a remove that commits ASSET_BY_ID (and metadata)
   // but crashes before ASSET_BY_PATH is rewritten (N5 torn window).
   action RemoveIdOnly(p: str): bool = all {
-    // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+    // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
     p.in(PATHS),
     assetByPath.keys().contains(p),
@@ -2274,7 +2260,6 @@ module pipeline_merged {
   }
 
   // @operation OP-8
-  // @scope SCOPE-12
   // @exempt environment
   // @assumes ASS-6
   // AlbumShareEdit models an edit_share RMW on the album's share_list
@@ -2308,7 +2293,7 @@ module pipeline_merged {
     p.in(PATHS),
     assetByPath.keys().contains(p),
     assetById.keys().contains(assetByPath.get(p)),
-    // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.
+    // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
     assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: assetById.get(assetByPath.get(p)).path, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: not(assetById.get(assetByPath.get(p)).isTrashed) }),
     assetByPath' = assetByPath,
@@ -2379,14 +2364,12 @@ module pipeline_merged {
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Delta: aggregates are exact in the initial state by construction.
   run aspectsAlbumDeltaConsistentOnInitTest = init
     .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Delta: trash toggle removes the member in the same step and aggregates
   // stay exact both directions.
   run aspectsAlbumDeltaTrashToggleTest = init
@@ -2397,7 +2380,6 @@ module pipeline_merged {
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Delta then share edit: both effects survive (commutation, I3).
   run aspectsAlbumDeltaThenShareEditTest = init
     .then(TrashToggle("p1"))
@@ -2406,7 +2388,6 @@ module pipeline_merged {
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Share edit then delta: both effects survive (commutation, I3 reverse).
   run aspectsShareEditThenAlbumDeltaTest = init
     .then(AlbumShareEdit)
@@ -2415,7 +2396,6 @@ module pipeline_merged {
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Re-apply idempotence (I5): re-indexing an unchanged asset does not
   // double-count.
   run aspectsAlbumDeltaReapplyIdempotenceTest = init
@@ -2425,7 +2405,6 @@ module pipeline_merged {
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Heal composition (I8): torn residue is cleaned and aggregates converge.
   run aspectsAlbumDeltaHealCompositionTest = init
     .then(ExternalDelete("p1"))
@@ -2438,14 +2417,12 @@ module pipeline_merged {
 
   // @assumes ASS-6
   // @scope SCOPE-5
-  // @scope SCOPE-12
   // Pure metadata write leaves aggregates untouched.
   run aspectsAlbumDeltaMemberWritePureTest = init
     .then(MemberWrite("p1"))
     .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
-  // @scope SCOPE-12
   // Stats are exact in every reachable state: deltas are applied in the
   // same step as the membership change (no deferred cascade).
   val AlbumStatsConsistent = assetById.keys().forall(id =>
@@ -2457,7 +2434,6 @@ module pipeline_merged {
   )
 
   // @assumes ASS-6
-  // @scope SCOPE-12
   // Stats never claim membership assetById refutes (no phantom members).
   val AlbumStatsNoPhantom = assetById.keys().forall(id =>
     assetById.get(id).kind == "album" implies (
@@ -2470,7 +2446,7 @@ module pipeline_merged {
   // ---------- section: completion machine, proof runs ----------
   // Proof-lane step: the environment (FS events, API calls, faults) fires at
   // any time and the pipeline is the system, so the goal is as-if-serial
-  // eventual consistency — a drained state agrees with the FS record (ASS-3/G5).
+  // eventual consistency — a drained state agrees with the FS record (ASS-3).
   //
   // Completion machine. The environment does not stop on its own, so the
   // invariant needs an observation point: a three-phase cycle in which the
