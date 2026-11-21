@@ -359,12 +359,12 @@ class BaselineCheckTest(unittest.TestCase):
     def write_baselines(self, lines):
         self.baselines.write_text("\n".join(lines) + "\n")
 
-    def test_check_passes_inside_tolerance_band(self):
+    def test_check_passes_inside_guardrail(self):
         self.write_report(scan_prefetch_p50_ms="20.0")
         self.write_baselines(
             [
                 self.battery.BASELINE_HEADER,
-                "gate-control\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate",
+                "gate-control\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate",
             ]
         )
 
@@ -376,12 +376,29 @@ class BaselineCheckTest(unittest.TestCase):
         self.assertEqual(result.failures, [])
         self.assertEqual(result.checked, 1)
 
-    def test_check_fails_outside_band_and_names_cell_and_metric(self):
-        self.write_report(scan_prefetch_p50_ms="40.0")
+    def test_check_passes_within_absolute_floor(self):
+        # limit * 0.5 = 500 would fail, but the 100 ms floor covers it
+        self.write_report(scan_prefetch_p50_ms="1400.0")
         self.write_baselines(
             [
                 self.battery.BASELINE_HEADER,
-                "gate-control\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate",
+                "gate-control\tscan_prefetch_p50_ms\t1000.0\t2026-11-14\tgate",
+            ]
+        )
+
+        result = self.battery.check_report(
+            self.battery.load_report(self.report),
+            self.battery.load_baselines(self.baselines),
+        )
+
+        self.assertEqual(result.failures, [])
+
+    def test_check_fails_outside_guardrail_and_names_cell_and_metric(self):
+        self.write_report(scan_prefetch_p50_ms="200.0")
+        self.write_baselines(
+            [
+                self.battery.BASELINE_HEADER,
+                "gate-control\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate",
             ]
         )
 
@@ -402,7 +419,7 @@ class BaselineCheckTest(unittest.TestCase):
         self.write_baselines(
             [
                 self.battery.BASELINE_HEADER,
-                "gate-storm-idle\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate",
+                "gate-storm-idle\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate",
             ]
         )
 
@@ -414,12 +431,12 @@ class BaselineCheckTest(unittest.TestCase):
         self.assertEqual(len(result.failures), 1)
         self.assertEqual(result.failures[0].cell, "gate-storm-idle")
 
-    def test_check_treats_na_as_outside_band(self):
+    def test_check_treats_na_as_failure(self):
         self.write_report(scan_prefetch_p50_ms=self.battery.NA)
         self.write_baselines(
             [
                 self.battery.BASELINE_HEADER,
-                "gate-control\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate",
+                "gate-control\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate",
             ]
         )
 
@@ -437,14 +454,14 @@ class BaselineCheckTest(unittest.TestCase):
         for baseline in baselines:
             self.assertTrue(baseline.cell.endswith(":median"))
             self.assertTrue(baseline.metric)
-            self.assertTrue(0.0 <= baseline.rel_tol <= 1.0)
+            self.assertGreaterEqual(baseline.baseline, 0.0)
 
-    def test_cli_exit_code_follows_band_result(self):
-        self.write_report(scan_prefetch_p50_ms="40.0")
+    def test_cli_exit_code_follows_guardrail_result(self):
+        self.write_report(scan_prefetch_p50_ms="200.0")
         self.write_baselines(
             [
                 self.battery.BASELINE_HEADER,
-                "gate-control\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate",
+                "gate-control\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate",
             ]
         )
         with contextlib.redirect_stdout(io.StringIO()):
@@ -951,7 +968,7 @@ class BatteryCheckMedianTest(unittest.TestCase):
         self.baselines.write_text(
             self.battery.BASELINE_HEADER
             + "\n"
-            + "gate-control:median\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate\n"
+            + "gate-control:median\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate\n"
         )
         result = self.battery.check_report(
             self.battery.load_report(self.report),
@@ -969,14 +986,14 @@ class BatteryCheckMedianTest(unittest.TestCase):
                 "scale": "100",
                 "build": "release",
                 "commit": "abc",
-                "scan_prefetch_p50_ms": "40.0",
+                "scan_prefetch_p50_ms": "200.0",
             },
         ]
         self.battery.write_report(self.report, rows)
         self.baselines.write_text(
             self.battery.BASELINE_HEADER
             + "\n"
-            + "gate-control:median\tscan_prefetch_p50_ms\t18.0\t0.25\t1.0\t2026-11-14\tgate\n"
+            + "gate-control:median\tscan_prefetch_p50_ms\t18.0\t2026-11-14\tgate\n"
         )
         result = self.battery.check_report(
             self.battery.load_report(self.report),
@@ -1230,6 +1247,23 @@ class BatteryExtractTest(unittest.TestCase):
         self.battery.write_report(self.parent / "report.tsv", rows)
         return rep1, rep2
 
+    def test_environment_missing_gives_null(self):
+        self.make_battery()
+
+        rc, stdout = self.extract()
+
+        self.assertEqual(rc, 0)
+        self.assertIsNone(json.loads(stdout)["environment"])
+
+    def test_environment_file_is_embedded_in_document(self):
+        self.make_battery()
+        (self.parent / "environment.json").write_text(json.dumps({"host": "benchbox"}))
+
+        rc, stdout = self.extract()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(stdout)["environment"], {"host": "benchbox"})
+
     def test_document_shape_lists_cells_sorted_and_counts_errors(self):
         self.make_battery()
 
@@ -1239,7 +1273,7 @@ class BatteryExtractTest(unittest.TestCase):
         doc = json.loads(stdout)
         self.assertEqual(
             list(doc),
-            ["battery", "level", "cells", "medians", "report", "errors"],
+            ["battery", "level", "cells", "medians", "report", "errors", "environment"],
         )
         self.assertEqual(doc["battery"], str(self.parent))
         self.assertEqual(doc["level"], "gate")
