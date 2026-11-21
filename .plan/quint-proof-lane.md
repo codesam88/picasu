@@ -384,6 +384,9 @@ hypothesis).
   and SCOPE-5 (`RotateImage`). Dropped the closed lane's SCOPE-14/15/16 commits
   from history; the model is back to its pre-cap state. Re-homed REQ-13/15/16 to
   G1. Proof target remains G1.
+- 2026-11-21: the active proof plan is `.plan/quint-proof-lane-longcat.md`
+  (G1 quiescent convergence via finite divergence-shape abstraction). This file
+  remains the exploration record.
 
 ## Iteration-1 seeds (for a possible multi-event follow-up)
 
