@@ -231,6 +231,83 @@ module heal {
     faults' = 0,
   }
 
+  // Cross-shape combination family: the three paths diverge independently and
+  // the heal must repair several kinds at once. The row, when it exists, maps
+  // the path to its own initialId, so PathConsistent holds by construction.
+  // All content hashes are 0, matching the initial file bytes.
+  //
+  // Pinned dimensions (logged limitations, not drawn):
+  //   - stale dupe entries: dupeIndex is derived from record presence, so it is
+  //     DupeComplete by construction; a stale entry would leave the closure
+  //     that the reachability invariants characterise.
+  //   - intake: pinned empty; a queued item is exercised by the single-shape
+  //     QueuedIntake witness and would add only a drain dimension.
+  //   - leases: pinned empty; stepHeal has no lease-release path, so a drawn
+  //     lease only blocks BeginScan.
+  //   - unprocessable: pinned empty; a processable-path subset changes the goal
+  //     shape, not the heal mechanics.
+  //
+  // Family size: 6^3 kind combos with at least one ghost (91 of 216) x 2
+  // thumbnail flags x 4 sweepPending sets = 728 initial states.
+  val ComboKinds: Set[str] =
+    Set("ok", "stale", "staleSidecar", "ghost", "missingRow", "torn")
+
+  // The kind drawn for a path; the reduced instance is exactly p1..p3.
+  pure def comboKind(p: str, k1: str, k2: str, k3: str): str =
+    if (p == "p1") k1 else (if (p == "p2") k2 else k3)
+
+  // File bytes for a kind: `stale` moves mtime/len, `staleSidecar` moves the
+  // sidecar id, `ghost` removes the file, the rest keep the initial bytes.
+  pure def comboFile(p: str, kind: str): FileState =
+    if (kind == "stale") { present: true, assetHash: 0, mtime: 1, len: 1, sidecar: 0 }
+    else if (kind == "staleSidecar") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
+    else if (kind == "ghost") { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }
+    else initialFile(p)
+
+  // A row exists for every kind except `missingRow`.
+  pure def comboRowPresent(kind: str): bool = kind != "missingRow"
+
+  // Record and metadata exist for every kind except `missingRow` and `torn`.
+  pure def comboRecordPresent(kind: str): bool =
+    kind != "missingRow" and kind != "torn"
+
+  action initShapeCombination: bool = {
+    nondet k1 = ComboKinds.oneOf()
+    nondet k2 = ComboKinds.oneOf()
+    nondet k3 = ComboKinds.oneOf()
+    nondet th0 = Set(true, false).oneOf()
+    nondet sp = Set(Set(), Set("r1"), Set("r2"), Set("r1", "r2")).oneOf()
+    all {
+      // At least one ghost: the family must exercise the sweep-prune path.
+      k1 == "ghost" or k2 == "ghost" or k3 == "ghost",
+      files' = PATHS.mapBy(p => comboFile(p, comboKind(p, k1, k2, k3))),
+      generations' = PATHS.mapBy(_ => 0),
+      intake' = Set(),
+      assetById' = PATHS
+        .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
+        .fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+      assetByPath' = PATHS
+        .filter(p => comboRowPresent(comboKind(p, k1, k2, k3)))
+        .mapBy(p => initialId(p)),
+      dupeIndex' = Map(
+        0 -> PATHS.filter(p => comboRecordPresent(comboKind(p, k1, k2, k3))).map(p => initialId(p)),
+        1 -> Set(),
+      ),
+      metadataPayload' = PATHS
+        .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
+        .fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
+      thumbPresent' = Map(0 -> th0, 1 -> false),
+      sweepPending' = ROOTS.mapBy(r => r.in(sp)),
+      sweepBatch' = Map(),
+      leasedPaths' = Set(),
+      nextAssetId' = 4,
+      unprocessable' = Set(),
+      phase' = 0,
+      scannedRoots' = Set(),
+      faults' = 0,
+    }
+  }
+
   // Anti-vacuity: the heal antecedent is reachable from the ghost-row init.
   val HealAntecedentReached: bool =
     not(phase == 2 and scannedRoots == ROOTS and Quiescent)

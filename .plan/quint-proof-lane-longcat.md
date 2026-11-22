@@ -378,6 +378,15 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   the antecedent is reached from every drawn state. This is a per-family
   check over the ghost path's own structure; other paths are pinned to base,
   so it is not yet universal over the shape.
+- 2026-11-22: the cross-shape combination family heals completely. 728
+  initial states (per-path divergence kinds over
+  ok/stale/staleSidecar/ghost/missingRow/torn with at least one ghost, plus
+  the thumbnail flag and the sweep-pending set) exhaust at 13,780 distinct
+  states, queue 0, depth 10, with no `CompletionInvariant` violation, and the
+  antecedent is reachable (the all-ghost trace reaches quiescence through
+  sweep alone). Cross-shape interactions do not break the heal at the reduced
+  instance. Pinned dimensions, logged in the init: stale dupe entries, intake,
+  leases, unprocessable.
 - Open: universal shape inits and the covering check are not done. The heal
   evidence is per-witness, not per-shape-universal.
 
@@ -389,9 +398,11 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   `ReachableInv` / `ReachableInvNeg`.
 - `utils/quint/proof/heal.qnt`: `stepHeal`, seven reachable witness inits,
   `initGhostRowInvariant` (12-state invariant-constrained ghost family),
+  `initShapeCombination` (728-state cross-shape family), and
   `HealAntecedentReached`. The constrained ghost family heals completely
-  (346 distinct states, queue 0, depth 10); the seven witness checks and
-  antecedent witnesses are green.
+  (346 distinct states, queue 0, depth 10); the cross-shape family exhausts at
+  13,780 distinct states, queue 0, depth 10, no violation; the seven witness
+  checks and antecedent witnesses are green.
 - Reachability witnesses are machine-checked for the seven reachable shapes;
   the four unreachable shapes are excluded by action inspection, and
   `ReachableInv` characterizes them (falsification-checked, not yet
@@ -399,9 +410,10 @@ Gate: the largest completed rung is recorded; no claim beyond it.
 - `quint test utils/quint/proof/shapes.qnt --match='Reachable'` runs the
   proof runs; the imported model runs reference out-of-binding paths and must
   stay filtered out.
-- Remaining: extend the constrained family to other-path divergence
-  (universal over the shape), inductive proof of `ReachableInv` (deferred),
-  covering check, composition and review.
+- Remaining: draw the remaining dimensions into the combination family
+  (stale dupe entries, intake, unprocessable), universal-over-the-shape via
+  full field draws, inductive proof of `ReachableInv` (deferred), covering
+  check, composition and review.
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 
