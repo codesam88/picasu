@@ -23,7 +23,7 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 - Proof: 70 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
 - Goals: 2 committed, 1 queued, 1 dropped.
 - Requirements: 14 verified, 2 open (REQ-1, REQ-8).
-- Assumptions: 3 held, 2 unverified, 1 open.
+- Assumptions: 3 held, 1 unverified, 1 open, 1 partial.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes, the request phase is crash-free, and the drain admits one budgeted fault per attempt that reboots into the request phase; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply, with batches accumulating across roots; move lease window is visible.
 
@@ -109,11 +109,11 @@ Owner: n/a (methodology).
 
 Status note: Safety invariants are asserted at settled states; scheduling fairness is delegated to ASS-7.
 
-### ASS-7: user enables backstop scans at regular intervals (status: unverified)
+### ASS-7: user enables backstop scans at regular intervals (status: partial)
 
 Owner: operator (user configuration).
 
-Status note: Assumed operating condition: the user enables the periodic backstop and it runs at regular intervals. Nothing verifies the setting or the interval. The watcher's Flag::Rescan trigger exists only while the watcher is enabled; with the watcher off, the backstop is the sole trigger.
+Status note: Operating condition: the user enables the periodic backstop and it runs at regular intervals. Mechanism and config are gate-tested (REQ-6, REQ-14 gates). The user-enabling step itself and full Converged/AspectsAligned convergence at interval cadence remain ungate-tested. The watcher's Flag::Rescan trigger exists only while the watcher is enabled; with the watcher off, the backstop is the sole trigger.
 
 ## Scope
 
@@ -435,7 +435,6 @@ Tests:
 - `model::config::tests::index_backstop_interval_preserved_across_toml_round_trip`
 - `tests::backstop::backstop_loop_indexes_missed_file`
 - `tests::backstop::backstop_loop_disabled_returns_none`
-- `shutdown::sigterm_exits_while_backstop_scan_is_running`
 
 Limits: One loop scans both roots (`auto`); separate per-root loops are out of scope. Shutdown waits up to 10s for an in-flight scan before draining the writer.
 
@@ -532,7 +531,6 @@ Tests:
 - `tasks::looper::backstop::tests::tick_while_idle_is_the_start_path`
 - `tasks::queue::writer::tests::completed_watermarks_never_regress`
 - `tests::backstop::backstop_loop_indexes_missed_file`
-- `shutdown::sigterm_exits_while_backstop_scan_is_running`
 
 Limits: No slow-cycle gate-hold test; completion is observed through the job's terminal state rather than a queue-depth probe.
 

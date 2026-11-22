@@ -41,8 +41,8 @@
       "id": "ASS-7",
       "title": "user enables backstop scans at regular intervals",
       "owner": "operator (user configuration)",
-      "status": "unverified",
-      "status_note": "Assumed operating condition: the user enables the periodic backstop and it runs at regular intervals. Nothing verifies the setting or the interval. The watcher's Flag::Rescan trigger exists only while the watcher is enabled; with the watcher off, the backstop is the sole trigger."
+      "status": "partial",
+      "status_note": "Operating condition: the user enables the periodic backstop and it runs at regular intervals. Mechanism and config are gate-tested (REQ-6, REQ-14 gates). The user-enabling step itself and full Converged/AspectsAligned convergence at interval cadence remain ungate-tested. The watcher's Flag::Rescan trigger exists only while the watcher is enabled; with the watcher off, the backstop is the sole trigger."
     }
   ]
 }

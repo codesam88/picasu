@@ -104,8 +104,7 @@
         "model::config::tests::index_backstop_interval_env_override_wins",
         "model::config::tests::index_backstop_interval_preserved_across_toml_round_trip",
         "tests::backstop::backstop_loop_indexes_missed_file",
-        "tests::backstop::backstop_loop_disabled_returns_none",
-        "shutdown::sigterm_exits_while_backstop_scan_is_running"
+        "tests::backstop::backstop_loop_disabled_returns_none"
       ],
       "limits": "One loop scans both roots (`auto`); separate per-root loops are out of scope. Shutdown waits up to 10s for an in-flight scan before draining the writer."
     },
@@ -250,8 +249,7 @@
         "tasks::looper::backstop::tests::finish_without_pending_does_not_start_follow_up",
         "tasks::looper::backstop::tests::tick_while_idle_is_the_start_path",
         "tasks::queue::writer::tests::completed_watermarks_never_regress",
-        "tests::backstop::backstop_loop_indexes_missed_file",
-        "shutdown::sigterm_exits_while_backstop_scan_is_running"
+        "tests::backstop::backstop_loop_indexes_missed_file"
       ],
       "limits": "No slow-cycle gate-hold test; completion is observed through the job's terminal state rather than a queue-depth probe."
     },

@@ -44,8 +44,9 @@ fairness premise is asserted anywhere.
 ### Assumption list (statuses per registry; reconciled in A5, §4.0)
 
 - ASS-3 (filesystem first; registry: `held`), ASS-6 (settled-state safety;
-  registry: `open`), ASS-7 (backstop scan trigger runs; registry:
-  `unverified`).
+  registry: `open`, no gate test — stays `open`), ASS-7 (backstop scan
+  trigger runs; registry: `partial` since A5 — mechanism/config gate-tested
+  via REQ-6/REQ-14, user-enabling step ungate-tested).
 - SCOPE-2 (finite bounds), SCOPE-6 (crashes between completed durable
   writes), SCOPE-13 (nondeterministic scheduling; phases encode the
   observation premise). New entries created by this plan: SCOPE-17
@@ -363,7 +364,19 @@ utils/quint/inductive/inductive-core.qnt` on the unedited byte copy at
 - **A5 — assumption reconciliation.** Bring the §1 assumption list and the
   registry statuses (`assumptions.json`) to agreement: update statuses
   where gate evidence exists, otherwise keep `open`/`unverified` and quote
-  them verbatim in the claim (§6).
+  them verbatim in the claim (§6). Outcome (recorded 2026-11-22): ASS-6
+  stays `open` (no requirement names quiescence; only model-run assertions
+  exercise it); ASS-4 stays `unverified` (not a dependency of this claim);
+  ASS-7 `unverified` → `partial` (REQ-6/REQ-14 gates verify mechanism and
+  config: `config.rs` interval tests, `backstop.rs` missed-file/disabled
+  tests, looper coalescing tests, writer watermark test; the user-enabling
+  step and full convergence at cadence remain ungate-tested). Also removed
+  the stale `shutdown::sigterm_exits_while_backstop_scan_is_running` gate
+  refs from REQ-6/REQ-14 (no such test exists in the tree) and regenerated
+  `docs/eventual-consistency.md`; `just quint check` green. Opened
+  `.plan/quint-catalog-testref-validation.md` (backlog) for the underlying
+  gap: `catalog` check requires only non-empty test-name strings and does
+  not verify the named tests exist.
 - **A6 — `G` derivation probe.** TLC falsification ladder for the maximum
   reachable generation per path at the reduced instance (feeds §2.3).
 
