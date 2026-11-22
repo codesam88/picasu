@@ -518,6 +518,26 @@ X` checks that X holds; a violation means X was false. Positive-form
   artifact, not committed). Making the checks in-repo requires restructuring:
   a single merged proof module, or an action-free shared base that declares
   the state once (the `local_common` pattern).
+- 2026-11-22: durable witness fix. `initCombinationWitness` pins the witnessed
+  all-ghost draw as a single state; both checks are machine-checked on a small
+  exhaustive graph (27 distinct states, queue 0, depth 8, no TLC stall). This
+  replaces the trace-read large-family witness.
+- 2026-11-22: the three remaining dimensions heal independently. The
+  unprocessable slice (empty set plus singletons) exhausts at 784,276 distinct
+  states, queue 0, depth 11; the stale-file move slice at 264,430; the
+  generation slice (0..2, intake tied) at 571,260 — all `[ok]` with the
+  antecedent reached. Unprocessable paths are exempt from the goal, so that
+  slice mainly tests the exclusion. Mechanism note: if the sweep pruned a
+  move source's row before `MoveRowRewrite`, the leases would strand and
+  `Quiescent` would be unreachable — the ordering cannot produce an unhealed
+  missing row at the antecedent.
+- 2026-11-22: the drawn-family method is saturating. The full cross-product
+  family (809,088 raw draws; ≈533,568 projected initial states after the
+  derived-dupe collapse) exceeds the run cap — initial-state enumeration alone
+  ran 16 minutes without finishing (≈8,700 candidates/s), projected ≈77 minutes
+  before graph exploration starts. Each new dimension multiplies the cost.
+  Universal full-field draws and the full cross-product need TLC resource
+  tuning or the deferred inductive route.
 - Open: the covering check ran on a generated harness, not in-repo (see the
   structural constraint above). The heal evidence is per-family, not
   per-shape-universal via full field draws.
@@ -528,16 +548,21 @@ X` checks that X holds; a violation means X was false. Positive-form
   shapes.qnt and heal.qnt): shape catalog, `ShapeCatalog`,
   `Covering`/`CoveringNeg`/`ShapeOverBroad`/`ShapeSound`, the reachability
   invariants, six reachability runs, the `StaleContentReached` counterexample,
-  `stepHeal`, the seven witness inits, the ghost family, and the combination
-  family. The full check set runs in-repo on this one spec.
+  `stepHeal`, the seven witness inits, the ghost family, the combination
+  family (now drawing unprocessable subsets, stale-file move windows, and
+  generations 0..2 with intake tied), and `initCombinationWitness` (the
+  durable single-state antecedent witness). The full check set runs in-repo
+  on this one spec.
 - Check results: nine heal checks green (combination family 190,420 distinct
-  states, queue 0, depth 11); eight machine-checked antecedent witnesses; the
-  large combination-family antecedent is reached per printed trace (TLC
-  reporting stall, reproduced 3/3) plus three single-state move/rotate
-  witness runs; `Covering` and `ShapeSound` green over both families and the
-  graph; six reachability runs pass; `StaleContentReached` counterexample at
-  depth 4; `ReachableInv` falsification timeout at 3.99M states, no
-  counterexample.
+  states, queue 0, depth 11); eight machine-checked antecedent witnesses plus
+  the durable single-state combination witness (27 distinct states, depth 8);
+  `Covering` and `ShapeSound` green over both families and the graph; six
+  reachability runs pass; `StaleContentReached` counterexample at depth 4;
+  `ReachableInv` falsification timeout at 3.99M states, no counterexample.
+  Per-dimension slices of the new dimensions exhaust with no violation
+  (unprocessable 784,276; stale-file move 264,430; generations 571,260
+  distinct states, all queue 0, depth 11); the full cross-product family is
+  cap-bound and not yet exhausted.
 - Reachability witnesses are machine-checked for the seven reachable shapes;
   the four unreachable shapes are excluded by action inspection, and
   `ReachableInv` characterizes them (falsification-checked, not yet
@@ -546,11 +571,9 @@ X` checks that X holds; a violation means X was false. Positive-form
   runs; the name filter also selects `ReachableInv`/`ReachableInvNeg`, which
   fail as tests (pre-existing), and the imported model runs reference
   out-of-binding paths.
-- Remaining: reviewer findings applied; replay one combination-family trace
-  state as a single-state antecedent witness (durable fix for the TLC
-  reporting stall); unprocessable paths, stale-file move windows, the
-  generation dimension of the move rewrite, universal-over-the-shape via full
-  field draws, inductive proof of `ReachableInv` (deferred).
+- Remaining: the full cross-product family check (cap-bound; needs TLC
+  resource tuning or the deferred inductive route); universal-over-the-shape
+  via full field draws; inductive proof of `ReachableInv` (deferred).
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 

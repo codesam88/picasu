@@ -503,13 +503,17 @@ module proof {
   //     for the source, its record, a lease on both endpoints, source absent
   //     and destination present; it rewrites the record path, moves the row and
   //     releases both leases.
-  //     Restriction: the move window is drawn from the base file bytes only.
-  //     A move of an already-stale file is not drawn; the destination file is
-  //     the initial file state, which is exactly what the `missingRow` kind
-  //     assigns.
+  //     `ApiMoveFsOnly` copies the source's file fields, so a move of a stale
+  //     file leaves stale bytes at the destination. The `mvStale` draw opens
+  //     that window: the destination takes the `missingRowStale` kind (stale
+  //     file bytes, no row, record or metadata). After `MoveRowRewrite` moves
+  //     the source's record and metadata, the destination's metadata still
+  //     holds the source's pre-move snapshot while the file bytes are stale, so
+  //     the scan must re-index the destination; that is the behavior under
+  //     test. With `mv == "none"` the flag has no effect.
   //     The move overrides the per-path kind of both endpoints (`effKind`), so
   //     a drawn move forces the source to the ghost kind and the destination to
-  //     the missingRow kind, and both endpoints are leased. A move draw
+  //     the missing-row kind, and both endpoints are leased. A move draw
   //     therefore also satisfies the ghost-presence guard.
   //   - stale dupe entries: dupeIndex[0] holds the ids of rows whose records
   //     exist (DupeCompleteRow) plus a `staleExtra` subset of the initial ids.
@@ -519,25 +523,40 @@ module proof {
   //     inside the reachable closure. AspectAligned does not forbid extra
   //     bucket ids, so a stale entry is not itself a goal violation.
   //   - intake: zero or one queued item for any path and kind
-  //     (watcher/remove), snapped to the drawn file state for that path at
-  //     generation 0 (the pinned generations). A (path, kind, current-snapshot)
-  //     item is reachable: submits snapshot the file at submit time, and later
-  //     environment changes only make an item stale or moot, which the worker
-  //     actions handle (apply, skip stale, skip superseded, open-fails,
-  //     remove).
+  //     (watcher/remove), snapped to the drawn file state for that path at the
+  //     drawn generation. A (path, kind, current-snapshot) item is reachable:
+  //     submits snapshot the file at submit time, and later environment changes
+  //     only make an item stale or moot, which the worker actions handle
+  //     (apply, skip stale, skip superseded, open-fails, remove).
+  //   - unprocessable: any subset of PATHS. `MarkUnprocessable` unions without
+  //     a guard, so every subset is reachable, and `stepHeal` never changes it.
+  //     Unprocessable paths are excluded from the goal (`Converged`,
+  //     `AspectAligned`) and from `ShapeCatalog`, so a drawn subset only
+  //     removes heal obligations; it is drawn to check that exclusion holds.
+  //   - generations: drawn uniformly in 0..2. `ScanRoot` and the submit
+  //     actions bump a path's generation, so nonzero values occur after submits
+  //     and applies. `MoveRowRewrite` has no generation guard; uniform nonzero
+  //     draws check the rewrite and the sweep/worker guards at nonzero
+  //     generations.
   //
   // Pinned dimensions (logged limitations, not drawn):
-  //   - unprocessable: pinned empty; a processable-path subset changes the goal
-  //     shape, not the heal mechanics.
+  //   - full field draws per path: a kind fixes the whole field tuple, so e.g.
+  //     a stale file with a moved sidecar is not drawn.
   //
   // Family size: 7 kinds, 7 move options (`none` plus the six ordered pairs),
   // 2 thumbnail flags, 4 sweepPending sets, 4 staleExtra sets and 12 intake
   // draws (hasItem x 3 item paths x 2 item kinds). With the guard applied the
-  // raw draw product is (6 x 7^3 + (7^3 - 6^3)) x 384 = (2,058 + 127) x 384 =
-  // 839,040 combinations. TLC reports 16,856 distinct initial states: the
-  // endpoint overrides collapse every kind drawn at a move endpoint into the
-  // ghost/missingRow kind, and the staleExtra union collapses against the
-  // derived dupe bucket.
+  // raw draw product is (6 x 7^3 + (7^3 - 6^3)) x 384 = 839,040 combinations.
+  // TLC reports 16,856 distinct initial states: the endpoint overrides collapse
+  // every kind drawn at a move endpoint into the ghost/missing-row kind, and the
+  // staleExtra union collapses against the derived dupe bucket. The three new
+  // dimensions multiply that base by 8 unprocessable subsets x 2 stale-move
+  // flags x 3 generations (16,856 x 8 x 2 x 3 = 809,088 as a raw bound). The
+  // stale-move flag only distinguishes states that draw a move, measured at
+  // 22,232 initial states for that dimension alone, so the family projects to
+  // about 22,232 x 8 x 3 = 533,568 distinct initial states and roughly 40M raw
+  // draw candidates. That exceeds the run cap, so the dimensions are attributed
+  // one at a time by the recorded per-dimension runs.
   val ComboKinds: Set[str] =
     Set("ok", "stale", "staleSidecar", "ghost", "missingRow", "torn", "rotateWindow")
 
@@ -562,77 +581,87 @@ module proof {
 
   // The kind that holds for a path once a drawn move is applied on top of the
   // per-path kinds: the move window forces the source to the ghost kind and the
-  // destination to the missingRow kind.
-  pure def effKind(p: str, k1: str, k2: str, k3: str, mv: str): str =
+  // destination to the missing-row kind, or to its stale-byte variant when the
+  // moved file bytes are stale.
+  pure def effKind(p: str, k1: str, k2: str, k3: str, mv: str, mvStale: bool): str =
     if (moveSrc(mv) == p) "ghost"
-    else if (moveDst(mv) == p) "missingRow"
+    else if (moveDst(mv) == p) (if (mvStale) "missingRowStale" else "missingRow")
     else comboKind(p, k1, k2, k3)
 
   // File bytes for a kind: `stale` moves mtime/len, `staleSidecar` moves the
   // sidecar id, `rotateWindow` moves the sidecar id and keeps the lease, `ghost`
-  // removes the file, the rest keep the initial bytes.
+  // removes the file, `missingRowStale` holds moved stale bytes with no row,
+  // the rest keep the initial bytes.
   pure def comboFile(p: str, kind: str): FileState =
     if (kind == "stale") { present: true, assetHash: 0, mtime: 1, len: 1, sidecar: 0 }
     else if (kind == "staleSidecar") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
     else if (kind == "rotateWindow") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
     else if (kind == "ghost") { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }
+    else if (kind == "missingRowStale") { present: true, assetHash: 0, mtime: 1, len: 1, sidecar: 0 }
     else initialFile(p)
 
-  // A row exists for every kind except `missingRow`. A rotate window is opened
-  // on an existing row (`RotateWriteSidecar` requires it).
-  pure def comboRowPresent(kind: str): bool = kind != "missingRow"
+  // A row exists for every kind except the missing-row kinds. A rotate window
+  // is opened on an existing row (`RotateWriteSidecar` requires it).
+  pure def comboRowPresent(kind: str): bool =
+    kind != "missingRow" and kind != "missingRowStale"
 
-  // Record and metadata exist for every kind except `missingRow` and `torn`.
-  // The rotate window keeps both: its metadata differs only in the sidecar id.
+  // Record and metadata exist for every kind except the missing-row kinds and
+  // `torn`. The rotate window keeps both: its metadata differs only in the
+  // sidecar id.
   pure def comboRecordPresent(kind: str): bool =
-    kind != "missingRow" and kind != "torn"
+    kind != "missingRow" and kind != "missingRowStale" and kind != "torn"
 
   action initShapeCombination: bool = {
     nondet k1 = ComboKinds.oneOf()
     nondet k2 = ComboKinds.oneOf()
     nondet k3 = ComboKinds.oneOf()
     nondet mv = Set("none", "p1>p2", "p1>p3", "p2>p1", "p2>p3", "p3>p1", "p3>p2").oneOf()
+    nondet mvStale = Set(true, false).oneOf()
     nondet th0 = Set(true, false).oneOf()
     nondet sp = Set(Set(), Set("r1"), Set("r2"), Set("r1", "r2")).oneOf()
     nondet staleExtra = Set(Set(), Set(1), Set(2), Set(3)).oneOf()
     nondet hasItem = Set(true, false).oneOf()
     nondet ip = PATHS.oneOf()
     nondet ik = Set("watcher", "remove").oneOf()
+    nondet up = Set(Set(), Set("p1"), Set("p2"), Set("p3"), Set("p1", "p2"), Set("p1", "p3"), Set("p2", "p3"), Set("p1", "p2", "p3")).oneOf()
+    nondet gen = 0.to(2).oneOf()
     all {
       // At least one ghost: the family must exercise the sweep-prune path. A
       // drawn move forces its source to the ghost kind, so it satisfies this
       // guard as well.
       mv != "none" or k1 == "ghost" or k2 == "ghost" or k3 == "ghost",
-      files' = PATHS.mapBy(p => comboFile(p, effKind(p, k1, k2, k3, mv))),
-      generations' = PATHS.mapBy(_ => 0),
+      files' = PATHS.mapBy(p => comboFile(p, effKind(p, k1, k2, k3, mv, mvStale))),
+      generations' = PATHS.mapBy(_ => gen),
       // The item snapshots the drawn file state: `files` is the pre-state in an
-      // init action, so the item is built from `comboFile` instead.
+      // init action, so the item is built from `comboFile` instead. Its
+      // generation is the drawn uniform generation, so the worker guards match
+      // as they do at generation 0.
       intake' = if (hasItem)
         Set({
           path: ip,
-          generation: 0,
+          generation: gen,
           kind: ik,
-          mtime: comboFile(ip, effKind(ip, k1, k2, k3, mv)).mtime,
-          len: comboFile(ip, effKind(ip, k1, k2, k3, mv)).len,
-          sidecar: comboFile(ip, effKind(ip, k1, k2, k3, mv)).sidecar,
-          assetHash: comboFile(ip, effKind(ip, k1, k2, k3, mv)).assetHash,
+          mtime: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).mtime,
+          len: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).len,
+          sidecar: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).sidecar,
+          assetHash: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).assetHash,
         })
         else Set(),
       assetById' = PATHS
-        .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv)))
+        .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv, mvStale)))
         .fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
       assetByPath' = PATHS
-        .filter(p => comboRowPresent(effKind(p, k1, k2, k3, mv)))
+        .filter(p => comboRowPresent(effKind(p, k1, k2, k3, mv, mvStale)))
         .mapBy(p => initialId(p)),
       dupeIndex' = Map(
         0 -> PATHS
-          .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv)))
+          .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv, mvStale)))
           .map(p => initialId(p))
           .union(staleExtra),
         1 -> Set(),
       ),
       metadataPayload' = PATHS
-        .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv)))
+        .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv, mvStale)))
         .fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
       thumbPresent' = Map(0 -> th0, 1 -> false),
       sweepPending' = ROOTS.mapBy(r => r.in(sp)),
@@ -640,13 +669,41 @@ module proof {
       // Every rotate window holds its path lease; a drawn move leases both
       // endpoints. Both are released by the matching finish action.
       leasedPaths' =
-        PATHS.filter(p => effKind(p, k1, k2, k3, mv) == "rotateWindow")
+        PATHS.filter(p => effKind(p, k1, k2, k3, mv, mvStale) == "rotateWindow")
           .union(if (mv == "none") Set() else Set(moveSrc(mv), moveDst(mv))),
       nextAssetId' = 4,
-      unprocessable' = Set(),
+      unprocessable' = up,
       phase' = 0,
       scannedRoots' = Set(),
       faults' = 0,
     }
+  }
+
+  // Durable antecedent witness for the combination family. The large
+  // combination-family witness run reaches the antecedent but TLC stalls in
+  // violation reporting on it, so the antecedent is machine-checked on one
+  // combination-family state instead: all three paths ghost (a file-less row
+  // with its record and metadata), no move, no thumbnail, no sweep owed, no
+  // stale dupe extra, no intake, no unprocessable path, generation 0. The heal
+  // reaches quiescence through the sweep alone; the combination-family heal
+  // run records that. Only the drawn fields change here relative to
+  // `initShapeCombination`, so the single state is a member of that family.
+  action initCombinationWitness: bool = all {
+    files' = PATHS.mapBy(p => comboFile(p, effKind(p, "ghost", "ghost", "ghost", "none", false))),
+    generations' = PATHS.mapBy(_ => 0),
+    intake' = Set(),
+    assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
+    assetByPath' = PATHS.mapBy(p => initialId(p)),
+    dupeIndex' = Map(0 -> PATHS.map(p => initialId(p)), 1 -> Set()),
+    metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
+    thumbPresent' = Map(0 -> false, 1 -> false),
+    sweepPending' = ROOTS.mapBy(_ => false),
+    sweepBatch' = Map(),
+    leasedPaths' = Set(),
+    nextAssetId' = PATHS.size() + 1,
+    unprocessable' = Set(),
+    phase' = 0,
+    scannedRoots' = Set(),
+    faults' = 0,
   }
 }
