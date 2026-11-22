@@ -285,20 +285,63 @@ Gate: every shape terminates with a positive verdict and a heal witness.
 
 Stop: a shape is not healed, or the generation treatment is unsound.
 
-### 5. Compose G1 (1–2 days)
+### 5. Compose G1 — written argument (scoped to the drawn families)
 
-- Write the covering-plus-heal argument that yields the claim, in this shape:
-  1. Lemma (covering): a state violating `Converged and AspectsAligned`
-     satisfies at least one shape.
-  2. Lemma (heal): from any state satisfying a shape, the drain+heal suffix
-     reaches `phase == 2 and scannedRoots == ROOTS and Quiescent` with
-     `Converged and AspectsAligned`.
-  3. Theorem: the claim.
-  4. Proof: take any reachable state. If it satisfies the goal, done;
-     otherwise Lemma 1 gives a shape, and Lemma 2 gives a concrete heal trace
-     to the goal.
+**Theorem (G1, scoped).** On the reduced instance (3 paths / 2 roots), for
+every state `s` in the drawn families `F` (the seven witness inits, the
+invariant-constrained ghost family, and the combination family), if a state
+reachable from `s` by `stepHeal` satisfies `phase == 2 and
+scannedRoots == ROOTS and Quiescent`, then `Converged and AspectsAligned`.
+
+**Machine-checked evidence** (all in-repo, `utils/quint/proof/proof.qnt`):
+
+1. **Lemma (covering).** `Covering` — every goal-violating state satisfies at
+   least one catalog shape — holds over `F`'s initial states (16,856 + 12)
+   and exhaustively over the 190,420-state graph reachable under `stepHeal`.
+   Shape soundness (`ShapeSound`) holds: no catalog shape occurs in a
+   goal-true state. The shapes are the negated conjuncts of
+   `Converged and AspectsAligned` by construction.
+2. **Lemma (heal).** `CompletionInvariant` holds over the graph reachable
+   from each family init under `stepHeal`, exhaustively (queue 0, complete
+   depth 10–11, 190,420 states for the combination family).
+3. **Non-vacuity.** `HealAntecedentReached` counterexamples for every family
+   init: the antecedent is reached from each.
+4. **Reachability of the families.** The family inits satisfy
+   `ReachableInv` by construction, and `ReachableInv` holds at
+   `initCompletion` (falsification-checked over 3.99M states; not inductive).
+   Per-shape reachability witnesses: six deterministic runs and the
+   `StaleContentReached` counterexample.
+
+**Proof (scoped).** Take any state `t` reachable from `s` by `stepHeal` with
+the antecedent holding. If `t` satisfies the goal, done. Otherwise, by the
+covering lemma applied along the graph (checked over the full `stepHeal`
+graph, not just the initial states), `t` satisfies a catalog shape; each
+catalog shape is a goal violation (soundness), and the heal lemma applied to
+that shape's family gives a heal trace to the goal — but `t` is terminal for
+the antecedent, so the covering lemma's exhaustiveness over the graph is the
+operative fact: no goal-violating state exists in the checked graph.
+
+**Honest scope — what this does not yet prove:**
+
+- `F` is a subset of the reachable closure characterized by the drawn
+  dimensions (per-path kinds, thumbnail, sweep-pending, stale dupe, intake,
+  lease windows). It is not the full reachable set; universal-over-the-shape
+  needs full field draws.
+- `ReachableInv` is falsification-checked, not proved inductive.
+- ASS-3/6/7 and SCOPE-2/6/13 remain assumptions; the model↔code link is out
+  of scope.
+- The full G1 sentence over all reachable states follows only with (a) an
+  inductive `ReachableInv` and (b) universal shape families — or the
+  inductive route directly.
+
+**Quotable claim (scoped).** "On the reduced instance (3 paths / 2 roots),
+for every state in the drawn families `F` — a subset of the reachable closure
+characterized by `ReachableInv` — TLC exhausts the `stepHeal` graph with no
+violation of `CompletionInvariant`, and every goal-violating state in `F`
+satisfies a catalog shape that is itself a goal violation."
+
 - Independent review of the shape predicates, the covering check, the heal
-  init coverage, and the composition.
+  init coverage, and the composition: pending (see the review record below).
 
 Gate: reviewer sign-off; claim quoted with instance, bounds and assumptions.
 
@@ -445,35 +488,29 @@ X` checks that X holds; a violation means X was false. Positive-form
 
 ## Status
 
-- `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`,
-  `CoveringNeg` / `ShapeOverBroad`, the reachability invariants
-  `ReachableInv` / `ReachableInvNeg`, six deterministic reachability runs
-  from `initCompletion`, and the `StaleContentReached` TLC counterexample.
-- Covering status: `Covering` and shape soundness hold over the drawn
-  families and the 190,420-state graph, checked via a generated harness; an
-  in-repo check needs the proof modules restructured (single merged module or
-  shared action-free base).
-- `utils/quint/proof/heal.qnt`: `stepHeal` (now including `MoveRowRewrite`
-  and `RotateFinish`), seven reachable witness inits,
-  `initGhostRowInvariant` (12-state invariant-constrained ghost family), and
-  `initShapeCombination` (cross-shape family with stale dupe entries, a
-  queued intake item, and move/rotate lease windows). The constrained ghost
-  family heals completely (346 distinct states, queue 0, depth 10); the
-  combination family exhausts at 190,420 distinct states, queue 0, depth 11,
-  no violation, including the lease windows; the seven witness checks and
-  antecedent witnesses are green.
+- `utils/quint/proof/proof.qnt`: the single shape-proof module (merged from
+  shapes.qnt and heal.qnt): shape catalog, `ShapeCatalog`,
+  `Covering`/`CoveringNeg`/`ShapeOverBroad`/`ShapeSound`, the reachability
+  invariants, six reachability runs, the `StaleContentReached` counterexample,
+  `stepHeal`, the seven witness inits, the ghost family, and the combination
+  family. The full check set runs in-repo on this one spec.
+- Check results: nine heal checks and antecedent witnesses green (combination
+  family 190,420 distinct states, queue 0, depth 11); `Covering` and
+  `ShapeSound` green over both families and the graph; six reachability runs
+  pass; `StaleContentReached` counterexample at depth 4; `ReachableInv`
+  falsification timeout at 3.99M states, no counterexample.
 - Reachability witnesses are machine-checked for the seven reachable shapes;
   the four unreachable shapes are excluded by action inspection, and
   `ReachableInv` characterizes them (falsification-checked, not yet
   inductive).
-- `quint test utils/quint/proof/shapes.qnt --match='Reachable'` runs the
-  proof runs; the imported model runs reference out-of-binding paths and must
-  stay filtered out.
-- Remaining: restructure the proof modules so the covering check is in-repo
-  (single merged module or shared action-free base), then composition and
-  review; unprocessable paths, stale-file move windows, the generation
-  dimension of the move rewrite, universal-over-the-shape via full field
-  draws, inductive proof of `ReachableInv` (deferred).
+- `quint test utils/quint/proof/proof.qnt --match='Reachable'` runs the proof
+  runs; the name filter also selects `ReachableInv`/`ReachableInvNeg`, which
+  fail as tests (pre-existing), and the imported model runs reference
+  out-of-binding paths.
+- Remaining: reviewer sign-off on the composition; unprocessable paths,
+  stale-file move windows, the generation dimension of the move rewrite,
+  universal-over-the-shape via full field draws, inductive proof of
+  `ReachableInv` (deferred).
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 
