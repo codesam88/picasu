@@ -387,6 +387,18 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   sweep alone). Cross-shape interactions do not break the heal at the reduced
   instance. Pinned dimensions, logged in the init: stale dupe entries, intake,
   leases, unprocessable.
+- 2026-11-22: the combination family with stale dupe entries and one queued
+  intake item exhausts at 83,896 distinct states (8,792 distinct initial
+  states), queue 0, depth 10, with no `CompletionInvariant` violation. Stale
+  dupe entries (an id in the bucket without a record, reachable via
+  `RemoveIdOnly`) are tolerated: `AspectAligned` requires entries for rows
+  with records, not the absence of extras. A queued intake item with the
+  current snapshot is drainable in one step for every file state (present →
+  apply, absent + watcher → open-fails, absent + remove → remove-apply). The
+  stale-dupe and intake dimensions are now drawn; leases and unprocessable
+  remain pinned. Measurement detail: the raw draw product (34,944) collapses
+  to 8,792 distinct initial states because the derived dupe bucket repeats
+  across kind triples.
 - Open: universal shape inits and the covering check are not done. The heal
   evidence is per-witness, not per-shape-universal.
 
@@ -398,11 +410,11 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   `ReachableInv` / `ReachableInvNeg`.
 - `utils/quint/proof/heal.qnt`: `stepHeal`, seven reachable witness inits,
   `initGhostRowInvariant` (12-state invariant-constrained ghost family),
-  `initShapeCombination` (728-state cross-shape family), and
-  `HealAntecedentReached`. The constrained ghost family heals completely
-  (346 distinct states, queue 0, depth 10); the cross-shape family exhausts at
-  13,780 distinct states, queue 0, depth 10, no violation; the seven witness
-  checks and antecedent witnesses are green.
+  `initShapeCombination` (cross-shape family with stale dupe entries and a
+  queued intake item), and `HealAntecedentReached`. The constrained ghost
+  family heals completely (346 distinct states, queue 0, depth 10); the
+  cross-shape family exhausts at 83,896 distinct states, queue 0, depth 10,
+  no violation; the seven witness checks and antecedent witnesses are green.
 - Reachability witnesses are machine-checked for the seven reachable shapes;
   the four unreachable shapes are excluded by action inspection, and
   `ReachableInv` characterizes them (falsification-checked, not yet
@@ -411,9 +423,9 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   proof runs; the imported model runs reference out-of-binding paths and must
   stay filtered out.
 - Remaining: draw the remaining dimensions into the combination family
-  (stale dupe entries, intake, unprocessable), universal-over-the-shape via
-  full field draws, inductive proof of `ReachableInv` (deferred), covering
-  check, composition and review.
+  (leases need a release path in `stepHeal`; unprocessable), universal
+  over-the-shape via full field draws, inductive proof of `ReachableInv`
+  (deferred), covering check, composition and review.
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 

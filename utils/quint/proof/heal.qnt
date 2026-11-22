@@ -236,19 +236,34 @@ module heal {
   // the path to its own initialId, so PathConsistent holds by construction.
   // All content hashes are 0, matching the initial file bytes.
   //
+  // Drawn dimensions:
+  //   - stale dupe entries: dupeIndex[0] holds the ids of rows whose records
+  //     exist (DupeCompleteRow) plus a `staleExtra` subset of the initial ids.
+  //     An id can sit in the bucket without a record: RemoveIdOnly drops the
+  //     record and metadata while keeping dupeIndex, and DupeCompleteRow only
+  //     requires entries for rows whose records exist, so the union stays
+  //     inside the reachable closure. AspectAligned does not forbid extra
+  //     bucket ids, so a stale entry is not itself a goal violation.
+  //   - intake: zero or one queued item for any path and kind
+  //     (watcher/remove), snapped to the drawn file state for that path at
+  //     generation 0 (the pinned generations). A (path, kind, current-snapshot)
+  //     item is reachable: submits snapshot the file at submit time, and later
+  //     environment changes only make an item stale or moot, which the worker
+  //     actions handle (apply, skip stale, skip superseded, open-fails,
+  //     remove).
+  //
   // Pinned dimensions (logged limitations, not drawn):
-  //   - stale dupe entries: dupeIndex is derived from record presence, so it is
-  //     DupeComplete by construction; a stale entry would leave the closure
-  //     that the reachability invariants characterise.
-  //   - intake: pinned empty; a queued item is exercised by the single-shape
-  //     QueuedIntake witness and would add only a drain dimension.
   //   - leases: pinned empty; stepHeal has no lease-release path, so a drawn
   //     lease only blocks BeginScan.
   //   - unprocessable: pinned empty; a processable-path subset changes the goal
   //     shape, not the heal mechanics.
   //
   // Family size: 6^3 kind combos with at least one ghost (91 of 216) x 2
-  // thumbnail flags x 4 sweepPending sets = 728 initial states.
+  // thumbnail flags x 4 sweepPending sets = 728 initial states. Drawn further
+  // by 4 staleExtra sets x 2 hasItem x 3 item paths x 2 item kinds =
+  // 34,944 combinations. The staleExtra union collapses against the derived
+  // bucket: 91 kind triples produce only 157 distinct dupeIndex[0] sets
+  // instead of 364, so TLC reports 8,792 distinct initial states.
   val ComboKinds: Set[str] =
     Set("ok", "stale", "staleSidecar", "ghost", "missingRow", "torn")
 
@@ -277,12 +292,28 @@ module heal {
     nondet k3 = ComboKinds.oneOf()
     nondet th0 = Set(true, false).oneOf()
     nondet sp = Set(Set(), Set("r1"), Set("r2"), Set("r1", "r2")).oneOf()
+    nondet staleExtra = Set(Set(), Set(1), Set(2), Set(3)).oneOf()
+    nondet hasItem = Set(true, false).oneOf()
+    nondet ip = PATHS.oneOf()
+    nondet ik = Set("watcher", "remove").oneOf()
     all {
       // At least one ghost: the family must exercise the sweep-prune path.
       k1 == "ghost" or k2 == "ghost" or k3 == "ghost",
       files' = PATHS.mapBy(p => comboFile(p, comboKind(p, k1, k2, k3))),
       generations' = PATHS.mapBy(_ => 0),
-      intake' = Set(),
+      // The item snapshots the drawn file state: `files` is the pre-state in an
+      // init action, so the item is built from `comboFile` instead.
+      intake' = if (hasItem)
+        Set({
+          path: ip,
+          generation: 0,
+          kind: ik,
+          mtime: comboFile(ip, comboKind(ip, k1, k2, k3)).mtime,
+          len: comboFile(ip, comboKind(ip, k1, k2, k3)).len,
+          sidecar: comboFile(ip, comboKind(ip, k1, k2, k3)).sidecar,
+          assetHash: comboFile(ip, comboKind(ip, k1, k2, k3)).assetHash,
+        })
+        else Set(),
       assetById' = PATHS
         .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
         .fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
@@ -290,7 +321,10 @@ module heal {
         .filter(p => comboRowPresent(comboKind(p, k1, k2, k3)))
         .mapBy(p => initialId(p)),
       dupeIndex' = Map(
-        0 -> PATHS.filter(p => comboRecordPresent(comboKind(p, k1, k2, k3))).map(p => initialId(p)),
+        0 -> PATHS
+          .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
+          .map(p => initialId(p))
+          .union(staleExtra),
         1 -> Set(),
       ),
       metadataPayload' = PATHS
