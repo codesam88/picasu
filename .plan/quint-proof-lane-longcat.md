@@ -361,23 +361,47 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   and `BeginScan` requires quiescence, so 1728 of 2304 drawn states satisfy
   the invariant vacuously. The heal step needs a lease-release path, or the
   lease dimension must be excluded from the heal family.
+- 2026-11-21: the reachability invariants collapse the ghost family. Under
+  `PathConsistent` the ghost row's id must be its own `initialId` (no
+  collisions), `MetadataComplete` couples record and metadata presence, and
+  `DupeComplete` pins the dupe bucket to the existing record ids. The
+  2304-state drawn family becomes 12 states. The reachable closure is highly
+  constrained; that strength is what makes the constrained family tractable.
+- 2026-11-21: falsification check for `ReachableInv` (positive polarity,
+  counterexample = a reachable state violating it): 120 s, 2.59M distinct
+  states explored, no counterexample; frontier still growing, so not
+  exhaustive and not inductive. Polarity note: `--invariant ReachableInv` is
+  the falsification form; a `ReachableInvNeg` counterexample at init is a
+  witness that init satisfies the invariants.
+- 2026-11-21: the invariant-constrained ghost family heals completely: 12
+  initial states, 346 distinct states, queue 0, depth 10, no violation, and
+  the antecedent is reached from every drawn state. This is a per-family
+  check over the ghost path's own structure; other paths are pinned to base,
+  so it is not yet universal over the shape.
 - Open: universal shape inits and the covering check are not done. The heal
   evidence is per-witness, not per-shape-universal.
 
 ## Status
 
 - `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`,
-  six deterministic reachability runs from `initCompletion`, and the
-  `StaleContentReached` TLC counterexample.
+  six deterministic reachability runs from `initCompletion`, the
+  `StaleContentReached` TLC counterexample, and the reachability invariants
+  `ReachableInv` / `ReachableInvNeg`.
 - `utils/quint/proof/heal.qnt`: `stepHeal`, seven reachable witness inits,
-  `HealAntecedentReached`. All seven heal checks and antecedent witnesses are
-  green (47-49 distinct states, depth 10-11, about 1 s each).
+  `initGhostRowInvariant` (12-state invariant-constrained ghost family),
+  `HealAntecedentReached`. The constrained ghost family heals completely
+  (346 distinct states, queue 0, depth 10); the seven witness checks and
+  antecedent witnesses are green.
 - Reachability witnesses are machine-checked for the seven reachable shapes;
-  the four unreachable shapes are excluded by action inspection.
+  the four unreachable shapes are excluded by action inspection, and
+  `ReachableInv` characterizes them (falsification-checked, not yet
+  inductive).
 - `quint test utils/quint/proof/shapes.qnt --match='Reachable'` runs the
   proof runs; the imported model runs reference out-of-binding paths and must
   stay filtered out.
-- Remaining: universal shape inits, covering check, composition and review.
+- Remaining: extend the constrained family to other-path divergence
+  (universal over the shape), inductive proof of `ReachableInv` (deferred),
+  covering check, composition and review.
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 

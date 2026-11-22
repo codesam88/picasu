@@ -60,23 +60,24 @@ module heal {
     faults' = 0,
   }
 
-  // GhostRow(p) semi-universal family. The ghost path is any path, its row
-  // points at any id 1..3, and the id's record/metadata presence, the hash-0
-  // thumbnail flag and dupe bucket, and one held lease are drawn
-  // independently. 2304 states: 3 ghost paths x 3 ids x 2 record x 2 metadata
-  // x 2 thumb x 8 dupe buckets x 4 lease sets. Every state has
+  // GhostRow invariant-constrained family. The ghost path is any path; its
+  // row points at initialId(ghost), so the record path stays consistent and no
+  // id collides. The record and its metadata are dropped together or kept
+  // together (recMissing), the hash-0 thumbnail flag is drawn, and the lease
+  // dimension is excluded: stepHeal has no lease-release path, so drawing a
+  // lease only makes BeginScan unreachable. dupeIndex[0] is the set of ids
+  // whose records exist and dupeIndex[1] is empty, matching DupeComplete.
+  //
+  // 12 states: 3 ghost paths x 2 record/metadata-dropped x 2 hash-0 thumbnail
+  // flag. Constraining the semi-universal draws by the reachability invariants
+  // collapses the 2304-state family to 12 drawn states; the 2292 dropped draws
+  // are unreachable from initCompletion. Every state has
   // files[ghost].present == false and a row for ghost, so GhostRow(ghost)
-  // holds throughout. The draws are independent, so the family includes id
-  // collisions (ghost -> gid where gid is another path's initialId) and states
-  // where record and metadata presence disagree.
-  action initGhostRowSemiUniversal: bool = {
+  // holds throughout.
+  action initGhostRowInvariant: bool = {
     nondet ghost = PATHS.oneOf()
-    nondet gid = 1.to(3).oneOf()
-    nondet recExists = Set(true, false).oneOf()
-    nondet metaExists = Set(true, false).oneOf()
+    nondet recMissing = Set(true, false).oneOf()
     nondet th0 = Set(true, false).oneOf()
-    nondet dupe0 = Set(Set(), Set(1), Set(2), Set(3), Set(1, 2), Set(1, 3), Set(2, 3), Set(1, 2, 3)).oneOf()
-    nondet leased = Set(Set(), Set("p1"), Set("p2"), Set("p3")).oneOf()
     all {
       files' = PATHS.mapBy(p =>
         if (p == ghost) { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 } else initialFile(p)
@@ -84,17 +85,17 @@ module heal {
       generations' = PATHS.mapBy(_ => 0),
       intake' = Set(),
       assetById' = PATHS
-        .filter(p => recExists or not(initialId(p) == gid))
+        .filter(p => not(recMissing) or not(initialId(p) == initialId(ghost)))
         .fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
-      assetByPath' = PATHS.mapBy(p => if (p == ghost) gid else initialId(p)),
-      dupeIndex' = Map(0 -> dupe0, 1 -> Set()),
+      assetByPath' = PATHS.mapBy(p => initialId(p)),
+      dupeIndex' = Map(0 -> PATHS.filter(p => not(recMissing) or not(initialId(p) == initialId(ghost))).map(p => initialId(p)), 1 -> Set()),
       metadataPayload' = PATHS
-        .filter(p => metaExists or not(initialId(p) == gid))
+        .filter(p => not(recMissing) or not(initialId(p) == initialId(ghost)))
         .fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
       thumbPresent' = Map(0 -> th0, 1 -> false),
       sweepPending' = ROOTS.mapBy(_ => false),
       sweepBatch' = Map(),
-      leasedPaths' = leased,
+      leasedPaths' = Set(),
       nextAssetId' = PATHS.size() + 1,
       unprocessable' = Set(),
       phase' = 0,

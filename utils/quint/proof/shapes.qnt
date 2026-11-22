@@ -127,6 +127,39 @@ module shapes {
   val Covering: bool =
     not(Converged and AspectsAligned) implies ShapeCatalog
 
+  // Reachability invariants: characterize the states reachable from
+  // initCompletion. Used to constrain universal shape inits; each is
+  // falsification-checked below and becomes an inductive obligation.
+  def DupeCompleteRow(p: str): bool =
+    not(assetByPath.keys().contains(p)) or
+    not(assetById.keys().contains(assetByPath.get(p))) or
+    assetById.get(assetByPath.get(p)).contentHash < 0 or
+    (dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
+      dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).contains(assetByPath.get(p)))
+
+  def MetadataCompleteRow(p: str): bool =
+    not(assetByPath.keys().contains(p)) or
+    not(assetById.keys().contains(assetByPath.get(p))) or
+    metadataPayload.keys().contains(assetByPath.get(p))
+
+  def PathConsistentRow(p: str): bool =
+    not(assetByPath.keys().contains(p)) or
+    not(assetById.keys().contains(assetByPath.get(p))) or
+    assetById.get(assetByPath.get(p)).path == p
+
+  def ConvergedFlagSetRow(p: str): bool =
+    not(assetByPath.keys().contains(p)) or
+    not(assetById.keys().contains(assetByPath.get(p))) or
+    not(metadataPayload.keys().contains(assetByPath.get(p))) or
+    metadataPayload.get(assetByPath.get(p)).converged
+
+  val ReachableInv: bool =
+    (PATHS.forall(p => DupeCompleteRow(p) and MetadataCompleteRow(p) and PathConsistentRow(p) and ConvergedFlagSetRow(p)))
+    and WithinBounds
+    and AssetIdKeyCoherent
+
+  val ReachableInvNeg: bool = not(ReachableInv)
+
   // Anti-vacuity for StaleContent. The content draw in ExternalModify /
   // ForceModify can be a no-op, so there is no deterministic single run:
   // this predicate is violated exactly when the shape is reachable.
