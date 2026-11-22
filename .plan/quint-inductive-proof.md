@@ -229,7 +229,15 @@ After each table commit, in order:
 2. `quint test utils/quint/inductive/entry-canonical.qnt`
    → same pass count as the recorded baseline (record the count on the
    unedited copy first; expected 70/70; binary: counts equal, zero failures).
-3. Stop conditions: typecheck fails → fix the slice, do not proceed;
+3. `python3 utils/quint/inductive/tools/audit.py`
+   → PASS (exit 0; all landed slices' rewrite invariants hold — per-table
+   `keys()` == 0, no new dead defs, sentinel-coherence floors, `G`
+   consistency, module marker). Failure → the slice broke an earlier
+   slice's post-condition: fix the slice, never relax the audit.
+   (`ThumbPresent` is the one baseline-exempt def — declared but
+   unreferenced in both core and source model, named only by
+   `traceability.json`; predates the redesign.)
+4. Stop conditions: typecheck fails → fix the slice, do not proceed;
    suite count differs → the rewrite changed semantics, revert the slice.
 
 Dupe-index decision gate: after making `dupeIndex` total with `Set[int]`
@@ -599,8 +607,9 @@ traceability, and docs run counts pinned to `pipeline/`):
 - `utils/quint/inductive/entries/` — reserved for the canonical-bounds
   import if the scale rung is attempted; empty until then.
 - `utils/quint/inductive/tools/` — the per-table codemod scripts (§2.2
-  drift rule) and the §4.5 differential harness. Committed; the core file
-  is their output.
+  drift rule), the standing `audit.py` invariant check (§2.4 test point 3),
+  and the §4.5 differential harness. Committed; the core file is their
+  output.
 
 Justfile recipe (advisory, nightly — explicitly **not** a merge gate and
 changing no existing gate):
