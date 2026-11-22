@@ -127,6 +127,17 @@ module shapes {
   val Covering: bool =
     not(Converged and AspectsAligned) implies ShapeCatalog
 
+  // Covering counterexample: a state that violates the goal but satisfies no
+  // catalog shape. A counterexample to CoveringNeg is a completeness gap.
+  val CoveringNeg: bool =
+    not(Converged and AspectsAligned) and not(ShapeCatalog)
+
+  // Shape soundness: a catalog shape must itself be a goal violation. A
+  // counterexample to the negation means a shape is too broad and its heal
+  // obligation is weaker than claimed.
+  val ShapeOverBroad: bool =
+    ShapeCatalog and Converged and AspectsAligned
+
   // Reachability invariants: characterize the states reachable from
   // initCompletion. Used to constrain universal shape inits; each is
   // falsification-checked below and becomes an inductive obligation.

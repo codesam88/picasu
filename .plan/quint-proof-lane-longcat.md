@@ -417,15 +417,42 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   workers in `Worker.doNextSetErr`); the witness verdict is read from the
   printed trace. Reproduced 3/3. The single-state witness runs are the
   durable machine-checked witness evidence.
-- Open: universal shape inits and the covering check are not done. The heal
-  evidence is per-witness, not per-shape-universal.
+- 2026-11-22: the covering lemma holds over the drawn families and their
+  reachable graph. `Covering` passes over the combination family's 16,856
+  initial states, over the ghost family's 12, and exhaustively over the
+  190,420-state graph under `stepHeal` (queue 0, depth 11). Soundness holds:
+  no catalog shape occurs in a goal-true state (`ShapeOverBroad` empty over
+  16,856 states). Every goal-violating drawn state is catalogued, and the
+  graph preserves covering to completion.
+- 2026-11-22: polarity rule (learned the hard way): `quint verify --invariant
+X` checks that X holds; a violation means X was false. Positive-form
+  invariants for properties that must hold (`Covering`, `not ShapeOverBroad`);
+  negation only for witness-by-counterexample (reachability). The first
+  covering brief had the polarity inverted; the runs were corrected before
+  any verdict was recorded.
+- 2026-11-22: structural constraint — Quint instances are per import site.
+  The catalog (`shapes.qnt`) and the heal inits (`heal.qnt`) cannot be
+  combined into one TLC spec: importing one into the other instantiates
+  `pipeline_merged` twice (distinct variable sets), and `export` flattens
+  before instances and loses the constant bindings. The covering checks ran
+  on a generated harness under `/tmp/opencode/cover-harness/` (derived
+  artifact, not committed). Making the checks in-repo requires restructuring:
+  a single merged proof module, or an action-free shared base that declares
+  the state once (the `local_common` pattern).
+- Open: the covering check ran on a generated harness, not in-repo (see the
+  structural constraint above). The heal evidence is per-family, not
+  per-shape-universal via full field draws.
 
 ## Status
 
 - `utils/quint/proof/shapes.qnt`: shape catalog, `ShapeCatalog`, `Covering`,
-  six deterministic reachability runs from `initCompletion`, the
-  `StaleContentReached` TLC counterexample, and the reachability invariants
-  `ReachableInv` / `ReachableInvNeg`.
+  `CoveringNeg` / `ShapeOverBroad`, the reachability invariants
+  `ReachableInv` / `ReachableInvNeg`, six deterministic reachability runs
+  from `initCompletion`, and the `StaleContentReached` TLC counterexample.
+- Covering status: `Covering` and shape soundness hold over the drawn
+  families and the 190,420-state graph, checked via a generated harness; an
+  in-repo check needs the proof modules restructured (single merged module or
+  shared action-free base).
 - `utils/quint/proof/heal.qnt`: `stepHeal` (now including `MoveRowRewrite`
   and `RotateFinish`), seven reachable witness inits,
   `initGhostRowInvariant` (12-state invariant-constrained ghost family), and
@@ -442,10 +469,11 @@ Gate: the largest completed rung is recorded; no claim beyond it.
 - `quint test utils/quint/proof/shapes.qnt --match='Reachable'` runs the
   proof runs; the imported model runs reference out-of-binding paths and must
   stay filtered out.
-- Remaining: unprocessable paths, stale-file move windows and the generation
+- Remaining: restructure the proof modules so the covering check is in-repo
+  (single merged module or shared action-free base), then composition and
+  review; unprocessable paths, stale-file move windows, the generation
   dimension of the move rewrite, universal-over-the-shape via full field
-  draws, inductive proof of `ReachableInv` (deferred), covering check,
-  composition and review.
+  draws, inductive proof of `ReachableInv` (deferred).
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 
