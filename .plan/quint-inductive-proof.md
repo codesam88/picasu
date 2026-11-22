@@ -202,12 +202,15 @@ rewrite must not introduce.
     per-comparison-class argument into the SCOPE-18 entry; the witness run
     below is the machine-checked spot check, the polarity argument is the
     soundness claim.
-  - **`G` derivation.** Measure, do not guess: a TLC falsification ladder
-    over `stepCompletion` at the reduced instance
-    (`--invariant generations-≤-G0`; a violation reveals a reachable higher
-    generation; raise `G0` until no violation) gives the maximum reachable
-    generation per path; set `G = measured + 1` and record the measurement
-    here. The probe is A6 (§4.0).
+  - **`G` derivation.** A6 ran the ladder (`G0 = 0..4`, all violated at
+    `G0+1`, generations up to 5 observed reachable within 7 steps;
+    `G0=4` cost 466M distinct states, ~3 h — the passing-rung criterion
+    is unsound for an unbounded counter and abandoned: any finite `G`
+    saturates eventually, so adequacy is decided by consecution
+    aliasing, not reachability). Working value `G = 7`: headroom over
+    the observed spread while the `IntakeUniverse` cross product stays
+    small (`3·8·3·8·2 = 1152`). Recorded here; the raise rule below is
+    the adequacy arbiter.
 - Witness: a `quint run` reaching a saturated comparison is pinned as a
   regression run; the aliasing VC is discharged by the inductive step check
   itself (§4). Raise rule: if the step check returns a saturation-aliasing
@@ -410,6 +413,15 @@ utils/quint/inductive/entry-canonical.qnt` (the entry binds the core's
   not verify the named tests exist.
 - **A6 — `G` derivation probe.** TLC falsification ladder for the maximum
   reachable generation per path at the reduced instance (feeds §2.3).
+  Outcome (recorded 2026-11-22): lower bound only — generations 1..5
+  observed reachable within ≤7 steps (rungs G0=0..4 all violated at
+  G0+1; G0=4 cost 466M distinct states, ~3 h wall, breaching the 60-min
+  cap — future long runs must enforce the cap with `timeout`). No passing
+  rung: the passing-rung criterion is abandoned as unsound for an
+  unbounded counter (any finite `G` saturates eventually; adequacy is
+  decided by consecution aliasing via the §2.3 raise rule, not by
+  reachability). Working value `G = 7` (headroom over the observed
+  spread; intake universe stays small). See §2.3 for the decision rule.
 
 Environment for every verifier run (same as the shape lane):
 

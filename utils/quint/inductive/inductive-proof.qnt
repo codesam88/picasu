@@ -9,7 +9,7 @@ module inductive_proof {
   ).* from "./inductive-core"
 
   pure val IDS = 0.to(PATHS.size() + 1)
-  pure val G = 2
+  pure val G = 7 // working value from the A6 lower bound (see plan §2.3); raise rule applies
 
   val Domains: bool =
     files.keys() == PATHS and
