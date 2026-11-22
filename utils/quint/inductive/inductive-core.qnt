@@ -186,7 +186,7 @@ module pipeline_merged {
     thumbPresent' = HASHES.mapBy(h => h == 0),
 
     sweepPending' = ROOTS.mapBy(_ => false),
-    sweepBatch' = Map(),
+    sweepBatch' = PATHS.mapBy(p => -1),
     leasedPaths' = Set(),
     nextAssetId' = PATHS.size() + 1,
     unprocessable' = Set(),
@@ -592,7 +592,7 @@ module pipeline_merged {
   // @scope SCOPE-6
   action ProcessCrash: bool = all {
     intake' = Set(),
-    sweepBatch' = Map(),
+    sweepBatch' = PATHS.mapBy(p => -1),
     leasedPaths' = Set(),
     files' = files,
     generations' = generations,
@@ -633,7 +633,7 @@ module pipeline_merged {
     nextAssetId' = 1,
     intake' = Set(),
     sweepPending' = ROOTS.mapBy(_ => false),
-    sweepBatch' = Map(),
+    sweepBatch' = PATHS.mapBy(p => -1),
     leasedPaths' = Set(),
     files' = files,
     unprocessable' = unprocessable,
@@ -1627,11 +1627,17 @@ module pipeline_merged {
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
-    sweepBatch' = PATHS.filter(p => rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present))
-      .fold(
-        sweepBatch.keys().filter(p => not(rootOf(p) == root)).mapBy(p => sweepBatch.get(p)),
-        (acc, p) => acc.put(p, generations.get(p))
-      ),
+    sweepBatch' = PATHS.mapBy(p =>
+      if (rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present)) {
+        generations.get(p)
+      } else {
+        if (not(rootOf(p) == root)) {
+          sweepBatch.get(p)
+        } else {
+          -1
+        }
+      }
+    ),
     sweepPending' = sweepPending.put(root, false),
     files' = files,
     generations' = generations,
@@ -1649,12 +1655,17 @@ module pipeline_merged {
   // per candidate (generation, lease, exists) and does not depend on which
   // root enumerated it.
   action SweepRecheck: bool = all {
-    sweepBatch.keys().size() > 0,
-    sweepBatch' = sweepBatch.keys().filter(p =>
-      sweepBatch.get(p) == generations.get(p) and
-      not(p.in(leasedPaths)) and
-      not(files.get(p).present)
-    ).mapBy(p => sweepBatch.get(p)),
+    PATHS.exists(p => sweepBatch.get(p) != -1),
+    sweepBatch' = PATHS.mapBy(p =>
+      if (sweepBatch.get(p) != -1 and
+          sweepBatch.get(p) == generations.get(p) and
+          not(p.in(leasedPaths)) and
+          not(files.get(p).present)) {
+        sweepBatch.get(p)
+      } else {
+        -1
+      }
+    ),
     sweepPending' = sweepPending,
     files' = files,
     generations' = generations,
@@ -1672,33 +1683,33 @@ module pipeline_merged {
   // root, each applied per path in the writer queue.
   // @operation OP-8
   action SweepRemoveBatchApply: bool = all {
-    sweepBatch.keys().size() > 0,
+    PATHS.exists(p => sweepBatch.get(p) != -1),
     // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
     assetByPath' = assetByPath.keys().filter(p =>
-      not (sweepBatch.keys().contains(p) and
+      not (sweepBatch.get(p) != -1 and
            assetByPath.keys().contains(p) and
            not(files.get(p).present))
     ).mapBy(k => assetByPath.get(k)),
     assetById' = assetById.keys().filter(id =>
-      not (sweepBatch.keys().exists(p =>
+      not (PATHS.exists(p => sweepBatch.get(p) != -1 and
         assetByPath.keys().contains(p) and
         assetByPath.get(p) == id and
         not(files.get(p).present)))
     ).mapBy(k => assetById.get(k)),
     metadataPayload' = metadataPayload.keys().filter(id =>
-      not (sweepBatch.keys().exists(p =>
+      not (PATHS.exists(p => sweepBatch.get(p) != -1 and
         assetByPath.keys().contains(p) and
         assetByPath.get(p) == id and
         not(files.get(p).present)))
     ).mapBy(k => metadataPayload.get(k))
       .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged,
-        itemCount: metadataPayload.get(0).itemCount - sweepBatch.keys().filter(p => assetByPath.keys().contains(p) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).size(),
-        itemSize: metadataPayload.get(0).itemSize - sweepBatch.keys().filter(p => assetByPath.keys().contains(p) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).fold(0, (acc, p) => acc + (if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })),
+        itemCount: metadataPayload.get(0).itemCount - PATHS.filter(p => sweepBatch.get(p) != -1 and assetByPath.keys().contains(p) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).size(),
+        itemSize: metadataPayload.get(0).itemSize - PATHS.filter(p => sweepBatch.get(p) != -1 and assetByPath.keys().contains(p) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).fold(0, (acc, p) => acc + (if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })),
         hasShareList: metadataPayload.get(0).hasShareList }),
     dupeIndex' = dupeIndex,
     thumbPresent' = thumbPresent,
-    sweepBatch' = Map(),
+    sweepBatch' = PATHS.mapBy(p => -1),
     sweepPending' = sweepPending,
     files' = files,
     generations' = generations,
@@ -2165,13 +2176,13 @@ module pipeline_merged {
   // @assumes ASS-6
   // @scope SCOPE-11
   // SweepRemoveBatchSkipsPresentFile maps to the `if path.exists() { continue }` skip in flush_tree.rs::sweep_remove_batch.
-  val SweepRemoveBatchSkipsPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))
+  val SweepRemoveBatchSkipsPresentFile = PATHS.forall(p => sweepBatch.get(p) == -1 or not(files.get(p).present))
 
   // @assumes ASS-3
   // @assumes ASS-6
   // @scope SCOPE-9
   // SweepRecheckBatchClean maps to the sweep_stale_asset_paths re-check guarantee (generation unchanged + not leased + file absent).
-  val SweepRecheckBatchClean = sweepBatch.keys().forall(p => sweepBatch.get(p) == generations.get(p) and not(p.in(leasedPaths)) and not(files.get(p).present))
+  val SweepRecheckBatchClean = PATHS.forall(p => sweepBatch.get(p) == -1 or (sweepBatch.get(p) == generations.get(p) and not(p.in(leasedPaths)) and not(files.get(p).present)))
 
   // @assumes ASS-6
   // @scope SCOPE-11
@@ -2655,7 +2666,7 @@ module pipeline_merged {
   // @scope SCOPE-13
   val Quiescent: bool =
     intake.size() == 0 and
-    sweepBatch.keys().size() == 0 and
+    PATHS.forall(p => sweepBatch.get(p) == -1) and
     ROOTS.forall(r => not(sweepPending.get(r))) and
     leasedPaths.size() == 0
 
@@ -3213,12 +3224,12 @@ module pipeline_merged {
     .then(BeginScan)
     .then(CompleteScan("r1"))
     .then(CompleteScan("r2"))
-    .then(all { assert(sweepBatch.keys() == Set()), Stay(SweepEnumerate("r1")) })
-    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(SweepEnumerate("r2")) })
-    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
-    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
-    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
-    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set()), Stay(SweepEnumerate("r1")) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set("p2")), Stay(SweepEnumerate("r2")) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set("p2")), Stay(WorkerSkipUnchanged) })
     .then(Stay(SweepRecheck))
     .then(Stay(SweepRemoveBatchApply))
     .then(all { assert(Quiescent and Converged and AspectsAligned), Skip })
@@ -3270,8 +3281,8 @@ module pipeline_merged {
     .then(CompleteScan("r1"))
     .then(CompleteScan("r2"))
     .then(Stay(SweepEnumerate("r2")))
-    .then(all { assert(sweepBatch.keys() == Set()), Stay(SweepEnumerate("r1")) })
-    .then(all { assert(sweepBatch.keys() == Set("p2")), Stay(WorkerSkipUnchanged) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set()), Stay(SweepEnumerate("r1")) })
+    .then(all { assert(PATHS.filter(p => sweepBatch.get(p) != -1) == Set("p2")), Stay(WorkerSkipUnchanged) })
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))
