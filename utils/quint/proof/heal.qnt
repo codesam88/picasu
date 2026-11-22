@@ -237,6 +237,29 @@ module heal {
   // All content hashes are 0, matching the initial file bytes.
   //
   // Drawn dimensions:
+  //   - lease windows: a rotate window (`rotateWindow`) is a path whose file
+  //     sidecar is 1, whose metadata sidecar is still 0, and which holds a
+  //     lease. It is the state `RotateWriteSidecar` leaves behind
+  //     (merged.qnt: file sidecar toggled, `leasedPaths` plus p); `RotateFinish`
+  //     requires a held lease, a sidecar mismatch, a present file and a
+  //     resolvable record plus metadata, and it rewrites the metadata sidecar
+  //     and releases the lease.
+  //   - move windows: at most one drawn move `src>dst`, laid out as
+  //     `ApiMoveFsOnly` leaves it (merged.qnt): the source becomes `ghost`
+  //     (file absent, row and record kept), the destination becomes
+  //     `missingRow` (file present with the source's bytes, no row and no
+  //     record), and both endpoints are leased. `MoveRowRewrite` requires a row
+  //     for the source, its record, a lease on both endpoints, source absent
+  //     and destination present; it rewrites the record path, moves the row and
+  //     releases both leases.
+  //     Restriction: the move window is drawn from the base file bytes only.
+  //     A move of an already-stale file is not drawn; the destination file is
+  //     the initial file state, which is exactly what the `missingRow` kind
+  //     assigns.
+  //     The move overrides the per-path kind of both endpoints (`effKind`), so
+  //     a drawn move forces the source to the ghost kind and the destination to
+  //     the missingRow kind, and both endpoints are leased. A move draw
+  //     therefore also satisfies the ghost-presence guard.
   //   - stale dupe entries: dupeIndex[0] holds the ids of rows whose records
   //     exist (DupeCompleteRow) plus a `staleExtra` subset of the initial ids.
   //     An id can sit in the bucket without a record: RemoveIdOnly drops the
@@ -253,36 +276,63 @@ module heal {
   //     remove).
   //
   // Pinned dimensions (logged limitations, not drawn):
-  //   - leases: pinned empty; stepHeal has no lease-release path, so a drawn
-  //     lease only blocks BeginScan.
   //   - unprocessable: pinned empty; a processable-path subset changes the goal
   //     shape, not the heal mechanics.
   //
-  // Family size: 6^3 kind combos with at least one ghost (91 of 216) x 2
-  // thumbnail flags x 4 sweepPending sets = 728 initial states. Drawn further
-  // by 4 staleExtra sets x 2 hasItem x 3 item paths x 2 item kinds =
-  // 34,944 combinations. The staleExtra union collapses against the derived
-  // bucket: 91 kind triples produce only 157 distinct dupeIndex[0] sets
-  // instead of 364, so TLC reports 8,792 distinct initial states.
+  // Family size: 7 kinds, 7 move options (`none` plus the six ordered pairs),
+  // 2 thumbnail flags, 4 sweepPending sets, 4 staleExtra sets and 12 intake
+  // draws (hasItem x 3 item paths x 2 item kinds). With the guard applied the
+  // raw draw product is (6 x 7^3 + (7^3 - 6^3)) x 384 = (2,058 + 127) x 384 =
+  // 839,040 combinations. TLC reports 16,856 distinct initial states: the
+  // endpoint overrides collapse every kind drawn at a move endpoint into the
+  // ghost/missingRow kind, and the staleExtra union collapses against the
+  // derived dupe bucket.
   val ComboKinds: Set[str] =
-    Set("ok", "stale", "staleSidecar", "ghost", "missingRow", "torn")
+    Set("ok", "stale", "staleSidecar", "ghost", "missingRow", "torn", "rotateWindow")
 
   // The kind drawn for a path; the reduced instance is exactly p1..p3.
   pure def comboKind(p: str, k1: str, k2: str, k3: str): str =
     if (p == "p1") k1 else (if (p == "p2") k2 else k3)
 
+  // Move-window source and destination. The six ordered pairs over PATHS are
+  // the drawn moves; `none` draws no move and both accessors return "", which
+  // no path equals.
+  pure def moveSrc(mv: str): str =
+    if (mv == "p1>p2" or mv == "p1>p3") "p1"
+    else if (mv == "p2>p1" or mv == "p2>p3") "p2"
+    else if (mv == "p3>p1" or mv == "p3>p2") "p3"
+    else ""
+
+  pure def moveDst(mv: str): str =
+    if (mv == "p1>p2" or mv == "p3>p2") "p2"
+    else if (mv == "p1>p3" or mv == "p2>p3") "p3"
+    else if (mv == "p2>p1" or mv == "p3>p1") "p1"
+    else ""
+
+  // The kind that holds for a path once a drawn move is applied on top of the
+  // per-path kinds: the move window forces the source to the ghost kind and the
+  // destination to the missingRow kind.
+  pure def effKind(p: str, k1: str, k2: str, k3: str, mv: str): str =
+    if (moveSrc(mv) == p) "ghost"
+    else if (moveDst(mv) == p) "missingRow"
+    else comboKind(p, k1, k2, k3)
+
   // File bytes for a kind: `stale` moves mtime/len, `staleSidecar` moves the
-  // sidecar id, `ghost` removes the file, the rest keep the initial bytes.
+  // sidecar id, `rotateWindow` moves the sidecar id and keeps the lease, `ghost`
+  // removes the file, the rest keep the initial bytes.
   pure def comboFile(p: str, kind: str): FileState =
     if (kind == "stale") { present: true, assetHash: 0, mtime: 1, len: 1, sidecar: 0 }
     else if (kind == "staleSidecar") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
+    else if (kind == "rotateWindow") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
     else if (kind == "ghost") { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }
     else initialFile(p)
 
-  // A row exists for every kind except `missingRow`.
+  // A row exists for every kind except `missingRow`. A rotate window is opened
+  // on an existing row (`RotateWriteSidecar` requires it).
   pure def comboRowPresent(kind: str): bool = kind != "missingRow"
 
   // Record and metadata exist for every kind except `missingRow` and `torn`.
+  // The rotate window keeps both: its metadata differs only in the sidecar id.
   pure def comboRecordPresent(kind: str): bool =
     kind != "missingRow" and kind != "torn"
 
@@ -290,6 +340,7 @@ module heal {
     nondet k1 = ComboKinds.oneOf()
     nondet k2 = ComboKinds.oneOf()
     nondet k3 = ComboKinds.oneOf()
+    nondet mv = Set("none", "p1>p2", "p1>p3", "p2>p1", "p2>p3", "p3>p1", "p3>p2").oneOf()
     nondet th0 = Set(true, false).oneOf()
     nondet sp = Set(Set(), Set("r1"), Set("r2"), Set("r1", "r2")).oneOf()
     nondet staleExtra = Set(Set(), Set(1), Set(2), Set(3)).oneOf()
@@ -297,9 +348,11 @@ module heal {
     nondet ip = PATHS.oneOf()
     nondet ik = Set("watcher", "remove").oneOf()
     all {
-      // At least one ghost: the family must exercise the sweep-prune path.
-      k1 == "ghost" or k2 == "ghost" or k3 == "ghost",
-      files' = PATHS.mapBy(p => comboFile(p, comboKind(p, k1, k2, k3))),
+      // At least one ghost: the family must exercise the sweep-prune path. A
+      // drawn move forces its source to the ghost kind, so it satisfies this
+      // guard as well.
+      mv != "none" or k1 == "ghost" or k2 == "ghost" or k3 == "ghost",
+      files' = PATHS.mapBy(p => comboFile(p, effKind(p, k1, k2, k3, mv))),
       generations' = PATHS.mapBy(_ => 0),
       // The item snapshots the drawn file state: `files` is the pre-state in an
       // init action, so the item is built from `comboFile` instead.
@@ -308,32 +361,36 @@ module heal {
           path: ip,
           generation: 0,
           kind: ik,
-          mtime: comboFile(ip, comboKind(ip, k1, k2, k3)).mtime,
-          len: comboFile(ip, comboKind(ip, k1, k2, k3)).len,
-          sidecar: comboFile(ip, comboKind(ip, k1, k2, k3)).sidecar,
-          assetHash: comboFile(ip, comboKind(ip, k1, k2, k3)).assetHash,
+          mtime: comboFile(ip, effKind(ip, k1, k2, k3, mv)).mtime,
+          len: comboFile(ip, effKind(ip, k1, k2, k3, mv)).len,
+          sidecar: comboFile(ip, effKind(ip, k1, k2, k3, mv)).sidecar,
+          assetHash: comboFile(ip, effKind(ip, k1, k2, k3, mv)).assetHash,
         })
         else Set(),
       assetById' = PATHS
-        .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
+        .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv)))
         .fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
       assetByPath' = PATHS
-        .filter(p => comboRowPresent(comboKind(p, k1, k2, k3)))
+        .filter(p => comboRowPresent(effKind(p, k1, k2, k3, mv)))
         .mapBy(p => initialId(p)),
       dupeIndex' = Map(
         0 -> PATHS
-          .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
+          .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv)))
           .map(p => initialId(p))
           .union(staleExtra),
         1 -> Set(),
       ),
       metadataPayload' = PATHS
-        .filter(p => comboRecordPresent(comboKind(p, k1, k2, k3)))
+        .filter(p => comboRecordPresent(effKind(p, k1, k2, k3, mv)))
         .fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
       thumbPresent' = Map(0 -> th0, 1 -> false),
       sweepPending' = ROOTS.mapBy(r => r.in(sp)),
       sweepBatch' = Map(),
-      leasedPaths' = Set(),
+      // Every rotate window holds its path lease; a drawn move leases both
+      // endpoints. Both are released by the matching finish action.
+      leasedPaths' =
+        PATHS.filter(p => effKind(p, k1, k2, k3, mv) == "rotateWindow")
+          .union(if (mv == "none") Set() else Set(moveSrc(mv), moveDst(mv))),
       nextAssetId' = 4,
       unprocessable' = Set(),
       phase' = 0,
@@ -350,8 +407,10 @@ module heal {
   // both roots, sweep and apply worker work. The full action list from the
   // plan is added later. Pipeline actions stutter the phase machine through
   // `Stay`; the completion actions assign it themselves. Environment actions,
-  // untracked `ScanRoot`, leases, rotation, submits and API actions are
-  // excluded, so generations and the filesystem stay fixed during the heal.
+  // untracked `ScanRoot`, lease acquisition, rotation write, submits and API
+  // actions are excluded, so generations and the filesystem stay fixed during
+  // the heal. The two lease-window finishers (`MoveRowRewrite`, `RotateFinish`)
+  // only release leases and rewrite rows/metadata, so they are included.
   action stepHeal: bool = any {
     BeginDrain,
     BeginScan,
@@ -369,6 +428,15 @@ module heal {
     all { Stay(WorkerSkipUnchanged) },
     all { Stay(WorkerOpenFails) },
     all { Stay(WorkerRemoveApply) },
+    all { Stay(MoveRowRewrite("p1", "p2")) },
+    all { Stay(MoveRowRewrite("p1", "p3")) },
+    all { Stay(MoveRowRewrite("p2", "p1")) },
+    all { Stay(MoveRowRewrite("p2", "p3")) },
+    all { Stay(MoveRowRewrite("p3", "p1")) },
+    all { Stay(MoveRowRewrite("p3", "p2")) },
+    all { Stay(RotateFinish("p1")) },
+    all { Stay(RotateFinish("p2")) },
+    all { Stay(RotateFinish("p3")) },
     Skip,
   }
 }

@@ -399,6 +399,24 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   remain pinned. Measurement detail: the raw draw product (34,944) collapses
   to 8,792 distinct initial states because the derived dupe bucket repeats
   across kind triples.
+- 2026-11-22: the lease-window dimension heals. The combination family with
+  move and rotate windows (16,856 distinct initial states) exhausts at
+  190,420 distinct states, queue 0, depth 11, with no `CompletionInvariant`
+  violation. Every drawn move window is released by `MoveRowRewrite` and every
+  rotate window by `RotateFinish`; their guards depend only on the drawn
+  fields, so no combination blocks a release. Single-state witness runs for
+  rotate, move, and move+rotate each exhaust with the antecedent reached
+  (49/29/37 distinct states). No REQ-7 or REQ-11 falsification.
+- 2026-11-22: limits of the lease-window draw: move windows are drawn from
+  base bytes only (a move of an already-stale file is not drawn);
+  generations are pinned at 0, so the absence of a generation guard in
+  `MoveRowRewrite` is untested; rotate windows are first-rotation only
+  (sidecar 0 to 1, not 1 to 2); unprocessable stays pinned.
+- 2026-11-22: toolchain artifact — TLC stalls in violation reporting on the
+  large witness run (main blocked in `ModelChecker.runTLCContinueDoing`,
+  workers in `Worker.doNextSetErr`); the witness verdict is read from the
+  printed trace. Reproduced 3/3. The single-state witness runs are the
+  durable machine-checked witness evidence.
 - Open: universal shape inits and the covering check are not done. The heal
   evidence is per-witness, not per-shape-universal.
 
@@ -408,13 +426,15 @@ Gate: the largest completed rung is recorded; no claim beyond it.
   six deterministic reachability runs from `initCompletion`, the
   `StaleContentReached` TLC counterexample, and the reachability invariants
   `ReachableInv` / `ReachableInvNeg`.
-- `utils/quint/proof/heal.qnt`: `stepHeal`, seven reachable witness inits,
-  `initGhostRowInvariant` (12-state invariant-constrained ghost family),
-  `initShapeCombination` (cross-shape family with stale dupe entries and a
-  queued intake item), and `HealAntecedentReached`. The constrained ghost
+- `utils/quint/proof/heal.qnt`: `stepHeal` (now including `MoveRowRewrite`
+  and `RotateFinish`), seven reachable witness inits,
+  `initGhostRowInvariant` (12-state invariant-constrained ghost family), and
+  `initShapeCombination` (cross-shape family with stale dupe entries, a
+  queued intake item, and move/rotate lease windows). The constrained ghost
   family heals completely (346 distinct states, queue 0, depth 10); the
-  cross-shape family exhausts at 83,896 distinct states, queue 0, depth 10,
-  no violation; the seven witness checks and antecedent witnesses are green.
+  combination family exhausts at 190,420 distinct states, queue 0, depth 11,
+  no violation, including the lease windows; the seven witness checks and
+  antecedent witnesses are green.
 - Reachability witnesses are machine-checked for the seven reachable shapes;
   the four unreachable shapes are excluded by action inspection, and
   `ReachableInv` characterizes them (falsification-checked, not yet
@@ -422,10 +442,10 @@ Gate: the largest completed rung is recorded; no claim beyond it.
 - `quint test utils/quint/proof/shapes.qnt --match='Reachable'` runs the
   proof runs; the imported model runs reference out-of-binding paths and must
   stay filtered out.
-- Remaining: draw the remaining dimensions into the combination family
-  (leases need a release path in `stepHeal`; unprocessable), universal
-  over-the-shape via full field draws, inductive proof of `ReachableInv`
-  (deferred), covering check, composition and review.
+- Remaining: unprocessable paths, stale-file move windows and the generation
+  dimension of the move rewrite, universal-over-the-shape via full field
+  draws, inductive proof of `ReachableInv` (deferred), covering check,
+  composition and review.
 - The inductive full-model proof is deferred; the shape artifacts feed later
   invariant discovery.
 
