@@ -332,8 +332,7 @@ module pipeline_merged {
       metadataPayload.get(assetByPath.get(p)).sidecar == files.get(p).sidecar and
       metadataPayload.get(assetByPath.get(p)).converged and
       (assetById.get(assetByPath.get(p)).contentHash < 0 or
-        (thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
-         thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash)))
+        (thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash)))
     ))
     )
   ) and intake.size() == 0
@@ -385,7 +384,7 @@ module pipeline_merged {
       fileSize: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 },
       sidecar: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).sidecar } else { 0 },
       converged: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).converged } else { false },
-      thumb: (assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).contentHash >= 0 and thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))
+      thumb: (assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).contentHash >= 0 and thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))
     }
   )
 
@@ -1552,8 +1551,7 @@ module pipeline_merged {
       metadataPayload.get(assetByPath.get(p)).sidecar == files.get(p).sidecar and
       metadataPayload.get(assetByPath.get(p)).converged and
       (assetById.get(assetByPath.get(p)).contentHash < 0 or
-        (thumbPresent.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
-         thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))) and
+        (thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))) and
       (assetById.get(assetByPath.get(p)).contentHash < 0 or
         dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
         dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).contains(assetByPath.get(p)))
@@ -1571,7 +1569,7 @@ module pipeline_merged {
     if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) {
       // @exempt observer
       val h = assetById.get(assetByPath.get(p)).contentHash
-      h >= 0 and thumbPresent.keys().contains(h) and thumbPresent.get(h)
+      h >= 0 and thumbPresent.get(h)
     } else { false }
 
   // @operation OP-5
@@ -2347,7 +2345,7 @@ module pipeline_merged {
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(not(assetByPath.keys().contains("p1")) and (not(thumbPresent.keys().contains(0)) or not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(assetByPath.keys().contains("p1")) and (not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
