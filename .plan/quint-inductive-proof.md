@@ -358,7 +358,14 @@ utils/quint/inductive/entry-canonical.qnt` (the entry binds the core's
   request instead of one request per conjunct. Calibrate with the TypeOK
   run (§4.1): the spike measured 42 VCs ≈ 190 s cold; with a warm server
   the per-round cost is the step check only, which gives the 30-minute
-  stop real headroom.
+  stop real headroom. Outcome (recorded 2026-11-22): typecheck clean;
+  §4.1 FAILS at initiation (counterexample naming the `assetById`,
+  `metadataPayload`, `sweepBatch` totality conjuncts — Apalache surfaces
+  the sparse-map mismatch as an initiation counterexample, not a textual
+  map-domain error; either failure mode confirms the control, so the
+  skip-to-§3 branch is not triggered). Server: reused persistent instance
+  at `localhost:8822` (`--server-endpoint localhost:8822`); 234 s wall.
+  `G = 2` in the harness is provisional pending A6.
 - **A3 — album-row disposition (blocks Phase 1).** Resolve §3.2 item 3b by
   inspection and, where needed, a probe run: is the album row (id 0)
   re-created by any action after `DbLoss`, and are the album-delta reads
@@ -380,6 +387,11 @@ utils/quint/inductive/entry-canonical.qnt` (the entry binds the core's
   `--invariant TypeOK` (trivially true), run the implication form once and
   record the cost. Over budget → the §5 stop rule will bite; batch or
   split the implication per conjunct group before Phase 3, not after.
+  Outcome (recorded 2026-11-22): deferred to post-Phase-1 — `TypeOK` is
+  unsatisfiable on the unmodified sparse core's initial state (§4.1
+  control), so the core cannot express the total-map draw `initI`
+  requires. The probe runs once `Domains` are real totalities (after the
+  last slice), still before any Phase 3 round.
 - **A5 — assumption reconciliation.** Bring the §1 assumption list and the
   registry statuses (`assumptions.json`) to agreement: update statuses
   where gate evidence exists, otherwise keep `open`/`unverified` and quote
@@ -536,20 +548,20 @@ split the implication per conjunct group before entering rounds. Stop rule:
 
 ## 6. Test points per step (binary summary)
 
-| Step                         | Command                                                                                    | Pass                                                | Stop                                                                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 0 control                    | §4.1 command against the **unmodified** copy                                               | fails with map-domain errors (reproduces the spike) | passes → representation already encodable; skip to §3                                                                          |
-| 0 pre-flight                 | A1–A6 (§4.0)                                                                               | all recorded; A3 disposition decided                | A3 unresolvable → STOP; A4 over budget → batch/split §5 before Phase 3                                                         |
-| 1 slice _k_ (7 slices, §2.2) | `quint typecheck .../entry-canonical.qnt`                                                  | no `QNT` error                                      | any error → fix slice, do not proceed                                                                                          |
-| 1 slice _k_                  | `quint test .../entry-canonical.qnt`                                                       | count equals recorded baseline (expect 70/70)       | count differs → revert slice                                                                                                   |
-| 1 dupe decision              | §4.1 command                                                                               | Apalache accepts the encoding                       | rejects sets → boolean-matrix fallback, re-run slice tests once                                                                |
-| 2 epochs                     | `grep -n "generations.get(.*) + 1" inductive-core.qnt` empty; typecheck; suite count equal | all three hold                                      | any fails → fix, do not proceed                                                                                                |
-| 2 witness                    | pinned saturated-comparison `quint run`                                                    | run passes, comparison observed                     | unobservable → STOP, saturation semantics unsound                                                                              |
-| 2→3 differential             | §4.5 paired runs                                                                           | no divergence                                       | divergence → fix codemod or file model delta, re-copy, re-run slice tests                                                      |
-| 3 round N                    | §4.2 command                                                                               | base PASS + step PASS                               | new failing VC → next round per iteration rule                                                                                 |
-| 3 hard stop                  | round count                                                                                | ≤ 20 rounds and failure set shrinking               | else STOP → §8                                                                                                                 |
-| 4 implication                | §5 command                                                                                 | PASS / no violation                                 | violation → one §4.2 round, re-run §4.2 + §5                                                                                   |
-| final                        | all of §4.2 (final `I`) + §5                                                               | both PASS in the same revision                      | quote only the triple (§1 clauses 1–3) with instance, bounds, and assumption statuses verbatim (A5) plus the result chain (§1) |
+| Step                         | Command                                                                                    | Pass                                                                         | Stop                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 0 control                    | §4.1 command against the **unmodified** copy                                               | fails (map-domain errors or initiation counterexample on totality conjuncts) | passes initiation+consecution → representation already encodable; skip to §3                                                   |
+| 0 pre-flight                 | A1–A6 (§4.0)                                                                               | all recorded; A3 disposition decided                                         | A3 unresolvable → STOP; A4 over budget → batch/split §5 before Phase 3                                                         |
+| 1 slice _k_ (7 slices, §2.2) | `quint typecheck .../entry-canonical.qnt`                                                  | no `QNT` error                                                               | any error → fix slice, do not proceed                                                                                          |
+| 1 slice _k_                  | `quint test .../entry-canonical.qnt`                                                       | count equals recorded baseline (expect 70/70)                                | count differs → revert slice                                                                                                   |
+| 1 dupe decision              | §4.1 command                                                                               | Apalache accepts the encoding                                                | rejects sets → boolean-matrix fallback, re-run slice tests once                                                                |
+| 2 epochs                     | `grep -n "generations.get(.*) + 1" inductive-core.qnt` empty; typecheck; suite count equal | all three hold                                                               | any fails → fix, do not proceed                                                                                                |
+| 2 witness                    | pinned saturated-comparison `quint run`                                                    | run passes, comparison observed                                              | unobservable → STOP, saturation semantics unsound                                                                              |
+| 2→3 differential             | §4.5 paired runs                                                                           | no divergence                                                                | divergence → fix codemod or file model delta, re-copy, re-run slice tests                                                      |
+| 3 round N                    | §4.2 command                                                                               | base PASS + step PASS                                                        | new failing VC → next round per iteration rule                                                                                 |
+| 3 hard stop                  | round count                                                                                | ≤ 20 rounds and failure set shrinking                                        | else STOP → §8                                                                                                                 |
+| 4 implication                | §5 command                                                                                 | PASS / no violation                                                          | violation → one §4.2 round, re-run §4.2 + §5                                                                                   |
+| final                        | all of §4.2 (final `I`) + §5                                                               | both PASS in the same revision                                               | quote only the triple (§1 clauses 1–3) with instance, bounds, and assumption statuses verbatim (A5) plus the result chain (§1) |
 
 Regression gate throughout: the 70-run suite on `inductive-core.qnt` stays green
 after every edit; `just quint check` / `just quint test` on `pipeline/`
