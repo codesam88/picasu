@@ -7,7 +7,7 @@ script checks the properties every landed slice must keep, so a later slice
 cannot silently undo an earlier one.
 
 Checks, per landed table T in {thumbPresent, sweepBatch, assetByPath,
-assetById}:
+assetById, metadataPayload, dupeIndex}:
 
 a. No `T.keys()` site remains.  Totality made every presence test a sentinel
    read, so a `keys()` call is either a missed rewrite or a reintroduced
@@ -22,8 +22,9 @@ c. Sentinel coherence:
    - the total-domain initializer count (`HASHES.mapBy` / `PATHS.mapBy` /
      IDS-domain `.mapBy`) is at least the number of sites the landed slice
      rewrote: init + DbLoss + the drain/apply sites;
-   - the file-wide floors for `PATHS.mapBy` (14) and IDS-domain `.mapBy` (3)
-     hold.  Floors are lower bounds: later slices may add sites.
+   - the file-wide floors for `PATHS.mapBy` (14), IDS-domain `.mapBy` (6)
+     and `HASHES.mapBy` (5) hold.  Floors are lower bounds: later slices may
+     add sites.
 d. `pure val G = <int>` in the proof entry parses as an int and agrees with a
    literal G declaration in the core, if the core has one.
 e. The core still declares `module pipeline_merged`, the copy-identity marker
@@ -48,15 +49,15 @@ LANE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CORE = LANE_DIR / "inductive-core.qnt"
 DEFAULT_PROOF = LANE_DIR / "inductive-proof.qnt"
 
-# Tables whose slices have landed.  metadataPayload (slice 5) and the
-# dupeIndex/files/generations/intake group (slices 6-7) join this list when
-# their slices land.
+# Tables whose slices have landed.  The files/generations/intake group
+# (slice 7) joins this list when its slice lands.
 LANDED_TABLES = (
     "thumbPresent",
     "sweepBatch",
     "assetByPath",
     "assetById",
     "metadataPayload",
+    "dupeIndex",
 )
 
 # Initializer key domain per landed table and the minimum site count the
@@ -66,15 +67,19 @@ LANDED_TABLES = (
 #                 SweepEnumerate, SweepRecheck, Apply   -> 6 (PATHS)
 #   assetByPath:  init, DbLoss, SweepRoot, Apply        -> 4 (PATHS)
 #   assetById:    init, DbLoss, SweepRemoveBatchApply   -> 3 (IDS)
+#   metadataPayload: init, DbLoss, SweepRemoveBatchApply -> 3 (IDS)
+#   dupeIndex:    init, DbLoss                          -> 2 (HASHES)
 MIN_TABLE_INITIALIZERS = {
     "thumbPresent": ("HASHES", 3),
     "sweepBatch": ("PATHS", 6),
     "assetByPath": ("PATHS", 4),
     "assetById": ("IDS", 3),
     "metadataPayload": ("IDS", 3),
+    "dupeIndex": ("HASHES", 2),
 }
 MIN_PATHS_MAPBY = 14
 MIN_IDS_MAPBY = 6
+MIN_HASHES_MAPBY = 5
 
 # IDS is either named in the core or written out where the table is used.
 IDS_DOMAIN = r"(?:IDS|0\.to\(PATHS\.size\(\)\s*\+\s*1\))"
@@ -214,6 +219,7 @@ def check_table_initializers(table, core_text):
 def check_mapby_floor(core_text):
     paths_count = count_matches(r"\bPATHS\.mapBy\(", core_text)
     ids_count = count_matches(r"\b%s\.mapBy\(" % IDS_DOMAIN, core_text)
+    hashes_count = count_matches(r"\bHASHES\.mapBy\(", core_text)
     checks = [
         Check(
             "c.paths_mapby",
@@ -226,6 +232,12 @@ def check_mapby_floor(core_text):
             ids_count >= MIN_IDS_MAPBY,
             "%d IDS-domain `.mapBy(` initializer(s), floor %d"
             % (ids_count, MIN_IDS_MAPBY),
+        ),
+        Check(
+            "c.hashes_mapby",
+            hashes_count >= MIN_HASHES_MAPBY,
+            "%d `HASHES.mapBy(` initializer(s), floor %d"
+            % (hashes_count, MIN_HASHES_MAPBY),
         ),
     ]
     return checks
