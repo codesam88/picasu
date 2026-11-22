@@ -51,7 +51,13 @@ DEFAULT_PROOF = LANE_DIR / "inductive-proof.qnt"
 # Tables whose slices have landed.  metadataPayload (slice 5) and the
 # dupeIndex/files/generations/intake group (slices 6-7) join this list when
 # their slices land.
-LANDED_TABLES = ("thumbPresent", "sweepBatch", "assetByPath", "assetById")
+LANDED_TABLES = (
+    "thumbPresent",
+    "sweepBatch",
+    "assetByPath",
+    "assetById",
+    "metadataPayload",
+)
 
 # Initializer key domain per landed table and the minimum site count the
 # slice rewrote, from the codemod scripts:
@@ -65,9 +71,10 @@ MIN_TABLE_INITIALIZERS = {
     "sweepBatch": ("PATHS", 6),
     "assetByPath": ("PATHS", 4),
     "assetById": ("IDS", 3),
+    "metadataPayload": ("IDS", 3),
 }
 MIN_PATHS_MAPBY = 14
-MIN_IDS_MAPBY = 3
+MIN_IDS_MAPBY = 6
 
 # IDS is either named in the core or written out where the table is used.
 IDS_DOMAIN = r"(?:IDS|0\.to\(PATHS\.size\(\)\s*\+\s*1\))"
