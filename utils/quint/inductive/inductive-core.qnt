@@ -273,13 +273,13 @@ module pipeline_merged {
     ii.path.in(unprocessable) or (
     (ii.generation == generations.get(ii.path)) or
     (intake.exists(jj => (jj.path == ii.path) and (jj.generation > ii.generation))) or
-    ((files.get(ii.path).present) and (assetByPath.keys().contains(ii.path)) and
+    ((files.get(ii.path).present) and ((assetByPath.get(ii.path) != 0)) and
      (metadataPayload.keys().contains(assetByPath.get(ii.path)) and
      (metadataPayload.get(assetByPath.get(ii.path)).assetHash == files.get(ii.path).assetHash) and
      (metadataPayload.get(assetByPath.get(ii.path)).modified == files.get(ii.path).mtime) and
      (metadataPayload.get(assetByPath.get(ii.path)).fileSize == files.get(ii.path).len) and
      (metadataPayload.get(assetByPath.get(ii.path)).sidecar == files.get(ii.path).sidecar))) or
-    ((not(files.get(ii.path).present)) and (not(assetByPath.keys().contains(ii.path))))
+    ((not(files.get(ii.path).present)) and (not((assetByPath.get(ii.path) != 0))))
     )
   )
 
@@ -290,14 +290,14 @@ module pipeline_merged {
   val NoPermanentStale = PATHS.forall(p =>
     p.in(unprocessable) or
     if (files.get(p).present) {
-      if (assetByPath.keys().contains(p)) {
+      if ((assetByPath.get(p) != 0)) {
         (metadataPayload.keys().contains(assetByPath.get(p)) and metadataPayload.get(assetByPath.get(p)).assetHash == files.get(p).assetHash and metadataPayload.get(assetByPath.get(p)).modified == files.get(p).mtime and metadataPayload.get(assetByPath.get(p)).fileSize == files.get(p).len and metadataPayload.get(assetByPath.get(p)).sidecar == files.get(p).sidecar) or
         intake.exists(i => i.path == p)
       } else {
         intake.exists(i => i.path == p)
       }
     } else {
-      (not(assetByPath.keys().contains(p))) or
+      (not((assetByPath.get(p) != 0))) or
       intake.exists(i => i.path == p and i.kind == "remove") or
       sweepPending.get(rootOf(p))
     }
@@ -320,7 +320,7 @@ module pipeline_merged {
   val Converged = PATHS.forall(p =>
     p.in(unprocessable) or (
     (files.get(p).present ==
-      assetByPath.keys().contains(p))
+      (assetByPath.get(p) != 0))
     and (not(files.get(p).present) or (
       assetById.keys().contains(assetByPath.get(p)) and
       assetById.get(assetByPath.get(p)).path == p and
@@ -376,7 +376,7 @@ module pipeline_merged {
   // and METADATA_TABLE before ASSET_BY_PATH, N5), so the record reads fall
   // back to the no-metadata values instead of raising on a missing key.
   // @exempt observer
-  val rows = assetByPath.keys().mapBy(p =>
+  val rows = PATHS.filter(p => assetByPath.get(p) != 0).mapBy(p =>
     {
       assetId: assetByPath.get(p),
       assetHash: if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).assetHash } else { if (assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).contentHash } else { 0 } },
@@ -457,7 +457,7 @@ module pipeline_merged {
     // collect_dir_move_plans re-reads each descendant record and rejects the
     // whole move when a path row has no record (N5 residue), so this branch is
     // not enabled in that state.
-    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (if (assetByPath.keys().contains(pr.src)) { assetById.keys().contains(assetByPath.get(pr.src)) } else { true })),
+    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (if ((assetByPath.get(pr.src) != 0)) { assetById.keys().contains(assetByPath.get(pr.src)) } else { true })),
     files' = SUBTREE_PAIRS.foldl(files, (acc, pr) =>
       acc.set(pr.src, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
@@ -465,17 +465,17 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     assetById' = SUBTREE_PAIRS.foldl(assetById, (acc, pr) =>
-      if (assetByPath.keys().contains(pr.src)) {
+      if ((assetByPath.get(pr.src) != 0)) {
         acc.put(assetByPath.get(pr.src), { assetId: assetByPath.get(pr.src), kind: acc.get(assetByPath.get(pr.src)).kind, path: pr.dst, contentHash: acc.get(assetByPath.get(pr.src)).contentHash, albumId: acc.get(assetByPath.get(pr.src)).albumId, isTrashed: acc.get(assetByPath.get(pr.src)).isTrashed })
       } else {
         acc
       }
     ),
     assetByPath' = SUBTREE_PAIRS.foldl(assetByPath, (acc, pr) =>
-      if (acc.keys().contains(pr.src)) {
-        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k)).put(pr.dst, acc.get(pr.src))
+      if (acc.get(pr.src) != 0) {
+        acc.put(pr.src, 0).put(pr.dst, acc.get(pr.src))
       } else {
-        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k))
+        acc
       }
     ),
     dupeIndex' = dupeIndex,
@@ -624,7 +624,7 @@ module pipeline_merged {
   // @scope SCOPE-6
   action DbLoss: bool = all {
     assetById' = Map(),
-    assetByPath' = Map(),
+    assetByPath' = PATHS.mapBy(p => 0),
     dupeIndex' = HASHES.mapBy(h => Set()),
     metadataPayload' = Map(),
     thumbPresent' = HASHES.mapBy(h => false),
@@ -748,7 +748,7 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
-    assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)),
+    assetByPath' = assetByPath.put(p, 0),
     metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k)),
     dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
     thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
@@ -776,7 +776,7 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
-    assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
+    assetByPath' = assetByPath.put(p, 0).put(q, assetByPath.get(p)),
     metadataPayload' = metadataPayload,
     dupeIndex' = dupeIndex,
     thumbPresent' = thumbPresent,
@@ -794,7 +794,7 @@ module pipeline_merged {
     SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and files.get(pr.src).present and not(files.get(pr.dst).present)),
     // Same re-resolve as ExternalRenameDir: collect_dir_move_plans rejects a
     // descendant path row whose record is gone.
-    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (if (assetByPath.keys().contains(pr.src)) { assetById.keys().contains(assetByPath.get(pr.src)) } else { true })),
+    SUBTREE_PAIRS.foldl(true, (acc, pr) => acc and (if ((assetByPath.get(pr.src) != 0)) { assetById.keys().contains(assetByPath.get(pr.src)) } else { true })),
     files' = SUBTREE_PAIRS.foldl(files, (acc, pr) =>
       acc.set(pr.src, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
@@ -802,17 +802,17 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     assetById' = SUBTREE_PAIRS.foldl(assetById, (acc, pr) =>
-      if (assetByPath.keys().contains(pr.src)) {
+      if ((assetByPath.get(pr.src) != 0)) {
         acc.put(assetByPath.get(pr.src), { assetId: assetByPath.get(pr.src), kind: acc.get(assetByPath.get(pr.src)).kind, path: pr.dst, contentHash: acc.get(assetByPath.get(pr.src)).contentHash, albumId: acc.get(assetByPath.get(pr.src)).albumId, isTrashed: acc.get(assetByPath.get(pr.src)).isTrashed })
       } else {
         acc
       }
     ),
     assetByPath' = SUBTREE_PAIRS.foldl(assetByPath, (acc, pr) =>
-      if (acc.keys().contains(pr.src)) {
-        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k)).put(pr.dst, acc.get(pr.src))
+      if (acc.get(pr.src) != 0) {
+        acc.put(pr.src, 0).put(pr.dst, acc.get(pr.src))
       } else {
-        acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k))
+        acc
       }
     ),
     dupeIndex' = dupeIndex,
@@ -888,33 +888,33 @@ module pipeline_merged {
       it.generation == generations.get(it.path),
       files.get(it.path).present,
       snapshotMatches(files.get(it.path), it),
-      assetById' = (if (assetByPath.keys().contains(it.path)) { assetById } else { assetById }).put(
-        if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
-        { assetId: if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
-          kind: if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).kind } else { "media" },
+      assetById' = (if ((assetByPath.get(it.path) != 0)) { assetById } else { assetById }).put(
+        if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId },
+        { assetId: if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId },
+          kind: if ((assetByPath.get(it.path) != 0) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).kind } else { "media" },
           path: it.path,
           contentHash: it.assetHash,
-          albumId: if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).albumId } else { 0 },
-          isTrashed: if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).isTrashed } else { false } }),
-      assetByPath' = assetByPath.put(it.path, if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }),
+          albumId: if ((assetByPath.get(it.path) != 0) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).albumId } else { 0 },
+          isTrashed: if ((assetByPath.get(it.path) != 0) and assetById.keys().contains(assetByPath.get(it.path))) { assetById.get(assetByPath.get(it.path)).isTrashed } else { false } }),
+      assetByPath' = assetByPath.put(it.path, if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId }),
       metadataPayload' = metadataPayload.put(
-        if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId },
-        { kind: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).kind } else { "media" },
+        if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId },
+        { kind: if ((assetByPath.get(it.path) != 0) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).kind } else { "media" },
           assetHash: it.assetHash,
           modified: it.mtime,
           fileSize: it.len,
           sidecar: it.sidecar,
           converged: true,
-          itemCount: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
-          itemSize: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
-          hasShareList: if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
-      dupeIndex' = (if (assetByPath.keys().contains(it.path) and metadataPayload.keys().contains(assetByPath.get(it.path)) and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and dupeIndex.keys().contains(metadataPayload.get(assetByPath.get(it.path)).assetHash)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(it.path)) { assetByPath.get(it.path) } else { nextAssetId }))),
+          itemCount: if ((assetByPath.get(it.path) != 0) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
+          itemSize: if ((assetByPath.get(it.path) != 0) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
+          hasShareList: if ((assetByPath.get(it.path) != 0) and metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
+      dupeIndex' = (if ((assetByPath.get(it.path) != 0) and metadataPayload.keys().contains(assetByPath.get(it.path)) and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and dupeIndex.keys().contains(metadataPayload.get(assetByPath.get(it.path)).assetHash)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
       sweepPending' = sweepPending,
-      nextAssetId' = if (assetByPath.keys().contains(it.path)) { nextAssetId } else { nextAssetId + 1 },
+      nextAssetId' = if ((assetByPath.get(it.path) != 0)) { nextAssetId } else { nextAssetId + 1 },
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1025,11 +1025,11 @@ module pipeline_merged {
       not(files.get(it.path).present),
       // Album-liveness re-check: apply_album_delta no-ops without the album row.
       metadataPayload.keys().contains(0),
-      assetById' = if (assetByPath.keys().contains(it.path)) { assetById.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => assetById.get(k)) } else { assetById },
-      assetByPath' = if (assetByPath.keys().contains(it.path)) { assetByPath.keys().exclude(Set(it.path)).mapBy(k => assetByPath.get(k)) } else { assetByPath },
-      metadataPayload' = if (assetByPath.keys().contains(it.path)) { metadataPayload.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => metadataPayload.get(k)).put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { 1 } else { 0 }), itemSize: metadataPayload.get(0).itemSize - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { (if (metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).fileSize } else { 0 }) } else { 0 }), hasShareList: metadataPayload.get(0).hasShareList }) } else { metadataPayload },
-      dupeIndex' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
-      thumbPresent' = if (assetByPath.keys().contains(it.path) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
+      assetById' = if ((assetByPath.get(it.path) != 0)) { assetById.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => assetById.get(k)) } else { assetById },
+      assetByPath' = if (assetByPath.get(it.path) != 0) { assetByPath.put(it.path, 0) } else { assetByPath },
+      metadataPayload' = if ((assetByPath.get(it.path) != 0)) { metadataPayload.keys().exclude(Set(assetByPath.get(it.path))).mapBy(k => metadataPayload.get(k)).put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { 1 } else { 0 }), itemSize: metadataPayload.get(0).itemSize - (if (assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { (if (metadataPayload.keys().contains(assetByPath.get(it.path))) { metadataPayload.get(assetByPath.get(it.path)).fileSize } else { 0 }) } else { 0 }), hasShareList: metadataPayload.get(0).hasShareList }) } else { metadataPayload },
+      dupeIndex' = if ((assetByPath.get(it.path) != 0) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
+      thumbPresent' = if ((assetByPath.get(it.path) != 0) and assetById.keys().contains(assetByPath.get(it.path)) and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
@@ -1066,7 +1066,7 @@ module pipeline_merged {
   action SweepRoot(r: str): bool = all {
     r.in(ROOTS),
     sweepPending.get(r),
-    assetByPath' = assetByPath.keys().filter(p => not (rootOf(p) == r and not(files.get(p).present))).mapBy(k => assetByPath.get(k)),
+    assetByPath' = PATHS.mapBy(p => if (rootOf(p) == r and not(files.get(p).present)) { 0 } else { assetByPath.get(p) }),
     assetById' = assetById,
     metadataPayload' = metadataPayload,
     dupeIndex' = dupeIndex,
@@ -1540,7 +1540,7 @@ module pipeline_merged {
     if (p.in(unprocessable)) {
       true
     } else if (files.get(p).present) {
-      assetByPath.keys().contains(p) and
+      (assetByPath.get(p) != 0) and
       assetById.keys().contains(assetByPath.get(p)) and
       assetById.get(assetByPath.get(p)).path == p and
       assetById.get(assetByPath.get(p)).contentHash == files.get(p).assetHash and
@@ -1556,7 +1556,7 @@ module pipeline_merged {
         dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
         dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).contains(assetByPath.get(p)))
     } else {
-      not(assetByPath.keys().contains(p))
+      not((assetByPath.get(p) != 0))
     }
   }
 
@@ -1566,7 +1566,7 @@ module pipeline_merged {
 
   // @assumes ASS-4
   def ThumbPresent(p: str): bool =
-    if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) {
+    if ((assetByPath.get(p) != 0) and assetById.keys().contains(assetByPath.get(p))) {
       // @exempt observer
       val h = assetById.get(assetByPath.get(p)).contentHash
       h >= 0 and thumbPresent.get(h)
@@ -1628,7 +1628,7 @@ module pipeline_merged {
     root.in(ROOTS),
     sweepPending.get(root),
     sweepBatch' = PATHS.mapBy(p =>
-      if (rootOf(p) == root and assetByPath.keys().contains(p) and not(files.get(p).present)) {
+      if (rootOf(p) == root and (assetByPath.get(p) != 0) and not(files.get(p).present)) {
         generations.get(p)
       } else {
         if (not(rootOf(p) == root)) {
@@ -1686,26 +1686,26 @@ module pipeline_merged {
     PATHS.exists(p => sweepBatch.get(p) != -1),
     // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
-    assetByPath' = assetByPath.keys().filter(p =>
-      not (sweepBatch.get(p) != -1 and
-           assetByPath.keys().contains(p) and
-           not(files.get(p).present))
-    ).mapBy(k => assetByPath.get(k)),
+    assetByPath' = PATHS.mapBy(p =>
+      if (sweepBatch.get(p) != -1 and
+          assetByPath.get(p) != 0 and
+          not(files.get(p).present)) { 0 } else { assetByPath.get(p) }
+    ),
     assetById' = assetById.keys().filter(id =>
       not (PATHS.exists(p => sweepBatch.get(p) != -1 and
-        assetByPath.keys().contains(p) and
+        (assetByPath.get(p) != 0) and
         assetByPath.get(p) == id and
         not(files.get(p).present)))
     ).mapBy(k => assetById.get(k)),
     metadataPayload' = metadataPayload.keys().filter(id =>
       not (PATHS.exists(p => sweepBatch.get(p) != -1 and
-        assetByPath.keys().contains(p) and
+        (assetByPath.get(p) != 0) and
         assetByPath.get(p) == id and
         not(files.get(p).present)))
     ).mapBy(k => metadataPayload.get(k))
       .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged,
-        itemCount: metadataPayload.get(0).itemCount - PATHS.filter(p => sweepBatch.get(p) != -1 and assetByPath.keys().contains(p) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).size(),
-        itemSize: metadataPayload.get(0).itemSize - PATHS.filter(p => sweepBatch.get(p) != -1 and assetByPath.keys().contains(p) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).fold(0, (acc, p) => acc + (if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })),
+        itemCount: metadataPayload.get(0).itemCount - PATHS.filter(p => sweepBatch.get(p) != -1 and (assetByPath.get(p) != 0) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).size(),
+        itemSize: metadataPayload.get(0).itemSize - PATHS.filter(p => sweepBatch.get(p) != -1 and (assetByPath.get(p) != 0) and not(files.get(p).present) and assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).fold(0, (acc, p) => acc + (if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })),
         hasShareList: metadataPayload.get(0).hasShareList }),
     dupeIndex' = dupeIndex,
     thumbPresent' = thumbPresent,
@@ -1760,7 +1760,7 @@ module pipeline_merged {
     files.get(q).present,
     leasedPaths' = leasedPaths.exclude(Set(p, q)),
     assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
-    assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
+    assetByPath' = assetByPath.put(p, 0).put(q, assetByPath.get(p)),
     metadataPayload' = metadataPayload,
     dupeIndex' = dupeIndex,
     thumbPresent' = thumbPresent,
@@ -1873,7 +1873,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(AspectsAligned and assetByPath.keys().contains("p3") and metadataPayload.get(assetByPath.get("p3")).sidecar == files.get("p3").sidecar and files.get("p3").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AspectsAligned and (assetByPath.get("p3") != 0) and metadataPayload.get(assetByPath.get("p3")).sidecar == files.get("p3").sidecar and files.get("p3").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @operation OP-7
   // @scope SCOPE-5
@@ -2002,14 +2002,14 @@ module pipeline_merged {
 
   // @assumes ASS-6
   def UploadingWindow(p: str): bool =
-    files.get(p).present and not(assetByPath.keys().contains(p)) and intake.exists(i => i.path == p and i.kind == "watcher")
+    files.get(p).present and not((assetByPath.get(p) != 0)) and intake.exists(i => i.path == p and i.kind == "watcher")
 
   // @assumes ASS-6
   def Corrupt(p: str): bool =
-    files.get(p).present and assetByPath.keys().contains(p) and not(AspectAligned(p)) and not(UploadingWindow(p))
+    files.get(p).present and (assetByPath.get(p) != 0) and not(AspectAligned(p)) and not(UploadingWindow(p))
 
   // @assumes ASS-6
-  val UploadDoesNotMintRow = PATHS.forall(p => UploadingWindow(p) implies not(assetByPath.keys().contains(p)))
+  val UploadDoesNotMintRow = PATHS.forall(p => UploadingWindow(p) implies not((assetByPath.get(p) != 0)))
 
   // @assumes ASS-6
   val UploadingIsNotCorrupt = PATHS.forall(p => UploadingWindow(p) implies not(Corrupt(p)))
@@ -2068,12 +2068,12 @@ module pipeline_merged {
       it.generation == generations.get(p),
       files.get(p).present,
       snapshotMatches(files.get(p), it),
-      assetById' = assetById.put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { assetId: if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, kind: if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if (assetByPath.keys().contains(p) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
-      assetByPath' = assetByPath.put(p, if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }),
+      assetById' = assetById.put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, { assetId: if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, kind: if ((assetByPath.get(p) != 0) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if ((assetByPath.get(p) != 0) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if ((assetByPath.get(p) != 0) and assetById.keys().contains(assetByPath.get(p))) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
+      assetByPath' = assetByPath.put(p, if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }),
       metadataPayload' = metadataPayload
-        .put(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }, { kind: if (assetByPath.keys().contains(p) and metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
-        .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount + (if (assetByPath.keys().contains(p)) { 0 } else { 1 }), itemSize: metadataPayload.get(0).itemSize + (it.len - (if (assetByPath.keys().contains(p) and metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })), hasShareList: metadataPayload.get(0).hasShareList }),
-      dupeIndex' = dupeIndex.put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if (assetByPath.keys().contains(p)) { assetByPath.get(p) } else { nextAssetId }))),
+        .put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, { kind: if ((assetByPath.get(p) != 0) and metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
+        .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount + (if ((assetByPath.get(p) != 0)) { 0 } else { 1 }), itemSize: metadataPayload.get(0).itemSize + (it.len - (if ((assetByPath.get(p) != 0) and metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })), hasShareList: metadataPayload.get(0).hasShareList }),
+      dupeIndex' = dupeIndex.put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
       files' = files,
@@ -2194,7 +2194,7 @@ module pipeline_merged {
   // assetByPath entry.
   val PathMapIdentityCoherence = assetById.keys().forall(id =>
     assetById.get(id).path.in(PATHS) implies (
-      files.get(assetById.get(id).path).present implies assetByPath.keys().contains(assetById.get(id).path)
+      files.get(assetById.get(id).path).present implies (assetByPath.get(assetById.get(id).path) != 0)
     )
   )
 
@@ -2222,7 +2222,7 @@ module pipeline_merged {
     // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
     p.in(PATHS),
-    assetByPath.keys().contains(p),
+    (assetByPath.get(p) != 0),
     assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
     assetByPath' = assetByPath,
     metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k))
@@ -2251,7 +2251,7 @@ module pipeline_merged {
   // assign_album.rs / create_dir_album.rs).
   action MemberWrite(p: str): bool = all {
     p.in(PATHS),
-    assetByPath.keys().contains(p),
+    (assetByPath.get(p) != 0),
 
     assetById' = assetById,
     assetByPath' = assetByPath,
@@ -2300,7 +2300,7 @@ module pipeline_merged {
   // delta in the same step (exclusion rule I6).
   action TrashToggle(p: str): bool = all {
     p.in(PATHS),
-    assetByPath.keys().contains(p),
+    (assetByPath.get(p) != 0),
     assetById.keys().contains(assetByPath.get(p)),
     // Album-liveness re-check: apply_album_delta no-ops without the album row.
     metadataPayload.keys().contains(0),
@@ -2329,12 +2329,12 @@ module pipeline_merged {
   run aspectsN5SplitWindowTest = init
     .then(ExternalDelete("p1"))
     .then(RemoveIdOnly("p1"))
-    .then(all { assert(assetByPath.keys().contains("p1") and not(assetById.keys().contains(assetByPath.get("p1")))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert((assetByPath.get("p1") != 0) and not(assetById.keys().contains(assetByPath.get("p1")))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not(assetByPath.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not((assetByPath.get("p1") != 0))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2352,11 +2352,11 @@ module pipeline_merged {
     .then(ExternalDelete("p5"))
     .then(SubmitWatcherRemove("p5"))
     .then(WorkerRemoveApply)
-    .then(all { assert(assetByPath.keys().contains("p1") and thumbPresent.get(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert((assetByPath.get("p1") != 0) and thumbPresent.get(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(not(assetByPath.keys().contains("p1")) and (not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not((assetByPath.get("p1") != 0)) and (not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2364,12 +2364,12 @@ module pipeline_merged {
   run aspectsRemoveTornWindowTest = init
     .then(ExternalDelete("p1"))
     .then(RemoveIdOnly("p1"))
-    .then(all { assert(assetByPath.keys().contains("p1") and not(assetById.keys().contains(assetByPath.get("p1")))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert((assetByPath.get("p1") != 0) and not(assetById.keys().contains(assetByPath.get("p1")))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not(assetByPath.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not((assetByPath.get("p1") != 0))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
