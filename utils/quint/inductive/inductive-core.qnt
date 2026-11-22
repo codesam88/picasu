@@ -777,8 +777,8 @@ module pipeline_merged {
     assetById' = assetById.put(assetByPath.get(p), absentAssetRecord),
     assetByPath' = assetByPath.put(p, 0),
     metadataPayload' = metadataPayload.put(assetByPath.get(p), absentMetadataRecord),
-    dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
-    thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
+    dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and (assetById.get(assetByPath.get(p)).contentHash).in(HASHES)) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
+    thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and (assetById.get(assetByPath.get(p)).contentHash).in(HASHES)) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
@@ -935,7 +935,7 @@ module pipeline_merged {
           itemCount: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
           itemSize: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
           hasShareList: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
-      dupeIndex' = (if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent") and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and dupeIndex.keys().contains(metadataPayload.get(assetByPath.get(it.path)).assetHash)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId }))),
+      dupeIndex' = (if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent") and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and (metadataPayload.get(assetByPath.get(it.path)).assetHash).in(HASHES)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if ((it.assetHash).in(HASHES)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
@@ -1055,8 +1055,8 @@ module pipeline_merged {
       assetById' = if ((assetByPath.get(it.path) != 0)) { assetById.put(assetByPath.get(it.path), absentAssetRecord) } else { assetById },
       assetByPath' = if (assetByPath.get(it.path) != 0) { assetByPath.put(it.path, 0) } else { assetByPath },
       metadataPayload' = if ((assetByPath.get(it.path) != 0)) { metadataPayload.put(assetByPath.get(it.path), absentMetadataRecord).put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount - (if ((assetById.get(assetByPath.get(it.path)).kind != "absent") and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { 1 } else { 0 }), itemSize: metadataPayload.get(0).itemSize - (if ((assetById.get(assetByPath.get(it.path)).kind != "absent") and assetById.get(assetByPath.get(it.path)).albumId == 0 and not(assetById.get(assetByPath.get(it.path)).isTrashed)) { (if ((metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).fileSize } else { 0 }) } else { 0 }), hasShareList: metadataPayload.get(0).hasShareList }) } else { metadataPayload },
-      dupeIndex' = if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent") and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
-      thumbPresent' = if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent") and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(it.path)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
+      dupeIndex' = if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent") and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and (assetById.get(assetByPath.get(it.path)).contentHash).in(HASHES)) { dupeIndex.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex },
+      thumbPresent' = if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent") and assetById.get(assetByPath.get(it.path)).contentHash >= 0 and (assetById.get(assetByPath.get(it.path)).contentHash).in(HASHES)) { thumbPresent.put(assetById.get(assetByPath.get(it.path)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(it.path)).contentHash).exclude(Set(assetByPath.get(it.path))).size() > 0) } else { thumbPresent },
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
@@ -1580,7 +1580,7 @@ module pipeline_merged {
       (assetById.get(assetByPath.get(p)).contentHash < 0 or
         (thumbPresent.get(assetById.get(assetByPath.get(p)).contentHash))) and
       (assetById.get(assetByPath.get(p)).contentHash < 0 or
-        dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash) and
+        (assetById.get(assetByPath.get(p)).contentHash).in(HASHES) and
         dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).contains(assetByPath.get(p)))
     } else {
       not((assetByPath.get(p) != 0))
@@ -2100,7 +2100,7 @@ module pipeline_merged {
       metadataPayload' = metadataPayload
         .put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, { kind: if ((assetByPath.get(p) != 0) and (metadataPayload.get(assetByPath.get(p)).kind != "absent")) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
         .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount + (if ((assetByPath.get(p) != 0)) { 0 } else { 1 }), itemSize: metadataPayload.get(0).itemSize + (it.len - (if ((assetByPath.get(p) != 0) and (metadataPayload.get(assetByPath.get(p)).kind != "absent")) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })), hasShareList: metadataPayload.get(0).hasShareList }),
-      dupeIndex' = dupeIndex.put(it.assetHash, (if (dupeIndex.keys().contains(it.assetHash)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }))),
+      dupeIndex' = dupeIndex.put(it.assetHash, (if ((it.assetHash).in(HASHES)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
       files' = files,
@@ -2232,9 +2232,9 @@ module pipeline_merged {
   // matches assetById contentHash grouping.
   val DupeIndexBijective = 0.to(PATHS.size() + 1).forall(id =>
     assetById.get(id).contentHash >= 0 implies
-      (dupeIndex.keys().contains(assetById.get(id).contentHash) and
+      ((assetById.get(id).contentHash).in(HASHES) and
        dupeIndex.get(assetById.get(id).contentHash).contains(id))
-  ) and dupeIndex.keys().forall(h =>
+  ) and HASHES.forall(h =>
     dupeIndex.get(h).forall(id =>
       (assetById.get(id).kind != "absent") and assetById.get(id).contentHash == h
     )
