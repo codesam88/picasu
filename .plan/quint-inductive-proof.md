@@ -219,9 +219,11 @@ rewrite must not introduce.
 
 After each table commit, in order:
 
-1. `quint typecheck utils/quint/inductive/inductive-core.qnt`
-   → PASS (exit 0 **and** no `QNT` error in output).
-2. `quint test utils/quint/inductive/inductive-core.qnt`
+1. `quint typecheck utils/quint/inductive/entry-canonical.qnt`
+   → PASS (exit 0 **and** no `QNT` error in output). (Typechecking the
+   core directly works too, but the entry is the gate: it binds the
+   consts.)
+2. `quint test utils/quint/inductive/entry-canonical.qnt`
    → same pass count as the recorded baseline (record the count on the
    unedited copy first; expected 70/70; binary: counts equal, zero failures).
 3. Stop conditions: typecheck fails → fix the slice, do not proceed;
@@ -278,17 +280,24 @@ Start with exactly this list (order matters; add top-down, one per round):
    `ConvergedFlagSetRow` per path (ported verbatim from `proof.qnt`
    `:156-177`, presence tests in sentinel form) — the shape track's banked
    reachability core.
-   3b. Album-row after `DbLoss` — resolved in Phase 0 (A3, §4.0), not here.
-   Inspection to date: only `init` creates the album row
-   (`initialAlbumAssetRecord`/`initialAlbumMetadataRecord`); no action
-   re-creates id 0 after `DbLoss` wipes it, and the album-delta writes
-   (`TrashToggle`, `AlbumShareEdit`, the member deltas) read
-   `metadataPayload.get(0)` unguarded. `Converged` is per-path and does not
-   read id 0, so the goal may survive — but the unguarded reads are
-   ill-defined in `merged.qnt` on wiped maps and sentinel-total in the
-   core. A3 disposes of this (fidelity fix in `merged.qnt` vs recorded
-   encoding delta) before any slice is cut; the outcome seeds either the
-   fix (core re-copied) or a conjunct/encoding note here.
+   3b. Album-row after `DbLoss` — resolved in Phase 0 (A3, §4.0, outcome
+   recorded 2026-11-22): disposition (b), no model fix. Only `init`
+   creates the album row (id 0); `DbLoss` wipes it and no action
+   re-creates it — but all six `.get(0)` read sites (the five member
+   deltas plus `AlbumShareEdit`/`TrashToggle`) carry a
+   `metadataPayload.keys().contains(0)` guard (`AlbumShareEdit` also
+   `assetById.keys().contains(0)`), so the actions are disabled, not
+   undefined, post-`DbLoss` (probe: `TrashToggle` after `DbLoss` fails
+   with the action not enabled). The backend matches: album deltas
+   no-op against a missing album record/payload
+   (`asset_store.rs::apply_album_delta` returns `Ok(())`), and recovery
+   rebuilds per-directory albums (`dir_album::get_or_create_dir_album`),
+   not a global id 0. Encoding note for the slices: in the core,
+   `metadataPayload` is total over `IDS` with an `absent` sentinel, so
+   `.get(0)` is always defined — the presence guards must be preserved
+   verbatim in sentinel form (`get(0).kind != "absent"`); dropping one
+   would execute an album delta against the sentinel instead of
+   disabling the action. Checked by the §4.5 differential.
 4. Guard-support conjuncts from the five CEGAR rounds: resolvability
    (worker/scan reads resolve), lease-held (leased endpoints have rows and
    records), identity-freshness (skip-unchanged identity match),
@@ -331,12 +340,18 @@ spelling.
 Pre-flight items, each with its outcome recorded in this plan:
 
 - **A1 — baseline pin.** Record `quint test
-utils/quint/inductive/inductive-core.qnt` on the unedited byte copy at
-  the core's own (canonical) bounds; expected 70/70. This count is the
+utils/quint/inductive/entry-canonical.qnt` (the entry binds the core's
+  consts; `quint test` on `inductive-core.qnt` directly fails with
+  `QNT500: Uninitialized const`, by design — same as `pipeline/`) on the
+  unedited byte copy at canonical bounds; expected 70/70. This count is the
   per-slice regression gate (§6). Proof entries at reduced bounds are
-  verify vehicles, not the regression gate. If any run asserts whole-map
-  structure, give it a sentinel-form mirror in the core during the owning
-  slice.
+  verify vehicles, not the regression gate (18 of the 70 runs assume
+  canonical bounds and fail at the reduced instance). If any run asserts
+  whole-map structure, give it a sentinel-form mirror in the core during
+  the owning slice — none does (A1: all 9 `Map(` hits are in action
+  bodies). Outcome (recorded 2026-11-22): typecheck clean; 70/70 via a
+  scratch entry in 416 s; flag form confirmed (`--inductive-invariant`,
+  string); the tracked `entry-canonical.qnt` re-runs the gate.
 - **A2 — Apalache harness.** Start one persistent Apalache server
   (`--server-endpoint`; the runner's pass-through is already supported) for
   all verifier runs of Phases 3–4, and batch verification conditions per
@@ -356,6 +371,10 @@ utils/quint/inductive/inductive-core.qnt` on the unedited byte copy at
   record the behavioral delta (`merged`: undefined read vs core: sentinel
   record) as an encoding note in §3.2 item 3b. If neither disposition
   holds: STOP and report; do not patch the model inside this plan.
+  Outcome (recorded 2026-11-22): disposition (b) — all six read sites are
+  guarded, probe confirms the actions disable post-`DbLoss`, backend
+  no-ops the same case. No `merged.qnt` edit; the encoding note is in
+  §3.2 item 3b. Phase 1 is unblocked.
 - **A4 — implication cost probe.** Price §5 before building `I`: with
   `initI`-equivalent (draw constrained by `TypeOK`) and
   `--invariant TypeOK` (trivially true), run the implication form once and
@@ -521,8 +540,8 @@ split the implication per conjunct group before entering rounds. Stop rule:
 | ---------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | 0 control                    | §4.1 command against the **unmodified** copy                                               | fails with map-domain errors (reproduces the spike) | passes → representation already encodable; skip to §3                                                                          |
 | 0 pre-flight                 | A1–A6 (§4.0)                                                                               | all recorded; A3 disposition decided                | A3 unresolvable → STOP; A4 over budget → batch/split §5 before Phase 3                                                         |
-| 1 slice _k_ (7 slices, §2.2) | `quint typecheck .../inductive-core.qnt`                                                   | no `QNT` error                                      | any error → fix slice, do not proceed                                                                                          |
-| 1 slice _k_                  | `quint test .../inductive-core.qnt`                                                        | count equals recorded baseline (expect 70/70)       | count differs → revert slice                                                                                                   |
+| 1 slice _k_ (7 slices, §2.2) | `quint typecheck .../entry-canonical.qnt`                                                  | no `QNT` error                                      | any error → fix slice, do not proceed                                                                                          |
+| 1 slice _k_                  | `quint test .../entry-canonical.qnt`                                                       | count equals recorded baseline (expect 70/70)       | count differs → revert slice                                                                                                   |
 | 1 dupe decision              | §4.1 command                                                                               | Apalache accepts the encoding                       | rejects sets → boolean-matrix fallback, re-run slice tests once                                                                |
 | 2 epochs                     | `grep -n "generations.get(.*) + 1" inductive-core.qnt` empty; typecheck; suite count equal | all three hold                                      | any fails → fix, do not proceed                                                                                                |
 | 2 witness                    | pinned saturated-comparison `quint run`                                                    | run passes, comparison observed                     | unobservable → STOP, saturation semantics unsound                                                                              |
