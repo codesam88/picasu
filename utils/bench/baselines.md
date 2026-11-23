@@ -5,11 +5,11 @@
 Host and build of the recorded runs, printed once from the earliest run after checking every run agrees on host, CPU, memory and git identity; clock frequency and load are not compared. `16n` client counts are resolved from the recorded CPU count.
 
 - **host**: codex (7.0.0-38-generic)
-- **CPU**: Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz, 8 cores, 2200/2400 MHz, governor powersave, turbo disabled
+- **CPU**: Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz, 8 cores, 1800/2400 MHz, governor powersave, turbo disabled
 - **memory**: 63 GiB
-- **load average (1/5/15 min)**: 0.69/1.09/1.39 at start, 6.95/6.40/3.71 at end
-- **git**: perf/new-baseline2 @ f561b33d9289
-- **captured**: 2026-11-23T00:09:22+00:00 to 2026-11-23T00:13:37+00:00
+- **load average (1/5/15 min)**: 0.61/0.81/1.61 at start, 4.98/4.29/2.99 at end
+- **git**: fix/album-concurrency-baseline2 @ b30fcaf0f7e6
+- **captured**: 2026-11-23T10:05:01+00:00 to 2026-11-23T10:09:07+00:00
 
 ## Terms
 
@@ -30,26 +30,26 @@ One row per load profile with the at-rest and scanning measurements side by side
 
 | profile         | idle accesses | idle invalid | idle failed | scan accesses | scan invalid | scan failed |
 | :-------------- | ------------: | -----------: | ----------: | ------------: | -----------: | ----------: |
-| probe           |            24 |          n/a |         n/a |           572 |            0 |         n/a |
-| storm-read-8    |            80 |            0 |           0 |         11350 |            0 |           0 |
-| storm-read-16n  |          1280 |            0 |           0 |         14566 |            0 |           0 |
-| storm-thumb-8   |            80 |            0 |           0 |          8015 |            0 |           0 |
-| storm-thumb-16n |          1280 |            0 |           0 |         13201 |            0 |           0 |
-| storm-edit-8    |            80 |            0 |           0 |         12306 |            0 |           0 |
-| storm-edit-16n  |          1280 |            0 |           0 |         17810 |            0 |           0 |
+| probe           |            24 |          n/a |         n/a |           575 |            0 |         n/a |
+| storm-read-8    |            80 |            0 |           0 |         11208 |            0 |           0 |
+| storm-read-16n  |          1280 |            0 |           0 |         13901 |            0 |           0 |
+| storm-thumb-8   |            80 |            0 |           0 |          6163 |            0 |           0 |
+| storm-thumb-16n |          1280 |            0 |           0 |         13672 |            0 |           0 |
+| storm-edit-8    |            80 |            0 |           0 |         11385 |            0 |           0 |
+| storm-edit-16n  |          1280 |            0 |           0 |         14064 |            0 |           0 |
 | upload-loop     |            20 |            0 |         n/a |            20 |            0 |         n/a |
 
 ### 200 images
 
 | profile         | idle accesses | idle invalid | idle failed | scan accesses | scan invalid | scan failed |
 | :-------------- | ------------: | -----------: | ----------: | ------------: | -----------: | ----------: |
-| probe           |            24 |          n/a |         n/a |           560 |            1 |         n/a |
-| storm-read-8    |            80 |            0 |           0 |         22939 |            0 |           0 |
-| storm-read-16n  |          1280 |            0 |           0 |         29215 |            0 |           0 |
-| storm-thumb-8   |            80 |            0 |           0 |         10770 |            0 |           0 |
-| storm-thumb-16n |          1280 |            0 |           0 |         28856 |            0 |           0 |
-| storm-edit-8    |            80 |            0 |           0 |         25111 |            0 |           0 |
-| storm-edit-16n  |          1280 |            0 |           0 |         34244 |            0 |           0 |
+| probe           |            24 |          n/a |         n/a |           560 |            0 |         n/a |
+| storm-read-8    |            80 |            0 |           0 |         20174 |            0 |           0 |
+| storm-read-16n  |          1280 |            0 |           0 |         25728 |            0 |           0 |
+| storm-thumb-8   |            80 |            0 |           0 |         14428 |            0 |           0 |
+| storm-thumb-16n |          1280 |            0 |           0 |         26061 |            0 |           0 |
+| storm-edit-8    |            80 |            0 |           0 |         22554 |            0 |           0 |
+| storm-edit-16n  |          1280 |            0 |           0 |         29236 |            0 |           0 |
 | upload-loop     |            20 |            0 |         n/a |            20 |            0 |         n/a |
 
 ## Foreground latency
@@ -60,39 +60,39 @@ One row per load profile: the access, its probe or storm client count, and its u
 
 | profile           | idle p50 ms ± CI |    p95 |    max | scan p50 ms ± CI |     p95 |     max |
 | :---------------- | :--------------- | -----: | -----: | :--------------- | ------: | ------: |
-| probe-read        | 6.2 ±0.4         |    6.5 |    6.6 | 0.8 ±0.1         |     6.0 |     8.2 |
-| storm-read-8      | 2.0 ±0.3         |    5.2 |   14.9 | 3.3 ±0.0         |    14.9 |    48.4 |
-| storm-read-16n    | 2.2 ±0.1         |  139.0 |  186.8 | 3.8 ±0.1         |    98.7 |   314.4 |
-| probe-edit        | 2.3 ±0.1         |    2.3 |    2.3 | 1.4 ±0.0         |     2.2 |     3.4 |
-| storm-edit-8      | 3.6 ±0.3         |   10.1 |   20.1 | 4.8 ±0.0         |    13.0 |    29.5 |
-| storm-edit-16n    | 2.6 ±0.1         |    6.0 |   10.4 | 5.3 ±0.0         |    19.1 |   224.7 |
-| probe-thumb       | 2.2 ±0.2         |    2.5 |    2.5 | 1.5 ±0.2         |    10.6 |    24.1 |
-| storm-thumb-8     | 5.6 ±0.9         |   13.9 |   22.5 | 8.0 ±0.1         |    18.5 |    39.2 |
-| storm-thumb-16n   | 2.5 ±0.1         |   13.9 |   35.9 | 17.8 ±0.4        |    82.2 |   220.7 |
-| probe-scroll-bar  | 1.4 ±n/a         |    1.4 |    1.4 | 0.7 ±0.0         |     1.1 |     1.6 |
-| probe-scroll-rows | 1.5 ±0.1         |    1.6 |    1.6 | 0.7 ±0.0         |     1.6 |     5.0 |
-| probe-scroll-data | 2.4 ±0.8         |    3.1 |    3.1 | 0.9 ±0.0         |     3.4 |     8.6 |
-| upload-submit     | 4.0 ±0.5         |   10.4 |   17.0 | 14.5 ±8.2        |   112.3 |   118.0 |
-| upload-visible    | 2266.0 ±1.0      | 2277.5 | 2287.0 | 12954.0 ±688.3   | 14181.1 | 14184.0 |
+| probe-read        | 3.5 ±0.4         |    4.1 |    4.1 | 1.4 ±0.7         |     7.7 |     8.9 |
+| storm-read-8      | 2.1 ±0.2         |    3.8 |    4.7 | 3.1 ±0.1         |    14.8 |    40.2 |
+| storm-read-16n    | 3.7 ±0.1         |   37.0 |  112.7 | 3.3 ±0.1         |    61.7 |   254.4 |
+| probe-edit        | 1.2 ±0.2         |    1.4 |    1.5 | 1.4 ±0.1         |     3.0 |     4.0 |
+| storm-edit-8      | 2.3 ±0.1         |    3.7 |    5.3 | 4.8 ±0.0         |    13.1 |    38.3 |
+| storm-edit-16n    | 3.7 ±0.1         |    8.2 |   17.3 | 4.3 ±0.1         |    15.8 |    44.5 |
+| probe-thumb       | 1.2 ±0.2         |    1.4 |    1.5 | 3.0 ±0.7         |    20.6 |    31.9 |
+| storm-thumb-8     | 2.5 ±0.3         |    4.2 |    5.2 | 9.4 ±0.2         |    33.8 |    98.6 |
+| storm-thumb-16n   | 3.0 ±0.1         |    6.4 |   11.1 | 18.8 ±0.4        |   137.1 |   387.1 |
+| probe-scroll-bar  | 0.7 ±n/a         |    0.7 |    0.7 | 0.7 ±0.1         |     1.7 |     1.8 |
+| probe-scroll-rows | 0.8 ±0.1         |    0.8 |    0.8 | 0.7 ±0.1         |     4.0 |     4.5 |
+| probe-scroll-data | 1.3 ±0.4         |    1.5 |    1.5 | 1.4 ±0.3         |     5.0 |     7.8 |
+| upload-submit     | 10.0 ±1.8        |   31.3 |   56.0 | 4.5 ±0.8         |    69.8 |    84.0 |
+| upload-visible    | 2283.0 ±3.2      | 2304.5 | 2333.0 | 13056.0 ±579.8   | 14089.0 | 14090.0 |
 
 ### 200 images
 
 | profile           | idle p50 ms ± CI |    p95 |    max | scan p50 ms ± CI |     p95 |     max |
 | :---------------- | :--------------- | -----: | -----: | :--------------- | ------: | ------: |
-| probe-read        | 7.9 ±0.7         |    8.6 |    8.7 | 1.9 ±0.5         |    12.2 |    16.6 |
-| storm-read-8      | 3.2 ±0.5         |   37.4 |   43.1 | 3.6 ±0.1         |    16.2 |   136.1 |
-| storm-read-16n    | 2.0 ±0.1         |  230.8 |  280.3 | 4.5 ±0.0         |   264.2 |  1963.2 |
-| probe-edit        | 1.4 ±0.0         |    1.4 |    1.4 | 1.5 ±0.2         |     4.0 |     5.0 |
-| storm-edit-8      | 2.9 ±0.2         |    5.2 |    6.3 | 4.5 ±0.0         |    12.3 |    49.7 |
-| storm-edit-16n    | 2.7 ±0.1         |    9.7 |   20.0 | 4.8 ±0.0         |    15.9 |    64.0 |
-| probe-thumb       | 1.1 ±0.0         |    1.2 |    1.2 | 10.3 ±1.5        |    24.0 |    28.7 |
-| storm-thumb-8     | 3.4 ±0.2         |    7.5 |   12.1 | 11.5 ±0.2        |    40.7 |    82.9 |
-| storm-thumb-16n   | 2.1 ±0.1         |    7.0 |   25.8 | 18.5 ±0.3        |   137.2 |   333.9 |
-| probe-scroll-bar  | 0.7 ±n/a         |    0.7 |    0.7 | 0.8 ±0.2         |     1.9 |     1.9 |
-| probe-scroll-rows | 0.8 ±0.1         |    1.3 |    1.4 | 1.1 ±0.5         |     4.0 |     6.4 |
-| probe-scroll-data | 1.9 ±0.8         |    2.6 |    2.7 | 1.9 ±0.4         |     5.1 |     8.4 |
-| upload-submit     | 11.0 ±4.2        |   26.3 |   32.0 | 4.0 ±0.5         |    20.1 |    22.0 |
-| upload-visible    | 2322.5 ±11.5     | 2338.3 | 2345.0 | 21629.5 ±708.8   | 22836.0 | 22836.0 |
+| probe-read        | 6.0 ±0.5         |    6.2 |    6.2 | 1.2 ±1.1         |    11.5 |    13.7 |
+| storm-read-8      | 2.0 ±0.2         |    3.9 |    4.6 | 3.1 ±0.0         |    17.0 |    86.2 |
+| storm-read-16n    | 2.0 ±0.1         |  254.0 |  305.1 | 4.5 ±0.0         |   266.4 |   607.7 |
+| probe-edit        | 1.2 ±0.1         |    1.2 |    1.2 | 1.4 ±0.1         |     2.9 |     7.7 |
+| storm-edit-8      | 3.6 ±0.6         |    6.5 |    8.0 | 4.7 ±0.1         |    12.9 |    35.4 |
+| storm-edit-16n    | 4.7 ±0.2         |   10.7 |   47.0 | 4.6 ±0.0         |    16.3 |    60.8 |
+| probe-thumb       | 1.2 ±0.1         |    1.4 |    1.4 | 4.0 ±1.5         |    22.0 |    39.3 |
+| storm-thumb-8     | 2.4 ±0.2         |    4.4 |    6.3 | 8.7 ±0.1         |    19.8 |    53.5 |
+| storm-thumb-16n   | 3.8 ±0.1         |    7.1 |   20.7 | 17.4 ±0.2        |    69.9 |   157.9 |
+| probe-scroll-bar  | 0.6 ±n/a         |    0.6 |    0.6 | 0.7 ±0.1         |     1.8 |     1.9 |
+| probe-scroll-rows | 0.7 ±0.1         |    0.8 |    0.8 | 0.7 ±0.0         |     3.0 |     5.0 |
+| probe-scroll-data | 1.8 ±0.9         |    2.6 |    2.7 | 1.7 ±0.3         |     6.0 |     8.0 |
+| upload-submit     | 10.5 ±1.5        |   16.2 |   38.0 | 3.0 ±0.5         |    14.6 |    26.0 |
+| upload-visible    | 2318.5 ±5.2      | 2337.2 | 2359.0 | 21118.0 ±635.0   | 22595.3 | 22601.0 |
 
 ## Scan time
 
@@ -100,14 +100,14 @@ Wall clock of the populate scan and the resulting ingest rate for a few load pro
 
 | load profile    |         100 images |          200 images |
 | :-------------- | -----------------: | ------------------: |
-| no-load         | 10.4 s (9.6 img/s) | 18.9 s (10.6 img/s) |
-| storm-read-8    | 11.2 s (8.9 img/s) |  24.0 s (8.3 img/s) |
-| storm-read-16n  | 11.2 s (8.9 img/s) |  25.0 s (8.0 img/s) |
-| storm-thumb-8   | 10.3 s (9.7 img/s) |  22.2 s (9.0 img/s) |
-| storm-thumb-16n | 11.3 s (8.8 img/s) |  23.8 s (8.4 img/s) |
-| storm-edit-8    | 11.8 s (8.5 img/s) |  24.3 s (8.2 img/s) |
-| storm-edit-16n  | 14.2 s (7.0 img/s) |  25.8 s (7.8 img/s) |
-| upload-loop     | 12.1 s (8.3 img/s) |  21.8 s (9.2 img/s) |
+| no-load         | 9.7 s (10.3 img/s) | 18.2 s (11.0 img/s) |
+| storm-read-8    | 10.4 s (9.6 img/s) | 19.4 s (10.3 img/s) |
+| storm-read-16n  | 10.8 s (9.3 img/s) |  22.2 s (9.0 img/s) |
+| storm-thumb-8   | 10.6 s (9.4 img/s) | 19.3 s (10.4 img/s) |
+| storm-thumb-16n | 11.8 s (8.5 img/s) |  20.7 s (9.7 img/s) |
+| storm-edit-8    | 10.7 s (9.3 img/s) |  20.9 s (9.6 img/s) |
+| storm-edit-16n  | 11.0 s (9.1 img/s) |  21.4 s (9.3 img/s) |
+| upload-loop     | 11.5 s (8.7 img/s) |  21.6 s (9.3 img/s) |
 
 ## Memory and storage footprint
 
@@ -115,21 +115,21 @@ Peak process memory and store sizes at the end of each cell, one table per metri
 
 | profile              | peak VMM (100) | peak VMM (200) |
 | :------------------- | -------------: | -------------: |
-| idle-storm-edit-16n  |          384.2 |          384.6 |
-| idle-storm-edit-8    |          383.8 |          384.9 |
-| idle-storm-read-16n  |          383.7 |          385.1 |
-| idle-storm-read-8    |          383.8 |          385.0 |
-| idle-storm-thumb-16n |          384.1 |          384.9 |
-| idle-storm-thumb-8   |          384.5 |          385.1 |
-| idle-upload          |          387.3 |          393.1 |
-| probe                |          390.2 |          392.7 |
-| scan-storm-edit-16n  |          405.6 |          403.0 |
-| scan-storm-edit-8    |          391.4 |          392.1 |
-| scan-storm-read-16n  |          442.9 |          553.0 |
-| scan-storm-read-8    |          402.5 |          432.4 |
-| scan-storm-thumb-16n |          398.6 |          404.3 |
-| scan-storm-thumb-8   |          389.1 |          389.9 |
-| scan-upload          |          714.8 |          713.3 |
+| idle-storm-edit-16n  |          384.2 |          385.9 |
+| idle-storm-edit-8    |          384.3 |          385.1 |
+| idle-storm-read-16n  |          384.4 |          385.1 |
+| idle-storm-read-8    |          384.5 |          384.9 |
+| idle-storm-thumb-16n |          384.9 |          385.1 |
+| idle-storm-thumb-8   |          384.2 |          385.5 |
+| idle-upload          |          388.8 |          392.4 |
+| probe                |          389.9 |          390.0 |
+| scan-storm-edit-16n  |          401.2 |          404.4 |
+| scan-storm-edit-8    |          391.5 |          393.7 |
+| scan-storm-read-16n  |          432.6 |          570.7 |
+| scan-storm-read-8    |          402.2 |          431.3 |
+| scan-storm-thumb-16n |          402.3 |          399.9 |
+| scan-storm-thumb-8   |          389.1 |          390.7 |
+| scan-upload          |          713.0 |          710.5 |
 
 | profile              | compressed (100) | compressed (200) |
 | :------------------- | ---------------: | ---------------: |
@@ -151,45 +151,45 @@ Peak process memory and store sizes at the end of each cell, one table per metri
 
 | profile              | index DB (100) | index DB (200) |
 | :------------------- | -------------: | -------------: |
-| idle-storm-edit-16n  |            0.7 |            0.7 |
-| idle-storm-edit-8    |            0.6 |            0.7 |
-| idle-storm-read-16n  |            0.6 |            0.7 |
-| idle-storm-read-8    |            0.5 |            1.1 |
-| idle-storm-thumb-16n |            0.6 |            1.0 |
-| idle-storm-thumb-8   |            1.1 |            0.7 |
-| idle-upload          |            0.7 |            0.7 |
-| probe                |            0.5 |            0.9 |
-| scan-storm-edit-16n  |            0.8 |            0.8 |
-| scan-storm-edit-8    |            0.5 |            0.7 |
-| scan-storm-read-16n  |            0.5 |            1.2 |
-| scan-storm-read-8    |            0.7 |            0.8 |
-| scan-storm-thumb-16n |            0.7 |            0.9 |
+| idle-storm-edit-16n  |            1.1 |            0.7 |
+| idle-storm-edit-8    |            1.1 |            0.8 |
+| idle-storm-read-16n  |            1.1 |            1.2 |
+| idle-storm-read-8    |            0.7 |            0.7 |
+| idle-storm-thumb-16n |            0.5 |            1.0 |
+| idle-storm-thumb-8   |            0.6 |            0.9 |
+| idle-upload          |            0.5 |            1.2 |
+| probe                |            0.7 |            1.2 |
+| scan-storm-edit-16n  |            0.6 |            1.4 |
+| scan-storm-edit-8    |            0.7 |            0.8 |
+| scan-storm-read-16n  |            0.6 |            1.3 |
+| scan-storm-read-8    |            0.6 |            0.8 |
+| scan-storm-thumb-16n |            0.5 |            0.7 |
 | scan-storm-thumb-8   |            0.6 |            0.7 |
-| scan-upload          |            0.5 |            1.3 |
+| scan-upload          |            0.6 |            1.2 |
 
 | profile              | temp (100) | temp (200) |
 | :------------------- | ---------: | ---------: |
 | idle-storm-edit-16n  |        1.1 |        1.1 |
 | idle-storm-edit-8    |        1.1 |        1.1 |
-| idle-storm-read-16n  |        9.8 |       10.4 |
-| idle-storm-read-8    |        0.6 |        0.7 |
+| idle-storm-read-16n  |        2.4 |       10.4 |
+| idle-storm-read-8    |        1.1 |        1.1 |
 | idle-storm-thumb-16n |        1.1 |        1.1 |
 | idle-storm-thumb-8   |        1.1 |        1.1 |
 | idle-upload          |        1.1 |        2.1 |
-| probe                |        0.6 |        1.1 |
+| probe                |        0.6 |        0.6 |
 | scan-storm-edit-16n  |        1.1 |        1.1 |
 | scan-storm-edit-8    |        1.1 |        1.1 |
 | scan-storm-read-16n  |       35.7 |      142.6 |
 | scan-storm-read-8    |       17.8 |       35.7 |
 | scan-storm-thumb-16n |        1.1 |        1.1 |
 | scan-storm-thumb-8   |        1.1 |        1.1 |
-| scan-upload          |        1.1 |        2.2 |
+| scan-upload          |        0.6 |        2.2 |
 
 | profile              | cache (100) | cache (200) |
 | :------------------- | ----------: | ----------: |
 | idle-storm-edit-16n  |         1.1 |         1.1 |
 | idle-storm-edit-8    |         1.1 |         1.1 |
-| idle-storm-read-16n  |         0.2 |         0.1 |
+| idle-storm-read-16n  |         0.1 |         0.2 |
 | idle-storm-read-8    |         1.1 |         1.1 |
 | idle-storm-thumb-16n |         1.1 |         1.1 |
 | idle-storm-thumb-8   |         1.1 |         1.1 |
@@ -197,8 +197,8 @@ Peak process memory and store sizes at the end of each cell, one table per metri
 | probe                |         0.6 |         0.6 |
 | scan-storm-edit-16n  |         1.1 |         1.1 |
 | scan-storm-edit-8    |         1.1 |         1.1 |
-| scan-storm-read-16n  |         0.6 |         1.1 |
-| scan-storm-read-8    |         0.6 |         1.1 |
+| scan-storm-read-16n  |         0.6 |         1.5 |
+| scan-storm-read-8    |         0.6 |         0.9 |
 | scan-storm-thumb-16n |         1.1 |         1.1 |
 | scan-storm-thumb-8   |         1.1 |         1.1 |
 | scan-upload          |         0.6 |         0.6 |
