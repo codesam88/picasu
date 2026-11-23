@@ -40,13 +40,13 @@ statistic or execution path.
 The benchmark is a matrix: each foreground access is timed under each
 background that exercises the server differently.
 
-| axis       | values                                                                                      |
-| ---------- | ------------------------------------------------------------------------------------------- |
-| images     | image count — the sole size parameter (matrix: 50, 100, 200; larger counts opt-in for cost) |
-| background | `idle` (no scan, server settled), `scan` (an album scan is running)                         |
-| foreground | `prefetch` (read), `edit`, `thumb`, `scroll`, `upload`, `storm`                             |
-| statistic  | `p50`, `p95`, `max`                                                                         |
-| repetition | scan (a populate scan inside a rep), rep (a whole cell invocation)                          |
+| axis       | values                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| images     | image count — the sole size parameter (gate: 100 and 200; larger counts opt-in for cost) |
+| background | `idle` (no scan, server settled), `scan` (an album scan is running)                      |
+| foreground | `prefetch` (read), `edit`, `thumb`, `scroll`, `upload`, `storm`                          |
+| statistic  | `p50`, `p95`, `max`                                                                      |
+| repetition | scan (a populate scan inside a rep), rep (a whole cell invocation)                       |
 
 `storm` is a foreground load family, not a background: it names the
 operation (read, thumb, edit) and the client count (`8`, `16n`). `upload`
@@ -140,8 +140,12 @@ the cell before a report exists, as does a scan storm whose active wall
 falls below the coverage floor. A probe round whose guard fails contributes
 no samples; the cell records the exclusion count (`invalid`) and its
 reasons. A probe cell that ends under its round budget fails instead of
-recording a thin sample. Validity is carried into the final outputs, so a
-reader can tell a stable number from a lucky one.
+recording a thin sample. A cell whose rejections exceed 10% of its measured
+probe rounds — the only phase a guard can reject without failing the cell
+— or that records any failed operation, is suspect: the renderer prints a
+WARNING to stderr and the validity table reports the cell either way.
+Validity is carried into
+the final outputs, so a reader can tell a stable number from a lucky one.
 
 Warmup covers the single-client probe accesses: on the first scan of a
 repetition, and before the at-rest rounds. Sustained concurrency is not
@@ -244,7 +248,7 @@ metadata. One table per image count unless stated otherwise:
   populate-scan wall clock and ingest rate; the `no-load` row is the median
   populate scan of the idle-storm cells.
 - `Memory and storage footprint`: one profile-by-image-count table per
-  metric, in MB, sorted by peak VMM.
+  metric, in MB, rows in one fixed profile order.
 
 Report profile labels are derived from the axis tables, never written by
 hand: `probe-<access>` for the single-client probe (`probe-read`,

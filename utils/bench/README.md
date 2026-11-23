@@ -120,7 +120,7 @@ bench extract ...         # bench.py extract ... (extract_bench.py, single cell)
 
 `just bench run` injects the `cell` subcommand, so the recipe is invoked as
 `just bench run --out ...` (no second `cell` token). `just bench battery`
-runs the default image counts (50, 200, 100) into one folder; `just bench
+runs the gate image counts (100, 200) into one folder; `just bench
 extract` records that folder into the checked-in baselines and re-renders
 the doc. Single image counts and explicit JSON dumps go through `bench.py`
 directly (see below). `bench compare` reviews a report against
@@ -383,7 +383,8 @@ Rows are labelled by profile; the image count is the sub-table heading. The
 p50 interval is shown as a half-width (`7.2 ±0.3`), always present, `±n/a`
 when there are fewer than two samples. `p95` and `max` are separate columns,
 and raw sample counts are not rendered. The memory table is one row per
-configuration, sorted by peak memory, to expose scenario-dependent spikes.
+configuration in one fixed profile order, so a diff between
+recordings moves values, not rows.
 
 ### Recording and reviewing
 

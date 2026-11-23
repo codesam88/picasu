@@ -65,16 +65,15 @@ extract dir="": _venv
       --baselines-tsv "{{ source_directory() }}/baselines.tsv" \
       --render-md "{{ source_directory() }}/baselines.md"
 
-# Run the default image counts (50, 200, 100).
+# Run the gate image counts (100, 200).
 battery dir="": _venv
     #!/usr/bin/env bash
     set -euo pipefail
     root="{{ dir }}"
     if [ -z "$root" ]; then root="/tmp/picasu-battery-$(date +%Y%m%d-%H%M%S)"; fi
     echo "battery output: $root" >&2
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 50 --out "$root/50"
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 200 --out "$root/200"
     "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 100 --out "$root/100"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 200 --out "$root/200"
 
 # Compare a report against accepted baselines or another report.
 compare base new *args: _venv
