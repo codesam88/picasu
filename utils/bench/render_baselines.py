@@ -108,6 +108,46 @@ def _validity_value(metadata, cell, field):
     return validity.get(field, NA)
 
 
+INVALID_WARNING_RATE = 0.10
+
+
+def _suspect_reasons(metadata, cell):
+    """Why a cell's numbers deserve a WARNING, or [] when they do not.
+
+    Guard rejections beyond 10% of the cell's measured probe rounds — the
+    only phase a guard can reject without failing the cell at runtime — or
+    any failed operation qualify. A rejection without a denominator
+    qualifies as well.
+    """
+    if cell is None:
+        return []
+    validity = (metadata.get(cell) or {}).get("validity") or {}
+    reasons = []
+    failed = validity.get("failed")
+    if isinstance(failed, (int, float)) and not isinstance(failed, bool) and failed > 0:
+        reasons.append(f"{int(failed)} failed operation(s)")
+    invalid = validity.get("phase_invalid")
+    if not (isinstance(invalid, (int, float)) and not isinstance(invalid, bool) and invalid > 0):
+        return reasons
+    total = validity.get("probe_rounds_total")
+    if isinstance(total, (int, float)) and not isinstance(total, bool) and total > 0:
+        if invalid / total > INVALID_WARNING_RATE:
+            reasons.append(
+                f"{int(invalid)}/{int(total)} guard rejections exceed the 10% budget"
+            )
+    else:
+        reasons.append(f"{int(invalid)} guard rejection(s) without a recorded round count")
+    return reasons
+
+
+def _warn_suspect_cells(metadata):
+    """One stderr WARNING per cell past the 10% rejection budget."""
+    for cell in sorted(metadata):
+        reasons = _suspect_reasons(metadata, cell)
+        if reasons:
+            print(f"WARNING: cell {cell}: {'; '.join(reasons)}", file=sys.stderr)
+
+
 def _cell_info(metadata, cell):
     identity = (metadata.get(cell) or {}).get("identity") or {}
     images = identity.get("images")
@@ -291,6 +331,7 @@ def render(baseline_rows, metadata, env_records):
     rows = _rows(baseline_rows)
     metadata = metadata or {}
     groups = _by_images(rows, metadata)
+    _warn_suspect_cells(metadata)
     images_list = _images_sections(groups)
     lines = ["# Benchmark baselines", ""]
 
@@ -336,8 +377,11 @@ def render(baseline_rows, metadata, env_records):
         "in an idle cell), or whose status counters could not be read — and "
         "those phases are not pooled; the recorded reasons are the cell's "
         "`phase_invalid_reasons` field in `baselines.tsv`. `failed` counts "
-        "operations that did not return 200, and a non-zero `invalid` or "
-        "`failed` makes the cell's numbers suspect.",
+        "operations that did not return 200. A cell whose rejections exceed "
+        "10% of its measured probe rounds — the only phase a guard can reject "
+        "without failing the cell at runtime — or that recorded any failed "
+        "operation is suspect: the renderer prints a WARNING to stderr, and "
+        "the validity table reports the cell either way.",
         "",
     ]
 
@@ -553,7 +597,8 @@ def render(baseline_rows, metadata, env_records):
         "## Memory and storage footprint",
         "",
         "Peak process memory and store sizes at the end of each cell, one table per "
-        "metric with profile rows and image-count columns, sorted by peak VMM. All "
+        "metric with profile rows and image-count columns, rows in a fixed "
+        "profile order. All "
         "values are in MB. Footprint is expected to be broadly consistent across "
         "access types at the same image count; a large outlier marks a possible "
         "bottleneck or an optimization target, and growth with image count that "
@@ -583,17 +628,9 @@ def render(baseline_rows, metadata, env_records):
         except (TypeError, ValueError):
             return NA
 
-    def _peak_key(profile):
-        if not images_list:
-            return 0.0
-        value = metric_value("vm_hwm_mb", 1048576.0 / 1e6, images_list[-1], profile)
-        return 0.0 if value == NA else float(value)
-
-    profiles_present = sorted(
-        {profile for images in images_list for profile in groups[images]},
-        key=_peak_key,
-        reverse=True,
-    )
+    # Rows in one fixed profile order across every metric table, so a diff
+    # between recordings moves values, not rows.
+    profiles_present = sorted({profile for images in images_list for profile in groups[images]})
     for gauge, label, scale in memory_columns:
         table = []
         for profile in profiles_present:

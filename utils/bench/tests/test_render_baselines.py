@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests for render_baselines.py: per-image tables and baseline-only rendering."""
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -186,6 +188,41 @@ class RenderBaselinesTest(unittest.TestCase):
         self.assertIn("13.0 s (7.7 img/s)", lines[scenarios.NO_LOAD_LABEL])
         self.assertIn("11.0 s (9.1 img/s)", lines[scenarios.storm_label("read", "8")])
 
+    def test_suspect_cells_warn_but_stay_rendered(self):
+        idle_cell = f"{scenarios.storm_profile('idle', 'read', '8')}-100"
+        scan_cell = f"{scenarios.storm_profile('scan', 'read', '8')}-100"
+        probe_cell = f"{scenarios.PROBE}-100"
+        rows = [
+            baseline_row(idle_cell, background="idle", subject="prefetch"),
+            baseline_row(scan_cell, background="scan", subject="prefetch"),
+            baseline_row(probe_cell, subject="prefetch"),
+        ]
+        metadata = {}
+        metadata.update(meta(idle_cell, scenarios.storm_profile("idle", "read", "8"), 100))
+        metadata.update(meta(scan_cell, scenarios.storm_profile("scan", "read", "8"), 100))
+        metadata.update(meta(probe_cell, scenarios.PROBE, 100))
+        # 1 of 20 rounds is within the 10% budget: no warning.
+        metadata[idle_cell]["validity"]["phase_invalid"] = 1
+        metadata[idle_cell]["validity"]["probe_rounds_total"] = 20
+        # 3 of 20 is past it: the cell stays rendered, and the renderer
+        # warns on stderr.
+        metadata[scan_cell]["validity"]["phase_invalid"] = 3
+        metadata[scan_cell]["validity"]["probe_rounds_total"] = 20
+        err, text = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(text):
+            rendered = rb.render(rows, metadata, [])
+        self.assertIn(scenarios.storm_label("read", "8"), rendered)
+        self.assertIn("WARNING: cell ", err.getvalue())
+        self.assertIn(f"{scan_cell}: 3/20 guard rejections", err.getvalue())
+
+        # A rejection without a denominator warns as well.
+        metadata[probe_cell]["validity"]["phase_invalid"] = 1
+        metadata[probe_cell]["validity"]["probe_rounds_total"] = "n/a"
+        err, text = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(text):
+            rb.render(rows, metadata, [])
+        self.assertIn(f"{probe_cell}: 1 guard rejection(s) without", err.getvalue())
+
     def test_tables_are_ordered_by_image_count(self):
         counts = (50, 100, 200)
         rows = [baseline_row(f"{scenarios.PROBE}-{count}") for count in counts]
@@ -226,9 +263,9 @@ class RenderBaselinesTest(unittest.TestCase):
         self.assertNotIn("n_samples", text)
         self.assertNotIn("|   n |", text)
 
-    def test_memory_table_sorted_by_peak(self):
+    def test_memory_table_rows_in_fixed_profile_order(self):
         probe_cell = CELL
-        storm_profile = scenarios.storm_profiles()[0]
+        storm_profile = scenarios.storm_profile("idle", "read", "8")
         storm_cell = f"{storm_profile}-100"
         rows = [
             baseline_row(
@@ -249,7 +286,9 @@ class RenderBaselinesTest(unittest.TestCase):
         metadata.update(meta(storm_cell, storm_profile, 100))
         text = rb.render(rows, metadata, [])
         memory = text.split("## Memory and storage footprint", 1)[1].split("\n## ", 1)[0]
-        self.assertLess(memory.index(storm_profile), memory.index(scenarios.PROBE))
+        # Alphabetical profile order, independent of the values: a diff
+        # between recordings moves values, not rows.
+        self.assertLess(memory.index("idle-storm"), memory.index("| probe "))
 
     def test_baselines_file_is_the_only_input(self):
         rows = [baseline_row()]

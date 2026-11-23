@@ -290,7 +290,7 @@ graph TD
 
 | Rule (justfile)      | Description                                                    | CI Workflow | Trigger |
 | -------------------- | -------------------------------------------------------------- | ----------- | ------- |
-| `bench::battery`     | Run the default micro+gate batteries.                          | ❌️          | -       |
+| `bench::battery`     | Run the gate image counts (100, 200).                          | ❌️          | -       |
 | `bench::clean`       | Remove the on-demand venv.                                     | ❌️          | -       |
 | `bench::compare`     | Compare a report against accepted baselines or another report. | ❌️          | -       |
 | `bench::extract`     | Record baselines + doc from a run.                             | ❌️          | -       |
