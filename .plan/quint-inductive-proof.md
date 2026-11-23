@@ -465,14 +465,39 @@ Outcome history (recorded):
   host OOM killer; 12 GB killed the server). Apalache reports VC index
   only, not the conjunct; reordering conjuncts changed nothing.
 
-`Domains` is expected to be non-inductive (album `itemCount`/`itemSize`
-deltas can leave the range from a domain state; `nextFreeId` can emit
-`PATHS.size() + 2` under id exhaustion) — the consecution stall on a
-`Domains`-only run does not block the round loop, whose `I` adds the
-goal-directed conjuncts. Resource protocol for rounds: the 30-minute
-stop applies per round; a round whose single VC stalls gets one
-diagnostic re-run at a longer wall (record it) before the invariant is
-split further.
+`Domains` is expected to be non-inductive — and the 2026-11-23 hunt
+confirmed worse: two of its conjunct groups are violated by _reachable_
+states, so no strengthening of `Domains` alone can repair them:
+
+- **Album aggregate drift (reachable, depth ≤ 20).** `ApiRemove`,
+  `AppSidecarEdit` and `RotateFinish` rewrite member rows without the
+  album `itemCount`/`itemSize` delta, so album aggregates leave
+  `ALBUM_METARECORDS`'s range in reachable states (`itemCount` 3→4 via
+  ApiRemove+re-upload; `itemSize` 0→−2 via AppSidecarEdit+RemoveIdOnly).
+  The backend applies `apply_album_delta` on these paths
+  (`router/delete.rs` collects affected album ids; `asset_store.rs`), the
+  model does not — a fidelity gap to fix in `merged.qnt` first.
+  `AlbumStatsConsistent`/`NoPhantom` are therefore not usable as support
+  conjuncts until the fix lands.
+- **Id spill (reachable, depth ~35).** `ApiMove`/`MoveRowRewrite` do not
+  retract the destination path's pre-existing record, so orphan media
+  records accumulate; with ≥ 1 album + 4 media records the
+  `nextFreeId` fallback returns `PATHS.size() + 2` ∉ `IDS`, breaking
+  four domain conjuncts in one allocation step. `IdBudget` as planned
+  (§3.2 item 2) is false reachably; the sufficient conjunct is
+  orphan-freedom, which requires the same fidelity decision (does the
+  backend retract the destination's old record on move?). Resolution
+  pending backend verification.
+- Consecution holes that are _not_ reachable (constructed-state only):
+  kind/key shape-copy coherence (`UploadIndexed`/`WorkerApplySuccess`
+  copy `kind`/`albumId`; a key-incoherent domain state writes shapes
+  outside the record sets) — these are genuine round-1 conjuncts
+  (metadata kind/key coherence as the partner of `AssetIdKeyCoherent`).
+
+Resource calibration: consecution at 4 GB default heap OOMs (~4.5 min
+into the 15-VC check); 10 GB survives with VCs 0–2 holding and VC 3
+stalling past 30 min; 16 GB hits the host OOM killer. A
+Domains-minus-intake diagnostic is in flight to attribute the cost.
 
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
