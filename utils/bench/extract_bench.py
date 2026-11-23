@@ -1,28 +1,18 @@
 #!/usr/bin/env python3
-"""Extract benchmark summary from one or more bench output dirs.
+"""Extract a per-rep benchmark record from one or more bench output dirs.
 
 Usage:
     utils/bench/extract_bench.py /tmp/.../bench-after-N4-100 [...]
 
 Reads events.jsonl, harness-a.log, status-final.json and hyperfine.json
-from each OUT dir (as produced by the bench workload) and prints one
-metric per line, one column per cell: image count/bytes, scan wall time +
-sec/MB, server stage costs, and the full request-latency matrix — every
-background (idle, scan, uscan) x access condition (prefetch, thumb, edit,
-storm_read, storm_thumb, storm_edit) x statistic (p50, p95, max), plus the
-failed-op counts of every storm kind. See the BACKGROUNDS/ACCESSES/STATS
-block for the column scheme.
+from each OUT dir (as produced by the bench workload) and prints, for each
+cell, its identity, validity and one row per metric (p50, p95, max or sum
+with the raw sample count). Measurements prefer the cell's structured
+`events.jsonl` stream (see :func:`read_events`); without a usable stream
+the numbers come from the per-round artifacts (hyperfine exports, probe/storm
+TSVs, scan walls), with the transcript's slim status lines saying which
+rounds ran. Both paths report identical values for the same run.
 
-Measurements prefer the cell's structured `events.jsonl` stream (see
-:func:`read_events`); without a usable stream the numbers come from the
-per-round artifacts (hyperfine exports, probe/storm TSVs, scan walls),
-with the transcript's slim status lines saying which rounds ran. Both
-paths report identical values for the same run.
-
-Scan counters come from status-final.json and are validity-checked only:
-a non-completed state, any failure, or a processed/matched mismatch prints
-a WARN line to stderr instead of a table row. Server stage costs come from
-the `observe drain:` tables in server.log (see :func:`parse_drain_tables`).
 Exit non-zero if a dir is missing expected artifacts.
 """
 
@@ -35,88 +25,17 @@ import statistics
 import sys
 from pathlib import Path
 
-# --- report matrix -----------------------------------------------------------
-# One latency column per background x access condition x statistic. A row
-# carries every column; a condition the cell does not measure is `n/a`.
-#
-#   bg      idle    post-scan baselines (server at rest)
-#           scan    during-scan probes and bursts on control/storm cells
-#           uscan   during-scan probes on the upload profile (the upload
-#                   stimulus runs its own populate scan)
-#   access  prefetch, thumb, edit          request-path probes
-#           storm_read, storm_thumb, storm_edit   concurrent bursts
-#   stat    p50, p95, max
-BACKGROUNDS = ("idle", "scan", "uscan")
-ACCESSES = ("prefetch", "thumb", "edit", "storm_read", "storm_thumb", "storm_edit")
-STATS = ("p50", "p95", "max")
-STORM_KINDS = ("read", "thumb", "edit")
-# Only these backgrounds run storm bursts; upload never does.
-STORM_BACKGROUNDS = ("idle", "scan")
+import config
+import metrics
 
-LATENCY_COLUMNS = tuple(
-    f"{bg}_{access}_{stat}_ms" for bg in BACKGROUNDS for access in ACCESSES for stat in STATS
-)
-STORM_FAILED_COLUMNS = tuple(
-    f"{bg}_storm_{kind}_failed" for bg in STORM_BACKGROUNDS for kind in STORM_KINDS
-)
-
-# Report access name -> storm op kind the workload records (`diff` is the
-# edit-rating storm; its report columns are named `storm_edit`).
-STORM_OP_KIND = {"read": "read", "thumb": "thumb", "edit": "diff"}
-
-STAGE_NAMES = [
-    "filter_snapshot_clone",
-    "filter_par_iter",
-    "compute_locate",
-    "tree_refresh_total",
-    "tree_refresh_build",
-    "tree_refresh_sort",
-    "tree_refresh_write_wait",
-    "cpu_permit_wait",
-    "cpu_exec",
-    "prefetch_total",
-    "blocking_queue_wait",
-    "interactive_exec",
-]
-
-# Stages surfaced as one p50/max pair per scan in the report: the prefetch
-# filter/locate path plus the tree-view rebuild breakdown. The rebuild
-# stages are the discrepancy instrumentation: a full rebuild is total =
-# build + sort + write-wait, so the split says which term moved.
-STAGE_REPORT_NAMES = (
-    "filter_snapshot_clone",
-    "filter_par_iter",
-    "compute_locate",
-    "tree_refresh_total",
-    "tree_refresh_build",
-    "tree_refresh_sort",
-    "tree_refresh_write_wait",
-    "prefetch_total",
-)
-
-# Report column names, in report order. The four historical columns keep
-# their position so recorded baselines line up by name.
-STAGE_COLUMNS = (
-    "tree_refresh_build_p50_us",
-    "tree_refresh_build_max_us",
-    "filter_snapshot_clone_p50_us",
-    "filter_snapshot_clone_max_us",
-    "filter_par_iter_p50_us",
-    "filter_par_iter_max_us",
-    "compute_locate_p50_us",
-    "compute_locate_max_us",
-    "tree_refresh_total_p50_us",
-    "tree_refresh_total_max_us",
-    "tree_refresh_sort_p50_us",
-    "tree_refresh_sort_max_us",
-    "tree_refresh_write_wait_p50_us",
-    "tree_refresh_write_wait_max_us",
-    "prefetch_total_p50_us",
-    "prefetch_total_max_us",
-)
-
-# Exact event counters from the observer's `observe counters:` line.
-COUNTER_COLUMNS = ("snapshot_memory_hit", "snapshot_disk_fallback")
+# --- measurement axes --------------------------------------------------------
+# Raw samples are tagged with the axis values the contract defines:
+#   background  idle (server at rest), scan (a scan is running)
+#   access      prefetch, thumb, edit, scroll_bar, scroll_rows, scroll_data
+#   stat        p50, p95, max (sum for counts), derived by the reducer
+BACKGROUNDS = metrics.BACKGROUNDS
+ACCESSES = metrics.ACCESSES
+STATS = metrics.STATS
 
 # Process-level cost recorded by the cell orchestrator while the server is
 # alive: peak resident set and the snapshot store's apparent size.
@@ -126,18 +45,6 @@ METRICS_COLUMNS = (
     "index_v5_mb",
     "cache_db_mb",
     "compressed_mb",
-)
-
-SCROLL_COLUMNS = (
-    "scroll_bar_p50_ms",
-    "scroll_bar_p95_ms",
-    "scroll_bar_max_ms",
-    "scroll_rows_p50_ms",
-    "scroll_rows_p95_ms",
-    "scroll_rows_max_ms",
-    "scroll_data_p50_ms",
-    "scroll_data_p95_ms",
-    "scroll_data_max_ms",
 )
 
 
@@ -322,6 +229,16 @@ _V1_EVENTS = {
         (),
         (),
     ),
+    "phase_guard": (
+        "phase_guards",
+        ("phase", "valid", "wall_ms"),
+        ("wall_ms", "scanned_start", "scanned_end", "processed_start", "processed_end"),
+    ),
+    "warmup": (
+        "warmups",
+        ("valid", "wall_ms"),
+        ("wall_ms",),
+    ),
 }
 
 
@@ -341,6 +258,8 @@ class Events:
     scan_states: list = dataclasses.field(default_factory=list)
     verify_results: list = dataclasses.field(default_factory=list)
     scroll_probes: list = dataclasses.field(default_factory=list)
+    phase_guards: list = dataclasses.field(default_factory=list)
+    warmups: list = dataclasses.field(default_factory=list)
 
 
 def read_events(outdir) -> Events:
@@ -422,7 +341,8 @@ _PROBE_ROUND_FAILED_RE = re.compile(
     r"^(?:\d\d:\d\d:\d\d )?probe round=(\d+) rows=(\d+) state=(\w+) hyperfine FAILED", re.M
 )
 _STORM_SUMMARY_RE = re.compile(
-    r"^.*storm: profile=(\S+) ops=(\d+)/(\d+) failed=(\d+) wall=([\d.]+)s(?: kind=(\S+))?",
+    r"^.*storm: profile=(\S+) ops=(\d+)/(\d+)(?: \([^)]*\))? "
+    r"failed=(\d+) wall=([\d.]+)s(?: kind=(\S+))?",
     re.M,
 )
 _ROUND_FILE_RE = re.compile(r"rounds-run-(\d+)/\w+-round-(\d+)\.")
@@ -529,36 +449,46 @@ def _round_storm_aggs(outdir: Path) -> list:
 
 
 def _round_scroll_samples(outdir: Path) -> dict:
-    """Raw scroll-probe samples (ms) across per-round artifacts."""
-    samples = {"scrollbar": [], "rows": [], "data": []}
-    paths = list(outdir.glob("rounds-run-*/scroll-round-*.tsv"))
+    """Raw scroll-probe samples (ms) across per-round artifacts, split by bg.
+
+    Per-round artifacts (rounds-run-*/scroll-round-*.tsv) run during scan;
+    the post-settle file (scroll-probe.tsv) runs at idle.
+    """
+    samples = {
+        "scan": {"scrollbar": [], "rows": [], "data": []},
+        "idle": {"scrollbar": [], "rows": [], "data": []},
+    }
+    for path in outdir.glob("rounds-run-*/scroll-round-*.tsv"):
+        _read_scroll_tsv(path, samples["scan"])
     candidate = outdir / "scroll-probe.tsv"
     if candidate.is_file():
-        paths.append(candidate)
-    for path in paths:
-        try:
-            text = path.read_text()
-        except OSError:
-            continue
-        for line in text.splitlines():
-            parts = line.split("\t")
-            if len(parts) < 3:
-                continue
-            kind = parts[0].strip().lower().replace("-", "_")
-            key = None
-            if kind in ("scrollbar", "scroll_bar"):
-                key = "scrollbar"
-            elif kind in ("rows", "scroll_rows"):
-                key = "rows"
-            elif kind in ("data", "scroll_data"):
-                key = "data"
-            if key is None:
-                continue
-            try:
-                samples[key].append(float(parts[2]) * 1000.0)
-            except ValueError:
-                continue
+        _read_scroll_tsv(candidate, samples["idle"])
     return samples
+
+
+def _read_scroll_tsv(path: Path, bucket: dict) -> None:
+    try:
+        text = path.read_text()
+    except OSError:
+        return
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        kind = parts[0].strip().lower().replace("-", "_")
+        key = None
+        if kind in ("scrollbar", "scroll_bar"):
+            key = "scrollbar"
+        elif kind in ("rows", "scroll_rows"):
+            key = "rows"
+        elif kind in ("data", "scroll_data"):
+            key = "data"
+        if key is None:
+            continue
+        try:
+            bucket[key].append(float(parts[2]) * 1000.0)
+        except ValueError:
+            continue
 
 
 def _reported_median(result: dict) -> float | None:
@@ -763,20 +693,26 @@ def hyperfine_runs(path) -> dict:
     return runs
 
 
+_STORM_ACCESS_ALIASES = {"read": "prefetch", "diff": "edit"}
+
+
 def storm_kind(storm: dict) -> str:
-    """Storm op kind; a storm-idle run defaults to the read kind."""
+    """Metric access driven by a storm run: prefetch, thumb or edit.
+
+    Profiles name the read access as `read`; events may carry the request
+    kind (`prefetch`). Both normalize to the metric access so samples and
+    summaries of one run share a group.
+    """
     kind = storm.get("kind")
-    if kind:
-        return str(kind)
-    profile = str(storm.get("profile", ""))
-    if profile == "storm-idle":
-        return "read"
-    return profile.removeprefix("storm-")
+    if not kind:
+        kind = config.storm_profile_access(str(storm.get("profile", ""))) or "prefetch"
+    kind = str(kind)
+    return _STORM_ACCESS_ALIASES.get(kind, kind)
 
 
 def storm_background(storm: dict) -> str:
     """`idle` for a tree-at-rest burst, `scan` for a concurrent one."""
-    return "idle" if storm.get("profile") == "storm-idle" else "scan"
+    return "idle" if config.is_idle_storm(str(storm.get("profile", ""))) else "scan"
 
 
 def _storm_from_event(event: dict) -> dict:
@@ -833,22 +769,79 @@ def _apply_events(row: dict, events: Events, log: str) -> None:
         row["scan_wall_s"] = median / 1000.0
         row["scan_runs"] = len(walls)
         row["scan_runs_ms"] = [wall / 1000.0 for wall in walls]
+    phase_guards = getattr(events, "phase_guards", []) or []
+    probe_guards = [e for e in phase_guards if e.get("phase") == "probe"]
+    row["probe_rounds_total"] = len(probe_guards)
+    row["probe_rounds_valid"] = sum(1 for e in probe_guards if e.get("valid") is True)
+    scan_wall = row.get("scan_wall_s")
+    scan_runs = row.get("scan_runs")
+    if scan_wall and scan_runs and probe_guards:
+        total_wall_ms = float(scan_wall) * 1000.0 * int(scan_runs)
+        valid_wall_ms = sum(
+            int(e.get("wall_ms") or 0) for e in probe_guards if e.get("valid") is True
+        )
+        pct = 100.0 * valid_wall_ms / total_wall_ms if total_wall_ms else 0.0
+        if pct > 100.0:
+            pct = 100.0
+        row["probe_coverage_pct"] = round(pct, 1)
+    else:
+        row["probe_coverage_pct"] = "n/a"
+    warmups = getattr(events, "warmups", []) or []
+    if warmups:
+        row["warmup_valid"] = "true" if all(e.get("valid") is True for e in warmups) else "false"
+    else:
+        row["warmup_valid"] = "n/a"
+    invalid_guards = [e for e in phase_guards if e.get("valid") is False]
+    invalid_warmups = [e for e in warmups if e.get("valid") is False]
+    row["phase_invalid"] = len(invalid_guards) + len(invalid_warmups)
+    reasons = []
+    for event in invalid_guards + invalid_warmups:
+        reason = event.get("reason")
+        if reason and reason != "ok" and reason not in reasons:
+            reasons.append(reason)
+    row["phase_invalid_reasons"] = "; ".join(reasons) if reasons else "n/a"
+    row.setdefault("storm_coverage_pct", "n/a")
     if events.storm_summaries:
         row["storms"] = [_storm_from_event(event) for event in events.storm_summaries]
+        coverages = [event.get("coverage_pct") for event in events.storm_summaries]
+        numeric_coverages = []
+        for value in coverages:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            numeric_coverages.append(float(value))
+        if numeric_coverages:
+            row["storm_coverage_pct"] = statistics.median(numeric_coverages)
     verifies = storm_verifies(events)
     if verifies:
         row["storm_verify"] = verifies
-    # Scroll probe samples (raw per-call latencies in ms).
+    # Scroll probe samples (raw per-call latencies in ms), split by background.
     bar_samples = []
     rows_samples = []
     data_samples = []
+    by_bg = {
+        "idle": {"scrollbar": [], "rows": [], "data": []},
+        "scan": {"scrollbar": [], "rows": [], "data": []},
+    }
     for event in getattr(events, "scroll_probes", []) or []:
-        bar_samples.extend(event.get("scrollbar_ms") or event.get("scroll_bar_ms") or [])
-        rows_samples.extend(event.get("rows_ms") or event.get("scroll_rows_ms") or [])
-        data_samples.extend(event.get("data_ms") or event.get("scroll_data_ms") or [])
+        bg = event.get("background")
+        if bg not in by_bg:
+            phase = event.get("phase")
+            bg = "scan" if phase == "during" else "idle"
+        if bg not in by_bg:
+            bg = "scan"
+        bar = event.get("scrollbar_ms") or event.get("scroll_bar_ms") or []
+        rows = event.get("rows_ms") or event.get("scroll_rows_ms") or []
+        data = event.get("data_ms") or event.get("scroll_data_ms") or []
+        bar_samples.extend(bar)
+        rows_samples.extend(rows)
+        data_samples.extend(data)
+        by_bg[bg]["scrollbar"].extend(bar)
+        by_bg[bg]["rows"].extend(rows)
+        by_bg[bg]["data"].extend(data)
     row["scroll_bar_samples"] = bar_samples
     row["scroll_rows_samples"] = rows_samples
     row["scroll_data_samples"] = data_samples
+    row["scroll_samples_by_bg"] = by_bg
 
 
 # --- cell parsing ------------------------------------------------------------
@@ -965,9 +958,12 @@ def _apply_artifact_measurements(row: dict, outdir: Path, log: str) -> None:
     if verifies:
         row["storm_verify"] = [(int(m), int(t)) for m, t in verifies]
     scroll_samples = _round_scroll_samples(outdir)
-    row["scroll_bar_samples"] = scroll_samples.get("scrollbar", [])
-    row["scroll_rows_samples"] = scroll_samples.get("rows", [])
-    row["scroll_data_samples"] = scroll_samples.get("data", [])
+    row["scroll_bar_samples"] = (
+        scroll_samples["scan"]["scrollbar"] + scroll_samples["idle"]["scrollbar"]
+    )
+    row["scroll_rows_samples"] = scroll_samples["scan"]["rows"] + scroll_samples["idle"]["rows"]
+    row["scroll_data_samples"] = scroll_samples["scan"]["data"] + scroll_samples["idle"]["data"]
+    row["scroll_samples_by_bg"] = scroll_samples
 
 
 def _apply_post_scan(row: dict, log: str, outdir: Path | None = None) -> None:
@@ -1017,11 +1013,6 @@ def _apply_cell_metrics(row: dict, outdir: Path) -> None:
 
 _POST_SCAN_BENCH = {"prefetch": "prefetch", "thumb": "compressed-get", "edit": "edit-rating"}
 _POST_SCAN_FIELDS = {"prefetch": "post_prefetch", "thumb": "post_compressed", "edit": "post_edit"}
-_PROBE_P50_FIELDS = {
-    "prefetch": ("scan_pref_median", "scan_pref_mean"),
-    "thumb": ("scan_thumb_mean",),
-    "edit": ("scan_edit_median", "scan_edit_mean"),
-}
 _PROBE_ROUND_FIELDS = {
     "prefetch": "probe_round_prefetch",
     "thumb": "probe_round_thumb",
@@ -1029,53 +1020,291 @@ _PROBE_ROUND_FIELDS = {
 }
 
 
-def _apply_matrix_samples(row: dict, outdir: Path, profile) -> None:
-    """Collect the per-round and per-run values behind the matrix tails.
+_UPLOAD_FILE_RE = re.compile(r"upload file=\S+ submit_ms=([\d.]+) visible_ms=([\d.]+)")
 
-    These feed the `p95`/`max` cells only; the `p50` columns keep the
-    pooling the report has always used, so the recorded values stay
-    comparable with the checked-in baselines.
 
-    - ``idle_*``: every timed run of the post-scan ``hyperfine.json``
-      export — the same export whose medians the transcript logs. It
-      carries the `compressed-get` (thumb), `prefetch` and `edit-rating`
-      (edit) repetitions, so p95/max describe every run of the cell and
-      the report's ``:median`` row pools those runs across repeats. A cell
-      that predates the export falls back to its recorded post-scan median
-      as a single sample.
-    - ``scan_*`` / ``uscan_*``: the per-round probe summaries — one
-      prefetch hyperfine median, one edit-rating hyperfine median and one
-      thumbnail fetch mean per probe round. Those are the values the cell
-      records for each round, so the tails are percentiles across rounds.
-      The bucket comes from the cell profile, never from parsing: ``upload``
-      rows carry ``uscan_*`` and every other profile ``scan_*``.
+def _round_hyperfine_runs(outdir: Path) -> tuple[dict, dict]:
+    """All timed runs per probe access and the round count behind each."""
+    values = {"prefetch": [], "edit": []}
+    counts = {"prefetch": 0, "edit": 0}
+    for path in _ordered_round_files(outdir, "hyperfine-round", ".json"):
+        runs = hyperfine_runs(path)
+        try:
+            document = json.loads(path.read_text())
+        except OSError, ValueError:
+            document = {}
+        results = document.get("results") if isinstance(document, dict) else []
+        for access, bench in (("prefetch", "prefetch"), ("edit", "edit-rating")):
+            found = [float(value) for value in runs.get(bench, [])]
+            if not found:
+                result = next(
+                    (
+                        item
+                        for item in results
+                        if isinstance(item, dict) and item.get("name") == bench
+                    ),
+                    None,
+                )
+                median = _reported_median(result) if result else None
+                found = [median] if median is not None else []
+            if found:
+                values[access].extend(found)
+                counts[access] += 1
+    return values, counts
+
+
+def _round_fetch_samples(outdir: Path) -> tuple[list, int]:
+    """Every raw thumbnail fetch (seconds) and the number of rounds."""
+    values = []
+    count = 0
+    for path in _ordered_round_files(outdir, "probe-round", ".tsv"):
+        found = []
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            try:
+                found.append(float(parts[2]))
+            except ValueError:
+                continue
+        if found:
+            values.extend(found)
+            count += 1
+    return values, count
+
+
+def _storm_raw_from_artifacts(outdir: Path, profile, row=None) -> dict:
+    """Raw op latencies, grouped by the background/kind of each storm run.
+
+    The per-run summaries are paired positionally with the storm TSVs, so a
+    caller without an explicit `profile` still gets the recorded kind.
+    """
+    summaries = (row or {}).get("storms") or []
+    grouped: dict = {}
+    for index, path in enumerate(_ordered_round_files(outdir, "storm-round", ".tsv")):
+        storm = summaries[index] if index < len(summaries) else None
+        if storm is not None:
+            background, kind = storm_background(storm), storm_kind(storm)
+        else:
+            background = (
+                "idle" if isinstance(profile, str) and profile.startswith("storm-idle") else "scan"
+            )
+            kind = storm_kind({"profile": profile or ""})
+        found = []
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            try:
+                found.append(float(parts[2]))  # the TSV records seconds
+            except ValueError:
+                continue
+        if found:
+            values, count = grouped.setdefault(f"{background}_storm_{kind}", ([], 0))
+            values.extend(found)
+            grouped[f"{background}_storm_{kind}"] = (values, count + 1)
+    return grouped
+
+
+def _storm_raw_from_events(events) -> dict:
+    grouped: dict = {}
+    for sample in events.storm_samples:
+        value = sample.get("latency_ms")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        key = f"{storm_background(sample)}_storm_{storm_kind(sample)}"
+        grouped.setdefault(key, ([], 0))[0].append(round(float(value) / 1000.0, 9))
+    for summary in events.storm_summaries:
+        key = f"{storm_background(summary)}_storm_{storm_kind(summary)}"
+        values, count = grouped.get(key, ([], 0))
+        grouped[key] = (values, count + 1)
+    return grouped
+
+
+def _profile_clients(profile, row: dict) -> int:
+    """Resolved client count for a storm profile; 1 for anything else."""
+    try:
+        ncpu = int(row.get("cpu") or 8)
+    except TypeError, ValueError:
+        ncpu = 8
+    derived = config.storm_profile_clients(profile, ncpu)
+    return derived if derived is not None else 1
+
+
+def _collect_raw_samples(row: dict, outdir: Path, profile, events=None) -> None:
+    """Store every raw measurement (seconds) and its source-cluster count.
+
+    Artifacts hold the individual timed runs, fetches and storm ops; the
+    event stream holds the same values when it is present. Both paths end
+    up in the same two helper mappings, keyed by probe/scenario name.
     """
     samples: dict = {}
+    counts: dict = {}
+
+    def add(key: str, values: list, clusters: int) -> None:
+        if values:
+            samples[key] = list(values)
+            counts[key] = int(clusters)
+
     post = hyperfine_runs(outdir / "hyperfine.json")
     for access, bench in _POST_SCAN_BENCH.items():
-        values = post.get(bench, [])
+        values = [float(value) for value in post.get(bench, [])]
         if not values:
-            median = row.get(_POST_SCAN_FIELDS[access])
-            values = [median] if median is not None else []
-        if values:
-            samples[f"idle_{access}"] = [value * 1000.0 for value in values]
+            recorded = row.get(_POST_SCAN_FIELDS[access])
+            values = [float(recorded)] if recorded is not None else []
+        add(f"idle_{access}", values, len(values))
 
-    bucket = "uscan" if profile == "upload" else "scan"
-    row["probe_bucket"] = bucket
-    for access, field in _PROBE_ROUND_FIELDS.items():
-        values = row.get(field) or []
-        if values:
-            samples[f"{bucket}_{access}"] = [value * 1000.0 for value in values]
-    row["samples"] = samples
+    bucket = "scan"
+    round_values, round_counts = _round_hyperfine_runs(outdir)
+    for access in ("prefetch", "edit"):
+        values = round_values[access]
+        clusters = round_counts[access]
+        if not values:
+            values = [float(value) for value in row.get(_PROBE_ROUND_FIELDS[access]) or []]
+            clusters = len(values)
+        add(f"{bucket}_{access}", values, clusters)
+    thumb_values, thumb_count = _round_fetch_samples(outdir)
+    if not thumb_values:
+        thumb_values = [float(value) for value in row.get(_PROBE_ROUND_FIELDS["thumb"]) or []]
+        thumb_count = len(thumb_values)
+    add(f"{bucket}_thumb", thumb_values, thumb_count)
+
+    storm = {}
+    if events is not None and events.storm_samples:
+        storm = _storm_raw_from_events(events)
+    if not storm:
+        storm = _storm_raw_from_artifacts(outdir, profile, row)
+    for key, (values, clusters) in storm.items():
+        add(key, values, clusters)
+
+    if events is not None and events.upload_files:
+        submit = [float(event["submit_ms"]) / 1000.0 for event in events.upload_files]
+        visible = [float(event["visible_ms"]) / 1000.0 for event in events.upload_files]
+        upload_count = len(events.upload_files)
+    else:
+        try:
+            log = (outdir / "harness-a.log").read_text()
+        except OSError:
+            log = ""
+        pairs = _UPLOAD_FILE_RE.findall(log)
+        submit = [float(raw) / 1000.0 for raw, _visible in pairs]
+        visible = [float(raw) / 1000.0 for _submit, raw in pairs]
+        upload_count = len(pairs)
+    add("upload_submit", submit, upload_count)
+    add("upload_visible", visible, upload_count)
+
+    walls = [float(value) for value in row.get("scan_runs_ms") or []]
+    if not walls:
+        walls = [
+            float(part)
+            for part in str(row.get("scan_runs_s", "")).split(",")
+            if part and part != "n/a"
+        ]
+    add("scan_wall", walls, len(walls))
+
+    # Stage samples: one per scan per stage, skip n == 0.
+    stage_values: dict = {}
+    for stage in row.get("drain_stages") or row.get("stages") or []:
+        if int(stage.get("n", 0) or 0) == 0:
+            continue
+        value = stage.get("p50_us")
+        if value is None:
+            continue
+        stage_values.setdefault(stage.get("stage"), []).append(float(value))
+    for name, vals in stage_values.items():
+        add(f"scan_stage_{name}", vals, len(vals))
+
+    # Gauge samples: one value per rep.
+    for column in METRICS_COLUMNS:
+        value = row.get(column)
+        if value is None:
+            continue
+        try:
+            add(f"idle_gauge_{column}", [float(value)], 1)
+        except TypeError, ValueError:
+            continue
+
+    # Count samples: failed ops per storm run, keyed by the access it drove.
+    for storm in row.get("storms") or []:
+        bg = storm_background(storm)
+        access = {"read": "prefetch", "thumb": "thumb", "edit": "edit"}.get(
+            storm_kind(storm), storm_kind(storm)
+        )
+        add(f"{bg}_count_{access}", [float(storm.get("failed", 0) or 0)], 1)
+
+    # Scroll samples split by background.
+    scroll_by_bg = row.get("scroll_samples_by_bg") or {}
+    for bg in ("idle", "scan"):
+        bucket = scroll_by_bg.get(bg) or {}
+        for src, dst in (
+            ("scrollbar", "scroll_bar"),
+            ("rows", "scroll_rows"),
+            ("data", "scroll_data"),
+        ):
+            vals = bucket.get(src) or []
+            if vals:
+                add(f"{bg}_{dst}", [float(v) / 1000.0 for v in vals], len(vals))
+
+    def _raw_to_metric(raw_key):
+        if raw_key.startswith("idle_") or raw_key.startswith("scan_"):
+            bg = raw_key.split("_", 1)[0]
+            rest = raw_key.split("_", 1)[1]
+            if rest.startswith("storm_"):
+                parts = rest.split("_", 2)
+                kind = parts[1] if len(parts) > 1 else ""
+                access = {"read": "prefetch", "thumb": "thumb", "edit": "edit"}.get(kind, kind)
+                return ("latency", bg, access)
+            if rest.startswith("count_"):
+                return ("count", bg, rest[len("count_") :])
+            if rest.startswith("stage_"):
+                return ("stage", bg, rest[len("stage_") :])
+            if rest.startswith("gauge_"):
+                return ("gauge", bg, rest[len("gauge_") :])
+            if rest == "wall":
+                return ("wall", "scan", "scan")
+            if rest in ACCESSES:
+                return ("latency", bg, rest)
+            return None
+        if raw_key.startswith("upload_"):
+            subject = raw_key[len("upload_") :]
+            return ("upload", "idle", subject)
+        return None
+
+    metric_samples = {}
+    metric_clusters = {}
+    for key, values in samples.items():
+        info = _raw_to_metric(key)
+        if info is None:
+            continue
+        family, bg, subject = info
+        mkey = metrics.metric_key(family, bg, subject)
+        if family in ("latency", "upload"):
+            mvalues = [float(v) * 1000.0 for v in values]
+        else:
+            mvalues = [float(v) for v in values]
+        metric_samples[mkey] = mvalues
+        metric_clusters[mkey] = max(1, int(counts.get(key, len(values))))
+
+    row["raw_samples"] = samples
+    row["raw_cluster_counts"] = counts
+    row["samples"] = metric_samples
+    row["clusters"] = metric_clusters
 
 
 def parse_log(outdir: Path, profile=None) -> dict:
     """Read one cell dir into a row, preferring its `events.jsonl` stream.
 
-    ``profile`` is the cell's WORKLOAD profile. It decides whether the
-    during-scan probes belong to the `scan` or the `uscan` background; it is
-    the battery's label for the cell, not something the artifacts are
-    searched for.
+    ``profile`` is the cell's WORKLOAD profile. It labels the storm access
+    and background and resolves the client count; it is the battery's label
+    for the cell, not something the artifacts are searched for.
     """
     log = (outdir / "harness-a.log").read_text()
     row: dict = {"benchmark": outdir.name}
@@ -1083,12 +1312,69 @@ def parse_log(outdir: Path, profile=None) -> dict:
     events = read_cell_events(outdir, log)
     if events is None:
         _apply_artifact_measurements(row, outdir, log)
+        for column in (
+            "probe_rounds_total",
+            "probe_rounds_valid",
+            "probe_coverage_pct",
+            "warmup_valid",
+            "phase_invalid",
+            "phase_invalid_reasons",
+        ):
+            row.setdefault(column, "n/a")
+            row.setdefault("storm_coverage_pct", "n/a")
     else:
         _apply_events(row, events, log)
     _apply_post_scan(row, log, outdir)
-    _apply_matrix_samples(row, outdir, profile)
     _apply_stage_rows(row, outdir, log)
     _apply_cell_metrics(row, outdir)
+    _collect_raw_samples(row, outdir, profile, events)
+
+    # Per-rep record fields.
+    manifest = {}
+    try:
+        manifest = json.loads((outdir / "run-manifest.json").read_text())
+    except OSError, json.JSONDecodeError:
+        manifest = {}
+    upload_files = None
+    raw_counts = row.get("raw_cluster_counts") or {}
+    if raw_counts.get("upload_submit") is not None:
+        upload_files = raw_counts.get("upload_submit")
+    row["identity"] = {
+        "source": "battery",
+        "profile": profile,
+        "images": row.get("images"),
+        "upload_files": upload_files,
+        "build": manifest.get("build_profile"),
+        "commit": manifest.get("git"),
+        "scan_runs": row.get("scan_runs"),
+    }
+    ops_done = 0
+    ops_planned = 0
+    failed_count = 0
+    for storm in row.get("storms") or []:
+        ops_done += int(storm.get("done", 0) or 0)
+        ops_planned += int(storm.get("total", 0) or 0)
+        failed_count += int(storm.get("failed", 0) or 0)
+    row["validity"] = {
+        "probe_rounds_total": row.get("probe_rounds_total", "n/a"),
+        "probe_rounds_valid": row.get("probe_rounds_valid", "n/a"),
+        "probe_coverage_pct": row.get("probe_coverage_pct", "n/a"),
+        "storm_coverage_pct": row.get("storm_coverage_pct", "n/a"),
+        "warmup_valid": row.get("warmup_valid", "n/a"),
+        "phase_invalid": row.get("phase_invalid", "n/a"),
+        "phase_invalid_reasons": row.get("phase_invalid_reasons", "n/a"),
+        "ops_done": ops_done if (row.get("storms") or []) else "n/a",
+        "ops_planned": ops_planned if (row.get("storms") or []) else "n/a",
+        "failed": failed_count if (row.get("storms") or []) else "n/a",
+    }
+    if "samples" not in row or not isinstance(row.get("samples"), dict):
+        row["samples"] = {}
+    if "clusters" not in row or not isinstance(row.get("clusters"), dict):
+        row["clusters"] = {}
+    row.setdefault("cell", outdir.name)
+    if isinstance(row.get("identity"), dict):
+        row["identity"].setdefault("cell", row.get("cell"))
+        row["identity"].setdefault("scan_runs", row.get("scan_runs"))
     return row
 
 
@@ -1100,247 +1386,50 @@ def parse_status(outdir: Path) -> dict:
         sys.exit(1)
 
 
-def _storm_summary(storms: list, background: str, kind: str) -> dict | None:
-    """Aggregate a background's storm runs for one op kind.
-
-    A storm cell records one summary per run, so the aggregate keeps the
-    established convention: median of run medians, worst of run p95s, worst
-    of run maxes, failures summed over runs.
-    """
-    runs = [
-        storm
-        for storm in storms
-        if storm_background(storm) == background and storm_kind(storm) == kind
-    ]
-    if not runs:
-        return None
-    return {
-        "ops": f"{sum(s['done'] for s in runs)}/{sum(s['total'] for s in runs)}",
-        "med": statistics.median(s["median"] for s in runs),
-        "p95": max(s["p95"] for s in runs),
-        "max": max(s["max"] for s in runs),
-        "fail": sum(s["failed"] for s in runs),
-    }
-
-
-_STAT_FIELDS = {"p50": "med", "p95": "p95", "max": "max"}
-
-
-def _matrix_latency(row: dict, background: str, access: str, stat: str):
-    """One matrix latency cell: seconds from a summary, or pooled samples."""
-    if access.startswith("storm_"):
-        kind = STORM_OP_KIND[access.removeprefix("storm_")]
-        summary = _storm_summary(row.get("storms", []), background, kind)
-        if summary is None:
-            return "n/a"
-        return _ms(summary[_STAT_FIELDS[stat]])
-    if background in ("scan", "uscan") and row.get("probe_bucket") != background:
-        # During-scan probes belong to exactly one background: the cell's
-        # profile decides, so an upload row leaves `scan_*` empty and vice
-        # versa.
-        return "n/a"
-    if stat == "p50":
-        fields = (_POST_SCAN_FIELDS[access],) if background == "idle" else _PROBE_P50_FIELDS[access]
-        value = next(
-            (row[field] for field in fields if row.get(field) is not None),
-            None,
-        )
-        return _ms(value)
-    samples = (row.get("samples") or {}).get(f"{background}_{access}")
-    if not samples:
-        return "n/a"
-    if stat == "max":
-        return round(max(samples), 1)
-    return round(percentile(samples, 95), 1)
-
-
-def _matrix_failed(row: dict, background: str, kind: str):
-    """Failures a storm kind recorded in one background; n/a when it did not run."""
-    summary = _storm_summary(row.get("storms", []), background, STORM_OP_KIND[kind])
-    return "n/a" if summary is None else summary["fail"]
-
-
-def _cell(row: dict, status: dict) -> dict:
-    """Flatten one parsed cell into label-agnostic string/number fields.
-
-    The row comes from :func:`parse_log`, so it already carries event-stream
-    measurements when the cell has a complete `events.jsonl`.
-    """
-    mb = row.get("bytes", 0) / 1e6
-    wall = row.get("scan_wall_s", 0.0)
-    cell = {
-        "name": row.get("benchmark", ""),
-        "setup": (
-            f"NCPU={row.get('cpu', '?')} IMAGES={row.get('images', '?')} "
-            f"IMAGE_REPO={row.get('image_repo', '?')}"
-        ),
-        "state": status.get("state", "?"),
-        "scan_time_s": round(wall),
-        "s/MB": round(wall / mb, 1) if mb else "n/a",
-        "MB": round(mb, 1),
-        "scanned": status.get("scanned", "?"),
-        "matched": status.get("matched", "?"),
-        "processed": status.get("processed", "?"),
-        "failed": status.get("failed", "?"),
-        "scan_runs_s": ",".join(f"{w:.0f}" for w in row.get("scan_runs_ms", [])) or "n/a",
-        "vm_hwm_mb": row["vm_hwm_mb"] if row.get("vm_hwm_mb") is not None else "n/a",
-        "temp_db_mb": row["temp_db_mb"] if row.get("temp_db_mb") is not None else "n/a",
-    }
-    for _metric in METRICS_COLUMNS:
-        if _metric not in cell:
-            cell[_metric] = row[_metric] if row.get(_metric) is not None else "n/a"
-    for background in BACKGROUNDS:
-        for access in ACCESSES:
-            for stat in STATS:
-                cell[f"{background}_{access}_{stat}_ms"] = _matrix_latency(
-                    row, background, access, stat
-                )
-    for background in STORM_BACKGROUNDS:
-        for kind in STORM_KINDS:
-            cell[f"{background}_storm_{kind}_failed"] = _matrix_failed(row, background, kind)
-    if row.get("storm_verify"):
-        cell["storm_verify"] = "; ".join(f"{m}/{t}" for m, t in row["storm_verify"])
-    else:
-        cell["storm_verify"] = "n/a"
-    # Observer drain summary columns (per scan).
-    drains = row.get("drain_tables", row.get("drains", []))
-
-    def _stage_values(stage_name: str, field: str) -> str:
-        values = []
-        for table in drains:
-            for stage in table.get("stages", []):
-                if stage.get("stage") == stage_name:
-                    values.append(stage.get(field))
-        if not values:
-            return "n/a"
-        return ",".join(str(v) for v in values)
-
-    for stage_name in STAGE_REPORT_NAMES:
-        for field in ("p50_us", "max_us"):
-            key_us = f"{stage_name}_{field}"
-            cell[key_us] = _stage_values(stage_name, field)
-            cell[f"{stage_name}_{field}_us"] = cell[key_us]
-            # millisecond mirror for latency-style columns
-            vals = [v for v in (_stage_values(stage_name, field),) if v != "n/a"]
-            if vals and vals[0] != "n/a":
-                try:
-                    ms_vals = ",".join(
-                        str(round(int(x) / 1000.0, 1)) for x in cell[key_us].split(",")
-                    )
-                    cell[f"{stage_name}_{field}_ms"] = ms_vals
-                except ValueError, AttributeError:
-                    cell[f"{stage_name}_{field}_ms"] = "n/a"
-            else:
-                cell[f"{stage_name}_{field}_ms"] = "n/a"
-            # alias without unit suffix
-            cell[f"{stage_name}_{field.replace('_us', '')}"] = cell[key_us]
-    counters = row.get("observer_counters") or []
-    for name in COUNTER_COLUMNS:
-        values = [str(table[name]) for table in counters if name in table]
-        cell[name] = ",".join(values) if values else "n/a"
-    # Scroll probe summary columns.
-    scroll_map = (
-        ("scroll_bar", "scroll_bar_samples"),
-        ("scroll_rows", "scroll_rows_samples"),
-        ("scroll_data", "scroll_data_samples"),
-    )
-    for prefix, sample_key in scroll_map:
-        samples = row.get(sample_key) or []
-        if samples:
-            cell[f"{prefix}_p50_ms"] = round(statistics.median(samples), 1)
-            cell[f"{prefix}_p95_ms"] = round(percentile(samples, 95), 1)
-            cell[f"{prefix}_max_ms"] = round(max(samples), 1)
-        else:
-            cell[f"{prefix}_p50_ms"] = "n/a"
-            cell[f"{prefix}_p95_ms"] = "n/a"
-            cell[f"{prefix}_max_ms"] = "n/a"
-    return cell
-
-
-def _ms(value) -> object:
-    return round(value * 1000, 1) if value is not None else "n/a"
-
-
-def main(argv=None) -> None:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("outdirs", nargs="+", help="bench OUT dirs")
     parser.add_argument(
         "--profile",
-        help="WORKLOAD profile of the cell(s); decides scan vs uscan probe bucket (default: scan)",
+        help="WORKLOAD profile of the cell(s)",
     )
     args = parser.parse_args(argv)
 
-    parsed = []
     for raw in args.outdirs:
         outdir = Path(raw)
         if not (outdir / "harness-a.log").exists():
             print(f"error: {outdir}: no harness-a.log", file=sys.stderr)
-            sys.exit(1)
+            return 1
         row = parse_log(outdir, profile=args.profile)
-        # Emit per-scan stage rows as machine-readable JSON in the outdir.
-        try:
-            (outdir / "stages.json").write_text(
-                json.dumps(row.get("drain_stages", []), indent=2) + "\n"
-            )
-        except OSError as exc:
-            print(f"warn: {outdir}: cannot write stages.json: {exc}", file=sys.stderr)
-        parsed.append((row, parse_status(outdir)))
-
-    cells = [_cell(row, status) for row, status in parsed]
-
-    for i, cell in enumerate(cells, 1):
-        print(f"[{i}] name: {cell['name']}")
-        print(f"    {cell['setup']}")
-    labels = [
-        "scan_time_s",
-        "s/MB",
-        "MB",
-        "scan_runs_s",
-        *LATENCY_COLUMNS,
-        *STORM_FAILED_COLUMNS,
-        *STAGE_COLUMNS,
-        *COUNTER_COLUMNS,
-        *METRICS_COLUMNS,
-        *SCROLL_COLUMNS,
-        "storm_verify",
-    ]
-    width = max([len(label) for label in labels] + [8])
-    col_widths = []
-    for i in range(len(cells)):
-        widest = max([len(str(cells[i][label])) for label in labels] + [len(f"[{i + 1}]"), 10])
-        col_widths.append(widest)
-    print(
-        f"{'metric':<{width}} "
-        + " ".join(f"{f'[{i}]':>{w}}" for i, w in zip(range(1, len(cells) + 1), col_widths))
-    )
-    for label in labels:
-        print(
-            f"{label:<{width}} "
-            + " ".join(f"{str(cell[label]):>{w}}" for cell, w in zip(cells, col_widths))
-        )
-    for cell in cells:
-        if cell["state"] != "completed":
+        identity = row.get("identity") or {}
+        validity = row.get("validity") or {}
+        print(f"cell: {row.get('cell', outdir.name)}")
+        print(f"identity: {json.dumps(identity, sort_keys=True)}")
+        print(f"validity: {json.dumps(validity, sort_keys=True)}")
+        samples = row.get("samples") or {}
+        clusters = row.get("clusters") or {}
+        for key in sorted(samples):
+            values = samples[key]
+            family, background, subject = metrics.split_key(key)
+            summary = metrics.summarize(values, family)
+            stat_names = metrics.statistics_for(family)
+            parts = []
+            for stat in stat_names:
+                if stat == metrics.COUNT_STAT:
+                    parts.append(f"sum={int(round(float(summary[stat])))}")
+                else:
+                    parts.append(f"{stat}={float(summary[stat]):.1f}")
+            ci = ""
+            if "p50" in summary:
+                low, high = metrics.bootstrap_interval(values)
+                if low is not None and high is not None:
+                    ci = f" ci={float(low):.1f}-{float(high):.1f}"
             print(
-                f"WARN {cell['name']}: state={cell['state']} (expected completed)",
-                file=sys.stderr,
+                f"  {key}: " + " ".join(parts) + f" n={len(values)} "
+                f"clusters={clusters.get(key, len(values))}" + ci
             )
-        if isinstance(cell["failed"], int) and cell["failed"] > 0:
-            print(f"WARN {cell['name']}: failed={cell['failed']}", file=sys.stderr)
-        if (
-            isinstance(cell["processed"], int)
-            and isinstance(cell["matched"], int)
-            and cell["processed"] != cell["matched"]
-        ):
-            print(
-                f"WARN {cell['name']}: processed={cell['processed']} matched={cell['matched']}",
-                file=sys.stderr,
-            )
-    print("units: scan_time s; s/MB s per MB; all latency columns ms.")
-    print(
-        "matrix: {idle,scan,uscan} x {prefetch,thumb,edit,storm_read,storm_thumb,storm_edit}"
-        " x {p50,p95,max}; failed counts per storm kind"
-    )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

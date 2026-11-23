@@ -47,11 +47,9 @@ POLL_INTERVAL_S = 0.2
 DEFAULT_SETS_ROOT = Path.home() / "picasu-bench"
 BATTERY_BASE_PORT = 5795
 BATTERY_REPEATS_DEFAULT = 3
-BATTERY_REPEATS_BY_LEVEL = {"cell": 3, "gate": 3, "micro": 3, "scale": 3}
 BATTERY_REPEATS_MIN = 1
-# Per-level workload budget handed to run_cell as WORKLOAD_TIMEOUT_S. The
-# scale figure covers the measured ~1335 s single control cell at 5650 rows.
-WORKLOAD_TIMEOUT_S_BY_LEVEL = {"cell": 7200, "gate": 1800, "micro": 1800, "scale": 7200}
+DEFAULT_MIN_PROBE_ROUNDS = 20
+# The 2 h budget covers the measured ~1335 s single control cell at 5650 rows.
 
 DEFAULT_IMAGES = 100
 DEFAULT_REPEATS = 3
@@ -65,11 +63,30 @@ DEFAULT_UPLOAD_TIMEOUT_S = 30.0
 DEFAULT_UPLOAD_POST_TIMEOUT_S = 60.0
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
-DEFAULT_STORM_MARGIN_S = 0.5
+DEFAULT_UPLOAD_FILES = 20
+DEFAULT_STORM_MIN_COVERAGE_PCT = 50.0
 DEFAULT_POLL_INTERVAL_S = 0.2
 DEFAULT_PROBE_INTERVAL_S = 0.5
+DEFAULT_MIN_VALID_ROUNDS = 3
+DEFAULT_SCAN_WARMUP = 1
+DEFAULT_PROBE_REFRESH_S = 0.0
 DEFAULT_BUILD_PROFILE = "debug"
-WORKLOADS = ("control", "storm-diff", "storm-read", "storm-thumb", "storm-idle", "upload")
+STORM_ACCESSES = ("read", "thumb", "edit")
+STORM_LEVELS = ("8", "16n")
+CONCURRENT_STORM_PROFILES = tuple(
+    f"storm-{access}-{level}" for access in STORM_ACCESSES for level in STORM_LEVELS
+)
+IDLE_STORM_PROFILES = tuple(
+    f"storm-idle-{access}-{level}" for access in STORM_ACCESSES for level in STORM_LEVELS
+)
+WORKLOADS = ("control", *CONCURRENT_STORM_PROFILES, *IDLE_STORM_PROFILES, "upload")
+PROBE_PROFILES = ("control", "upload")
+
+
+def profile_has_probes(profile: str) -> bool:
+    """True for profiles that run the probe phase (and therefore warm up)."""
+    return profile in PROBE_PROFILES
+
 
 HYPERFINE_MISSING = "run: just install hyperfine"
 
@@ -133,6 +150,53 @@ def validate_build_profile(environ: dict, default: str) -> str:
     if profile not in ("release", "debug"):
         raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{profile}'")
     return profile
+
+
+def storm_profile_parts(profile: str) -> tuple[str, str] | None:
+    """(access, level) of a storm profile, or None when it is not one."""
+    if not isinstance(profile, str) or not profile.startswith("storm-"):
+        return None
+    parts = profile.split("-")
+    if len(parts) == 4 and parts[1] == "idle":
+        access, level = parts[2], parts[3]
+    elif len(parts) == 3:
+        access, level = parts[1], parts[2]
+    else:
+        return None
+    if access not in STORM_ACCESSES or level not in STORM_LEVELS:
+        return None
+    return access, level
+
+
+def is_idle_storm(profile: str) -> bool:
+    return isinstance(profile, str) and profile.startswith("storm-idle-")
+
+
+def storm_profile_access(profile: str) -> str | None:
+    parts = storm_profile_parts(profile)
+    return parts[0] if parts else None
+
+
+def storm_profile_kind(profile: str) -> str | None:
+    """Request kind a storm profile drives: prefetch, thumb or edit."""
+    access = storm_profile_access(profile)
+    return {"read": "prefetch", "thumb": "thumb", "edit": "edit"}.get(access)
+
+
+def storm_profile_level(profile: str) -> str | None:
+    """Concurrency level of a storm profile: 8 or 16n."""
+    parts = storm_profile_parts(profile)
+    return parts[1] if parts else None
+
+
+def storm_profile_clients(profile: str, ncpu: int) -> int | None:
+    """Client count for a storm profile's named level."""
+    level = storm_profile_level(profile)
+    if level == "8":
+        return 8
+    if level == "16n":
+        return 16 * max(1, ncpu)
+    return None
 
 
 def allowed_out_roots() -> list:
@@ -344,10 +408,10 @@ class WorkloadConfig:
     workload: str = "control"
     storm_clients: int = DEFAULT_STORM_CLIENTS
     storm_ops: int = DEFAULT_STORM_OPS
-    storm_margin_s: float = DEFAULT_STORM_MARGIN_S
-    idle_profile: str = "read"
+    storm_min_coverage_pct: float = DEFAULT_STORM_MIN_COVERAGE_PCT
     scan_repeats: int = DEFAULT_SCAN_REPEATS
-    upload_files: int = DEFAULT_IMAGES
+    upload_files: int = DEFAULT_UPLOAD_FILES
+    upload_repo: Path | None = None
     upload_timeout_s: float = DEFAULT_UPLOAD_TIMEOUT_S
     upload_post_timeout_s: float = DEFAULT_UPLOAD_POST_TIMEOUT_S
     index_settle_timeout_s: float = DEFAULT_INDEX_SETTLE_TIMEOUT_S
@@ -361,6 +425,9 @@ class WorkloadConfig:
     scan_stall_timeout_s: float = 120.0
     poll_interval_s: float = DEFAULT_POLL_INTERVAL_S
     probe_interval_s: float = DEFAULT_PROBE_INTERVAL_S
+    min_valid_rounds: int = DEFAULT_MIN_VALID_ROUNDS
+    scan_warmup: int = DEFAULT_SCAN_WARMUP
+    probe_refresh_s: float = DEFAULT_PROBE_REFRESH_S
     image_repo: Path | None = None
     image_path: Path | None = None
     image_home: str | None = None
@@ -428,14 +495,26 @@ class WorkloadConfig:
         workload = environ.get("WORKLOAD", "control")
         if workload not in WORKLOADS:
             raise ConfigError(f"WORKLOAD must be one of {WORKLOADS}, got '{workload}'")
-        storm_clients = integer(environ, "STORM_CLIENTS", DEFAULT_STORM_CLIENTS, minimum=1)
+        if "STORM_CLIENTS" in environ:
+            storm_clients = integer(environ, "STORM_CLIENTS", DEFAULT_STORM_CLIENTS, minimum=1)
+        else:
+            derived_clients = storm_profile_clients(workload, ncpu)
+            storm_clients = (
+                derived_clients if derived_clients is not None else DEFAULT_STORM_CLIENTS
+            )
         storm_ops = integer(environ, "STORM_OPS", DEFAULT_STORM_OPS, minimum=1)
-        storm_margin = number(environ, "STORM_MARGIN_S", DEFAULT_STORM_MARGIN_S)
-        idle_profile = environ.get("IDLE_PROFILE", "read")
-        if idle_profile not in ("diff", "read", "thumb"):
-            raise ConfigError(f"IDLE_PROFILE must be diff|read|thumb, got '{idle_profile}'")
+        storm_min_coverage = number(
+            environ, "STORM_MIN_COVERAGE_PCT", DEFAULT_STORM_MIN_COVERAGE_PCT, minimum=1.0
+        )
+        if storm_min_coverage > 100.0:
+            raise ConfigError(f"STORM_MIN_COVERAGE_PCT must be <= 100, got {storm_min_coverage}")
         scan_repeats = integer(environ, "SCAN_REPEATS", DEFAULT_SCAN_REPEATS, minimum=1)
-        upload_files = integer(environ, "UPLOAD_FILES", images, minimum=1)
+        upload_files = integer(environ, "UPLOAD_FILES", DEFAULT_UPLOAD_FILES, minimum=1)
+        upload_repo = None
+        if environ.get("UPLOAD_REPO"):
+            upload_repo = Path(environ["UPLOAD_REPO"])
+            if not upload_repo.is_dir():
+                raise ConfigError(f"UPLOAD_REPO not a directory: {upload_repo}")
         upload_timeout = number(environ, "UPLOAD_TIMEOUT_S", DEFAULT_UPLOAD_TIMEOUT_S, minimum=0.1)
         upload_post_timeout = number(
             environ, "UPLOAD_POST_TIMEOUT_S", DEFAULT_UPLOAD_POST_TIMEOUT_S, minimum=0.1
@@ -455,6 +534,9 @@ class WorkloadConfig:
         probe_interval = number(
             environ, "PROBE_INTERVAL_S", DEFAULT_PROBE_INTERVAL_S, minimum=0.001
         )
+        min_valid_rounds = integer(environ, "MIN_VALID_ROUNDS", DEFAULT_MIN_VALID_ROUNDS, minimum=1)
+        scan_warmup = integer(environ, "SCAN_WARMUP", DEFAULT_SCAN_WARMUP, minimum=0)
+        probe_refresh = number(environ, "PROBE_REFRESH_S", DEFAULT_PROBE_REFRESH_S, minimum=0.0)
 
         repo_path = Path(environ["IMAGE_REPO"])
         if not repo_path.is_dir():
@@ -486,10 +568,10 @@ class WorkloadConfig:
             workload=workload,
             storm_clients=storm_clients,
             storm_ops=storm_ops,
-            storm_margin_s=storm_margin,
-            idle_profile=idle_profile,
+            storm_min_coverage_pct=storm_min_coverage,
             scan_repeats=scan_repeats,
             upload_files=upload_files,
+            upload_repo=upload_repo,
             upload_timeout_s=upload_timeout,
             upload_post_timeout_s=upload_post_timeout,
             index_settle_timeout_s=index_settle_timeout,
@@ -503,6 +585,9 @@ class WorkloadConfig:
             scan_stall_timeout_s=scan_stall_timeout,
             poll_interval_s=poll_interval,
             probe_interval_s=probe_interval,
+            min_valid_rounds=min_valid_rounds,
+            scan_warmup=scan_warmup,
+            probe_refresh_s=probe_refresh,
             image_repo=repo_path,
             image_path=image_path,
             image_home=image_home_raw,
@@ -574,22 +659,23 @@ class CellConfig:
 class BatteryConfig:
     """The knobs and budgets of one battery run."""
 
-    level: str
-    out: Path
-    sets_root: Path
-    base_port: int
-    build_profile: str
-    fresh: bool
-    repeats: int
+    images: int = DEFAULT_IMAGES
+    out: Path = Path(".")
+    sets_root: Path = DEFAULT_SETS_ROOT
+    base_port: int = BATTERY_BASE_PORT
+    build_profile: str = "release"
+    fresh: bool = False
+    repeats: int = BATTERY_REPEATS_DEFAULT
+    min_probe_rounds: int = DEFAULT_MIN_PROBE_ROUNDS
     # Forwarded verbatim to run_cell, which owns its validation.
-    workload_timeout_s: str
+    workload_timeout_s: str = "1800"
 
     @classmethod
     def from_env(
         cls,
         environ: dict,
         *,
-        level: str,
+        images: int | None = None,
         out,
         sets_root=DEFAULT_SETS_ROOT,
         base_port: int = BATTERY_BASE_PORT,
@@ -597,20 +683,28 @@ class BatteryConfig:
         fresh: bool = False,
     ) -> BatteryConfig:
         """Build from the environment plus the battery's CLI context."""
-        repeats_default = BATTERY_REPEATS_BY_LEVEL.get(level, BATTERY_REPEATS_DEFAULT)
+        images = DEFAULT_IMAGES if images is None else int(images)
+        if images <= 200:
+            repeats_default = 5
+            timeout_default = 1800
+        else:
+            repeats_default = 3
+            timeout_default = 7200
         repeats = integer(environ, "BATTERY_REPEATS", repeats_default, minimum=BATTERY_REPEATS_MIN)
+        min_probe_rounds = integer(environ, "MIN_PROBE_ROUNDS", DEFAULT_MIN_PROBE_ROUNDS, minimum=1)
         if "WORKLOAD_TIMEOUT_S" in environ:
             workload_timeout = environ["WORKLOAD_TIMEOUT_S"]
         else:
-            workload_timeout = str(WORKLOAD_TIMEOUT_S_BY_LEVEL[level])
+            workload_timeout = str(timeout_default)
         return cls(
-            level=level,
+            images=images,
             out=Path(out),
             sets_root=Path(sets_root),
             base_port=base_port,
             build_profile=build_profile,
             fresh=fresh,
             repeats=repeats,
+            min_probe_rounds=min_probe_rounds,
             workload_timeout_s=workload_timeout,
         )
 

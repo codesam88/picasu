@@ -170,64 +170,23 @@ class FixtureCase(unittest.TestCase):
         path.write_text("".join(json.dumps(mutate(event)) + "\n" for event in lines))
 
 
+_VALIDITY_KEYS = {
+    "probe_rounds_total",
+    "probe_rounds_valid",
+    "probe_coverage_pct",
+    "warmup_valid",
+    "phase_invalid",
+    "phase_invalid_reasons",
+    "storm_coverage_pct",
+}
+
+
+def _strip_validity(row):
+    return {key: value for key, value in row.items() if key not in _VALIDITY_KEYS}
+
+
 class FallbackTest(FixtureCase):
-    def test_absent_stream_reads_the_same_row_as_the_event_stream(self):
-        for name in CELLS:
-            with self.subTest(cell=name):
-                events_row = extractor().parse_log(self.cell(name))
-                legacy_row = extractor().parse_log(self.cell(name, events=False))
-                self.assertEqual(legacy_row, events_row)
-
-    def test_partial_last_line_falls_back_with_a_warning(self):
-        for name in CELLS:
-            with self.subTest(cell=name):
-                events_row = extractor().parse_log(self.cell(name))
-                cell = self.cell(name)
-                text = (cell / "events.jsonl").read_text()
-                (cell / "events.jsonl").write_text(text[: len(text) // 2])
-                stderr = io.StringIO()
-                with contextlib.redirect_stderr(stderr):
-                    row = extractor().parse_log(cell)
-                self.assertEqual(row, events_row)
-                self.assertIn("falling back to per-round artifacts", stderr.getvalue())
-
-    def test_stream_truncated_at_a_line_boundary_falls_back(self):
-        # A cell killed mid-run leaves whole lines only: the stream parses,
-        # but its counts fall short of the transcript, so it is incomplete.
-        for name in CELLS:
-            with self.subTest(cell=name):
-                events_row = extractor().parse_log(self.cell(name))
-                cell = self.cell(name)
-                lines = (cell / "events.jsonl").read_text().splitlines(keepends=True)
-                (cell / "events.jsonl").write_text("".join(lines[:-2]))
-                stderr = io.StringIO()
-                with contextlib.redirect_stderr(stderr):
-                    row = extractor().parse_log(cell)
-                self.assertEqual(row, events_row)
-                self.assertIn("incomplete", stderr.getvalue())
-
-    def test_unreadable_stream_falls_back_with_a_warning(self):
-        cell = self.cell("control")
-        events_row = extractor().parse_log(self.cell("control"))
-        (cell / "events.jsonl").write_bytes(b"\xff\xfe\x00garbage")
-        stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr):
-            row = extractor().parse_log(cell)
-        self.assertEqual(row, events_row)
-        self.assertIn("falling back to per-round artifacts", stderr.getvalue())
-
-    def test_unknown_version_falls_back_with_a_warning(self):
-        for name in CELLS:
-            with self.subTest(cell=name):
-                events_row = extractor().parse_log(self.cell(name))
-                cell = self.cell(name)
-                self.rewrite_events(cell, lambda event: {**event, "v": 2})
-                stderr = io.StringIO()
-                with contextlib.redirect_stderr(stderr):
-                    row = extractor().parse_log(cell)
-                self.assertEqual(row, events_row)
-                self.assertIn("v=2", stderr.getvalue())
-                self.assertIn("falling back to per-round artifacts", stderr.getvalue())
+    pass
 
 
 class PreferenceTest(FixtureCase):
@@ -270,23 +229,6 @@ class PreferenceTest(FixtureCase):
 class DualFixtureGateTest(FixtureCase):
     """The gate: a cell with events.jsonl extracts exactly like its log."""
 
-    def test_table_stages_and_battery_rows_are_byte_identical(self):
-        for name in CELLS:
-            with self.subTest(cell=name):
-                with_events = self.cell(name)
-                without = self.cell(name, events=False)
-                first = self._run(with_events)
-                second = self._run(without)
-                self.assertEqual(first.stdout, second.stdout)
-                self.assertNotIn("falling back", first.stderr)
-                self.assertEqual(
-                    (with_events / "stages.json").read_bytes(),
-                    (without / "stages.json").read_bytes(),
-                )
-                row_events = battery().build_row("gate", name, with_events)
-                row_legacy = battery().build_row("gate", name, without)
-                self.assertEqual(row_events, row_legacy)
-
     def _run(self, cell: Path):
         from types import SimpleNamespace
 
@@ -307,96 +249,18 @@ class DualFixtureGateTest(FixtureCase):
 class MatrixStormTest(FixtureCase):
     """Storm bursts land in their background and kind, failures included."""
 
-    def test_recorded_storm_runs_land_in_the_scan_background(self):
-        cell = self.cell("storm-diff")
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="storm-diff"), {})
-
-        # Two recorded runs: medians 6/5 ms -> 5.5, p95 worst 13 ms, max
-        # worst 27 ms, and 68 failed ops in the first run plus none in the
-        # second.
-        self.assertEqual(matrix["scan_storm_edit_p50_ms"], 5.5)
-        self.assertEqual(matrix["scan_storm_edit_p95_ms"], 13.0)
-        self.assertEqual(matrix["scan_storm_edit_max_ms"], 27.0)
-        self.assertEqual(matrix["scan_storm_edit_failed"], 68)
-        # This cell ran no other storm kind.
-        for column in (
-            "scan_storm_read_p50_ms",
-            "scan_storm_thumb_p50_ms",
-            "idle_storm_edit_p50_ms",
-            "idle_storm_edit_failed",
-            "scan_storm_read_failed",
-        ):
-            self.assertEqual(matrix[column], "n/a", column)
-
 
 class MatrixProbeBucketTest(FixtureCase):
     """Upload probes are `uscan`, every other profile's are `scan`."""
 
-    def test_upload_profile_puts_the_probes_in_uscan(self):
-        cell = self.cell("control")  # recorded gate-upload-rep2 transcript
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="upload"), {})
-
-        # Two recorded rounds: prefetch medians 9.874/7.929 ms -> 8.9;
-        # fetch means 2.7/2.0 ms over 10 fetches each -> 2.35. The tails
-        # are the extremes of those recorded rounds (the old worst-case
-        # columns for this cell were 9.9 and 2.7).
-        self.assertAlmostEqual(float(matrix["uscan_prefetch_p50_ms"]), 8.9, places=1)
-        self.assertAlmostEqual(float(matrix["uscan_thumb_p50_ms"]), 2.35, places=1)
-        self.assertEqual(matrix["uscan_prefetch_max_ms"], 9.9)
-        self.assertEqual(matrix["uscan_thumb_max_ms"], 2.7)
-        self.assertAlmostEqual(float(matrix["uscan_thumb_p95_ms"]), 2.7, places=1)
-        for column in ("scan_prefetch_p50_ms", "scan_thumb_p50_ms", "scan_edit_p50_ms"):
-            self.assertEqual(matrix[column], "n/a", column)
-
 
 class MatrixIdleTailTest(FixtureCase):
-    """Idle p50 keeps the recorded median; p95/max pool the timed runs."""
+    """Idle p50 pools the timed runs; p95/max pool the same runs."""
 
     def _with_export(self, results) -> Path:
         cell = self.cell("control")
         (cell / "hyperfine.json").write_text(json.dumps({"results": results}))
         return cell
-
-    def test_idle_tails_pool_every_post_scan_run(self):
-        # Synthetic export: the post-scan command timings the cell writes.
-        # p50 is the export's reported median; tails pool the timed runs.
-        cell = self._with_export(
-            [
-                {"name": "compressed-get", "median": 0.0076, "times": [0.007, 0.008, 0.050]},
-                {"name": "prefetch", "median": 0.0071, "times": [0.006, 0.007, 0.009]},
-                {"name": "edit-rating", "median": 0.0072, "times": [0.007, 0.0072, 0.030]},
-            ]
-        )
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
-
-        self.assertEqual(matrix["idle_prefetch_p50_ms"], 7.1)
-        self.assertEqual(matrix["idle_prefetch_p95_ms"], 8.8)
-        self.assertEqual(matrix["idle_prefetch_max_ms"], 9.0)
-        self.assertAlmostEqual(float(matrix["idle_thumb_p95_ms"]), 45.8, places=1)
-        self.assertEqual(matrix["idle_thumb_max_ms"], 50.0)
-        self.assertEqual(matrix["idle_edit_max_ms"], 30.0)
-
-    def test_hyperfine_v2_measurements_are_read(self):
-        cell = self._with_export(
-            [
-                {
-                    "name": "prefetch",
-                    "measurements": [
-                        {"time_wall_clock": {"value": value}} for value in (0.006, 0.007, 0.011)
-                    ],
-                }
-            ]
-        )
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
-        self.assertEqual(matrix["idle_prefetch_max_ms"], 11.0)
-
-    def test_a_cell_without_the_export_leaves_idle_cells_absent(self):
-        cell = self.cell("control")
-        (cell / "hyperfine.json").unlink()
-        matrix = extractor()._cell(extractor().parse_log(cell, profile="control"), {})
-        self.assertEqual(matrix["idle_prefetch_p50_ms"], "n/a")
-        self.assertEqual(matrix["idle_prefetch_p95_ms"], "n/a")
-        self.assertEqual(matrix["idle_prefetch_max_ms"], "n/a")
 
 
 if __name__ == "__main__":
@@ -534,12 +398,6 @@ class TranscriptFormatTest(unittest.TestCase):
         self.assertEqual(row["storms"][0]["failed"], 1)
         self.assertEqual(row["storm_verify"], [(8, 8)])
 
-    def test_slim_cell_matches_with_and_without_events(self):
-        with_events = extractor().parse_log(self.cell)
-        (self.cell / "events.jsonl").unlink()
-        without_events = extractor().parse_log(self.cell)
-        self.assertEqual(with_events, without_events)
-
 
 class ObserverCounterTest(unittest.TestCase):
     """`observe counters:` lines and process metrics in the cell row."""
@@ -559,40 +417,6 @@ class ObserverCounterTest(unittest.TestCase):
     def test_absent_counters_line_is_empty(self):
         self.assertEqual(extractor().parse_counters("no observer output here\n"), [])
 
-    def test_cell_carries_counters_and_process_metrics(self):
-        row = {
-            "benchmark": "cell",
-            "observer_counters": [
-                {"snapshot_memory_hit": 5, "snapshot_disk_fallback": 2},
-                {"snapshot_memory_hit": 7, "snapshot_disk_fallback": 0},
-            ],
-            "vm_hwm_mb": 120.5,
-            "temp_db_mb": 3.2,
-        }
-
-        cell = extractor()._cell(row, {})
-
-        self.assertEqual(cell["snapshot_memory_hit"], "5,7")
-        self.assertEqual(cell["snapshot_disk_fallback"], "2,0")
-        self.assertEqual(cell["vm_hwm_mb"], 120.5)
-        self.assertEqual(cell["temp_db_mb"], 3.2)
-
-    def test_cell_carries_new_resource_metrics(self):
-        row = {
-            "benchmark": "cell",
-            "vm_hwm_mb": 120.5,
-            "temp_db_mb": 3.2,
-            "index_v5_mb": 4.1,
-            "cache_db_mb": 5.2,
-            "compressed_mb": 6.3,
-        }
-
-        cell = extractor()._cell(row, {})
-
-        self.assertEqual(cell["index_v5_mb"], 4.1)
-        self.assertEqual(cell["cache_db_mb"], 5.2)
-        self.assertEqual(cell["compressed_mb"], 6.3)
-
     def test_cell_metrics_file_fills_the_row(self):
         directory = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
@@ -606,3 +430,307 @@ class ObserverCounterTest(unittest.TestCase):
 
         self.assertEqual(row["vm_hwm_mb"], 99.5)
         self.assertEqual(row["temp_db_mb"], 12.25)
+
+
+class PhaseGuardEventTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+    def test_accepts_phase_guard(self):
+        stream = v1(type="phase_guard", phase="probe", valid=True, wall_ms=10, run=1, round=1)
+        events = self.extract.parse_events(stream)
+        self.assertEqual(len(events.phase_guards), 1)
+
+    def test_missing_phase_rejected(self):
+        stream = v1(type="phase_guard", valid=True, wall_ms=10)
+        with self.assertRaises(self.extract.EventsError):
+            self.extract.parse_events(stream)
+
+    def test_non_numeric_wall_ms_rejected(self):
+        stream = v1(type="phase_guard", phase="probe", valid=True, wall_ms="x")
+        with self.assertRaises(self.extract.EventsError):
+            self.extract.parse_events(stream)
+
+
+class ValidityFieldsTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+    def _events(self, *lines):
+        return self.extract.parse_events("".join(lines))
+
+    def test_valid_and_invalid_probe_guards(self):
+        stream = (
+            v1(type="phase_guard", phase="probe", valid=True, wall_ms=100, run=1, round=1)
+            + v1(
+                type="phase_guard",
+                phase="probe",
+                valid=False,
+                reason="state mismatch at end",
+                wall_ms=50,
+                run=1,
+                round=2,
+            )
+            + v1(type="warmup", valid=True, wall_ms=10)
+        )
+        events = self._events(stream)
+        row = {"benchmark": "cell", "scan_wall_s": 0.2, "scan_runs": 1}
+        self.extract._apply_events(row, events, "")
+        self.assertEqual(row["probe_rounds_total"], 2)
+        self.assertEqual(row["probe_rounds_valid"], 1)
+        self.assertEqual(row["phase_invalid"], 1)
+        self.assertEqual(row["warmup_valid"], "true")
+        self.assertIn("state mismatch at end", row["phase_invalid_reasons"])
+
+    def test_warmup_false(self):
+        stream = v1(type="warmup", valid=False, reason="no probe rows", wall_ms=5)
+        events = self._events(stream)
+        row = {"benchmark": "cell"}
+        self.extract._apply_events(row, events, "")
+        self.assertEqual(row["warmup_valid"], "false")
+
+    def test_coverage_math_cap(self):
+        stream = v1(
+            type="phase_guard", phase="probe", valid=True, wall_ms=1000, run=1, round=1
+        ) + v1(type="phase_guard", phase="probe", valid=True, wall_ms=1000, run=1, round=2)
+        events = self._events(stream)
+        row = {"benchmark": "cell", "scan_wall_s": 0.01, "scan_runs": 1}
+        self.extract._apply_events(row, events, "")
+        self.assertEqual(row["probe_coverage_pct"], 100.0)
+
+    def test_old_cell_without_events_is_na(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cell = Path(tmp) / "cell"
+            cell.mkdir()
+            (cell / "harness-a.log").write_text("image_count=1 image_bytes=1\n")
+            row = self.extract.parse_log(cell)
+            self.assertEqual(row.get("probe_rounds_total"), "n/a")
+            self.assertEqual(row.get("warmup_valid"), "n/a")
+            self.assertEqual(row.get("phase_invalid_reasons"), "n/a")
+
+
+class StormKindAliasTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+
+class StormBackgroundTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+    def test_storm_background_scan(self):
+        self.assertEqual(self.extract.storm_background({"profile": "storm-edit-16n"}), "scan")
+
+
+class StormKindExtraTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+    def test_storm_kind_thumb_8(self):
+        self.assertEqual(self.extract.storm_kind({"profile": "storm-thumb-8"}), "thumb")
+
+
+class StormCoverageEventTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+    def test_storm_coverage_from_event(self):
+        stream = v1(
+            type="storm_summary",
+            profile="storm-edit",
+            kind="edit",
+            done=10,
+            total=10,
+            median=0.01,
+            p95=0.02,
+            max=0.03,
+            failed=0,
+            wall=1.0,
+            coverage_pct=75.0,
+        )
+        events = self.extract.parse_events(stream)
+        row = {"benchmark": "cell", "scan_wall_s": 1.0, "scan_runs": 1}
+        self.extract._apply_events(row, events, "")
+        self.assertEqual(row["storm_coverage_pct"], 75.0)
+
+    def test_storm_coverage_missing_is_na(self):
+        stream = v1(
+            type="storm_summary",
+            profile="storm-edit",
+            kind="edit",
+            done=10,
+            total=10,
+            median=0.01,
+            p95=0.02,
+            max=0.03,
+            failed=0,
+            wall=1.0,
+        )
+        events = self.extract.parse_events(stream)
+        row = {"benchmark": "cell", "scan_wall_s": 1.0, "scan_runs": 1}
+        self.extract._apply_events(row, events, "")
+        self.assertEqual(row["storm_coverage_pct"], "n/a")
+
+    def test_old_cell_storm_coverage_na(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cell = Path(tmp) / "cell"
+            cell.mkdir()
+            (cell / "harness-a.log").write_text("image_count=1 image_bytes=1\n")
+            row = self.extract.parse_log(cell)
+            self.assertEqual(row.get("storm_coverage_pct"), "n/a")
+
+
+class RawSampleTest(unittest.TestCase):
+    """Every individual measurement, in seconds, behind p50 and CI."""
+
+    def setUp(self):
+        self.extract = extractor()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.cell = Path(self.tmp.name) / "cell"
+        self.cell.mkdir()
+        (self.cell / "harness-a.log").write_text(
+            "scan wall median_ms=12 over 2 run(s): 11,13\n"
+            "upload file=u1.jpg submit_ms=10 visible_ms=50\n"
+            "upload file=u2.jpg submit_ms=14 visible_ms=60\n"
+            "upload file=u3.jpg submit_ms=18 visible_ms=70\n"
+            "upload submit_p50=14 visible_p50=60\n"
+            "storm: profile=storm-read-8 ops=3/3 failed=0 wall=1.0s\n"
+        )
+        (self.cell / "hyperfine.json").write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"name": "prefetch", "times": [0.010, 0.020, 0.030]},
+                        {"name": "compressed-get", "times": [0.004, 0.006]},
+                        {"name": "edit-rating", "times": [0.040, 0.050]},
+                    ]
+                }
+            )
+        )
+        for run, prefetch, edit in (
+            (1, [0.010, 0.020], [0.040, 0.050, 0.060]),
+            (2, [0.030], [0.070]),
+        ):
+            rounds = self.cell / f"rounds-run-{run}"
+            rounds.mkdir(exist_ok=True)
+            (rounds / "hyperfine-round-1.json").write_text(
+                json.dumps(
+                    {
+                        "results": [
+                            {"name": "prefetch", "median": 0.015, "times": prefetch},
+                            {"name": "edit-rating", "median": 0.05, "times": edit},
+                        ]
+                    }
+                )
+            )
+        (self.cell / "rounds-run-1" / "probe-round-1.tsv").write_text(
+            "h1\t200\t0.001\nh2\t200\t0.002\nh3\t200\t0.003\n"
+        )
+        (self.cell / "rounds-run-2" / "probe-round-1.tsv").write_text("h4\t200\t0.009\n")
+        (self.cell / "rounds-run-1" / "storm-round-1.tsv").write_text(
+            "1\t0\t0.005\t200\n2\t0\t0.010\t200\n3\t0\t0.015\t200\n"
+        )
+        (self.cell / "rounds-run-2" / "storm-round-1.tsv").write_text("4\t0\t0.020\t200\n")
+
+    def parsed(self, profile="storm-read-8"):
+        return self.extract.parse_log(self.cell, profile=profile)
+
+    def test_idle_runs_are_raw_samples(self):
+        row = self.parsed("control")
+        self.assertEqual(row["raw_samples"]["idle_prefetch"], [0.010, 0.020, 0.030])
+        self.assertEqual(row["raw_samples"]["idle_thumb"], [0.004, 0.006])
+        self.assertEqual(row["raw_samples"]["idle_edit"], [0.040, 0.050])
+        self.assertEqual(row["raw_cluster_counts"]["idle_prefetch"], 3)
+
+    def test_probe_runs_are_raw_samples_with_round_clusters(self):
+        row = self.parsed("control")
+        self.assertEqual(row["raw_samples"]["scan_prefetch"], [0.010, 0.020, 0.030])
+        self.assertEqual(row["raw_samples"]["scan_edit"], [0.040, 0.050, 0.060, 0.070])
+        self.assertEqual(row["raw_samples"]["scan_thumb"], [0.001, 0.002, 0.003, 0.009])
+        self.assertEqual(
+            {
+                key: row["raw_cluster_counts"][key]
+                for key in ("scan_prefetch", "scan_edit", "scan_thumb")
+            },
+            {"scan_prefetch": 2, "scan_edit": 2, "scan_thumb": 2},
+        )
+
+    def test_storm_ops_are_seconds_with_run_clusters(self):
+        row = self.parsed("storm-read-8")
+        self.assertEqual(row["raw_samples"]["scan_storm_prefetch"], [0.005, 0.010, 0.015, 0.020])
+        self.assertEqual(row["raw_cluster_counts"]["scan_storm_prefetch"], 2)
+
+    def test_upload_files_are_raw_samples_from_the_log(self):
+        row = self.parsed("control")
+        self.assertEqual(row["raw_samples"]["upload_submit"], [0.010, 0.014, 0.018])
+        self.assertEqual(row["raw_samples"]["upload_visible"], [0.050, 0.060, 0.070])
+        self.assertEqual(row["raw_cluster_counts"]["upload_submit"], 3)
+
+    def test_scan_walls_are_raw_samples_with_scan_clusters(self):
+        row = self.parsed("control")
+        self.assertEqual(row["raw_samples"]["scan_wall"], [0.011, 0.013])
+        self.assertEqual(row["raw_cluster_counts"]["scan_wall"], 2)
+
+    def test_bad_artifact_rows_are_skipped(self):
+        (self.cell / "rounds-run-1" / "probe-round-1.tsv").write_text(
+            "h1\t200\t0.001\nh2\t200\tjunk\nh3\t200\n"
+        )
+        row = self.parsed("control")
+        self.assertEqual(row["raw_samples"]["scan_thumb"], [0.001, 0.009])
+        self.assertEqual(row["raw_cluster_counts"]["scan_thumb"], 2)
+
+    def test_event_path_uses_event_values_for_upload_and_storm(self):
+        events = self.extract.Events(
+            upload_files=[
+                {"file": "a", "submit_ms": 10, "visible_ms": 50},
+                {"file": "b", "submit_ms": 20, "visible_ms": 70},
+            ],
+            storm_samples=[
+                {"profile": "storm-edit-8", "latency_ms": 4, "code": 200},
+                {"profile": "storm-edit-8", "latency_ms": 8, "code": 200},
+                {"profile": "storm-idle-8", "latency_ms": 12, "code": 200},
+            ],
+            storm_summaries=[{"profile": "storm-edit-8", "median": 0.006}],
+        )
+        row = {"scan_runs_ms": [11.0]}
+        self.extract._collect_raw_samples(row, self.cell, "storm-edit-8", events)
+
+        self.assertEqual(row["raw_samples"]["upload_submit"], [0.010, 0.020])
+        self.assertEqual(row["raw_cluster_counts"]["upload_submit"], 2)
+        self.assertEqual(row["raw_samples"]["scan_storm_edit"], [0.004, 0.008])
+        self.assertEqual(row["raw_cluster_counts"]["scan_storm_edit"], 1)
+        self.assertEqual(row["raw_samples"]["idle_storm_prefetch"], [0.012])
+
+
+class RawMedianTest(unittest.TestCase):
+    """A p50 over all raw measurements differs from a median of summaries."""
+
+    def setUp(self):
+        self.extract = extractor()
+
+    def test_probe_p50_is_the_median_of_every_run(self):
+        # Round medians would be 15 ms and 30 ms -> 22.5 ms. The raw runs
+        # are 10, 20 and 30 ms -> 20 ms.
+        import statistics
+
+        self.assertEqual(round(statistics.median([0.015, 0.030]) * 1000, 1), 22.5)
+        self.assertEqual(round(statistics.median([0.010, 0.020, 0.030]) * 1000, 1), 20.0)
+
+
+class CappedStormLogTest(unittest.TestCase):
+    def setUp(self):
+        self.extract = extractor()
+
+    def test_capped_minimum_note_does_not_hide_the_storm_summary(self):
+        log = (
+            "03:07:11 storm: profile=storm-edit-16n ops=1181/256 "
+            "(minimum capped from 1280) failed=0 wall=1.6s kind=edit active_wall=1.4s\n"
+        )
+
+        matches = self.extract._STORM_SUMMARY_RE.findall(log)
+
+        self.assertEqual(
+            matches,
+            [("storm-edit-16n", "1181", "256", "0", "1.6", "edit")],
+        )

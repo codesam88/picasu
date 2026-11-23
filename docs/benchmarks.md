@@ -1,153 +1,238 @@
 # Benchmark protocol
 
-What the benchmark cells measure, why each measurement exists, and how
-cells stay comparable. Harness usage (`just bench ...`) lives in
-`utils/bench/README.md`; this page is the rationale behind the matrix.
+What the benchmark measures, how a measurement is defined, pooled,
+validated and reported. This page is the contract: harness flags and
+recipes live in `utils/bench/README.md`, and code that contradicts a rule
+here is a bug in the code.
 
-## Principles
+## Purpose
 
-- No tuning without a measured number. A candidate change names the
-  cell and metric that trigger it before it is built.
-- Row-scaling and byte-scaling are measured separately. Tree rebuild,
-  snapshot clone, sweep, and sort are row-count-driven and file-size
-  blind; decode, thumbnail generation, and upload transfer are
-  byte-driven. Conflating them wastes disk and muddies attribution.
-- Cells are comparable by construction: fixed image archive, fixed
-  battery env per scale, one machine-readable result row per cell.
-  Drift is detected mechanically, not by eyeballing transcripts.
+Detect performance regressions of the Picasu backend and attribute a change
+to a cause — request path, scan stage, memory, ingest — before it reaches
+users. A result is only useful if two runs of the same cell differ because
+the backend differs, not because the harness selected a different sample,
+statistic or execution path.
 
-## Image archive and sandbox
+## Invariants
 
-Seeded images are small (~570 KB, 4000x3000 JPEG): 100 images are
-57 MB, so 50 000 would be ~29 GB, and real-camera files (5 MB+) would
-push that past 250 GB. Generating and copying that per cell is not
-practical, so:
+1. **One measurement model.** Every reported number is identified by cell,
+   family, condition and statistic. There is no second naming scheme, no
+   per-profile metric set and no column whose meaning depends on the
+   profile that wrote it.
+2. **One reducer.** Every statistic is computed from the pooled raw samples
+   of its cell. Summaries of summaries are diagnostics, never reported
+   values.
+3. **One declared sample unit.** Each family states what one sample is. A
+   metric's sample unit never changes between cells of the same family.
+4. **Measured is accepted.** Every metric the harness reports is baselined
+   and visible to comparison. "Informational" is not a category; if a number
+   is not worth accepting, it is not reported.
+5. **Proven background.** A sample counts only if its phase guard proves the
+   background it claims. Validity is recorded per cell, not inferred from
+   prose.
+6. **Reproducible identity.** A cell records image count, client count,
+   build and commit. Comparison refuses cells whose identity differs.
+7. **Doc equals code.** A mechanism described here exists in the harness; a
+   mechanism not described here is not part of the protocol.
 
-- One canonical archive per file-size class is seeded once and reused
-  by every cell. The archive is read-only and lives outside tmpfs
-  (canonical root `$HOME/picasu-bench/set-N`, e.g. `set-100`,
-  `set-5650`); cells never generate images. Cell staging (OUT, image
-  home, server data) goes on tmpfs (`/dev/shm` preferred, `/tmp`
-  otherwise) to avoid disk latency and wear; hardlink materialisation
-  falls back to copy across the filesystem boundary.
-- A cell materialises its set from the archive — by hardlink when the
-  archive and staging share a filesystem (O(1) disk regardless of set
-  size), by copy across the boundary otherwise (once per cell, e.g.
-  tmpfs staging against the disk-resident archive). The sandbox path
-  (`IMAGE_HOME_SRC` + `MATERIALISE=0`) skips materialisation by
-  reusing the prepared image home.
-- The server under test points at a sandbox root (`image_home` /
-  `PICASU_IMAGE_HOME`) prepared once per scale. Re-seeding or
-  re-copying per run is a protocol violation unless the cell
-  explicitly measures cold-start ingest.
-- Two archive classes: small-file (row-scaling; counts 100 / 5650 /
-  50 000+) and large-file (byte-scaling; a few hundred real-camera-
-  sized files, ~2–3 GB total). The large-file class exists only for
-  the decode/thumbnail/upload dimensions, never for row scaling.
+## Measurement model
 
-## Stimulus catalog
+A cell is a point in a fixed space. The axes are independent, and a profile
+selects which points it visits; a profile never changes what a point means.
 
-- `control`: populate scans with during-scan random thumbnail GETs
-  plus hyperfine prefetch/edit-rating probes per round, a scroll probe
-  (get-scroll-bar, get-rows, get-data) during scan and after settle, then a
-  sequential sweep and post-scan baselines. Measures the request path
-  under indexing load — the primary regression signal.
-- `storm-read` / `storm-thumb` / `storm-diff`: concurrent bursts
-  (clients × ops) of prefetches, thumbnail GETs, or edit-rating PUTs
-  against a scan, with a must-finish-before-scan-end margin. Measures
-  burst headroom and tail latency, not averages.
-- `storm-idle`: burst against the tree at rest. Separates serving cost
-  from indexing contention.
-- `upload`: file ingest through the upload route. The response is
-  store-and-return, so the measurement is two-sided: submit-to-200
-  latency plus time-to-visible (poll until the row serves), which also
-  covers background-indexing drain. Upload is the only stimulus that
-  measures the write path end to end.
+| axis       | values                                                                   |
+| ---------- | ------------------------------------------------------------------------ |
+| images     | image count (50, 100, 200, 5650, 50k+) and file-size class (small/large) |
+| background | `idle` (server at rest), `scan` (an album scan is running)               |
+| access     | `prefetch`, `thumb`, `edit`, `scroll_bar`, `scroll_rows`, `scroll_data`  |
+| profile    | the scenario, including a storm's client count                           |
+| statistic  | `p50`, `p95`, `max`                                                      |
+| repetition | scan (a populate scan inside a rep), rep (a whole cell invocation)       |
 
-## Metrics catalog
+The upload cell's during-scan probes are `scan` samples like any other; the
+previous `uscan` background named the cell, not the condition, and is gone.
+A concurrent stimulus is not an access: it is the same access driven by a
+storm profile, whose name carries the client count (`storm-read-8` is
+`prefetch` at 8 clients). `storm-idle` is the same access load against the
+tree at rest (`background = idle`). A cell records one concurrency, so a
+storm cell does not also run the single-client probe phase.
 
-Per cell, joined by scan index so request-side and server-side numbers
-describe the same work:
+A metric is a set of dimension values, never a name that encodes them:
 
-- Request latencies: a full matrix of median/p95/worst per measurement
-  condition. The backgrounds are `idle` (post-scan baselines, server at
-  rest), `scan` (during-scan probes and concurrent bursts) and `uscan`
-  (the during-scan probes of the upload profile, which runs its own
-  populate scan); the access conditions are `prefetch`, `thumb`, `edit`,
-  `storm_read`, `storm_thumb` and `storm_edit`. Every report row carries
-  every background × access × statistic cell, `n/a` where that cell did
-  not measure it, plus the failed-op count of each storm kind per
-  background. Why: the user-facing regression signal, and tails matter
-  more than medians under load. Post-scan idle baselines contribute every
-  timed run to p95 and worst-case; during-scan probes contribute their
-  per-round summaries (percentile/extreme across rounds); storm bursts
-  contribute their per-run summary lines. p50 keeps the recorded
-  round-and-repeat pooling in every case.
-- Scan walls and convergence: per-run wall time, watermark trail,
-  time-to-terminal, time-to-visible for uploads. Why: bounds the
-  backstop/convergence claims with wall-clock evidence.
-- Server stage costs: the observer per-scan drain table (rebuild,
-  clone, sort, write-wait, permit-wait, exec stages with row-count
-  context), parsed from `server.log`, which every cell keeps.
-  Whether observer stats are on is configured per cell and recorded
-  in the manifest. Bench mode defaults stats on (overridable to 0): a
-  with/without distortion baseline at set-100, release, SCAN_REPEATS=2
-  showed no measurable distortion -- stats-on scan wall 11.6s vs
-  stats-off 35.1s, with per-request latencies ~7-13ms vs ~30-50%
-  higher, and idle baselines within ~5% (edit the noisiest single-run
-  metric at ~20%); run-to-run variance (3x scan walls back-to-back on
-  the same machine) dwarfs any observer effect, consistent with the
-  observer's design (seqlock/atomics, no I/O on the record path; drain
-  table rebuilt once per scan). Why: attributes a
-  latency change to a pipeline stage instead of a whole build.
-- Failure shape: write-probe verification, margin verdicts, breach
-  lines. A cell that fails verification is data about the failure,
-  not a missing data point.
+```
+(family, background, subject, stat) -> value
+```
 
-## Battery matrix
+The statistic is a separate field, so `p50`, `p95` and `max` of one
+condition are three rows differing only in `stat`. Rendered names are
+generated from the dimensions; there is no second naming scheme.
 
-Profiles × scales × load states, with env pinned per battery
-(`SCAN_REPEATS`, hyperfine repeats, storm clients/ops, margin, and the
-per-level workload budget `WORKLOAD_TIMEOUT_S`: micro 1800 s, gate 1800 s, scale
-7200 s):
+## Metric families
 
-| Profile               | 100 (gate)               | 5650 (scale)      | 50k+ (target)                |
-| --------------------- | ------------------------ | ----------------- | ---------------------------- |
-| control               | regression gate          | row-scaling reads | millions-image extrapolation |
-| storm-read/thumb/diff | burst headroom           | burst at scale    | — unless scale gates pass    |
-| storm-idle            | serving floor            | serving at scale  | —                            |
-| upload                | ingest latency + visible | ingest at scale   | —                            |
+| family  | subject             | background     | sample unit                | statistics    | interval |
+| ------- | ------------------- | -------------- | -------------------------- | ------------- | -------- |
+| latency | access              | `idle`, `scan` | one request                | p50, p95, max | p50 only |
+| wall    | scan                | `scan`         | one scan                   | p50, p95, max | p50 only |
+| stage   | stage name          | `scan`         | one scan's stage aggregate | p50, p95, max | p50 only |
+| upload  | `submit`, `visible` | `idle`         | one uploaded file          | p50, p95, max | p50 only |
+| gauge   | footprint name      | `idle`         | one rep's final value      | p50, p95, max | p50 only |
+| count   | access              | `idle`, `scan` | one timed run              | sum           | none     |
 
-The `micro` battery (50 and 200 images, control profile only, observer
-stats on) is a fast, CI-friendly linearity check plus observer spot-check:
-it exercises the small-scale end of the row-scaling curve without the cost
-of `scale`. The 100-image battery is the regression gate and runs on every
-harness change. Larger scales run on demand and only promote upward
-when the smaller scale is clean. Empty matrix cells are not run until
-their prerequisite is green. `scale` stays opt-in due to its cost.
+The family fixes the statistics. A metric cannot opt out of p95 or max,
+cannot add a private aggregation rule, and cannot be excluded from
+baselines. `count` reports a sum because a count has no distribution.
 
-Profiles fill different cells of the measurement matrix rather than
-reporting different metrics: every cell writes the same row schema, so
-a `control` row, a `storm-*` row and an `upload` row are comparable
-column by column and a missing condition is visible as `n/a` instead of
-a different column name.
+## Aggregation
 
-## Reporting
+- **Pooling.** For one (cell, metric), every sample is pooled: probe rounds
+  and scan runs inside a rep, and every rep of the cell. `p50` is the median
+  of the pooled multiset, `p95` its 95th percentile (linear interpolation),
+  `max` its maximum. One function implements each statistic.
+- **Raw sources.** Probe accesses pool the individual request timings
+  (fetch TSV rows, hyperfine `times`), not the per-round medians. Storm
+  accesses pool the individual operation timings. Upload pools the
+  individual files. Scan wall pools the individual scans.
+- **Scan-level sources.** Server stage costs are reported by the observer as
+  per-scan aggregates, so one scan's aggregate is one sample; p95 across
+  scans is a quantile of scan-level aggregates. This is the one place where
+  the sample unit is an aggregate, imposed by the source, and it is stated
+  in the metric's unit.
+- **Intervals.** The interval is a seeded percentile bootstrap over the
+  pooled raw samples of the metric, reported for `p50` only. `n_samples` is
+  the raw count; `n_clusters` is recorded as provenance — the number of
+  rounds, scans, files or reps behind it — and does not change the method.
+  A metric with no more than one sample has no interval.
+- **Intervals are diagnostic.** They never gate a comparison by themselves;
+  `compare` reports deltas and flags deviations for review.
+- **Invalid samples are excluded.** A sample from a phase whose guard
+  failed, or from a round that did not observe the claimed background, does
+  not enter the pool, and the cell records the exclusion.
 
-One machine-readable result row per cell (profile, scale, build,
-commit, request latencies, scan walls, stage costs) plus the raw
-artifacts. The default battery runs `BATTERY_REPEATS=3`; the `:median`
-row is the conformance key and also carries `_min`/`_max` range columns
-for the headline metrics (scan wall, scan/idle prefetch p50, scroll
-p50s, `temp_db_mb`, `vm_hwm_mb`). Baselines are checked in; a cell that
-moves a baseline beyond its band fails the battery until the move is
-explained and the baseline re-recorded. Scroll and long-lived resource
-columns are intentionally ungated (informational). Hand-transcribed
-comparison tables are working notes, not results.
+## Validity
 
-`battery extract` produces the JSON document for machines, the
-human-readable `report.md` (header with cell outcomes, the battery-level
-p50/p95/max matrices, data anomalies, baseline conformance) and
-`matrix.tsv`, the same matrices as a spreadsheet. Each matrix cell rolls
-up to the median across the profile medians that measured it, with the
-contributor count recorded; an unmeasured cell stays `n/a`.
+Every cell records, next to its metrics:
+
+- phase guard outcomes (probe, storm, storm-idle, post-scan): valid or not,
+  with the observed start/end state and counters;
+- probe rounds total and valid, and probe coverage (valid round wall over
+  scan wall);
+- storm coverage (active storm wall over scan wall) and ops done/planned;
+- warmup validity;
+- failed operation counts.
+
+A rep with no valid round or an invalid guard is not pooled. A cell whose
+recorded validity is false is not accepted as a baseline. The final outputs
+carry the validity of the recording run, so a reader can tell a stable
+number from a lucky one.
+
+Warmup covers the single-client probe accesses on the first scan of a
+repetition. Sustained concurrency is not warmed: a storm's ramp is part of
+the load it claims to measure, and discarding a prefix of it would be an
+arbitrary threshold.
+
+## Scenarios
+
+Profiles select the measurement phase; they do not change metric meaning.
+
+| profile                         | phase plan                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `control`                       | populate scans; probes and scroll during each scan; idle probes and scroll, then a final sweep, after it              |
+| `storm-<access>-<clients>`      | one populate scan; sustained ops at the profile's client count until terminal, with a coverage floor                  |
+| `storm-idle-<access>-<clients>` | one populate scan; one sustained burst at the same client count against the tree at rest, for a fixed op budget       |
+| `upload`                        | settle the library; upload the cell's file set; populate scan over the enlarged row space; probes during and after it |
+
+Concurrent storms outlast the scan because the question is how the request
+path behaves under indexing load; an idle storm has no scan to outlast, so
+its budget is a fixed op count. Both record done/planned ops. An idle storm
+is one phase after the scan; storm profiles run one scan because they have no
+probe-round budget to accumulate.
+
+The upload cell's file set is part of the cell's declared stimulus: it
+comes from `UPLOAD_REPO` when set, otherwise from the cell repo beyond the
+staged prefix, and the cell fails when the source cannot provide that many
+files. Re-uploading an image the cell already staged is not allowed: it
+changes the row space the cell claims to measure.
+
+## Image counts and matrix
+
+The image count is the size parameter: `battery run --images N` runs the
+full profile matrix against `set-N`. A cell id is `<profile>-<images>`.
+There is no level above the image count.
+
+The measurement budget, not a repeat count, is the control: a cell adds
+scans until it has at least `MIN_PROBE_ROUNDS` (20) valid probe rounds, and
+the scan cap (5 at 200 images or fewer, 3 above) only bounds cost. A large
+image count usually satisfies the budget in one scan; a small one may need
+several. Cells without a probe phase measure every operation of one
+sustained run and need one scan. A cell that cannot reach the budget fails
+instead of recording a thin sample.
+
+Every image count runs the same profiles with the same pinned environment;
+only the repo differs. A 5650-image run is opt-in for cost. The debug path
+(`bench run cell`) takes an arbitrary profile and environment; its rows are
+never recorded as baselines.
+
+Client counts are resolved when the battery starts: `16n` becomes
+`16 × NCPU` of the recording host and stays part of the profile name.
+
+## Pipeline
+
+```
+prepare   archive → sandbox
+launch    server + pinned env + identity
+stimulate workload phases emit raw samples and guard events
+validate  guards and coverage decide which samples count
+reduce    one reducer: (cell, metric) → value, n_samples, n_clusters
+report    report.tsv: long staging record of the cell set
+baseline  baselines.tsv: accepted values + intervals + validity
+compare   duration/delta review against a baseline or another report
+render    baselines.md: tables derived only from baselines.tsv
+```
+
+Each stage has one contract. The workload never computes a reported
+statistic; the reducer never reads a transcript to invent one.
+
+## Outputs
+
+`report.tsv` is the staging record: one long-format row per
+`(cell, family, background, subject, stat)` with `value`,
+`unit`, `n_samples`, `n_clusters`, plus `# cell:` metadata lines carrying
+identity and validity. It is evidence, not a deliverable.
+
+`baselines.tsv` is the accepted record: the same dimension columns for
+accepted cells, one decimal for values and interval bounds,
+integer counts, plus `ci_low`, `ci_high`, `recorded` and a note, and a
+`# cell:` identity/validity line per cell. Every metric in the report is
+accepted; there is no separate allow-list.
+
+`baselines.md` is rendered from `baselines.tsv` only, including its cell
+metadata. Tables name every
+statistic `p50`, `p95`, `max`; the interval appears inline after `p50`.
+`report.md`, `matrix.tsv` and `confidence.tsv` are not produced.
+
+## Prohibited patterns
+
+These have appeared in this harness and are rejected in review:
+
+- a per-profile, per-metric or per-family branch in aggregation;
+- a metric that is measured but not accepted, or rendered but not
+  compared;
+- two execution paths for one label (`storm-diff`/`storm-edit`, numbered
+  and unnumbered storm names, `diff` remaps, duplicate scroll helpers);
+- statistics computed from summaries (median of round medians, worst of
+  run worsts) except where the source only provides aggregates, as stated
+  for stage metrics;
+- hand-maintained metric allow-lists;
+- unrecorded identity, or comparison across different identities;
+- a range column that duplicates p95/max;
+- prose describing a gate, artifact or mechanism the code does not have.
+
+## Open items
+
+- Cross-host comparison: `16n` and tmpfs staging are host properties.
+  Rows record CPU and client counts; comparing across hosts is not
+  supported yet.
+- Large image counts stay opt-in until the small-count baselines are stable.
+- Intervals use a bootstrap over pooled raw samples. Whether a per-request
+  hierarchical pooling adds information beyond that is open; the raw-sample
+  interval is the current definition.

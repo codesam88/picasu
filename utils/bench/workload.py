@@ -74,28 +74,27 @@ Environment contract (on top of the launcher's):
   PROBE_INTERVAL_S probe-phase refresh interval (default 0.5)
   IMAGES is required to be present in IMAGE_REPO: repos are seeded
   a priori (see `just bench seed-images`); the workload never generates.
-  WORKLOAD        control (default) | storm-diff | storm-read | storm-thumb | storm-idle | upload:
-                  control runs probe rounds during the scan; storm-diff fires
-                  concurrent edit-rating PUTs at distinct assets, storm-read
-                  concurrent prefetch POSTs, storm-thumb concurrent
-                  compressed-thumbnail GETs of random assets, storm-idle runs
-                  one populate scan then storms the tree at rest (no margin
-                  check; the storm kind comes from IDLE_PROFILE); upload
-                  measures the write path end to end and runs the control
-                  probe rounds during the subsequent scan
-  UPLOAD_FILES    files to upload in the upload profile (default IMAGES)
+  WORKLOAD        control (default) | storm-<access>-<level> |
+                  storm-idle-<access>-<level> | upload, where access is
+                  read, thumb or edit and level is 8 or 16n (16*NCPU):
+                  control runs probe rounds during the scan; storm profiles
+                  run sustained concurrent prefetch, thumbnail or
+                  edit-rating load until the scan terminal state;
+                  storm-idle profiles run the populate scans, then one
+                  burst at rest; upload measures the write path end to end
+                  and runs the control probe rounds during the next scan
+  UPLOAD_FILES    upload stimulus size (default 20); the image repo must
+                  provide at least this many images
   UPLOAD_TIMEOUT_S visibility poll budget per uploaded file (default 30);
                   a file that never becomes visible fails the cell
   UPLOAD_POST_TIMEOUT_S  budget for one upload POST (default 60)
   INDEX_SETTLE_TIMEOUT_S  upload profile: budget for the library index to
                   settle before the upload stimulus, so the write path is
                   measured on an idle server (default 600)
-  IDLE_PROFILE    storm op kind used by storm-idle: diff | read (default) | thumb
-  STORM_CLIENTS   concurrent storm clients (default 8)
-  STORM_OPS       ops per storm client (default 10)
-  STORM_MARGIN_S  storm must finish this long before the scan ends
-                  (default 0.5); on violation the run fails naming the
-                  scantime increase factor
+  STORM_CLIENTS   concurrent storm clients; named levels derive 8 or 16*NCPU
+  STORM_OPS       minimum ops per storm client (default 10)
+  STORM_MIN_COVERAGE_PCT  concurrent storm wall as a percentage of scan wall
+                  (default 50); below it the cell fails
   HYPERFINE_BIN   hyperfine binary (required; managed via `just install hyperfine`)
 
 Exit codes: 0 completed; 1 config/preflight; 2 runtime failure (including a
@@ -105,7 +104,6 @@ scan that did not reach `completed` and a failed write-probe verification).
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import http.cookiejar
 import itertools
 import json
@@ -120,6 +118,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent import futures
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -917,6 +916,7 @@ def probe_round(
                 rows=rows,
                 state=state,
                 phase="during",
+                background="scan",
                 scrollbar_ms=[value * 1000.0 for value in scroll_result["scrollbar"]],
                 rows_ms=[value * 1000.0 for value in scroll_result["rows"]],
                 data_ms=[value * 1000.0 for value in scroll_result["data"]],
@@ -993,73 +993,410 @@ def probe_round(
     return True
 
 
+class ScanPhase:
+    """Reusable during-phase guard.
+
+    Snapshots a status document at start and end and decides whether the
+    phase ran under the expected background state.
+    """
+
+    def __init__(
+        self,
+        out,
+        phase,
+        *,
+        expected_state="running",
+        run=None,
+        round_no=None,
+        snapshot=None,
+        allow_terminal_end=False,
+    ):
+        self.out = Path(out) if out is not None else None
+        self.phase = phase
+        self.expected_state = expected_state
+        self.run = run
+        self.round_no = round_no
+        self.snapshot = snapshot
+        self.allow_terminal_end = allow_terminal_end
+        self._start = None
+
+    def _take_snapshot(self):
+        if self.snapshot is None:
+            return _status_snapshot(self.out)
+        return self.snapshot()
+
+    def start(self):
+        self._start = self._take_snapshot()
+
+    def end(self):
+        end_snapshot = self._take_snapshot()
+        result = _evaluate_scan_phase(
+            self._start, end_snapshot, self.expected_state, self.allow_terminal_end
+        )
+        if self.out is not None:
+            emit_event(
+                self.out,
+                "phase_guard",
+                phase=self.phase,
+                run=self.run,
+                round=self.round_no,
+                valid=result["valid"],
+                progress=result["progress"],
+                reason=result["reason"],
+                state_start=result["state_start"],
+                state_end=result["state_end"],
+                scanned_start=result["scanned_start"],
+                scanned_end=result["scanned_end"],
+                processed_start=result["processed_start"],
+                processed_end=result["processed_end"],
+                wall_ms=result["wall_ms"],
+            )
+        return result
+
+
+def _status_snapshot(out):
+    """Return a status snapshot dict or None when it cannot be read."""
+    if out is None:
+        return None
+    path = Path(out) / "status-last.json"
+    try:
+        doc = json.loads(path.read_text())
+    except OSError, json.JSONDecodeError:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    return {
+        "state": doc.get("state"),
+        "scanned": doc.get("scanned"),
+        "matched": doc.get("matched"),
+        "processed": doc.get("processed"),
+        "failed": doc.get("failed"),
+        "ts": time.monotonic(),
+    }
+
+
+def _counter_ok(value):
+    return not isinstance(value, bool) and isinstance(value, (int, float))
+
+
+def _evaluate_scan_phase(start, end, expected_state, allow_terminal_end=False):
+    if start is None:
+        return _invalid(
+            "missing or unparseable status at start", None, None, None, None, None, None, 0
+        )
+    if end is None:
+        return _invalid(
+            "missing or unparseable status at end",
+            start.get("state"),
+            None,
+            start.get("scanned"),
+            None,
+            start.get("processed"),
+            None,
+            0,
+        )
+
+    state_start = start.get("state")
+    state_end = end.get("state")
+    scanned_start = start.get("scanned")
+    scanned_end = end.get("scanned")
+    processed_start = start.get("processed")
+    processed_end = end.get("processed")
+
+    wall_ms = 0
+    start_ts = start.get("ts")
+    end_ts = end.get("ts")
+    if _counter_ok(start_ts) and _counter_ok(end_ts):
+        wall_ms = int((end_ts - start_ts) * 1000)
+
+    if state_start != expected_state:
+        reason = (
+            "terminal state at start"
+            if state_start in TERMINAL_STATUS_STATES
+            else "state mismatch at start"
+        )
+        return _invalid(
+            reason,
+            state_start,
+            state_end,
+            scanned_start,
+            scanned_end,
+            processed_start,
+            processed_end,
+            wall_ms,
+        )
+    if state_end != expected_state:
+        if not (
+            allow_terminal_end
+            and state_start == expected_state
+            and state_end in TERMINAL_STATUS_STATES
+        ):
+            reason = (
+                "terminal state at end"
+                if state_end in TERMINAL_STATUS_STATES
+                else "state mismatch at end"
+            )
+            return _invalid(
+                reason,
+                state_start,
+                state_end,
+                scanned_start,
+                scanned_end,
+                processed_start,
+                processed_end,
+                wall_ms,
+            )
+    if (
+        not _counter_ok(scanned_start)
+        or not _counter_ok(scanned_end)
+        or not _counter_ok(processed_start)
+        or not _counter_ok(processed_end)
+    ):
+        # distinguish missing (None) from non-numeric
+        for label, value in (
+            ("scanned", scanned_start),
+            ("scanned", scanned_end),
+            ("processed", processed_start),
+            ("processed", processed_end),
+        ):
+            if value is None:
+                reason = "missing counter"
+                break
+            if not _counter_ok(value):
+                reason = "non-numeric counter"
+                break
+        else:
+            reason = "non-numeric counter"
+        return _invalid(
+            reason,
+            state_start,
+            state_end,
+            scanned_start,
+            scanned_end,
+            processed_start,
+            processed_end,
+            wall_ms,
+        )
+    progress = bool(scanned_end > scanned_start or processed_end > processed_start)
+    return {
+        "valid": True,
+        "reason": "ok",
+        "state_start": state_start,
+        "state_end": state_end,
+        "scanned_start": scanned_start,
+        "scanned_end": scanned_end,
+        "processed_start": processed_start,
+        "processed_end": processed_end,
+        "wall_ms": wall_ms,
+        "progress": progress,
+    }
+
+
+def _invalid(
+    reason,
+    state_start,
+    state_end,
+    scanned_start,
+    scanned_end,
+    processed_start,
+    processed_end,
+    wall_ms,
+):
+    return {
+        "valid": False,
+        "reason": reason,
+        "state_start": state_start,
+        "state_end": state_end,
+        "scanned_start": scanned_start,
+        "scanned_end": scanned_end,
+        "processed_start": processed_start,
+        "processed_end": processed_end,
+        "wall_ms": wall_ms,
+        "progress": False,
+    }
+
+
+def _run_index_from_round_dir(round_dir):
+    try:
+        name = Path(round_dir).name
+        if name.startswith("rounds-run-"):
+            return int(name.split("rounds-run-", 1)[1])
+    except ValueError, AttributeError:
+        pass
+    return 1
+
+
 def probe_phase(
-    cfg: config.WorkloadConfig, client: HttpClient, logger: Logger, expected: int, round_dir: Path
-) -> None:
+    cfg: config.WorkloadConfig,
+    client: HttpClient,
+    logger: Logger,
+    round_dir: Path,
+    cached_rows: list | None = None,
+) -> dict:
     out = cfg.out
+    row_cache = cached_rows if isinstance(cached_rows, list) else None
     transcript = ProbeTranscript(logger, out / "probe-phase.log")
     marker = out / "scan-done.marker"
     waited = 0.0
-    last_rows = None
-    rounds = 0
+    rounds_total = 0
+    rounds_valid = 0
+    invalid_reasons = []
     state = "unknown"
     lines = []
+    last_build = None
+    phase_start_snapshot = _status_snapshot(out)
+    max_scanned = (
+        phase_start_snapshot.get("scanned") if isinstance(phase_start_snapshot, dict) else None
+    )
+    max_processed = (
+        phase_start_snapshot.get("processed") if isinstance(phase_start_snapshot, dict) else None
+    )
+    if not _counter_ok(max_scanned):
+        max_scanned = None
+    if not _counter_ok(max_processed):
+        max_processed = None
+    run_index = _run_index_from_round_dir(round_dir)
     try:
         while True:
-            lines = build_probe_list(cfg, client) or []
-            rows = len(lines)
-            state = _status_state(out)
-            if rows != last_rows and rows > 0:
-                rounds += 1
-                try:
-                    probe_round(
-                        cfg,
-                        client,
-                        logger,
-                        transcript,
-                        rounds,
-                        rows,
-                        state,
-                        lines,
-                        round_dir,
-                    )
-                except Exception:  # noqa: BLE001 - a probe must not kill the scan
-                    transcript.log(f"probe round {rounds} failed; continuing")
-                last_rows = rows
             if marker.is_file():
                 break
-            if rows >= expected:
+            state = _status_state(out)
+            if state in TERMINAL_STATUS_STATES:
+                break
+
+            now = time.monotonic()
+            if (
+                not lines
+                or last_build is None
+                or (cfg.probe_refresh_s > 0 and (now - last_build) >= cfg.probe_refresh_s)
+            ):
+                try:
+                    built = build_probe_list(cfg, client) or []
+                except Exception as err:  # noqa: BLE001 - keep the outcome reachable
+                    transcript.log(f"probe phase: build_probe_list failed: {err}")
+                    built = []
+                if built:
+                    lines = built
+                    if row_cache is not None:
+                        row_cache[:] = list(lines)
+                elif row_cache:
+                    lines = list(row_cache)
+                else:
+                    lines = []
+                last_build = now
+
+            rows = len(lines)
+            state = _status_state(out)
+
+            if marker.is_file() or state in TERMINAL_STATUS_STATES:
+                break
+
+            if rows > 0:
+                rounds_total += 1
+                round_no = rounds_total
+                guard = ScanPhase(
+                    out,
+                    "probe",
+                    expected_state="running",
+                    run=run_index,
+                    round_no=round_no,
+                    snapshot=lambda: _status_snapshot(out),
+                )
+                guard.start()
+                probe_ok = False
+                probe_error = None
+                try:
+                    probe_ok = bool(
+                        probe_round(
+                            cfg,
+                            client,
+                            logger,
+                            transcript,
+                            round_no,
+                            rows,
+                            state,
+                            lines,
+                            round_dir,
+                        )
+                    )
+                except Exception as err:  # noqa: BLE001 - a probe must not kill the scan
+                    probe_error = err
+                    transcript.log(f"probe round {round_no} failed; continuing: {err}")
+                result = guard.end()
+                snap = _status_snapshot(out)
+                if isinstance(snap, dict):
+                    sc = snap.get("scanned")
+                    pr = snap.get("processed")
+                    if _counter_ok(sc):
+                        if max_scanned is None or sc > max_scanned:
+                            max_scanned = sc
+                    if _counter_ok(pr):
+                        if max_processed is None or pr > max_processed:
+                            max_processed = pr
+                if probe_ok and result.get("valid"):
+                    rounds_valid += 1
+                else:
+                    if probe_error is not None:
+                        reason = f"probe round failed: {probe_error}"
+                    elif not probe_ok:
+                        reason = "probe round failed"
+                    else:
+                        reason = result.get("reason", "invalid")
+                    invalid_reasons.append(reason)
+                    transcript.log(
+                        f"warn: probe round={round_no} rows={rows} state={state} invalid: {reason}"
+                    )
+
+            if marker.is_file():
+                break
+            state = _status_state(out)
+            if state in TERMINAL_STATUS_STATES:
                 break
             if cfg.scan_timeout_s > 0 and waited >= cfg.scan_timeout_s:
                 transcript.log(
-                    f"probe phase: rows={rows} state={state} waited~{waited:g}s "
+                    f"probe phase: rows={len(lines)} state={state} waited~{waited:g}s "
                     "(explicit SCAN_TIMEOUT_S), probing what exists"
                 )
                 break
             time.sleep(cfg.probe_interval_s)
             waited += cfg.probe_interval_s
-        if rounds == 0:
+    except (WorkloadError, OSError) as err:
+        reason = f"probe phase failed: {err}"
+        invalid_reasons.append(reason)
+        transcript.log(reason)
+    finally:
+        if rounds_total == 0:
             transcript.log(f"probe phase: no image rows before the scan settled (state={state})")
         else:
             transcript.log(
-                f"probe phase: rounds={rounds} rows={len(lines)} "
-                f"state_at_break={_status_state(out)}"
+                f"probe phase: rounds={rounds_total} valid={rounds_valid} "
+                f"rows={len(lines)} state_at_break={_status_state(out)}"
             )
-    finally:
         transcript.close()
+
+    progress = False
+    if isinstance(phase_start_snapshot, dict):
+        ss = phase_start_snapshot.get("scanned")
+        sp = phase_start_snapshot.get("processed")
+        if _counter_ok(ss) and _counter_ok(max_scanned) and max_scanned > ss:
+            progress = True
+        if _counter_ok(sp) and _counter_ok(max_processed) and max_processed > sp:
+            progress = True
+
+    return {
+        "rounds_total": rounds_total,
+        "rounds_valid": rounds_valid,
+        "invalid_reasons": invalid_reasons,
+        "progress": progress,
+    }
 
 
 # --- storm workloads ---------------------------------------------------------
-# storm-diff: concurrent edit-rating PUTs at distinct assets.
-# storm-read: concurrent prefetch POSTs.
-# storm-thumb: concurrent compressed-thumbnail GETs of random assets.
-# storm-idle runs one populate scan first, then storms the tree at rest
-# (no margin check).
-# Both run while a scan is active and stop issuing new ops once the scan
-# reaches a terminal state; the margin check then verifies the storm
-# finished early enough for the numbers to describe loaded operation.
-# storm-idle runs one populate scan first, then storms the tree at rest
-# (no margin check — there is no concurrent scan).
+# storm-<access>-<level>: concurrent load on one access while a scan runs.
+# storm-idle-<access>-<level>: one populate scan, then the same load
+# against the tree at rest (no concurrent scan).
+# Both record one summary per run and individual op timings; the reported
+# statistics pool the op timings, never the run summaries.
 
 
 def _percentile(sorted_vals: list, pct: float) -> float:
@@ -1080,16 +1417,41 @@ def _wait_for_rows(
     client: HttpClient,
     logger: Logger,
     scan_active: threading.Event | None,
+    min_rows: int = 1,
 ) -> list:
-    """Poll the probe list until rows appear or the scan goes terminal."""
+    """Poll the probe list until enough rows appear or the scan goes terminal."""
+    if min_rows < 1:
+        min_rows = 1
     for _ in range(150):  # ~30 s cap; the poll loop clears active on settle
         lines = build_probe_list(cfg, client) or []
-        if lines:
+        if len(lines) >= min_rows:
             return lines
         if scan_active is not None and not scan_active.is_set():
             break
         time.sleep(0.2)
+    if lines:
+        return lines
     raise WorkloadError("storm: no probe rows available (scan too short?)")
+
+
+CONCURRENT_MIN_OPS_CAP = 256
+CONCURRENT_MIN_OPS_FLOOR = 80
+
+
+def storm_minimum_total(clients: int, ops: int, concurrent: bool) -> int:
+    """Minimum ops a storm must issue before a scan can end.
+
+    A concurrent storm stops when the scan does, so a fast scan cannot
+    realistically complete ``clients * ops`` ops at high concurrency. Cap
+    that target while keeping a floor of one op per client (or 80, the
+    smallest storm) so a truncated run still fails. At-rest storms finish
+    their full fixed workload.
+    """
+    requested = clients * ops
+    if not concurrent:
+        return requested
+    capped = min(requested, CONCURRENT_MIN_OPS_CAP)
+    return max(capped, min(clients, CONCURRENT_MIN_OPS_FLOOR))
 
 
 def run_storm(
@@ -1099,41 +1461,72 @@ def run_storm(
     round_dir: Path,
     run_index: int,
     scan_active: threading.Event | None,
+    scan_start: float | None = None,
 ) -> dict:
-    """Fire STORM_CLIENTS x STORM_OPS ops; return timings and counts.
+    """Fire storm ops; return timings and counts.
 
     `scan_active` cleared stops issuing new ops (in-flight ops run out
     under their own timeout). None means no concurrent scan (storm-idle).
     """
     profile = cfg.workload
-    op_kind = cfg.idle_profile if profile == "storm-idle" else profile.removeprefix("storm-")
-    total = cfg.storm_clients * cfg.storm_ops
+    op_kind = config.storm_profile_kind(profile)
+    if op_kind is None:
+        raise WorkloadError(f"{profile}: not a storm profile")
+    concurrent = scan_active is not None
+    requested_total = cfg.storm_clients * cfg.storm_ops
+    minimum_total = storm_minimum_total(cfg.storm_clients, cfg.storm_ops, concurrent)
 
-    code, body, _ = client.post("/get/prefetch", {})
-    if code != 200:
-        raise WorkloadError("storm: prefetch for timestamp failed")
-    timestamp = (_body_json(body) or {}).get("prefetch", {}).get("timestamp")
+    min_rows = (
+        min(cfg.expected_entries or minimum_total, max(8, cfg.storm_clients // 8))
+        if concurrent
+        else min(cfg.expected_entries or minimum_total, 8)
+    )
+    if min_rows < 1:
+        min_rows = 1
+    lines = _wait_for_rows(cfg, client, logger, scan_active, min_rows=min_rows)
+    rows = [tuple(line.split("\t", 1)) for line in lines]
+
+    timestamp = _prefetch_timestamp(cfg.out)
+    token = _prefetch_token(cfg.out)
+    if timestamp is None or token is None:
+        code, body, _ = client.post("/get/prefetch", {})
+        if code != 200:
+            raise WorkloadError("storm: prefetch for timestamp failed")
+        if cfg.out is not None:
+            (cfg.out / "prefetch.json").write_bytes(body)
+        doc = _body_json(body)
+        if isinstance(doc, dict):
+            timestamp = doc.get("prefetch", {}).get("timestamp")
+            token = doc.get("token")
     if timestamp is None:
         raise WorkloadError("storm: no prefetch timestamp")
-    lines = _wait_for_rows(cfg, client, logger, scan_active)
-    rows = [tuple(line.split("\t", 1)) for line in lines]
 
     results: list = []
     results_lock = threading.Lock()
     counter = itertools.count()
     started_all = time.perf_counter()
+    active_wall = None
 
     def one_op(client_index: int) -> None:
-        while scan_active is None or scan_active.is_set():
-            op_index = next(counter)
-            if op_index >= total:
+        nonlocal active_wall
+        while True:
+            if scan_active is not None and not scan_active.is_set():
+                if active_wall is None:
+                    active_wall = time.perf_counter() - started_all
                 return
+            if not concurrent:
+                op_index = next(counter)
+                if op_index >= minimum_total:
+                    return
+            else:
+                op_index = next(counter)
             start = time.perf_counter()
             try:
-                if op_kind == "diff":
+                if op_kind == "edit":
+                    target_index = (client_index * cfg.storm_ops + op_index) % len(rows)
                     code, _, _ = client.put(
                         "/put/edit_rating",
-                        {"indexArray": [op_index % len(rows)], "timestamp": timestamp, "rating": 3},
+                        {"indexArray": [target_index], "timestamp": timestamp, "rating": 3},
                         timeout=30.0,
                     )
                 elif op_kind == "thumb":
@@ -1162,33 +1555,46 @@ def run_storm(
         f"=== storm {profile} (run {run_index}): "
         f"{cfg.storm_clients} clients x {cfg.storm_ops} ops on {len(rows)} rows ==="
     )
-    with concurrent.futures.ThreadPoolExecutor(max_workers=cfg.storm_clients) as pool:
-        futures = [pool.submit(one_op, client_index) for client_index in range(cfg.storm_clients)]
-        for future in concurrent.futures.as_completed(futures):
+    with futures.ThreadPoolExecutor(max_workers=cfg.storm_clients) as pool:
+        submitted = [pool.submit(one_op, client_index) for client_index in range(cfg.storm_clients)]
+        for future in futures.as_completed(submitted):
             future.result()
     wall = time.perf_counter() - started_all
+    if active_wall is None:
+        active_wall = wall
 
     latencies = sorted(elapsed for _, _, elapsed, _ in results)
     failed = sum(1 for _, _, _, code in results if code != 200)
+    scan_end = None
+    coverage_pct = None
+    if scan_start is not None and active_wall is not None:
+        scan_end = time.perf_counter()
+        scan_wall = scan_end - scan_start
+        if scan_wall > 0:
+            coverage_pct = min(100.0, 100.0 * active_wall / scan_wall)
     summary = {
         "profile": profile,
         "kind": op_kind,
         "done": len(results),
-        "total": total,
+        "total": minimum_total,
+        "requested_total": requested_total,
         "median": statistics.median(latencies) if latencies else 0.0,
         "p95": _percentile(latencies, 95),
         "max": max(latencies) if latencies else 0.0,
         "failed": failed,
         "wall": wall,
+        "active_wall": active_wall,
         "end": started_all + wall,
+        "coverage_pct": coverage_pct,
     }
     path = round_dir / f"storm-round-{run_index}.tsv"
     with open(path, "w", encoding="utf-8") as handle:  # noqa: PTH123
         for op_index, client_index, elapsed, code in sorted(results):
             handle.write(f"{op_index}\t{client_index}\t{elapsed!r}\t{code}\n")
+    limit = f" (minimum capped from {requested_total})" if minimum_total != requested_total else ""
     logger.log(
-        f"storm: profile={profile} ops={summary['done']}/{total} "
-        f"failed={failed} wall={wall:.1f}s kind={op_kind}"
+        f"storm: profile={profile} ops={summary['done']}/{minimum_total}{limit} "
+        f"failed={failed} wall={wall:.1f}s kind={op_kind} active_wall={active_wall:.1f}s"
     )
     emit_event(
         cfg.out,
@@ -1196,18 +1602,225 @@ def run_storm(
         profile=profile,
         kind=op_kind,
         done=summary["done"],
-        total=total,
+        total=minimum_total,
         median=summary["median"],
         p95=summary["p95"],
         max=summary["max"],
         failed=failed,
         wall=wall,
+        active_wall=active_wall,
+        coverage_pct=coverage_pct,
         median_ms=summary["median"] * 1000.0,
         p95_ms=summary["p95"] * 1000.0,
         max_ms=summary["max"] * 1000.0,
         wall_ms=wall * 1000.0,
+        active_wall_ms=active_wall * 1000.0,
     )
     return summary
+
+
+def check_storm_coverage(summary: dict, scan_start: float, scan_end: float, min_pct: float) -> None:
+    """Require the storm to cover enough of the scan wall."""
+    scan_wall = scan_end - scan_start
+    active_wall = summary.get("active_wall")
+    if active_wall is None:
+        active_wall = summary.get("wall", 0.0)
+    if scan_wall > 0:
+        coverage = min(100.0, 100.0 * active_wall / scan_wall)
+    else:
+        coverage = 100.0 if active_wall >= 0 else 0.0
+    summary["coverage_pct"] = coverage
+    done = summary.get("done", 0)
+    total = summary.get("total", 0)
+    requested = summary.get("requested_total", total)
+    if done < total:
+        raise WorkloadError(
+            f"storm did not finish minimum ops: done={done} minimum={total} "
+            f"requested={requested} "
+            f"active_wall={active_wall:.1f}s scan_wall={scan_wall:.1f}s "
+            f"coverage={coverage:.1f}%"
+        )
+    if coverage < min_pct:
+        raise WorkloadError(
+            f"storm coverage too low: active_wall={active_wall:.1f}s "
+            f"scan_wall={scan_wall:.1f}s coverage={coverage:.1f}% "
+            f"min={min_pct:g}% ops={done}/{total} minimum={total}"
+        )
+
+
+# --- scans -------------------------------------------------------------------
+def _write_status_final(out: Path, run_index: int) -> None:
+    """Publish a run's status under the terminal names when it is terminal.
+
+    `status-last.json` always holds the newest poll, including `running`
+    snapshots. The final names mean "the run finished", so a non-terminal
+    snapshot is not copied there; stale final files from an earlier run are
+    removed instead.
+    """
+    source = out / "status-last.json"
+    if source.is_file():
+        body = source.read_bytes()
+    else:
+        body = b'{"state":"unknown"}\n'
+    document = _body_json(body) or {}
+    if document.get("state") not in TERMINAL_STATUS_STATES:
+        (out / "status-final.json").unlink(missing_ok=True)
+        (out / f"status-final-run-{run_index}.json").unlink(missing_ok=True)
+        return
+    (out / "status-final.json").write_bytes(body)
+    (out / f"status-final-run-{run_index}.json").write_bytes(body)
+
+
+def _refresh_scan_status(
+    cfg: config.WorkloadConfig,
+    client: HttpClient,
+    out: Path,
+    logger: Logger,
+    *,
+    attempts: int = 25,
+) -> str:
+    """Poll status briefly so threads do not start against stale data."""
+    state = "unknown"
+    for attempt in range(max(1, attempts)):
+        try:
+            code, body, _ = client.get("/get/index/status")
+            if code == 200:
+                (out / "status-last.json").write_bytes(body)
+        except WorkloadError:
+            logger.log("status refresh failed")
+        state = _status_state(out)
+        if state == "running":
+            break
+        if state in TERMINAL_STATUS_STATES and attempt > 0:
+            break
+        time.sleep(cfg.poll_interval_s)
+    if state == "unknown":
+        logger.log("status refresh: state still unknown")
+    return state
+
+
+def _emit_warmup_event(out, outcome, result, endpoints):
+    emit_event(
+        out,
+        "warmup",
+        valid=outcome["valid"],
+        reason=outcome["reason"],
+        wall_ms=outcome["wall_ms"],
+        endpoints=endpoints,
+        state_start=result.get("state_start"),
+        state_end=result.get("state_end"),
+        scanned_start=result.get("scanned_start"),
+        scanned_end=result.get("scanned_end"),
+        processed_start=result.get("processed_start"),
+        processed_end=result.get("processed_end"),
+    )
+
+
+def warmup_scan(
+    cfg: config.WorkloadConfig,
+    client: HttpClient,
+    out: Path,
+    run_index: int,
+    rows: list,
+) -> dict:
+    """Run one in-scan warmup round and discard its timings."""
+    endpoints = []
+    failures = []
+    if not rows:
+        deadline = time.monotonic() + (
+            cfg.scan_timeout_s if cfg.scan_timeout_s and cfg.scan_timeout_s > 0 else 5.0
+        )
+        deadline = min(deadline, time.monotonic() + 5.0)
+        while not rows and time.monotonic() < deadline:
+            if _status_state(out) in TERMINAL_STATUS_STATES:
+                break
+            try:
+                built = build_probe_list(cfg, client) or []
+            except Exception as err:  # noqa: BLE001 - warmup must not kill the scan
+                failures.append(f"build_probe_list: {err}")
+                built = []
+            if built:
+                rows[:] = built
+                rows = built
+                break
+            time.sleep(cfg.probe_interval_s)
+    if not rows:
+        guard = ScanPhase(out, "warmup", expected_state="running", run=run_index)
+        guard.start()
+        result = guard.end()
+        outcome = {
+            "valid": False,
+            "reason": "no probe rows",
+            "wall_ms": result.get("wall_ms", 0),
+            "endpoints": endpoints,
+        }
+        _emit_warmup_event(out, outcome, result, endpoints)
+        return outcome
+
+    guard = ScanPhase(out, "warmup", expected_state="running", run=run_index)
+    guard.start()
+    timestamp = _prefetch_timestamp(out)
+    token = _prefetch_token(out)
+    if timestamp is None or token is None:
+        endpoints.append("prefetch")
+        try:
+            code, body, _ = client.post("/get/prefetch", {})
+            if out is not None:
+                (out / "prefetch.json").write_bytes(body)
+            doc = _body_json(body) if isinstance(body, (bytes, bytearray, str)) else None
+            if isinstance(doc, dict):
+                timestamp = doc.get("prefetch", {}).get("timestamp")
+                token = doc.get("token")
+        except Exception as err:  # noqa: BLE001 - warmup must not kill the scan
+            failures.append(f"prefetch: {err}")
+    if timestamp is None or token is None:
+        if "prefetch" not in endpoints:
+            endpoints.append("prefetch")
+            failures.append("prefetch: missing timestamp or token")
+
+    row = rows[0]
+    try:
+        hash_value, row_token = row.split("\t", 1)
+    except ValueError:
+        hash_value, row_token = row, None
+    use_token = row_token or token
+    if timestamp is not None and use_token is not None and hash_value:
+        endpoints.append("compressed")
+        try:
+            client.get(_compressed_path(hash_value), bearer=use_token)
+        except Exception as err:  # noqa: BLE001 - warmup must not kill the scan
+            failures.append(f"compressed: {err}")
+
+    if timestamp is not None and token is not None:
+        endpoints.append("scroll")
+        try:
+            scroll_probe(
+                cfg,
+                client,
+                timestamp,
+                token,
+                total_rows=len(rows),
+                round_dir=None,
+                out=None,
+            )
+        except Exception as err:  # noqa: BLE001 - warmup must not kill the scan
+            failures.append(f"scroll: {err}")
+
+    result = guard.end()
+    reason = "ok"
+    if failures:
+        reason = failures[0]
+    elif not result.get("valid", False):
+        reason = result.get("reason", "invalid")
+    valid = (not failures) and bool(result.get("valid", False))
+    outcome = {
+        "valid": valid,
+        "reason": reason,
+        "wall_ms": result.get("wall_ms", 0),
+        "endpoints": endpoints,
+    }
+    _emit_warmup_event(out, outcome, result, endpoints)
+    return outcome
 
 
 CANARY_CHECKS = 8
@@ -1216,7 +1829,7 @@ CANARY_CHECKS = 8
 def verify_storm_sample(
     cfg: config.WorkloadConfig, client: HttpClient, logger: Logger, out: Path, run_index: int
 ) -> None:
-    """Round-trip spot check for storm-diff writes: PUT distinct ratings on
+    """Round-trip spot check for edit storms: PUT distinct ratings on
     spread-out assets, read each back by stable assetId. PUTs commit
     synchronously, so a mismatch means the write did not stick (or hit a
     different asset than addressed) — fail loudly instead of trusting 200s.
@@ -1251,91 +1864,6 @@ def verify_storm_sample(
             picks.append((index, asset))
     if not picks:
         raise WorkloadError("storm verify: rows carry no assetId")
-    checked = []
-    for canary, (index, asset) in enumerate(picks):
-        expected = (canary % 5) + 1
-        code, _, _ = client.put(
-            "/put/edit_rating",
-            {"indexArray": [index], "timestamp": timestamp, "rating": expected},
-            timeout=30.0,
-        )
-        got = None
-        if code == 200:
-            code, body, _ = client.get(
-                f"/get/metadata/{asset}?timestamp={timestamp}", bearer=token, timeout=30.0
-            )
-            if code == 200:
-                got = (_body_json(body) or {}).get("rating")
-        checked.append({"asset": asset, "index": index, "expected": expected, "got": got})
-    path = out / f"verify-storm-run-{run_index}.json"
-    path.write_text(json.dumps(checked, indent=2) + "\n")
-    bad = [c for c in checked if c["got"] != c["expected"]]
-    matched = len(checked) - len(bad)
-    logger.log(f"storm verify: matched {matched}/{len(checked)} canary writes (run {run_index})")
-    emit_event(
-        cfg.out,
-        "verify_result",
-        kind="storm",
-        run=run_index,
-        matched=matched,
-        total=len(checked),
-        failed=len(bad),
-    )
-    if bad:
-        detail = "; ".join(
-            f"{c['asset']}[{c['index']}]: expected={c['expected']} got={c['got']}" for c in bad[:5]
-        )
-        raise WorkloadError(f"storm verify FAILED ({matched}/{len(checked)} stuck): {detail}")
-
-
-def check_storm_margin(
-    cfg: config.WorkloadConfig, logger: Logger, summary: dict, scan_start: float, scan_end: float
-) -> None:
-    """Require the storm to have finished with margin before scan end."""
-    scan_wall = scan_end - scan_start
-    if summary["done"] >= summary["total"]:
-        need = summary["wall"]
-    elif summary["done"] > 0:
-        need = summary["wall"] / summary["done"] * summary["total"]
-    else:
-        need = float("inf")
-    if summary["end"] + cfg.storm_margin_s <= scan_end:
-        logger.log(
-            f"storm margin ok: storm ended {scan_end - summary['end']:.1f}s "
-            f"before scan end (margin {cfg.storm_margin_s:g}s)"
-        )
-        return
-    factor = 1.0 if scan_wall <= 0 else (need + cfg.storm_margin_s) / scan_wall
-    factor = max(1.5, math.ceil(factor * 10) / 10)
-    raise WorkloadError(
-        f"storm outran the scan: storm_wall={summary['wall']:.1f}s "
-        f"ops={summary['done']}/{summary['total']} scan_wall={scan_wall:.1f}s "
-        f"margin={cfg.storm_margin_s:g}s — increase scantime by factor ~{factor:g} "
-        f"(more IMAGES, slower scan, or fewer STORM_OPS)"
-    )
-
-
-# --- scans -------------------------------------------------------------------
-def _write_status_final(out: Path, run_index: int) -> None:
-    """Publish a run's status under the terminal names when it is terminal.
-
-    `status-last.json` always holds the newest poll, including `running`
-    snapshots. The final names mean "the run finished", so a non-terminal
-    snapshot is not copied there; stale final files from an earlier run are
-    removed instead.
-    """
-    source = out / "status-last.json"
-    if source.is_file():
-        body = source.read_bytes()
-    else:
-        body = b'{"state":"unknown"}\n'
-    document = _body_json(body) or {}
-    if document.get("state") not in TERMINAL_STATUS_STATES:
-        (out / "status-final.json").unlink(missing_ok=True)
-        (out / f"status-final-run-{run_index}.json").unlink(missing_ok=True)
-        return
-    (out / "status-final.json").write_bytes(body)
-    (out / f"status-final-run-{run_index}.json").write_bytes(body)
 
 
 def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) -> float:
@@ -1343,10 +1871,13 @@ def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) ->
     walls = []
     walls_path = out / "scan-walls.tsv"
     walls_path.write_text("")
-    scan_repeats = cfg.scan_repeats
-    if cfg.workload == "storm-idle" and scan_repeats != 1:
-        logger.log(f"storm-idle: forcing SCAN_REPEATS=1 (was {scan_repeats})")
-        scan_repeats = 1
+    cell_probe_rows = []
+    probe_outcomes = []
+    profile = cfg.workload
+    # Scans repeat to reach the probe-round budget; a profile with no probe
+    # phase has nothing to accumulate, so one scan per repetition.
+    scan_repeats = cfg.scan_repeats if config.profile_has_probes(profile) else 1
+    is_idle = config.is_idle_storm(profile)
     for run_index in range(1, scan_repeats + 1):
         logger.log(f"=== triggering index scan (run {run_index}/{cfg.scan_repeats}) ===")
         started = time.perf_counter()
@@ -1361,28 +1892,82 @@ def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) ->
         round_dir = out / f"rounds-run-{run_index}"
         round_dir.mkdir(parents=True, exist_ok=True)
 
-        profile = cfg.workload
         scan_active = threading.Event()
         scan_active.set()
         storm_result: dict | None = None
         storm_error: Exception | None = None
 
+        storm_guard_result: dict | None = None
+
         def run_storm_guarded() -> None:
-            nonlocal storm_result, storm_error
+            nonlocal storm_result, storm_error, storm_guard_result
+            guard = ScanPhase(
+                out,
+                "storm",
+                expected_state="running",
+                run=run_index,
+                round_no=run_index,
+                allow_terminal_end=True,
+            )
+            guard.start()
             try:
-                storm_result = run_storm(cfg, client, logger, round_dir, run_index, scan_active)
+                storm_result = run_storm(
+                    cfg, client, logger, round_dir, run_index, scan_active, scan_start=started
+                )
             except Exception as err:  # noqa: BLE001 - storm failure must not hang the cell
                 storm_error = err
+            finally:
+                storm_guard_result = guard.end()
+                if storm_guard_result is not None and not storm_guard_result.get("valid", False):
+                    reason = (
+                        f"storm guard invalid: {storm_guard_result.get('reason')} "
+                        f"(states={storm_guard_result.get('state_start')}->{storm_guard_result.get('state_end')}, "
+                        f"scanned={storm_guard_result.get('scanned_start')}->{storm_guard_result.get('scanned_end')}, "
+                        f"processed={storm_guard_result.get('processed_start')}->{storm_guard_result.get('processed_end')})"
+                    )
+                    if storm_error is None:
+                        storm_error = WorkloadError(reason)
+                    else:
+                        storm_error = WorkloadError(f"{storm_error}: {reason}")
 
-        if profile in ("control", "upload"):
-            probe_thread = threading.Thread(
-                target=probe_phase,
-                args=(cfg, client, logger, cfg.expected_entries, round_dir),
-                daemon=True,
+        probe_outcome = {}
+
+        def _run_probe() -> None:
+            nonlocal probe_outcome
+            probe_outcome = (
+                probe_phase(cfg, client, logger, round_dir, cached_rows=cell_probe_rows) or {}
             )
+
+        refreshed_state = _refresh_scan_status(cfg, client, out, logger)
+        terminal_after_warmup = False
+        if (
+            refreshed_state not in TERMINAL_STATUS_STATES
+            and run_index == 1
+            and cfg.scan_warmup > 0
+            and config.profile_has_probes(profile)
+        ):
+            warmup_result = warmup_scan(cfg, client, out, run_index, cell_probe_rows)
+            logger.log(
+                f"warmup: valid={warmup_result['valid']} "
+                f"reason={warmup_result['reason']} wall_ms={warmup_result['wall_ms']}"
+            )
+            if not warmup_result["valid"]:
+                logger.log(f"warn: warmup invalid: {warmup_result['reason']}")
+            if _status_state(out) in TERMINAL_STATUS_STATES or (out / "scan-done.marker").is_file():
+                logger.log("warn: scan terminal after warmup")
+                terminal_after_warmup = True
+
+        if refreshed_state in TERMINAL_STATUS_STATES or terminal_after_warmup:
+            logger.log(
+                f"scan run {run_index}/{cfg.scan_repeats}: already terminal at refresh ({refreshed_state})"
+            )
+            probe_thread = None
+            storm_thread = None
+        elif config.profile_has_probes(profile):
+            probe_thread = threading.Thread(target=_run_probe, daemon=True)
             storm_thread = None
             probe_thread.start()
-        elif profile in ("storm-diff", "storm-read", "storm-thumb"):
+        elif not is_idle and config.storm_profile_parts(profile) is not None:
             probe_thread = None
             storm_thread = threading.Thread(target=run_storm_guarded, daemon=True)
             storm_thread.start()
@@ -1491,6 +2076,28 @@ def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) ->
         if probe_thread is not None:
             probe_thread.join(timeout=60)
             logger.log(f"probe phase transcript: {out / 'probe-phase.log'}")
+            rounds_total = (
+                probe_outcome.get("rounds_total", 0) if isinstance(probe_outcome, dict) else 0
+            )
+            rounds_valid = (
+                probe_outcome.get("rounds_valid", 0) if isinstance(probe_outcome, dict) else 0
+            )
+            progress = (
+                probe_outcome.get("progress", False) if isinstance(probe_outcome, dict) else False
+            )
+            logger.log(
+                f"probe phase outcome: rounds_total={rounds_total} "
+                f"rounds_valid={rounds_valid} progress={progress}"
+            )
+            if not progress:
+                logger.log("warn: probe phase made no counter progress")
+            if rounds_valid == 0 and (
+                cell_probe_rows
+                or any(isinstance(o, dict) and o.get("rounds_valid", 0) > 0 for o in probe_outcomes)
+            ):
+                logger.log("warn: probe phase had zero valid rounds for this repeat")
+            probe_outcomes.append(probe_outcome if isinstance(probe_outcome, dict) else {})
+
         if storm_thread is not None:
             storm_thread.join(timeout=120)
             if storm_error is not None:
@@ -1502,20 +2109,45 @@ def run_scans(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger) ->
             suffix = " after stall" if stalled else ""
             raise WorkloadError(f"scan did not complete (state={state}){suffix}")
 
-        def is_diff_writes() -> bool:
-            if profile == "storm-diff":
-                return True
-            return profile == "storm-idle" and cfg.idle_profile == "diff"
+        def is_edit_storm() -> bool:
+            return config.storm_profile_access(profile) == "edit"
 
-        if profile == "storm-idle":
-            run_storm(cfg, client, logger, round_dir, run_index, None)
-            logger.log("storm-idle: no margin check (no concurrent scan)")
-            if is_diff_writes():
+        if storm_thread is not None and storm_result is not None:
+            check_storm_coverage(storm_result, started, t_terminal, cfg.storm_min_coverage_pct)
+            if is_edit_storm():
                 verify_storm_sample(cfg, client, logger, out, run_index)
-        elif storm_thread is not None and storm_result is not None:
-            check_storm_margin(cfg, logger, storm_result, started, t_terminal)
-            if is_diff_writes():
-                verify_storm_sample(cfg, client, logger, out, run_index)
+
+    if is_idle:
+        idle_guard = ScanPhase(
+            out, "storm-idle", expected_state="completed", run=scan_repeats, round_no=scan_repeats
+        )
+        idle_guard.start()
+        try:
+            run_storm(cfg, client, logger, out / f"rounds-run-{scan_repeats}", scan_repeats, None)
+        finally:
+            idle_result = idle_guard.end()
+        if not idle_result.get("valid", False):
+            raise WorkloadError(
+                f"{cfg.workload} idle guard invalid: {idle_result.get('reason')} "
+                f"(state={idle_result.get('state_start')}->{idle_result.get('state_end')})"
+            )
+        logger.log(f"{cfg.workload}: no coverage check (no concurrent scan)")
+        if config.storm_profile_access(cfg.workload) == "edit":
+            verify_storm_sample(cfg, client, logger, out, scan_repeats)
+
+    if probe_outcomes:
+        total_valid = sum(
+            (o.get("rounds_valid", 0) if isinstance(o, dict) else 0) for o in probe_outcomes
+        )
+        per_repeat = ", ".join(
+            str((o.get("rounds_valid", 0) if isinstance(o, dict) else 0)) for o in probe_outcomes
+        )
+        logger.log(f"probe phase cell: valid_rounds={total_valid} per_repeat=[{per_repeat}]")
+        if total_valid < cfg.min_valid_rounds:
+            raise WorkloadError(
+                f"probe phase: cell valid rounds {total_valid} < "
+                f"min_valid_rounds={cfg.min_valid_rounds} (per_repeat=[{per_repeat}])"
+            )
 
     median_ms = statistics.median(walls)
     logger.log(
@@ -1605,6 +2237,7 @@ def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger
                 cfg.out,
                 "scroll_probe",
                 phase="post",
+                background="idle",
                 scrollbar_ms=[value * 1000.0 for value in scroll_result["scrollbar"]],
                 rows_ms=[value * 1000.0 for value in scroll_result["rows"]],
                 data_ms=[value * 1000.0 for value in scroll_result["data"]],
@@ -1701,22 +2334,35 @@ def run_post_scan(cfg: config.WorkloadConfig, client: HttpClient, logger: Logger
 
 # --- upload profile ----------------------------------------------------------
 def _select_upload_sources(cfg: config.WorkloadConfig) -> list:
-    available = sorted(cfg.image_repo.glob("*.jpg"), key=lambda path: path.name)
-    cell_names = set()
+    """Upload file set from the cell's declared upload source.
+
+    A separate `UPLOAD_REPO` is the provided upload set: its first
+    `UPLOAD_FILES` images are uploaded, and a smaller set fails the cell.
+    When the upload repo is the cell's own image repo, the stimulus must
+    use files beyond the staged prefix, so re-uploading an indexed image
+    cannot happen; a repo without that margin fails the cell.
+    """
+    repo = cfg.upload_repo or cfg.image_repo
+    available = sorted(Path(repo).glob("*.jpg"), key=lambda path: path.name)
+    if len(available) < cfg.upload_files:
+        raise WorkloadError(
+            f"upload: {repo} provides {len(available)} images, need UPLOAD_FILES={cfg.upload_files}"
+        )
+    if Path(repo).resolve() != Path(cfg.image_repo).resolve():
+        return available[: cfg.upload_files]
+    staged = set()
     image_path = cfg.image_path
     if image_path is not None:
         try:
-            cell_names = {path.name for path in Path(image_path).glob("*.jpg")}
+            staged = {path.name for path in Path(image_path).glob("*.jpg")}
         except OSError:
-            cell_names = set()
-    sources = [path for path in available if path.name not in cell_names]
+            staged = set()
+    sources = [path for path in available if path.name not in staged]
     if len(sources) < cfg.upload_files:
-        for path in available:
-            if len(sources) >= cfg.upload_files:
-                break
-            sources.append(path)
-    if not sources:
-        raise WorkloadError("upload: no images available in IMAGE_REPO")
+        raise WorkloadError(
+            f"upload: {repo} provides {len(sources)} images beyond the staged set, "
+            f"need UPLOAD_FILES={cfg.upload_files}; point UPLOAD_REPO at a distinct set"
+        )
     return sources[: cfg.upload_files]
 
 
@@ -1909,7 +2555,18 @@ def run_workload(cfg: config.WorkloadConfig) -> int:
         median_ms, run_count = run_scans(cfg, client, logger)
         cfg.scan_wall_ms = median_ms
         cfg.scan_runs = run_count
-        run_post_scan(cfg, client, logger)
+        if config.profile_has_probes(cfg.workload):
+            post_guard = ScanPhase(cfg.out, "post-scan", expected_state="completed")
+            post_guard.start()
+            try:
+                run_post_scan(cfg, client, logger)
+            finally:
+                post_result = post_guard.end()
+            if not post_result.get("valid", False):
+                raise WorkloadError(
+                    f"post-scan guard invalid: {post_result.get('reason')} "
+                    f"(state={post_result.get('state_start')}->{post_result.get('state_end')})"
+                )
         return 0
     except WorkloadError as err:
         logger.log(f"ERROR: {err}")
@@ -1941,8 +2598,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-scroll_probe_round = scroll_probe
-run_scroll_probe = scroll_probe
-probe_scroll = scroll_probe
-run_scroll = scroll_probe

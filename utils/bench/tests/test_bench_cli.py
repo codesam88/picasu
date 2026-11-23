@@ -24,21 +24,32 @@ class BenchDispatchTests(unittest.TestCase):
     def setUp(self):
         self.bench = load_bench()
 
+    def test_compare_routes_to_compare_reports(self):
+        fake = mock.Mock(return_value=7)
+        original = self.bench.compare_reports.main
+        try:
+            self.bench.compare_reports.main = fake
+            rc = self.bench.main(["compare", "base.tsv", "new.tsv", "--strict"])
+        finally:
+            self.bench.compare_reports.main = original
+        self.assertEqual(rc, 7)
+        fake.assert_called_once_with(["base.tsv", "new.tsv", "--strict"])
+
     def test_exit_code_passthrough(self):
-        alias = self.bench.MODULE_ALIASES["extract"]
-        mod = getattr(self.bench, alias)
+        import extract_bench
+
+        mod = extract_bench
         original_main = mod.main
-        original_modules_extract = self.bench.MODULES.get("extract")
         try:
             for code in (0, 1, 2, 7, 130):
                 fake = mock.Mock(return_value=code)
                 mod.main = fake
-                self.bench.MODULES["extract"] = mod
+                # bench.main imports extract_bench by name, so patch the module attr
+                self.bench.extract_bench = mod
                 rc = self.bench.main(["extract", "x"])
                 self.assertEqual(rc, code)
         finally:
             mod.main = original_main
-            self.bench.MODULES["extract"] = original_modules_extract
 
 
 class BenchStatusTests(unittest.TestCase):

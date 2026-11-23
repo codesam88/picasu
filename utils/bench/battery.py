@@ -1,44 +1,37 @@
 #!/usr/bin/env python3
-"""Battery runner and baseline checker.
+"""Battery runner and baseline recorder.
 
-A battery is an ordered, pinned set of benchmark cells for one scale. Each
-cell runs through `run_cell.py`; after the cell finishes the
-extractor's parsed values become one row in a TSV run report. The report is
-compared against `baselines.tsv`, where every accepted metric carries a
-tolerance band.
+A battery is the ordered profile matrix for one image count. Each cell runs
+through `run_cell.py`; after it finishes the extractor's samples become rows
+in a long TSV run report. Accepted values live in `baselines.tsv`;
+`compare_reports.py` reviews a report against them without gating.
 
 Usage:
-    utils/bench/battery.py run gate --out /tmp/picasu-battery-gate
-    utils/bench/battery.py check /tmp/picasu-battery-gate/report.tsv
-    utils/bench/battery.py list gate
-    utils/bench/battery.py extract /tmp/picasu-battery-gate [--out run.json] [--matrix-only]
+    utils/bench/battery.py run --images 100 --out /tmp/picasu-battery-100
+    utils/bench/battery.py list --images 100
+    utils/bench/battery.py extract /tmp/picasu-battery-100 [--out run.json] \\
+        [--baselines-tsv PATH] [--render-md PATH]
 
 `run` resumes by default: the report is rebuilt from scratch on every
-invocation and each rep whose `status-final.json` parses is reused
-instead of re-run, so an interrupted battery continues where it stopped.
-`--fresh` re-runs every rep.
+invocation and each rep whose `status-final.json` parses is reused instead
+of re-run, so an interrupted battery continues where it stopped. `--fresh`
+re-runs every rep.
 
-`extract` dumps one battery parent (its `*-repN` subdirs plus
-`report.tsv`) as a single JSON document: per-rep report rows, manifest
-identity, stages, terminal state, pooled medians and the report rows.
-The same run renders the pooled medians into the human artifacts beside
-the JSON: `report.md` (header, p50/p95/max matrices, anomalies, baseline
-conformance) and `matrix.tsv` (the matrices as a spreadsheet-readable
-TSV); `--format md|tsv|both` selects which, and `--matrix-only` prints
-the human view on stdout instead of the JSON document.
+`extract` dumps one battery parent (its `*-repN` subdirs plus `report.tsv`)
+as a single JSON document. The JSON goes to stdout or, with `--out`, to that
+file; a plain extract writes nothing else. `--baselines-tsv` merges every
+parent's rows into one long-format baselines file; `--render-md` renders the
+full `baselines.md` from the merged values and their cell metadata.
 
 Environment:
     OUT                  battery directory for `run` when --out is absent
     BENCH_SETS_ROOT      image repo root (default ~/picasu-bench)
     BENCH_PORT           first cell port (default 5795); cells increment
     IMAGE_PATH           passed through to each cell by run_cell.py
-    WORKLOAD_TIMEOUT_S   per-cell workload budget handed to run_cell
-                         (default: gate 1800, scale 7200); an exported
-                         value overrides the level default
-
-    BATTERY_REPEATS  number of times each cell runs; the median row becomes
-                     the comparison unit (default: 3, minimum 1; 1 = single
-                     row per cell, no median row). An exported value wins.
+    WORKLOAD_TIMEOUT_S   per-cell workload budget (default 1800 s up to
+                         200 images, 7200 s above); an exported value wins
+    BATTERY_REPEATS      cap on scan repetitions per cell (default 5 up to
+                         200 images, 3 above); an exported value wins
 
 Batteries pin every knob that changes a measurement (`SCAN_REPEATS`,
 hyperfine `REPEATS`/`WARMUP`, storm client/op counts and margin) plus the
@@ -46,8 +39,8 @@ build profile, image set and CPU count. Cells run sequentially: backend
 tests and bench cells share tempdir state, so parallel cells would
 contaminate each other.
 
-Baselines are deliberate: `check` never updates the file. A cell outside
-its band fails until the move is explained and the row is re-recorded.
+Baselines are deliberate: only `extract --baselines-tsv` updates the file,
+and compare reports are a review tool, not a gate.
 """
 
 from __future__ import annotations
@@ -59,7 +52,7 @@ import os
 import re
 import shutil
 import signal
-import statistics
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -69,67 +62,24 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import config  # noqa: E402
+import environment  # noqa: E402
 import extract_bench  # noqa: E402
+import metrics  # noqa: E402
 import run_cell  # noqa: E402
 from config import DEFAULT_SETS_ROOT, ConfigError  # noqa: E402
 
 DEFAULT_BASE_PORT = config.BATTERY_BASE_PORT
 NA = "n/a"
 
-# One row per cell in the report. Latency columns come from the extractor's
-# report matrix (`BACKGROUNDS` x `ACCESSES` x `STATS`): every background the
-# battery exercises carries its own median/p95/worst pair, so no cell's row
-# is comparable only through a column another profile fills. The failed
-# columns count ops a storm kind could not complete, pooled across reps.
-IDENTITY_COLUMNS = ["cell", "profile", "level", "scale", "build", "commit"]
-STAGE_COLUMNS = list(extract_bench.STAGE_COLUMNS)
-COUNTER_COLUMNS = list(extract_bench.COUNTER_COLUMNS)
-METRICS_COLUMNS = list(extract_bench.METRICS_COLUMNS)
-SCROLL_COLUMNS = list(extract_bench.SCROLL_COLUMNS)
-UPLOAD_COLUMNS = ["upload_submit_p50_ms", "upload_visible_p50_ms"]
-
-HEADLINE_RANGE_COLUMNS = [
-    "scan_wall_s",
-    "scan_prefetch_p50_ms",
-    "idle_prefetch_p50_ms",
-    "scroll_bar_p50_ms",
-    "scroll_rows_p50_ms",
-    "scroll_data_p50_ms",
-    "temp_db_mb",
-    "vm_hwm_mb",
-]
-RANGE_COLUMNS = [
-    f"{column}_{suffix}" for column in HEADLINE_RANGE_COLUMNS for suffix in ("min", "max")
-]
-
-BASELINE_COLUMNS = ["cell", "metric", "baseline", "rel_tol", "abs_tol", "recorded", "note"]
+REPORT_COLUMNS = tuple(metrics.REPORT_COLUMNS)
+BASELINE_COLUMNS = tuple(metrics.BASELINE_COLUMNS)
 BASELINE_HEADER = "\t".join(BASELINE_COLUMNS)
-
-_UPLOAD_P50 = re.compile(r"upload submit_p50=(\d+) visible_p50=(\d+)")
-
-
-# The extractor owns the matrix column names; the report is that scheme plus
-# the scan walls and the server-side stage cost columns.
-LATENCY_COLUMNS = list(extract_bench.LATENCY_COLUMNS)
-STORM_FAILED_COLUMNS = list(extract_bench.STORM_FAILED_COLUMNS)
-REPORT_COLUMNS = (
-    IDENTITY_COLUMNS
-    + ["scan_wall_s", "scan_walls_s"]
-    + LATENCY_COLUMNS
-    + STORM_FAILED_COLUMNS
-    + UPLOAD_COLUMNS
-    + STAGE_COLUMNS
-    + COUNTER_COLUMNS
-    + METRICS_COLUMNS
-    + SCROLL_COLUMNS
-    + RANGE_COLUMNS
-)
+BASELINE_INDEX = {name: index for index, name in enumerate(BASELINE_COLUMNS)}
 
 
 # --- battery definition ------------------------------------------------------
 @dataclass(frozen=True)
 class Cell:
-    level: str
     profile: str
     images: int
     repo: str
@@ -137,20 +87,21 @@ class Cell:
     env: dict
     outdir_suffix: str
     name: str = ""
+    source: str = "battery"
 
     @property
     def cell_id(self) -> str:
-        return self.name or f"{self.level}-{self.profile}"
+        return self.name or f"{self.profile}-{self.images}"
 
 
 def _cell(
-    level: str,
     profile: str,
     images: int,
     repo: str,
     *,
     cell_name: str | None = None,
     outdir_suffix: str | None = None,
+    source: str = "battery",
 ) -> Cell:
     env = {
         "WORKLOAD": profile,
@@ -162,44 +113,49 @@ def _cell(
         "WARMUP": "1",
     }
     if profile.startswith("storm-"):
-        env.update({"STORM_CLIENTS": "8", "STORM_OPS": "10", "STORM_MARGIN_S": "0.5"})
+        derived = config.storm_profile_clients(profile, 8)
+        storm_clients = derived if derived is not None else config.DEFAULT_STORM_CLIENTS
+        env.update(
+            {
+                "STORM_CLIENTS": str(storm_clients),
+                "STORM_OPS": "10",
+            }
+        )
     if profile == "upload":
-        env["UPLOAD_FILES"] = str(images)
+        env["UPLOAD_FILES"] = str(config.DEFAULT_UPLOAD_FILES)
+        # Uploaded files come from a distinct archive: the cell's own repo is
+        # fully staged, so re-uploading it would ingest already-indexed images.
+        env["UPLOAD_REPO"] = "set-upload"
     return Cell(
-        level=level,
         profile=profile,
         images=images,
         repo=repo,
         ncpu=8,
         env=env,
-        outdir_suffix=outdir_suffix if outdir_suffix is not None else f"{level}-{profile}",
+        outdir_suffix=outdir_suffix if outdir_suffix is not None else f"{profile}-{images}",
         name=cell_name if cell_name is not None else "",
+        source=source,
     )
 
 
-_BATTERIES = {
-    "gate": {
-        "images": 100,
-        "repo": "set-100",
-        "profiles": ("control", "storm-read", "storm-thumb", "storm-diff", "storm-idle", "upload"),
-    },
-    "scale": {
-        "images": 5650,
-        "repo": "set-5650",
-        "profiles": ("control", "storm-diff", "upload"),
-    },
-    "micro": {
-        "scales": ((50, "set-50"), (200, "set-200")),
-        "profiles": ("control",),
-    },
-}
+_SCENARIO_PROFILES = (
+    "control",
+    *config.CONCURRENT_STORM_PROFILES,
+    *(profile for profile in config.IDLE_STORM_PROFILES if "-read-" in profile),
+    "upload",
+)
+
+CELL_ORDER = {}
 
 
-_KNOWN_LEVELS = ("cell", "gate", "micro", "scale")
+def storm_profile_access(profile: str) -> str:
+    """Access a storm profile drives; the profile names it explicitly."""
+    access = config.storm_profile_access(profile)
+    return access if access is not None else "read"
 
 
 def _cell_from_env(environ: dict) -> Cell:
-    """Build the single cell for the `cell` battery level from the environment."""
+    """Build the single cell for the debug `cell` battery from the environment."""
     environ = environ or {}
     profile = environ.get("WORKLOAD", "control")
     if profile not in config.WORKLOADS:
@@ -219,20 +175,17 @@ def _cell_from_env(environ: dict) -> Cell:
     if "WARMUP" in environ:
         pass
 
-    storm_clients = (
-        config.integer(environ, "STORM_CLIENTS", config.DEFAULT_STORM_CLIENTS, minimum=1)
-        if "STORM_CLIENTS" in environ
-        else config.DEFAULT_STORM_CLIENTS
-    )
+    if "STORM_CLIENTS" in environ:
+        storm_clients = config.integer(
+            environ, "STORM_CLIENTS", config.DEFAULT_STORM_CLIENTS, minimum=1
+        )
+    else:
+        derived = config.storm_profile_clients(profile, 8)
+        storm_clients = derived if derived is not None else config.DEFAULT_STORM_CLIENTS
     storm_ops = (
         config.integer(environ, "STORM_OPS", config.DEFAULT_STORM_OPS, minimum=1)
         if "STORM_OPS" in environ
         else config.DEFAULT_STORM_OPS
-    )
-    storm_margin = (
-        config.number(environ, "STORM_MARGIN_S", config.DEFAULT_STORM_MARGIN_S)
-        if "STORM_MARGIN_S" in environ
-        else config.DEFAULT_STORM_MARGIN_S
     )
 
     image_repo_raw = environ.get("IMAGE_REPO", "")
@@ -257,58 +210,32 @@ def _cell_from_env(environ: dict) -> Cell:
             {
                 "STORM_CLIENTS": str(storm_clients),
                 "STORM_OPS": str(storm_ops),
-                "STORM_MARGIN_S": str(storm_margin),
             }
         )
     if profile == "upload":
-        upload_files = (
-            config.integer(environ, "UPLOAD_FILES", images, minimum=1)
-            if "UPLOAD_FILES" in environ
-            else images
+        upload_files = config.integer(
+            environ, "UPLOAD_FILES", config.DEFAULT_UPLOAD_FILES, minimum=1
         )
         env["UPLOAD_FILES"] = str(upload_files)
+        if "UPLOAD_REPO" in environ:
+            env["UPLOAD_REPO"] = environ["UPLOAD_REPO"]
 
     return Cell(
-        level="cell",
         profile=profile,
         images=images,
         repo=repo,
         ncpu=ncpu,
         env=env,
-        outdir_suffix=f"cell-{profile}",
+        outdir_suffix=f"{profile}-{images}",
+        source="debug",
     )
 
 
-def battery_cells(level: str, environ=None) -> tuple:
-    """Return the ordered cell list for a battery level."""
-    if level not in _KNOWN_LEVELS:
-        raise KeyError(level)
-    if level == "cell":
-        return (_cell_from_env(environ if environ is not None else os.environ),)
-    spec = _BATTERIES[level]
-    if "scales" in spec:
-        scales = spec["scales"]
-    else:
-        scales = ((spec["images"], spec["repo"]),)
-    profiles = spec["profiles"]
-    multi = len(scales) > 1
-    cells = []
-    for images, repo in scales:
-        for profile in profiles:
-            if multi:
-                cells.append(
-                    _cell(
-                        level,
-                        profile,
-                        images,
-                        repo,
-                        cell_name=f"{level}-{profile}-{images}",
-                        outdir_suffix=f"{level}-{profile}-{images}",
-                    )
-                )
-            else:
-                cells.append(_cell(level, profile, images, repo))
-    return tuple(cells)
+def battery_cells(images: int) -> tuple:
+    """The full scenario matrix at one image count."""
+    images = int(images)
+    repo = f"set-{images}"
+    return tuple(_cell(profile, images, repo) for profile in _SCENARIO_PROFILES)
 
 
 def repo_path(cell: Cell, sets_root: Path = DEFAULT_SETS_ROOT) -> Path:
@@ -330,237 +257,39 @@ def _read_manifest(outdir: Path) -> dict:
         return {}
 
 
-def _parse_upload_p50(text: str) -> tuple:
-    matches = _UPLOAD_P50.findall(text)
-    if not matches:
-        return NA, NA
-    submit, visible = matches[-1]
-    return submit, visible
-
-
-def build_row(level: str, profile: str, outdir: Path, cell_id: str | None = None) -> dict:
-    """Flatten one cell outdir into the run-report row schema.
-
-    The row carries the report columns plus `stages`, the per-scan drain
-    rows parsed from `server.log`, `samples`, the values behind the matrix's
-    p95/max cells, and `storms`, the per-run storm summaries. Report writers
-    iterate `REPORT_COLUMNS`, so none of those helper keys reaches the TSV.
-    """
+def build_row(
+    profile: str, outdir: Path, *, cell_id: str | None = None, source: str = "battery"
+) -> dict:
+    """One per-rep record: identity, validity, samples, clusters."""
     outdir = Path(outdir)
     extractor = extract_bench
     parsed = extractor.parse_log(outdir, profile=profile)
-    status = extractor.parse_status(outdir)
-    cell = extractor._cell(parsed, status)
     manifest = _read_manifest(outdir)
-    try:
-        log_text = (outdir / "harness-a.log").read_text()
-    except OSError:
-        log_text = ""
-    upload_submit, upload_visible = _parse_upload_p50(log_text)
-
-    walls = parsed.get("scan_runs_ms", [])
-    row = {
-        "cell": cell_id if cell_id is not None else f"{level}-{profile}",
+    identity = {
+        "source": source,
         "profile": profile,
-        "level": level,
-        "scale": _fmt(parsed.get("images")),
+        "images": parsed.get("images"),
+        "upload_files": (parsed.get("raw_cluster_counts") or {}).get("upload_submit"),
         "build": _fmt(manifest.get("build_profile")),
         "commit": _fmt(manifest.get("git")),
-        "scan_wall_s": _fmt(parsed.get("scan_wall_s")),
-        "scan_walls_s": ",".join(str(wall) for wall in walls) if walls else NA,
-        "upload_submit_p50_ms": upload_submit,
-        "upload_visible_p50_ms": upload_visible,
+        "scan_runs": parsed.get("scan_runs"),
     }
-    for column in (
-        LATENCY_COLUMNS
-        + STORM_FAILED_COLUMNS
-        + STAGE_COLUMNS
-        + COUNTER_COLUMNS
-        + METRICS_COLUMNS
-        + SCROLL_COLUMNS
-    ):
-        row[column] = _fmt(cell.get(column))
-    for column in HEADLINE_RANGE_COLUMNS:
-        value = row.get(column, NA)
-        row[f"{column}_min"] = value
-        row[f"{column}_max"] = value
-    # The drain parse behind the stage columns, kept whole for the extract
-    # document: it comes from the same server.log read, so a cell carries
-    # its stage rows without a separate extract run.
-    row["stages"] = parsed.get("stages") or []
-    # The samples behind the p95/max cells and the per-run storm summaries
-    # behind the storm columns, kept for the `:median` row's pooling; they
-    # are never written to the TSV.
-    row["samples"] = parsed.get("samples") or {}
-    row["storms"] = parsed.get("storms") or []
-    return row
-
-
-_NON_NUMERIC_COLUMNS = {
-    "cell",
-    "profile",
-    "level",
-    "scale",
-    "build",
-    "commit",
-}
-
-
-def _sample_key(column: str) -> str:
-    """Report column -> the `samples` key holding its raw values."""
-    for suffix in ("_p95_ms", "_max_ms"):
-        if column.endswith(suffix):
-            return column[: -len(suffix)]
-    raise KeyError(column)
-
-
-# Latency columns whose tails pool raw samples across repeats: the idle
-# baselines, whose export records every timed run. Probe conditions keep the
-# per-rep values the rounds recorded, and storm conditions pool per-run
-# summaries.
-_SAMPLED_TAIL_COLUMNS = {
-    column
-    for column in LATENCY_COLUMNS
-    if column.startswith("idle_")
-    and "_storm_" not in column
-    and column.endswith(("_p95_ms", "_max_ms"))
-}
-
-_STORM_COLUMN = re.compile(r"^(idle|scan)_storm_(read|thumb|edit)_(p50|p95|max)_ms$")
-_STORM_STAT_FIELD = {"p50": "median", "p95": "p95", "max": "max"}
-
-
-def _storm_runs(rows: list, column: str) -> list:
-    """Per-run storm summaries behind one report column, across all repeats."""
-    match = _STORM_COLUMN.match(column)
-    if match is None:
-        return []
-    background, report_kind, stat = match.groups()
-    kind = extract_bench.STORM_OP_KIND[report_kind]
-    values = []
-    for row in rows:
-        for storm in row.get("storms") or []:
-            if (
-                extract_bench.storm_background(storm) == background
-                and extract_bench.storm_kind(storm) == kind
-            ):
-                values.append(storm[_STORM_STAT_FIELD[stat]] * 1000.0)
-    return values
-
-
-def _numeric_values(raw) -> list:
-    """Parse one report cell as a list of numbers.
-
-    Repeat rows carry per-scan/per-run lists (`scan_walls_s`, stage
-    p50/max) as comma-separated text, so one cell contributes every
-    member. Empty entries, `n/a` and unparseable text contribute nothing.
-    """
-    if raw is None:
-        return []
-    values = []
-    for part in str(raw).split(","):
-        part = part.strip()
-        if part == "" or part == NA:
-            continue
-        try:
-            values.append(float(part))
-        except ValueError:
-            continue
-    return values
-
-
-def _build_median_row(rows: list) -> dict:
-    """Return one median row for the given repeat rows.
-
-    Comma-separated lists are pooled across repeats and the median taken
-    over every value (median of medians would weight a two-scan cell as
-    one sample per repeat).
-
-    Three column families aggregate differently:
-
-    - matrix `p50` columns keep that pooling (median over the repeats),
-      which is how the recorded baselines were produced;
-    - `idle_*` `p95`/`max` columns pool the timed post-scan runs every rep
-      carries and take the percentile or worst over all of them, so a tail
-      describes every run rather than the median of three tails;
-    - storm `p95`/`max` columns pool the per-run summaries and take the
-      worst; failed counts are summed, because a count across repeats is a
-      total.
-
-    Probe `p95`/`max` columns follow the default pooling: each rep already
-    summarises its probe rounds, and the recorded worst-case baselines were
-    medians of those per-rep values.
-    """
-    if not rows:
-        return {}
-    first = dict(rows[0])
-    base_cell = first.get("cell", "")
-    median_cell = base_cell + ":median" if isinstance(base_cell, str) and base_cell else "median"
-    result = dict(first)
-    for column in REPORT_COLUMNS:
-        if column in _NON_NUMERIC_COLUMNS:
-            # Non-numeric columns pass through from the first repeat.
-            result[column] = first.get(column, result.get(column, NA))
-            continue
-        if column.endswith("_min"):
-            base = column[:-4]
-            values = []
-            for row in rows:
-                values.extend(_numeric_values(row.get(column, row.get(base, NA))))
-            result[column] = _fmt(min(values)) if values else NA
-            continue
-        if column.endswith("_max"):
-            base = column[:-4]
-            values = []
-            for row in rows:
-                values.extend(_numeric_values(row.get(column, row.get(base, NA))))
-            result[column] = _fmt(max(values)) if values else NA
-            continue
-        if column.endswith("_failed"):
-            values = []
-            for row in rows:
-                values.extend(_numeric_values(row.get(column, NA)))
-            result[column] = _fmt(int(sum(values))) if values else NA
-            continue
-        if column in _SAMPLED_TAIL_COLUMNS:
-            pooled = []
-            for row in rows:
-                pooled.extend((row.get("samples") or {}).get(_sample_key(column), []))
-            if pooled:
-                value = (
-                    max(pooled)
-                    if column.endswith("_max_ms")
-                    else extract_bench.percentile(pooled, 95)
-                )
-                result[column] = _fmt(round(value, 1))
-                continue
-            values = []
-            for row in rows:
-                values.extend(_numeric_values(row.get(column, NA)))
-            result[column] = _fmt(round(max(values), 6)) if values else NA
-            continue
-        if _STORM_COLUMN.match(column):
-            runs = _storm_runs(rows, column)
-            if runs:
-                value = statistics.median(runs) if column.endswith("_p50_ms") else max(runs)
-                result[column] = _fmt(round(value, 1))
-                continue
-            values = []
-            for row in rows:
-                values.extend(_numeric_values(row.get(column, NA)))
-            result[column] = _fmt(round(max(values), 6)) if values else NA
-            continue
-        values = []
-        for row in rows:
-            values.extend(_numeric_values(row.get(column, NA)))
-        # Round out binary-float noise from averaging two odd-count
-        # neighbours (ms/1000 seconds land as 6.657500000000001); every
-        # report column resolves well above 1e-6.
-        result[column] = _fmt(round(statistics.median(values), 6)) if values else NA
-    result["cell"] = median_cell
-    result.pop("samples", None)
-    result.pop("storms", None)
-    return result
+    if cell_id is not None:
+        identity["cell"] = cell_id
+    if parsed.get("identity"):
+        identity.update({k: v for k, v in parsed["identity"].items() if v is not None})
+    identity["source"] = source
+    if cell_id is not None:
+        identity["cell"] = cell_id
+    validity = parsed.get("validity") or {}
+    record = {
+        "cell": cell_id if cell_id is not None else f"{profile}-{parsed.get('images')}",
+        "identity": identity,
+        "validity": validity,
+        "samples": parsed.get("samples") or {},
+        "clusters": parsed.get("clusters") or {},
+    }
+    return record
 
 
 def _row_line(row: dict) -> str:
@@ -569,39 +298,68 @@ def _row_line(row: dict) -> str:
     )
 
 
-def write_report(path: Path, rows: list) -> None:
+def _cell_line(identity: dict, validity: dict) -> str:
+    payload = {"identity": identity, "validity": validity}
+    return "# cell: " + json.dumps(payload, sort_keys=True)
+
+
+def write_report(path: Path, cells: list) -> None:
+    """Write a report from cell blocks: `(identity, validity, rows)` each."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["\t".join(REPORT_COLUMNS)] + [_row_line(row) for row in rows]
+    lines = ["\t".join(REPORT_COLUMNS)]
+    for identity, validity, rows in cells:
+        lines.append(_cell_line(identity, validity))
+        lines.extend(_row_line(row) for row in rows)
     path.write_text("\n".join(lines) + "\n")
 
 
-def append_row(path: Path, row: dict) -> None:
+def append_cell_rows(path: Path, identity: dict, validity: dict, rows: list) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         path.write_text("\t".join(REPORT_COLUMNS) + "\n")
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(_row_line(row) + "\n")
+        handle.write(_cell_line(identity, validity) + "\n")
+        for row in rows:
+            handle.write(_row_line(row) + "\n")
 
 
 def load_report(path: Path) -> list:
-    """Read a run report; returns one dict per data row."""
+    """Read a long report; returns one dict per cell block.
+
+    Each block carries `identity`, `validity` and its `rows`. A report
+    without metadata (an older run) yields one block with empty metadata.
+    """
     lines = [line for line in Path(path).read_text().splitlines() if line.strip()]
     if not lines:
         raise ValueError(f"{path}: empty report")
-    header = lines[0].split("\t")
-    if header != REPORT_COLUMNS:
+    header_at = next((index for index, line in enumerate(lines) if line.startswith("cell\t")), None)
+    if header_at is None or lines[header_at].split("\t") != list(REPORT_COLUMNS):
         raise ValueError(f"{path}: unexpected report header")
-    rows = []
-    for line in lines[1:]:
-        if line.startswith("#"):
+    cells: list = []
+    current = {"identity": {}, "validity": {}, "rows": []}
+    for line in lines[header_at + 1 :]:
+        if line.startswith("# cell: "):
+            if current["rows"] or current["identity"] or current["validity"]:
+                cells.append(current)
+            try:
+                payload = json.loads(line[len("# cell: ") :])
+            except json.JSONDecodeError as err:
+                raise ValueError(f"{path}: bad cell metadata: {err}") from err
+            current = {
+                "identity": payload.get("identity") or {},
+                "validity": payload.get("validity") or {},
+                "rows": [],
+            }
             continue
         parts = line.split("\t")
-        if len(parts) != len(header):
+        if len(parts) != len(REPORT_COLUMNS):
             raise ValueError(f"{path}: malformed row with {len(parts)} columns: {line}")
-        rows.append(dict(zip(header, parts, strict=True)))
-    return rows
+        current["rows"].append(dict(zip(REPORT_COLUMNS, parts, strict=True)))
+    if current["rows"] or current["identity"] or current["validity"]:
+        cells.append(current)
+    return cells
 
 
 # --- battery-level JSON extract ---------------------------------------------
@@ -619,14 +377,18 @@ _MANIFEST_IDENTITY = (
 _REP_DIR_RE = re.compile(r"^(?P<cell>.+)-rep(?P<rep>\d+)$")
 
 # Entries a battery parent may legitimately hold besides `*-repN` subdirs.
-# `report.md` and `matrix.tsv` are the extract's human-readable views of
-# the parent's medians.
+# `report.md`, `matrix.tsv` and `confidence.tsv` are no longer produced;
+# they stay accepted so old run directories still validate, and are never
+# modified by the extract. `environment.json` is the host snapshot taken
+# when the battery started (and refreshed when it finished).
 _BATTERY_PARENT_ALLOWED_FILES = {
     "report.tsv",
     "report.json",
     "orchestrator.log",
     "report.md",
     "matrix.tsv",
+    "confidence.tsv",
+    "environment.json",
 }
 
 
@@ -683,7 +445,7 @@ def is_battery_parent(parent) -> bool:
 
 
 def _rep_dirs(parent: Path) -> list:
-    """Sorted `<level>-<profile>-repN` subdirectories of one battery parent."""
+    """Sorted `<profile>-<images>-repN` subdirectories of one battery parent."""
     found = []
     for entry in parent.iterdir():
         if not entry.is_dir():
@@ -737,32 +499,14 @@ def _extract_entry(path: Path) -> dict:
     """One rep subdir: row + manifest + stages + terminal, or an error entry."""
     match = _REP_DIR_RE.match(path.name)
     cell = match.group("cell") if match else ""
-    level = None
-    remainder = ""
-    for candidate in _KNOWN_LEVELS:
-        if cell == candidate:
-            level = candidate
-            remainder = ""
-            break
-        if cell.startswith(candidate + "-"):
-            level = candidate
-            remainder = cell[len(candidate) + 1 :]
-            break
-    if level is None:
+    profile, separator, images = cell.rpartition("-")
+    if not separator or not images.isdigit() or profile not in config.WORKLOADS:
         return {
             "dir": path.name,
-            "error": "cannot derive level and profile from directory name",
-        }
-    profile = re.sub(r"-\d+$", "", remainder) if remainder else remainder
-    if not profile:
-        profile = "control" if level == "micro" else profile
-    if not profile:
-        return {
-            "dir": path.name,
-            "error": "cannot derive level and profile from directory name",
+            "error": "cannot derive profile and images from directory name",
         }
     try:
-        row = build_row(level, profile, path, cell_id=cell)
+        row = build_row(profile, path, cell_id=cell, source="battery")
     except (Exception, SystemExit) as err:
         # Broken reps become error entries so one bad dir cannot abort the
         # walk; KeyboardInterrupt still aborts the extract.
@@ -774,7 +518,9 @@ def _extract_entry(path: Path) -> dict:
     # The row's own drain parse first (the server.log the report's stage
     # columns came from), then a hand-written stages.json for cells the
     # standalone extractor summarised instead. The row stays report-shaped.
-    stages = row.pop("stages", None) or _read_stages(path)
+    # Keep the stage rows on `row` as well: the diagnostic CI builder reads
+    # their per-scan p50s before `_report_row` strips helper keys.
+    stages = row.get("stages") or _read_stages(path)
     return {
         "dir": path.name,
         "row": row,
@@ -784,21 +530,119 @@ def _extract_entry(path: Path) -> dict:
     }
 
 
-def _report_row(row: dict) -> dict:
-    """The report-shaped subset of a built row (helper keys dropped)."""
-    return {column: row.get(column, NA) for column in REPORT_COLUMNS}
+def _pooled_validity(records: list) -> dict:
+    """Cell validity across reps: round sums, worst coverage, unioned reasons."""
+    validity: dict = {}
+    for field in ("probe_rounds_total", "probe_rounds_valid", "phase_invalid"):
+        values = []
+        for record in records:
+            try:
+                values.append(int((record.get("validity") or {}).get(field)))
+            except TypeError, ValueError:
+                continue
+        if values:
+            validity[field] = sum(values)
+    coverages = []
+    for record in records:
+        try:
+            coverages.append(float((record.get("validity") or {}).get("probe_coverage_pct")))
+        except TypeError, ValueError:
+            continue
+    validity["probe_coverage_pct"] = min(coverages) if coverages else NA
+    warmups = [(record.get("validity") or {}).get("warmup_valid") for record in records]
+    recorded = [value for value in warmups if value not in (NA, None)]
+    if not recorded:
+        validity["warmup_valid"] = NA
+    elif any(value == "false" for value in recorded):
+        validity["warmup_valid"] = "false"
+    else:
+        validity["warmup_valid"] = "true"
+    reasons = []
+    for record in records:
+        raw = (record.get("validity") or {}).get("phase_invalid_reasons")
+        if raw in (NA, None):
+            continue
+        for reason in str(raw).split("; "):
+            if reason and reason not in reasons:
+                reasons.append(reason)
+    validity["phase_invalid_reasons"] = "; ".join(reasons) if reasons else NA
+    for field in ("storm_coverage_pct", "ops_done", "ops_planned"):
+        for record in records:
+            value = (record.get("validity") or {}).get(field)
+            if value not in (NA, None):
+                validity[field] = value
+                break
+    failures = [
+        (record.get("validity") or {}).get("failed")
+        for record in records
+        if (record.get("validity") or {}).get("failed") not in (NA, None)
+    ]
+    if failures:
+        validity["failed"] = sum(int(value) for value in failures)
+    validity["reps"] = len(records)
+    return validity
 
 
-def _median_rows(rows: list) -> list:
-    """One `<cell>:median` row per cell that contributed repeat rows.
+def _pooled_report_rows(records: list):
+    """Pool per-rep samples into long report rows; returns (rows, identity, validity).
 
-    Mirrors the report, which appends a median row only for cells that
-    ran more than once; the pooling itself is `_build_median_row`'s.
+    Every statistic of a metric comes from the same pooled multiset, and the
+    p50 interval is a bootstrap over that same multiset. Nothing here reads
+    a per-rep summary.
     """
-    groups: dict = {}
-    for row in rows:
-        groups.setdefault(row.get("cell", ""), []).append(row)
-    return [_build_median_row(group) for group in groups.values() if len(group) > 1]
+    if not records:
+        return [], {}, {}
+    pooled_samples: dict = {}
+    pooled_clusters: dict = {}
+    for record in records:
+        for key, values in (record.get("samples") or {}).items():
+            pooled_samples.setdefault(key, []).extend(values)
+        for key, count in (record.get("clusters") or {}).items():
+            pooled_clusters[key] = pooled_clusters.get(key, 0) + int(count or 0)
+    cell = records[0].get("cell", "")
+    identity = dict(records[0].get("identity") or {})
+    identity["cell"] = cell
+    validity = _pooled_validity(records)
+    rows = []
+    for key, values in pooled_samples.items():
+        family, background, subject = metrics.split_key(key)
+        summary = metrics.summarize(values, family)
+        for stat in metrics.statistics_for(family):
+            low = high = NA
+            if stat == "p50":
+                low, high = metrics.bootstrap_interval(values)
+                low = NA if low is None else f"{float(low):.1f}"
+                high = NA if high is None else f"{float(high):.1f}"
+            if stat == metrics.COUNT_STAT:
+                value = str(int(round(float(summary[stat]))))
+            else:
+                value = f"{float(summary[stat]):.1f}"
+            rows.append(
+                {
+                    "cell": cell,
+                    "family": family,
+                    "background": background,
+                    "subject": subject,
+                    "stat": stat,
+                    "value": value,
+                    "unit": metrics.UNITS[family],
+                    "n_samples": len(values),
+                    "n_clusters": pooled_clusters.get(key, 0),
+                    "ci_low": low,
+                    "ci_high": high,
+                }
+            )
+    rows.sort(key=_row_sort_key)
+    return rows, identity, validity
+
+
+def _row_sort_key(row: dict):
+    return (
+        str(row.get("family", "")),
+        str(row.get("background", "")),
+        str(row.get("subject", "")),
+        metrics.STATS.index(row["stat"]) if row.get("stat") in metrics.STATS else 0,
+    )
 
 
 def _json_safe(value):
@@ -815,331 +659,365 @@ def _json_safe(value):
     return value
 
 
-# --- battery-level matrix views ---------------------------------------------
-# Human-readable views over the extract's median rows: one table per
-# statistic, rows = accesses, columns = backgrounds. Every cell rolls up
-# the profile medians that measured it (median across the contributors,
-# contributor count recorded next to it); a cell no profile measured is
-# `n/a`. The views are derived here, never stored in the JSON document —
-# the document's `medians` carry everything they recompute from.
-# `matrix.tsv` is the spreadsheet-readable variant of the same values;
-# `report.md` is the human report built on top of them.
-MATRIX_BACKGROUNDS = tuple(extract_bench.BACKGROUNDS)
-MATRIX_ACCESSES = tuple(extract_bench.ACCESSES)
-MATRIX_STATS = tuple(extract_bench.STATS)
-MATRIX_FILE = "matrix.tsv"
-REPORT_FILE = "report.md"
-
-
-def matrix_rollup(median_rows: list) -> dict:
-    """Roll the extract's median rows up into the battery-level view cells.
-
-    Returns `{(stat, background, access): (value, count)}` over every
-    background x access x statistic column of the median rows. `value`
-    is the median across the contributing profile medians (a lone
-    contributor passes its recorded string through, no contributor is
-    `n/a`) and `count` is how many median rows contributed. Non-numeric,
-    `n/a` and non-finite values never contribute.
-    """
-    contributions: dict = {}
-    for row in median_rows:
-        for stat in MATRIX_STATS:
-            for background in MATRIX_BACKGROUNDS:
-                for access in MATRIX_ACCESSES:
-                    raw = row.get(f"{background}_{access}_{stat}_ms")
-                    if raw is None:
-                        continue
-                    text = str(raw).strip()
-                    if text in ("", NA):
-                        continue
-                    try:
-                        value = float(text)
-                    except ValueError:
-                        continue
-                    if not math.isfinite(value):
-                        continue
-                    contributions.setdefault((stat, background, access), []).append((value, text))
-    rollup: dict = {}
-    for stat in MATRIX_STATS:
-        for background in MATRIX_BACKGROUNDS:
-            for access in MATRIX_ACCESSES:
-                found = contributions.get((stat, background, access), [])
-                if not found:
-                    rollup[(stat, background, access)] = (NA, 0)
-                elif len(found) == 1:
-                    rollup[(stat, background, access)] = (found[0][1], 1)
-                else:
-                    median = statistics.median(value for value, _text in sorted(found))
-                    rollup[(stat, background, access)] = (str(round(median, 6)), len(found))
-    return rollup
-
-
-def render_matrix(median_rows: list) -> str:
-    """Render the rollup as one TSV document of four sections.
-
-    Sections are separated by a blank line and introduced by a `#`
-    comment: the three statistic matrices (rows = the six accesses,
-    columns = the three backgrounds, values in ms) followed by the
-    per-cell contributor counts.
-    """
-    rollup = matrix_rollup(median_rows)
-    blocks = []
-    for stat in MATRIX_STATS:
-        lines = [f"# {stat} (ms)", "\t".join(("access",) + MATRIX_BACKGROUNDS)]
-        for access in MATRIX_ACCESSES:
-            values = [rollup[(stat, background, access)][0] for background in MATRIX_BACKGROUNDS]
-            lines.append("\t".join((access, *values)))
-        blocks.append("\n".join(lines))
-    lines = ["# contributors", "\t".join(("stat", "access") + MATRIX_BACKGROUNDS)]
-    for stat in MATRIX_STATS:
-        for access in MATRIX_ACCESSES:
-            counts = [
-                str(rollup[(stat, background, access)][1]) for background in MATRIX_BACKGROUNDS
-            ]
-            lines.append("\t".join((stat, access, *counts)))
-    blocks.append("\n".join(lines))
-    return "\n\n".join(blocks) + "\n"
-
-
-# Report access name each storm profile's burst fills (the extractor's
-# report columns; `storm-idle` bursts with IDLE_PROFILE, default read).
-_STORM_ACCESS = {
-    "storm-read": "storm_read",
-    "storm-thumb": "storm_thumb",
-    "storm-diff": "storm_edit",
-    "storm-idle": "storm_read",
-}
-_MATRIX_COLUMN_RE = re.compile(
-    r"^(idle|scan|uscan)_(prefetch|thumb|edit|storm_read|storm_thumb|storm_edit)"
-    r"_(p50|p95|max)_ms$"
-)
-
-
-def expected_columns(profile: str) -> list:
-    """Report columns one profile's median row is expected to fill.
-
-    The expectations come from the workload design: during-scan probes
-    land in the cell's own background (`scan`, or `uscan` for upload), a
-    storm profile measures exactly its own burst condition, every profile
-    records the idle post-scan baselines and the observer drain stages,
-    and the upload profile records its submit/visible p50s.
-    """
-    probes = ("prefetch", "thumb", "edit")
-    columns = []
-    if profile == "control":
-        columns += [f"scan_{access}_{stat}_ms" for access in probes for stat in MATRIX_STATS]
-    elif profile == "upload":
-        columns += [f"uscan_{access}_{stat}_ms" for access in probes for stat in MATRIX_STATS]
-    elif profile.startswith("storm-"):
-        access = _STORM_ACCESS.get(profile)
-        if access:
-            background = "idle" if profile == "storm-idle" else "scan"
-            columns += [f"{background}_{access}_{stat}_ms" for stat in MATRIX_STATS]
-            columns += [f"{background}_{access}_failed"]
-    columns += [f"idle_{access}_{stat}_ms" for access in probes for stat in MATRIX_STATS]
-    if profile == "upload":
-        columns += ["upload_submit_p50_ms", "upload_visible_p50_ms"]
-    columns += list(STAGE_COLUMNS)
-    return columns
-
-
-def _report_header(document: dict) -> list:
-    """The identity and outcome lines of `report.md`: battery, level,
-    scale, build, commit, date, cell outcomes and any failures."""
-    medians = document.get("medians") or []
-    cells = document.get("cells") or []
-
-    def first(key: str) -> str:
-        rows = medians + [entry["row"] for entry in cells if "row" in entry]
-        return next(
-            (str(row.get(key)) for row in rows if row.get(key) not in (None, "", NA)),
-            NA,
+def _git_branch(commit: str = "") -> str:
+    """Branch holding `commit`, else the current checkout's branch."""
+    if commit:
+        try:
+            result = subprocess.run(
+                ["git", "name-rev", "--name-only", commit],
+                capture_output=True,
+                text=True,
+                cwd=str(SCRIPT_DIR),
+            )
+        except OSError:
+            result = None
+        if result is not None and result.returncode == 0:
+            name = result.stdout.strip()
+            if name and not name.startswith("undefined"):
+                for prefix in ("remotes/origin/", "remotes/", "tags/"):
+                    name = name.removeprefix(prefix)
+                return name
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(SCRIPT_DIR),
         )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except OSError:
+        pass
+    return "unknown"
 
-    counts: dict = {"completed": 0, "failed": 0, "incomplete": 0}
-    failures = []
-    errors = 0
-    for entry in cells:
-        if "error" in entry:
-            errors += 1
-            failures.append(f"{entry['dir']}: error ({entry['error']})")
+
+_DEFAULT_BASELINE_COMMENTS = [
+    "# Accepted benchmark values for the recorded image counts.",
+    "#",
+    "# Long format, one row per cell and metric:",
+    "#   cell family background subject stat value unit",
+    "#   n_samples n_clusters ci_low ci_high recorded note",
+    "#",
+    "# Values and CI bounds use one decimal; `n/a` marks metrics without an",
+    "# interval. `compare_reports.py` reviews reports against these values;",
+    "# it is a review tool, not a gate.",
+]
+
+
+def _baseline_key(parts) -> tuple:
+    """Identity of a baseline/report row: cell plus metric dimensions."""
+    return tuple(str(part) for part in parts[:5])
+
+
+def load_baselines(path: Path) -> list:
+    """Read baselines.tsv rows keyed by cell and metric dimensions."""
+    rows = []
+    if not Path(path).is_file():
+        return rows
+    header = "	".join(BASELINE_COLUMNS)
+    for line in Path(path).read_text().splitlines():
+        if not line or line.startswith("#") or line == header:
             continue
-        state = entry.get("terminal") or "incomplete"
-        counts[state] = counts.get(state, 0) + 1
-        if state != "completed":
-            failures.append(f"{entry['dir']}: {state}")
-    level = document.get("level")
-    outcomes = ", ".join(f"{name}={counts[name]}" for name in counts)
-    return [
-        f"- battery: `{document.get('battery', '')}`",
-        f"- level: `{level if isinstance(level, str) and level else NA}`",
-        f"- scale: `{first('scale')}`",
-        f"- build: `{first('build')}`",
-        f"- commit: `{first('commit')}`",
-        f"- date: `{date.today().isoformat()}`",
-        f"- outcomes: {outcomes}, errors={errors}",
-        f"- failures: {'; '.join(failures) if failures else 'none'}",
-    ]
+        parts = line.split("	")
+        if len(parts) != len(BASELINE_COLUMNS):
+            raise ValueError(f"{path}: malformed baselines row: {line}")
+        rows.append(dict(zip(BASELINE_COLUMNS, parts, strict=True)))
+    return rows
 
 
-def _report_anomalies(document: dict, rollup: dict) -> list:
-    """The anomalies section, generated from the data: the worst single
-    value per stat (with its cell), every `n/a` a profile was expected
-    to fill, and expected cells whose rollup rests on fewer than two
-    contributor medians. Unmeasured-by-design cells are not anomalies.
-    """
-    medians = document.get("medians") or []
-    lines = ["## Anomalies", "", "### worst values", ""]
-    worst_rows = []
-    for stat in MATRIX_STATS:
-        best = None
-        for row in medians:
-            for background in MATRIX_BACKGROUNDS:
-                for access in MATRIX_ACCESSES:
-                    raw = row.get(f"{background}_{access}_{stat}_ms")
-                    if raw is None:
-                        continue
-                    text = str(raw).strip()
-                    try:
-                        value = float(text)
-                    except ValueError:
-                        continue
-                    if not math.isfinite(value):
-                        continue
-                    if best is None or value > best[0]:
-                        best = (value, text, str(row.get("cell", NA)), background, access)
-        if best:
-            _value, text, cell, background, access = best
-            worst_rows.append(f"| {stat} | {text} | {cell} | {background}/{access} |")
-    if worst_rows:
-        lines += [
-            "| stat | value (ms) | cell | condition |",
-            "| --- | --- | --- | --- |",
-            *worst_rows,
-        ]
-    else:
-        lines.append("- none")
-
-    lines += ["", "### expected data missing", ""]
-    missing = []
-    for row in medians:
-        profile = str(row.get("profile", ""))
-        for column in expected_columns(profile):
-            if row.get(column) in (None, "", NA):
-                missing.append(f"{row.get('cell', NA)}: {column} = {NA}")
-    lines += [f"- {item}" for item in missing] if missing else ["- none"]
-
-    lines += ["", "### contributor counts below 2", ""]
-    profiles = []
-    for row in medians:
-        profile = str(row.get("profile", ""))
-        if profile and profile not in profiles:
-            profiles.append(profile)
-    # Only the shared `idle_*` probe/baseline columns are expected from more
-    # than one contributor: every profile fills them, so a count below 2 means
-    # profiles stopped reporting. Structurally single-contributor columns
-    # (`scan_*`, `uscan_*`, and the storm kinds) are by design and never
-    # flagged, even when their count is 1 (or 0).
-    expected_counts: dict = {}
-    grid = set()
-    for profile in profiles:
-        for column in expected_columns(profile):
-            match = _MATRIX_COLUMN_RE.match(column)
-            if match is None:
-                continue
-            background, access = match.group(1), match.group(2)
-            if background != "idle" or access not in ("prefetch", "thumb", "edit"):
-                continue
-            grid.add((background, access))
-            expected_counts[(background, access)] = expected_counts.get((background, access), 0) + 1
-    thin = [
-        (background, access)
-        for background in MATRIX_BACKGROUNDS
-        for access in MATRIX_ACCESSES
-        if (background, access) in grid
-        and expected_counts.get((background, access), 0) > 1
-        and any(rollup[(stat, background, access)][1] < 2 for stat in MATRIX_STATS)
-    ]
-    if thin:
-        lines += [
-            "| background | access | p50 | p95 | max |",
-            "| --- | --- | --- | --- | --- |",
-        ]
-        for background, access in thin:
-            counts = [str(rollup[(stat, background, access)][1]) for stat in MATRIX_STATS]
-            lines.append(f"| {background} | {access} | " + " | ".join(counts) + " |")
-    else:
-        lines.append("- none")
-    return lines
+def _baseline_value(value) -> str:
+    """Value in the file's one-decimal style (8.26 -> 8.3)."""
+    if value in (None, "", NA):
+        return NA
+    try:
+        return f"{round(float(value), 1):.1f}"
+    except TypeError, ValueError:
+        return str(value)
 
 
-def render_report(document: dict) -> str:
-    """Render `report.md`: header, the three stat matrices with the
-    contributor counts, and anomalies.
-
-    Every section is generated from the extract's own rows — ranked
-    facts only, no prose judgments — and deterministic for one input.
-    The matrix values come from the same rollup as `matrix.tsv`.
-    """
-    medians = document.get("medians") or []
-    rollup = matrix_rollup(medians)
-    lines = ["# Battery report", ""]
-    lines += _report_header(document)
-    for stat in MATRIX_STATS:
-        lines += [
-            "",
-            f"## {stat} (ms)",
-            "",
-            "| access | idle | scan | uscan |",
-            "| --- | --- | --- | --- |",
-        ]
-        for access in MATRIX_ACCESSES:
-            values = [rollup[(stat, background, access)][0] for background in MATRIX_BACKGROUNDS]
-            lines.append("| " + " | ".join((access, *values)) + " |")
-    lines += [
-        "",
-        "## contributors",
-        "",
-        "| stat | access | idle | scan | uscan |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-    for stat in MATRIX_STATS:
-        for access in MATRIX_ACCESSES:
-            counts = [
-                str(rollup[(stat, background, access)][1]) for background in MATRIX_BACKGROUNDS
-            ]
-            lines.append("| " + " | ".join((stat, access, *counts)) + " |")
-    lines += [""] + _report_anomalies(document, rollup)
-    return "\n".join(lines) + "\n"
+def _baseline_line(row: dict) -> str:
+    return "\t".join(
+        str(row.get(column, NA)).replace("\t", " ").replace("\n", " ")
+        for column in BASELINE_COLUMNS
+    )
 
 
-def extract_battery(
-    parent: Path,
-    out: Path | None = None,
+def merge_baselines(
+    rows: list,
+    existing: list,
     *,
-    matrix_only: bool = False,
-    matrix_format: str = "both",
-) -> int:
+    run_date: str,
+    branch: str,
+    commit: str,
+) -> tuple[list, list]:
+    """Merge accepted report rows into the baselines row set.
+
+    Rows for a cell present in this run replace the stored value, interval
+    and provenance; rows for cells absent from this run carry over unchanged.
+    Notes survive re-recording.
+    """
+    notes = {
+        _baseline_key([row[column] for column in REPORT_COLUMNS]): row["note"] for row in existing
+    }
+    covered = {str(row["cell"]) for row in rows}
+    merged = []
+    new_metrics = []
+    recorded = f"{run_date} {branch} {commit}".strip()
+    for row in rows:
+        parts = [row[column] for column in REPORT_COLUMNS]
+        key = _baseline_key(parts)
+        note = notes.get(key)
+        if note is None:
+            note = f"new metric recorded {run_date}"
+            new_metrics.append((row["cell"], key[1:]))
+        if row["stat"] == metrics.COUNT_STAT:
+            value = str(int(round(float(row["value"]))))
+        else:
+            value = _baseline_value(row["value"])
+        merged.append(
+            {
+                **{column: row[column] for column in REPORT_COLUMNS},
+                "value": value,
+                "ci_low": _baseline_value(row["ci_low"]),
+                "ci_high": _baseline_value(row["ci_high"]),
+                "recorded": recorded,
+                "note": note,
+            }
+        )
+    for row in existing:
+        if str(row["cell"]) in covered:
+            continue
+        merged.append(row)
+    merged.sort(
+        key=lambda row: (
+            row["cell"],
+            row["family"],
+            row["background"],
+            row["subject"],
+            metrics.STATS.index(row["stat"]) if row["stat"] in metrics.STATS else 0,
+        )
+    )
+    return merged, new_metrics
+
+
+def load_baseline_metadata(path) -> dict:
+    """Per-cell identity and validity from a baselines file's `# cell:` lines."""
+    metadata: dict = {}
+    if not path or not Path(path).is_file():
+        return metadata
+    for line in Path(path).read_text().splitlines():
+        if not line.startswith("# cell: "):
+            continue
+        try:
+            payload = json.loads(line[len("# cell: ") :])
+        except json.JSONDecodeError:
+            continue
+        identity = payload.get("identity") or {}
+        cell = identity.get("cell")
+        if cell:
+            metadata[cell] = {
+                "identity": identity,
+                "validity": payload.get("validity") or {},
+            }
+    return metadata
+
+
+def baselines_text(rows: list, env_lines: list, metadata: dict | None = None) -> str:
+    """Baselines file: comments, environment, per-cell metadata, long rows."""
+    metadata = metadata or {}
+    body = [BASELINE_HEADER]
+    current = None
+    for row in rows:
+        cell = row["cell"]
+        if cell != current:
+            current = cell
+            block = metadata.get(cell)
+            if block:
+                body.append(_cell_line(block.get("identity") or {}, block.get("validity") or {}))
+        body.append(_baseline_line(row))
+    return "\n".join(list(_DEFAULT_BASELINE_COMMENTS) + list(env_lines) + body) + "\n"
+
+
+def _run_date(paths) -> str:
+    dates = []
+    for path in paths:
+        started = _read_manifest(path).get("started")
+        if isinstance(started, str) and len(started) >= 10:
+            dates.append(started[:10])
+    return min(dates) if dates else date.today().isoformat()
+
+
+def _resolve_parents(raw_paths):
+    """Expand CLI paths to battery parents: each path is either a battery
+    parent itself or a run root whose immediate subdirectories are. Empty
+    and foreign directories are skipped; a path yielding nothing is an error."""
+    found = []
+    for raw in raw_paths:
+        parent = Path(raw)
+        if not parent.is_dir():
+            return [], f"{parent}: not a battery directory"
+        if is_battery_parent(parent):
+            if any(parent.iterdir()):
+                found.append(parent)
+            continue
+        contained = sorted(
+            [
+                s
+                for s in parent.iterdir()
+                if s.is_dir() and is_battery_parent(s) and any(s.iterdir())
+            ],
+            key=lambda s: s.name,
+        )
+        if not contained:
+            return [], f"{parent}: no *-repN subdirectories and no contained batteries"
+        found.extend(contained)
+    if not found:
+        return [], "no batteries found"
+    return found, None
+
+
+def _env_key(record: dict) -> tuple:
+    """Identity of an environment record: same run, same key."""
+    commit = record.get("commit") or record.get("git_commit", "")
+    return (str(commit), str(record.get("started_utc", "")))
+
+
+def merge_env_lines(existing_lines, records) -> list:
+    """Merge environment JSON lines: same run key replaces, else append."""
+    import json
+
+    merged = []
+    seen = set()
+    for line in existing_lines:
+        try:
+            record = json.loads(line[len("# env:") :])
+            key = _env_key(record)
+        except ValueError, AttributeError:
+            merged.append(line)
+            continue
+        seen.add(key)
+        merged.append(line)
+    for record in records:
+        key = _env_key(record)
+        line = "# env: " + json.dumps(record, sort_keys=True)
+        if key not in seen:
+            merged.append(line)
+            seen.add(key)
+            continue
+        for i, existing in enumerate(merged):
+            try:
+                same = _env_key(json.loads(existing[len("# env:") :])) == key
+            except ValueError:
+                continue
+            if same:
+                merged[i] = line
+                break
+    return merged
+
+
+def record_baselines(parents, tsv_path, merge_path=None, md_path=None) -> int:
+    """Merge accepted report rows from battery parents into baselines.tsv.
+
+    The report is the single reduced record, so this step reads it instead
+    of re-parsing rep artifacts: values and intervals cannot diverge from
+    what the battery reported. Every metric of a battery run is recorded;
+    debug cells are skipped. With `md_path` the
+    Markdown document is rendered from the merged baselines.
+    """
+    from render_baselines import render
+
+    parents, error = _resolve_parents(parents)
+    if error is not None:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    accepted_rows: list = []
+    metadata: dict = {}
+    env_records: list = []
+    rep_dirs: list = []
+    for parent in parents:
+        report_path = parent / "report.tsv"
+        if not report_path.is_file():
+            print(f"ERROR: {report_path}: no report.tsv (run the battery first?)", file=sys.stderr)
+            return 1
+        rep_dirs.extend(_rep_dirs(parent))
+        env_record = environment.load_environment(parent / environment.ENVIRONMENT_FILENAME)
+        if env_record is not None:
+            env_records.append(env_record)
+        for block in load_report(report_path):
+            identity = block.get("identity") or {}
+            if identity.get("source") != "battery":
+                continue
+            accepted_rows.extend(block["rows"])
+            cell = identity.get("cell")
+            if cell:
+                metadata[cell] = {"identity": identity, "validity": block.get("validity") or {}}
+    if not accepted_rows:
+        print("ERROR: no report rows extracted", file=sys.stderr)
+        return 2
+    if merge_path is not None:
+        merge_source = Path(merge_path)
+    elif not (isinstance(tsv_path, str) and tsv_path == "-") and Path(tsv_path).is_file():
+        merge_source = Path(tsv_path)
+    else:
+        merge_source = SCRIPT_DIR / "baselines.tsv"
+    run_date = _run_date(rep_dirs)
+    try:
+        existing_rows = load_baselines(merge_source)
+    except ValueError as err:
+        print(f"warn: {err}; recording without prior baselines", file=sys.stderr)
+        existing_rows = []
+    rows, new_metrics = merge_baselines(
+        accepted_rows,
+        existing_rows,
+        run_date=run_date,
+        branch="",
+        commit="",
+    )
+    existing_env = []
+    if merge_source.is_file():
+        existing_env = [
+            line for line in merge_source.read_text().splitlines() if line.startswith("# env:")
+        ]
+    env_lines = merge_env_lines(existing_env, env_records)
+    merged_metadata = load_baseline_metadata(merge_source)
+    merged_metadata.update(metadata)
+    text = baselines_text(rows, env_lines, merged_metadata)
+    to_stdout = tsv_path is True or tsv_path == "-"
+    if md_path is not None and to_stdout:
+        print(
+            "ERROR: --render-md needs a --baselines-tsv file to read the baselines back",
+            file=sys.stderr,
+        )
+        return 2
+    if not to_stdout:
+        out_path = Path(tsv_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text)
+        print(f"wrote baselines TSV: {out_path}", file=sys.stderr)
+    else:
+        print(text, end="")
+    if new_metrics:
+        print("new metrics recorded without prior baseline:", file=sys.stderr)
+        for cell, key in new_metrics:
+            print(f"  {cell} {' '.join(key)}", file=sys.stderr)
+    if md_path is not None:
+        md_out = Path(md_path)
+        md_out.parent.mkdir(parents=True, exist_ok=True)
+        md_out.write_text(render(rows, merged_metadata, env_records))
+        print(f"wrote baselines Markdown: {md_out}", file=sys.stderr)
+    return 0
+
+
+def extract_battery(parent: Path, out: Path | None = None) -> int:
     """Dump one battery parent as a single JSON document.
 
-    Walks the `<level>-<profile>-repN` subdirs in sorted order and emits
-    one entry per subdir (row, manifest identity, stages, terminal state;
-    a rep whose artifacts no longer parse becomes an `{"dir", "error"}`
-    entry), the pooled median rows, the parent's `report.tsv` rows and an
-    `errors` count. The pooled medians also render into the human
-    artifacts beside the JSON — `report.md` and/or `matrix.tsv`, selected
-    by `matrix_format` (md/tsv/both), next to `out`, else inside the
-    parent; with `matrix_only` the selected human view reaches stdout
-    instead of the JSON document. Exit 0 when at least one rep parsed, 1
-    when the parent holds no rep subdirs, 2 when every rep failed to
-    parse.
+    Emits the parent's cell blocks (identity, validity and long rows) from
+    `report.tsv`, or rebuilt from the rep artifacts when no report exists,
+    plus the parent environment and an `errors` count. The JSON goes to
+    `out` when given, otherwise to stdout; no other file is written.
+
+    Baseline recording lives in `record_baselines`, not here.
     """
-    if matrix_format == "both":
-        formats = ("md", "tsv")
-    elif matrix_format in ("md", "tsv"):
-        formats = (matrix_format,)
-    else:
-        raise ValueError(f"unknown matrix format: {matrix_format}")
     parent = Path(parent)
     if not parent.is_dir():
         print(f"ERROR: {parent}: not a battery directory", file=sys.stderr)
@@ -1155,186 +1033,43 @@ def extract_battery(
     if not paths:
         print(f"ERROR: {parent}: no *-repN subdirectories", file=sys.stderr)
         return 1
+    errors = []
     cells = []
-    rows = []
-    for path in paths:
-        entry = _extract_entry(path)
-        cells.append(entry)
-        if "error" not in entry:
-            rows.append(entry["row"])
     report_path = parent / "report.tsv"
-    medians = [_report_row(row) for row in _median_rows(rows)]
-    report_rows = []
     if report_path.is_file():
         try:
-            report_rows = load_report(report_path)
+            cells = load_report(report_path)
         except ValueError as err:
-            # A report written under an older column scheme cannot be
-            # mapped onto this one; the rebuilt rows above are the extract's
-            # record of the parent.
-            print(f"warn: {err}; omitting report rows", file=sys.stderr)
-    # The per-rep rows stay report-shaped in the document; their `samples`
-    # helper key was only needed for the pooled medians above.
-    cells = [
-        {**entry, "row": _report_row(entry["row"])} if "row" in entry else entry for entry in cells
-    ]
+            print(f"warn: {err}; rebuilding from rep artifacts", file=sys.stderr)
+    if not cells:
+        grouped: dict = {}
+        for path in paths:
+            entry = _extract_entry(path)
+            if "error" in entry:
+                errors.append({key: entry[key] for key in ("dir", "error")})
+                continue
+            row = entry["row"]
+            grouped.setdefault(row.get("cell", ""), []).append(row)
+        for group in grouped.values():
+            rows, identity, validity = _pooled_report_rows(group)
+            cells.append({"identity": identity, "validity": validity, "rows": rows})
     document = {
         "battery": str(parent),
-        "level": next((row.get("level") for row in rows if row.get("level")), None),
         "cells": cells,
-        "medians": medians,
-        "report": report_rows,
-        "errors": sum(1 for entry in cells if "error" in entry),
+        "errors": errors,
+        "environment": environment.load_environment(parent / environment.ENVIRONMENT_FILENAME),
     }
     payload = json.dumps(_json_safe(document), indent=2, allow_nan=False) + "\n"
-    # The JSON stays the machine-readable record; the human views are
-    # rendered beside it (`out`'s directory, else the battery parent).
-    out_path = Path(out) if out is not None else None
-    if out_path is not None:
+    if out is not None:
+        out_path = Path(out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(payload)
-    elif not matrix_only:
+    else:
         print(payload, end="")
-    matrix_dir = out_path.parent if out_path is not None else parent
-    human_text = None
-    if "md" in formats:
-        human_text = render_report(document)
-        (matrix_dir / REPORT_FILE).write_text(human_text)
-    if "tsv" in formats:
-        tsv_text = render_matrix(medians)
-        (matrix_dir / MATRIX_FILE).write_text(tsv_text)
-        human_text = human_text or tsv_text
-    if matrix_only:
-        print(human_text, end="")
-    if not rows:
+    if not cells:
         print(f"ERROR: {parent}: no rep subdirectory parsed", file=sys.stderr)
         return 2
     return 0
-
-
-# --- baseline checking -------------------------------------------------------
-@dataclass(frozen=True)
-class Baseline:
-    cell: str
-    metric: str
-    baseline: float
-    rel_tol: float
-    abs_tol: float
-    recorded: str
-    note: str
-
-
-@dataclass(frozen=True)
-class Failure:
-    cell: str
-    metric: str
-    message: str
-
-
-@dataclass(frozen=True)
-class CheckResult:
-    checked: int
-    cells: int
-    failures: list
-
-
-def load_baselines(path: Path) -> list:
-    """Read the long-format baseline file; comments and blanks are ignored."""
-    lines = [
-        line
-        for line in Path(path).read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
-    if not lines:
-        raise ValueError(f"{path}: empty baselines file")
-    header = lines[0].split("\t")
-    if header != BASELINE_COLUMNS:
-        raise ValueError(f"{path}: unexpected baselines header")
-    baselines = []
-    for line in lines[1:]:
-        parts = line.split("\t")
-        if len(parts) != len(header):
-            raise ValueError(f"{path}: malformed baselines row: {line}")
-        cell, metric, baseline, rel_tol, abs_tol, recorded, note = parts
-        try:
-            value = float(baseline)
-            rel = float(rel_tol) if rel_tol != "" else 0.0
-            absolute = float(abs_tol) if abs_tol != "" else 0.0
-        except ValueError:
-            raise ValueError(f"{path}: non-numeric baseline row: {line}")
-        baselines.append(
-            Baseline(
-                cell=cell,
-                metric=metric,
-                baseline=value,
-                rel_tol=rel,
-                abs_tol=absolute,
-                recorded=recorded,
-                note=note,
-            )
-        )
-    return baselines
-
-
-def check_report(rows: list, baselines: list) -> CheckResult:
-    """Compare report rows against baselines; never mutates the baselines."""
-    median_rows = [row for row in rows if str(row.get("cell", "")).endswith(":median")]
-    if median_rows:
-        rows = median_rows
-    by_cell = {row.get("cell"): row for row in rows}
-    failures = []
-    checked = 0
-    referenced = set()
-    for baseline in baselines:
-        referenced.add(baseline.cell)
-        row = by_cell.get(baseline.cell)
-        band = max(baseline.abs_tol, abs(baseline.baseline) * baseline.rel_tol)
-        low = baseline.baseline - band
-        high = baseline.baseline + band
-        if row is None:
-            failures.append(
-                Failure(
-                    baseline.cell,
-                    baseline.metric,
-                    f"FAIL cell={baseline.cell} metric={baseline.metric}: cell missing from report",
-                )
-            )
-            continue
-        actual_raw = row.get(baseline.metric, NA)
-        if actual_raw == NA:
-            failures.append(
-                Failure(
-                    baseline.cell,
-                    baseline.metric,
-                    f"FAIL cell={baseline.cell} metric={baseline.metric} actual=n/a "
-                    f"baseline={baseline.baseline:g} band=[{low:g},{high:g}]",
-                )
-            )
-            continue
-        try:
-            actual = float(actual_raw)
-        except ValueError:
-            failures.append(
-                Failure(
-                    baseline.cell,
-                    baseline.metric,
-                    f"FAIL cell={baseline.cell} metric={baseline.metric} actual={actual_raw} "
-                    f"(not numeric) baseline={baseline.baseline:g} band=[{low:g},{high:g}]",
-                )
-            )
-            continue
-        if low <= actual <= high:
-            checked += 1
-            continue
-        failures.append(
-            Failure(
-                baseline.cell,
-                baseline.metric,
-                f"FAIL cell={baseline.cell} metric={baseline.metric} actual={actual_raw} "
-                f"baseline={baseline.baseline:g} band=[{low:g},{high:g}]",
-            )
-        )
-    return CheckResult(checked=checked, cells=len(referenced), failures=failures)
 
 
 # --- running -----------------------------------------------------------------
@@ -1363,20 +1098,24 @@ def _cell_env(
             "DATASET_ID": cell.repo,
         }
     )
+    upload_repo = env.get("UPLOAD_REPO")
+    if upload_repo and not Path(upload_repo).is_absolute():
+        env["UPLOAD_REPO"] = str(Path(run_config.sets_root) / upload_repo)
     return env
 
 
-def _reuse_row(level: str, cell: Cell, cell_out: Path) -> dict | None:
+def _reuse_row(cell: Cell, cell_out: Path) -> dict | None:
     """Return the report row of a completed rep, or None when it must run.
 
     run_cell writes `status-final.json` only for a terminal server state;
-    a rep without that marker, or whose artifacts no longer parse
-    (missing log, corrupt status), is incomplete and runs again.
+    a rep without that marker, or whose artifacts no longer parse, is
+    incomplete and runs again.
     """
+    cell_out = Path(cell_out)
     if not (cell_out / "status-final.json").is_file():
         return None
     try:
-        return build_row(level, cell.profile, cell_out, cell_id=cell.cell_id)
+        return build_row(cell.profile, cell_out, cell_id=cell.cell_id, source=cell.source)
     except Exception, SystemExit:
         # Any parse failure marks the rep incomplete; a fresh run reports
         # its own row errors. KeyboardInterrupt still aborts the battery.
@@ -1384,7 +1123,7 @@ def _reuse_row(level: str, cell: Cell, cell_out: Path) -> dict | None:
 
 
 def run_battery(
-    level: str,
+    images: int,
     outdir: Path,
     *,
     sets_root: Path = DEFAULT_SETS_ROOT,
@@ -1412,7 +1151,7 @@ def run_battery(
         validate_parent(outdir, fresh=False)
         outdir.mkdir(parents=True, exist_ok=True)
     environ = dict(os.environ)
-    # Cell level is fully parameterized by env: honor PORT/BUILD_PROFILE when
+    # The debug cell is fully parameterized by env: honor PORT/BUILD_PROFILE when
     # the caller did not override them explicitly.
     if build_profile == "release" and "BUILD_PROFILE" in environ:
         build_profile = config.validate_build_profile(environ, build_profile)
@@ -1420,7 +1159,7 @@ def run_battery(
         base_port = config.validate_port(environ["PORT"])
     run_config = config.BatteryConfig.from_env(
         environ,
-        level=level,
+        images=images,
         out=outdir,
         sets_root=sets_root,
         base_port=base_port,
@@ -1428,49 +1167,118 @@ def run_battery(
         fresh=fresh,
     )
     n_repeats = run_config.repeats
-    cells = battery_cells(level, environ)
+    cells = battery_cells(images)
     report = outdir / "report.tsv"
     report.unlink(missing_ok=True)
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("\t".join(REPORT_COLUMNS) + "\n")
     orchestrator = run_cell
 
-    for index, cell in enumerate(cells):
-        repeat_rows = []
-        for rep in range(1, n_repeats + 1):
-            cell_out = outdir / f"{cell.outdir_suffix}-rep{rep}"
-            # Default resume: a completed rep is reused; --fresh re-runs it.
-            row = None if fresh else _reuse_row(level, cell, cell_out)
-            if row is not None:
+    # Host snapshot for this battery run. On resume the original start is
+    # kept and only the resume/completion fields move. Telemetry must never
+    # fail the battery, so every touch below is best-effort.
+    env_path = outdir / environment.ENVIRONMENT_FILENAME
+    try:
+        env_record = environment.load_environment(env_path)
+        if env_record is None:
+            env_record = environment.collect_environment(images=images)
+            environment.write_environment(env_path, env_record)
+        else:
+            env_record["resumed_utc"] = environment.collect_environment(images=images)[
+                "started_utc"
+            ]
+            environment.write_environment(env_path, env_record)
+    except Exception as err:  # noqa: BLE001 - telemetry must not fail the battery
+        print(f"[battery {images}] environment snapshot skipped: {err}", file=sys.stderr)
+
+    try:
+        for index, cell in enumerate(cells):
+            repeat_rows = []
+            min_probe_rounds = run_config.min_probe_rounds
+            for rep in range(1, n_repeats + 1):
+                cell_out = outdir / f"{cell.outdir_suffix}-rep{rep}"
+                # Default resume: a completed rep is reused; --fresh re-runs it.
+                row = None if fresh else _reuse_row(cell, cell_out)
+                if row is not None:
+                    repeat_rows.append(row)
+                    print(
+                        f"[battery {images}] {cell.cell_id}: rep={rep}/cap={n_repeats} reused {cell_out}",
+                        flush=True,
+                    )
+                else:
+                    env = _cell_env(environ, run_config, cell, index, cell_out)
+                    print(
+                        f"[battery {images}] {cell.cell_id}: rep={rep}/cap={n_repeats} port={env['PORT']} out={cell_out}",
+                        flush=True,
+                    )
+                    cfg = orchestrator.config_from_env(env)
+                    rc = orchestrator.run_cell(cfg, env)
+                    try:
+                        row = build_row(
+                            cell.profile,
+                            cell_out,
+                            cell_id=cell.cell_id,
+                            source=cell.source,
+                        )
+                    except (OSError, ValueError, SystemExit) as err:
+                        print(
+                            f"[battery {images}] {cell.cell_id}: no result row: {err}",
+                            file=sys.stderr,
+                        )
+                        row = None
+                    if row is not None:
+                        repeat_rows.append(row)
+                        print(
+                            f"[battery {images}] {cell.cell_id}: row appended (rc={rc})", flush=True
+                        )
+                    if rc != 0:
+                        print(
+                            f"[battery {images}] {cell.cell_id}: cell failed rc={rc}",
+                            file=sys.stderr,
+                        )
+                        return rc
+                valid_rounds = 0
+                for existing in repeat_rows:
+                    value = (existing.get("validity") or {}).get("probe_rounds_valid", NA)
+                    try:
+                        valid_rounds += int(value)
+                    except TypeError, ValueError:
+                        continue
+                has_probes = config.profile_has_probes(cell.profile)
                 print(
-                    f"[battery {level}] {cell.cell_id}: rep={rep}/{n_repeats} reused {cell_out}",
+                    f"[battery {images}] {cell.cell_id}: rep={rep}/cap={n_repeats} "
+                    f"rounds={valid_rounds}/{min_probe_rounds}"
+                    + ("" if has_probes else " (no probe phase)"),
                     flush=True,
                 )
-                append_row(report, row)
-                repeat_rows.append(row)
-                continue
-            env = _cell_env(environ, run_config, cell, index, cell_out)
-            print(
-                f"[battery {level}] {cell.cell_id}: rep={rep}/{n_repeats} port={env['PORT']} out={cell_out}",
-                flush=True,
-            )
-            cfg = orchestrator.config_from_env(env)
-            rc = orchestrator.run_cell(cfg, env)
-            try:
-                row = build_row(level, cell.profile, cell_out, cell_id=cell.cell_id)
-            except (OSError, ValueError, SystemExit) as err:
-                print(f"[battery {level}] {cell.cell_id}: no result row: {err}", file=sys.stderr)
-            else:
-                append_row(report, row)
-                repeat_rows.append(row)
-                print(f"[battery {level}] {cell.cell_id}: row appended (rc={rc})", flush=True)
-            if rc != 0:
-                print(f"[battery {level}] {cell.cell_id}: cell failed rc={rc}", file=sys.stderr)
-                return rc
-        if n_repeats > 1 and repeat_rows:
-            median_row = _build_median_row(repeat_rows)
-            append_row(report, median_row)
-            print(f"[battery {level}] {cell.cell_id}: median row appended", flush=True)
-    print(f"[battery {level}] report: {report}", flush=True)
-    return 0
+                if not has_probes or valid_rounds >= min_probe_rounds or rep >= n_repeats:
+                    if has_probes and valid_rounds < min_probe_rounds and rep >= n_repeats:
+                        print(
+                            f"[battery {images}] {cell.cell_id}: warn: probe rounds "
+                            f"{valid_rounds} below target {min_probe_rounds}",
+                            file=sys.stderr,
+                        )
+                    break
+
+            if repeat_rows:
+                rows, identity, validity = _pooled_report_rows(repeat_rows)
+                append_cell_rows(report, identity, validity, rows)
+                print(
+                    f"[battery {images}] {cell.cell_id}: {len(rows)} report rows "
+                    f"(reps={validity.get('reps')}, rounds={validity.get('probe_rounds_valid')})",
+                    flush=True,
+                )
+        print(f"[battery {images}] report: {report}", flush=True)
+        return 0
+    finally:
+        # Stamp completion (started-/loadavg-at-start stay as recorded).
+        try:
+            done = environment.load_environment(env_path)
+            if done is None:
+                done = environment.collect_environment(images=images)
+            environment.write_environment(env_path, environment.finish_environment(done))
+        except Exception as err:  # noqa: BLE001 - telemetry must not fail the battery
+            print(f"[battery {images}] environment finish skipped: {err}", file=sys.stderr)
 
 
 def main(argv=None) -> int:
@@ -1478,7 +1286,7 @@ def main(argv=None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run = subparsers.add_parser("run", help="run a battery and write its report")
-    run.add_argument("level", choices=sorted(_KNOWN_LEVELS))
+    run.add_argument("--images", type=int, default=None, help="image count for this battery")
     run.add_argument("--out", help="battery directory (default: $OUT)")
     run.add_argument(
         "--sets-root",
@@ -1498,47 +1306,57 @@ def main(argv=None) -> int:
         help="re-run every rep instead of resuming completed ones (default: resume)",
     )
 
-    check = subparsers.add_parser("check", help="compare a report against baselines")
-    check.add_argument("report", help="battery report TSV")
-    check.add_argument(
-        "--baselines",
-        default=str(SCRIPT_DIR / "baselines.tsv"),
-        help="baseline TSV (default: utils/bench/baselines.tsv)",
-    )
-
     listing = subparsers.add_parser("list", help="print a battery's cell ids")
-    listing.add_argument("level", choices=sorted(_KNOWN_LEVELS))
+    listing.add_argument("--images", type=int, default=None)
 
     extract = subparsers.add_parser(
-        "extract", help="dump one battery parent as a single JSON document"
+        "extract", help="dump battery parents as JSON documents, or record baselines"
     )
-    extract.add_argument("parent", help="battery directory holding *-repN subdirs")
+    extract.add_argument(
+        "parents",
+        nargs="+",
+        help="battery directories, or a run root containing them",
+    )
     extract.add_argument("--out", help="write the JSON document to this file (default: stdout)")
     extract.add_argument(
-        "--format",
-        choices=("md", "tsv", "both"),
-        default="both",
-        help="human view artifacts to write next to the JSON (default: both)",
+        "--baselines-tsv",
+        nargs="?",
+        const="-",
+        default=None,
+        metavar="PATH",
+        help="merge every parent's medians into this baselines.tsv long format "
+        "(no PATH prints it); combine with --render-md for the full doc",
     )
     extract.add_argument(
-        "--matrix-only",
-        action="store_true",
-        help="print the human view on stdout instead of the JSON document "
-        "(the Markdown report, or the TSV with --format tsv)",
+        "--baselines",
+        default=None,
+        metavar="PATH",
+        help="merge source for --baselines-tsv (default: the output path when it "
+        "exists, else utils/bench/baselines.tsv)",
+    )
+    extract.add_argument(
+        "--render-md",
+        default=None,
+        metavar="PATH",
+        help="render the full baselines.md from the merged baselines plus every "
+        "parent's report.tsv (needs --baselines-tsv)",
     )
 
     args = parser.parse_args(argv)
 
     if args.command == "run":
+        images = args.images
+        if images is None:
+            images = config.integer(os.environ, "IMAGES", config.DEFAULT_IMAGES, minimum=1)
         raw_out = args.out or os.environ.get("OUT", "")
         if raw_out == "":
-            raw_out = f"/tmp/picasu-battery-{args.level}-{datetime.now():%Y%m%d-%H%M%S}"
+            raw_out = f"/tmp/picasu-battery-{images}-{datetime.now():%Y%m%d-%H%M%S}"
         # SIGTERM unwinds through run_cell's finally so the launcher and its
         # server are stopped instead of orphaned between cells.
         signal.signal(signal.SIGTERM, _interrupt)
         try:
             return run_battery(
-                args.level,
+                images,
                 Path(raw_out),
                 sets_root=Path(args.sets_root),
                 base_port=args.port,
@@ -1552,53 +1370,41 @@ def main(argv=None) -> int:
             print("[battery] interrupted", file=sys.stderr)
             return 130
 
-    if args.command == "check":
-        report_path = Path(args.report)
-        if report_path.is_dir():
-            parent = report_path
-            report_path = parent / "report.tsv"
-        else:
-            parent = report_path.parent
-        try:
-            validate_parent(parent, fresh=False)
-            rows = load_report(report_path)
-            baselines = load_baselines(Path(args.baselines or str(SCRIPT_DIR / "baselines.tsv")))
-        except (OSError, ValueError, ConfigError) as err:
-            print(f"ERROR: {err}", file=sys.stderr)
-            return 1
-        result = check_report(rows, baselines)
-        if not baselines:
-            print("note: no baseline rows recorded; nothing to check")
-        for failure in result.failures:
-            print(failure.message)
-        baselined_metrics = {baseline.metric for baseline in baselines}
-        ungated = [
-            column
-            for column in (METRICS_COLUMNS + SCROLL_COLUMNS + RANGE_COLUMNS)
-            if column not in baselined_metrics
-        ]
-        if ungated:
-            print("informational (ungated, no baseline): " + ", ".join(ungated))
-        print(
-            f"{len(result.failures)} failure(s); {result.checked} metric(s) in band "
-            f"across {result.cells} cell(s)"
-        )
-        return 1 if result.failures else 0
-
     if args.command == "extract":
         try:
+            if args.baselines_tsv is not None or args.render_md is not None:
+                if args.render_md is not None and args.baselines_tsv is None:
+                    print("ERROR: --render-md needs --baselines-tsv", file=sys.stderr)
+                    return 2
+                if args.out is not None:
+                    print("ERROR: --out takes exactly one battery parent", file=sys.stderr)
+                    return 2
+                return record_baselines(
+                    args.parents,
+                    args.baselines_tsv,
+                    merge_path=args.baselines,
+                    md_path=args.render_md,
+                )
+            if len(args.parents) != 1:
+                print(
+                    "ERROR: pass exactly one battery parent "
+                    "(or --baselines-tsv/--render-md for several)",
+                    file=sys.stderr,
+                )
+                return 2
             return extract_battery(
-                Path(args.parent),
+                Path(args.parents[0]),
                 Path(args.out) if args.out else None,
-                matrix_only=args.matrix_only,
-                matrix_format=args.format,
             )
         except (OSError, ValueError, ConfigError) as err:
             # A corrupt report.tsv surfaces the same way `check` reports it.
             print(f"ERROR: {err}", file=sys.stderr)
             return 1
 
-    for cell in battery_cells(args.level):
+    images = getattr(args, "images", None)
+    if images is None:
+        images = config.integer(os.environ, "IMAGES", config.DEFAULT_IMAGES, minimum=1)
+    for cell in battery_cells(images):
         print(cell.cell_id)
     return 0
 
