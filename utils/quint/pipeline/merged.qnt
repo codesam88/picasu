@@ -553,14 +553,15 @@ module pipeline_merged {
       p.in(PATHS),
       files.get(p).present,
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: files.get(p).sidecar }),
-    generations' = generations,
-    intake' = intake,
-    assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
-    sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
-    unprocessable' = unprocessable,
-    sweepBatch' = sweepBatch,
-    leasedPaths' = leasedPaths,
+      generations' = generations,
+      intake' = intake,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
+      sweepPending' = sweepPending,
+      nextAssetId' = nextAssetId,
+      unprocessable' = unprocessable,
+      sweepBatch' = sweepBatch,
+      leasedPaths' = leasedPaths,
+    }
   }
 
   // @exempt environment
