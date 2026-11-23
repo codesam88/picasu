@@ -469,25 +469,29 @@ Outcome history (recorded):
 confirmed worse: two of its conjunct groups are violated by _reachable_
 states, so no strengthening of `Domains` alone can repair them:
 
-- **Album aggregate drift (reachable, depth ≤ 20).** `ApiRemove`,
-  `AppSidecarEdit` and `RotateFinish` rewrite member rows without the
-  album `itemCount`/`itemSize` delta, so album aggregates leave
-  `ALBUM_METARECORDS`'s range in reachable states (`itemCount` 3→4 via
-  ApiRemove+re-upload; `itemSize` 0→−2 via AppSidecarEdit+RemoveIdOnly).
-  The backend applies `apply_album_delta` on these paths
-  (`router/delete.rs` collects affected album ids; `asset_store.rs`), the
-  model does not — a fidelity gap to fix in `merged.qnt` first.
-  `AlbumStatsConsistent`/`NoPhantom` are therefore not usable as support
-  conjuncts until the fix lands.
-- **Id spill (reachable, depth ~35).** `ApiMove`/`MoveRowRewrite` do not
-  retract the destination path's pre-existing record, so orphan media
-  records accumulate; with ≥ 1 album + 4 media records the
-  `nextFreeId` fallback returns `PATHS.size() + 2` ∉ `IDS`, breaking
-  four domain conjuncts in one allocation step. `IdBudget` as planned
-  (§3.2 item 2) is false reachably; the sufficient conjunct is
-  orphan-freedom, which requires the same fidelity decision (does the
-  backend retract the destination's old record on move?). Resolution
-  pending backend verification.
+- **Album aggregate drift — resolved 2026-11-23 (`b6523f7f`).** Backend
+  verification: the delete path applies `apply_album_delta(count −1,
+size −file_size)` for non-trashed album members
+  (`flush_tree.rs::remove_asset_record_from_tables`), so `ApiRemove`'s
+  skip was a model gap — fixed in `merged.qnt` (guarded like the other
+  delta sites). `AppSidecarEdit`/`RotateFinish` skip aggregates in the
+  backend too (model faithful there), but `AppSidecarEdit`'s rewrite of
+  the content snapshot was itself unfaithful
+  (`to_metadata_record` writes only user fields; the snapshot lives in
+  `ASSET_BY_ID`) — narrowed to keep the stored snapshot, which also
+  removes the drift chain through `RemoveIdOnly`. All gates re-run:
+  70/70 both models, audit 42/42, differential clean.
+- **Id spill (reachable, depth ~35) — backend-faithful, decision
+  pending.** Backend verification: `assign_album.rs::move_asset_mapping`
+  overwrites the destination's path mapping without reading or removing
+  the pre-existing id (`asset_store.rs:147-190`), and no later path
+  cleans orphan ids (the sweep resolves rows by path and never sees an
+  unmapped id) — the backend leaks orphan records on move-over-ghost-row
+  and the model matches. Orphan accumulation is therefore real
+  behavior, not a model defect. Consequence for the finite-domain
+  proof: no finite `IDS` is sound without bounding orphan creation, so
+  the proof needs a move-over-ghost-row budget (machine-level, like the
+  fault budget) or the lane falls back. Decision recorded below.
 - Consecution holes that are _not_ reachable (constructed-state only):
   kind/key shape-copy coherence (`UploadIndexed`/`WorkerApplySuccess`
   copy `kind`/`albumId`; a key-incoherent domain state writes shapes
