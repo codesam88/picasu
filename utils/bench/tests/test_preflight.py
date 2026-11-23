@@ -40,7 +40,6 @@ pf = load_module("preflight", "preflight.py")
 def base_env(**kw):
     env = {
         "PICASU_BIN": sys.executable,
-        "HYPERFINE_BIN": sys.executable,
         "PORT": "59999",
     }
     env.update(kw)
@@ -62,12 +61,12 @@ class CheckShapeTest(unittest.TestCase):
         self.assertIn("5713 free", check.line())
 
     def test_fail_line_carries_hint(self):
-        check = pf.Check("hyperfine", False, "hyperfine is required", "run: just install hyperfine")
+        check = pf.Check("sandbox", False, "sandbox manifest missing", "run: just bench prepare")
 
-        self.assertTrue(check.line().startswith("FAIL hyperfine:"))
-        self.assertIn("hyperfine is required", check.line())
-        self.assertIn("run: just install hyperfine", check.line())
-        self.assertIn("run: just install hyperfine", check.message())
+        self.assertTrue(check.line().startswith("FAIL sandbox:"))
+        self.assertIn("sandbox manifest missing", check.line())
+        self.assertIn("run: just bench prepare", check.line())
+        self.assertIn("run: just bench prepare", check.message())
 
 
 class ServerBinaryCheckTest(unittest.TestCase):
@@ -97,25 +96,6 @@ class ServerBinaryCheckTest(unittest.TestCase):
             check = pf.check_server_binary({"BUILD_PROFILE": "debug"})
         self.assertTrue(check.ok, check.line())
         self.assertEqual(check.detail, str(binary))
-
-
-class HyperfineCheckTest(unittest.TestCase):
-    def test_explicit_executable_ok(self):
-        check = pf.check_hyperfine({"HYPERFINE_BIN": sys.executable})
-        self.assertTrue(check.ok, check.line())
-        self.assertEqual(check.detail, sys.executable)
-
-    def test_empty_bin_fails_with_install_hint(self):
-        check = pf.check_hyperfine({"HYPERFINE_BIN": ""})
-        self.assertFalse(check.ok)
-        self.assertEqual(check.detail, "hyperfine is required")
-        self.assertEqual(check.hint, "run: just install hyperfine")
-
-    def test_found_on_path_ok(self):
-        with mock.patch.object(pf.shutil, "which", return_value="/usr/bin/hyperfine"):
-            check = pf.check_hyperfine({})
-        self.assertTrue(check.ok)
-        self.assertEqual(check.detail, "/usr/bin/hyperfine")
 
 
 class ArchiveCheckTest(unittest.TestCase):
@@ -246,12 +226,8 @@ class PreflightAssemblyTest(unittest.TestCase):
 
     def test_default_checklist(self):
         checks = pf.preflight(base_env())
-        self.assertEqual(self.names(checks), ["binary", "hyperfine", "port"])
+        self.assertEqual(self.names(checks), ["binary", "port"])
         self.assertTrue(all(check.ok for check in checks), [c.line() for c in checks])
-
-    def test_hyperfine_can_be_skipped_for_server_only_runs(self):
-        checks = pf.preflight(base_env(), require_hyperfine=False)
-        self.assertNotIn("hyperfine", self.names(checks))
 
     def test_archive_and_out_and_sandbox_included_only_when_requested(self):
         archive = self.root / "set-100"
@@ -265,21 +241,17 @@ class PreflightAssemblyTest(unittest.TestCase):
             out=self.root / "cell",
             archive=archive,
         )
-        self.assertEqual(
-            self.names(checks), ["binary", "hyperfine", "archive", "sandbox", "out", "port"]
-        )
+        self.assertEqual(self.names(checks), ["binary", "archive", "sandbox", "out", "port"])
         self.assertTrue(all(check.ok for check in checks), [c.line() for c in checks])
 
     def test_failed_checks_are_reported_not_raised(self):
         checks = pf.preflight(
-            base_env(PICASU_BIN="/nonexistent/picasu", HYPERFINE_BIN=""),
+            base_env(PICASU_BIN="/nonexistent/picasu"),
             out="/picasu-preflight-fixture/out",
             archive=self.root / "nope",
         )
         failed = [check for check in checks if not check.ok]
-        self.assertEqual(
-            [check.name for check in failed], ["binary", "hyperfine", "archive", "out"]
-        )
+        self.assertEqual([check.name for check in failed], ["binary", "archive", "out"])
 
 
 class ChecklistOutputTest(unittest.TestCase):
@@ -299,13 +271,12 @@ class ChecklistOutputTest(unittest.TestCase):
         self.assertTrue(all(line.startswith("ok ") for line in lines), lines)
         self.assertEqual(
             [line.split(":")[0] for line in lines],
-            ["ok binary", "ok hyperfine", "ok out", "ok port"],
+            ["ok binary", "ok out", "ok port"],
         )
 
     def test_main_fail_exit_one(self):
         env = base_env(
             PICASU_BIN="/nonexistent/picasu",
-            HYPERFINE_BIN="",
             OUT="/picasu-preflight-fixture/out",
         )
         with mock.patch.dict(os.environ, env, clear=True):
@@ -313,7 +284,7 @@ class ChecklistOutputTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertNotIn("FAIL", out)
         failed = [line.split(":")[0] for line in err.splitlines()]
-        self.assertEqual(failed, ["FAIL binary", "FAIL hyperfine", "FAIL out"])
+        self.assertEqual(failed, ["FAIL binary", "FAIL out"])
 
     def test_main_archive_flag(self):
         with mock.patch.dict(os.environ, base_env(), clear=True):
@@ -350,7 +321,6 @@ class CallerReuseTest(unittest.TestCase):
         self.assertFalse(out.exists())
         self.assertIn("FAIL port:", stderr.getvalue())
         self.assertIn("ok binary:", stdout.getvalue())
-        self.assertNotIn("hyperfine", stdout.getvalue() + stderr.getvalue())
 
 
 if __name__ == "__main__":

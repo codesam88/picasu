@@ -7,11 +7,11 @@ files: replacing a fixture means updating the expectations here to the
 new recording, so a fixture can never drift into a dialect the real
 harness does not write.
 
-See `fixtures/README.md` for the rule and each file's provenance.
+See `fixtures/README.md` for the rule and each file's provenance. Fixture
+directory names are the labels the cells were recorded under and stay as
+they are; the current profile set lives in `scenarios.py`.
 """
 
-import json
-import re
 import shutil
 import sys
 import tempfile
@@ -22,7 +22,7 @@ BENCH = Path(__file__).resolve().parent.parent
 if str(BENCH) not in sys.path:
     sys.path.insert(0, str(BENCH))
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-DUAL = FIXTURES / "events-dual"
+CELL = FIXTURES / "recorded" / "probe-50"
 
 _LOADED: dict = {}
 
@@ -107,10 +107,10 @@ class RecordedDrainTest(unittest.TestCase):
             stage_row(stage="interactive_exec", n=0, p50_us=0, p95_us=0, max_us=0),
         )
 
-    def test_dual_control_cell_stages_are_not_empty(self):
+    def test_recorded_probe_cell_stages_are_not_empty(self):
         # The S2 symptom was an empty stages.json for a real cell. The
-        # recorded control cell must extract both of its tables.
-        row = extractor().parse_log(DUAL / "control")
+        # recorded probe cell must extract both of its tables.
+        row = extractor().parse_log(CELL)
 
         self.assertEqual(len(row["drain_tables"]), 2)
         self.assertEqual(len(row["stages"]), 24)
@@ -130,116 +130,44 @@ class RecordedStatsOffTest(unittest.TestCase):
         self.assertNotIn("observe drain:", text)
         self.assertEqual(extractor().parse_drain_tables(FIXTURES / "server-stats-off.log"), [])
 
-    def test_cell_with_the_recorded_stats_off_log_has_empty_stages(self):
+    def test_cell_without_an_event_stream_is_rejected(self):
         directory = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
         shutil.copy(FIXTURES / "server-stats-off.log", directory / "server.log")
         (directory / "harness-a.log").write_text("scan wall median_ms=1000 over 1 run(s): 1000\n")
-        (directory / "status-final.json").write_text(
-            json.dumps(
-                {
-                    "state": "completed",
-                    "scanned": 100,
-                    "matched": 100,
-                    "processed": 100,
-                    "failed": 0,
-                }
-            )
-        )
 
-        row = extractor().parse_log(directory)
+        # The event stream is the measurement record; there is no artifact
+        # fallback to silently pool instead.
+        with self.assertRaises(extractor().EventsError):
+            extractor().parse_log(directory)
 
-        self.assertEqual(row["stages"], [])
-        self.assertEqual(row["drain_tables"], [])
+    def test_stats_off_log_parses_to_no_tables(self):
+        self.assertEqual(extractor().parse_drain_tables(FIXTURES / "server-stats-off.log"), [])
 
 
-class BatteryStageSourceTest(unittest.TestCase):
-    """The battery row's stage columns come from a recorded table."""
+class RecordedCellGoldenTest(unittest.TestCase):
+    """The recorded cell parses to the values its artifacts record."""
 
+    def test_recorded_probe_cell_parses_to_its_recorded_values(self):
+        row = extractor().parse_log(CELL)
 
-class InProcessRowStagesTest(unittest.TestCase):
-    """A row built in-process carries the stages a standalone extract writes.
-
-    The battery never runs `extract_bench.py`, so `battery extract` cannot
-    depend on the `stages.json` only that script writes: the row sources
-    its stages from the same `server.log` parse, without writing anything
-    into the cell.
-    """
-
-
-class DerivedEventStreamTest(unittest.TestCase):
-    """The dual fixture's stream replays its recorded cell, not a guess.
-
-    No recorded cell contains an `events.jsonl` (the stream postdates
-    them), so `events.jsonl` is a replay of the cell's own artifacts. These
-    checks re-derive it from the artifacts kept beside it; a fixture edit
-    that invents a value fails here.
-    """
-
-    def test_storm_samples_replay_the_recorded_round_tsvs(self):
-        cell = DUAL / "storm-diff"
-        events = extractor().read_events(cell)
-
-        replayed = []
-        for run in (1, 2):
-            path = cell / f"rounds-run-{run}" / f"storm-round-{run}.tsv"
-            for line in path.read_text().splitlines():
-                op, client, latency, code = line.split("\t")
-                replayed.append(
-                    (int(client), int(op), round(float(latency) * 1000.0, 6), int(code))
-                )
-
-        self.assertEqual(
-            [(e["client"], e["op"], e["latency_ms"], e["code"]) for e in events.storm_samples],
-            replayed,
-        )
-
-        text = (cell / "harness-a.log").read_text()
-        verifies = re.findall(r"storm verify: matched (\d+)/(\d+) canary writes", text)
-        self.assertEqual(
-            [(e["matched"], e["total"]) for e in events.verify_results],
-            [(int(matched), int(total)) for matched, total in verifies],
-        )
-
-    def test_control_uploads_and_scans_replay_the_recorded_transcript(self):
-        cell = DUAL / "control"
-        events = extractor().read_events(cell)
-        text = (cell / "harness-a.log").read_text()
-
-        uploads = re.findall(r"upload file=(\S+) submit_ms=(\d+) visible_ms=(\d+)", text)
-        self.assertEqual(
-            [(e["file"], e["submit_ms"], e["visible_ms"]) for e in events.upload_files],
-            [(name, int(submit), int(visible)) for name, submit, visible in uploads],
-        )
-        scans = re.findall(r"scan run (\d+)/\d+: state=(\w+) polls=\d+ wall_ms=(\d+)", text)
-        self.assertEqual(
-            [(e["run"], e["state"], e["wall_ms"]) for e in events.scan_states],
-            [(int(run), state, int(wall)) for run, state, wall in scans],
-        )
-        fetches = re.findall(
-            r"^(?:\d\d:\d\d:\d\d )?probe round=(\d+) rows=(\d+) state=\w+\s*$", text, re.M
-        )
-        self.assertEqual(
-            [(e["rows"], e["fetch_n"]) for e in events.probe_rounds if "fetch_n" in e],
-            [(int(rows), 10) for _, rows in fetches],
-        )
-        # The transcript carries no per-round stats; the numbers live in
-        # the probe TSVs, which the events replay verbatim.
-        # Full precision comes from the per-round probe TSVs, not the
-        # transcript's 4-decimal mean.
-        means = []
-        for run in (1, 2):
-            path = cell / f"rounds-run-{run}" / "probe-round-1.tsv"
-            latencies = [float(line.split("\t")[2]) for line in path.read_text().splitlines()]
-            means.append((sum(latencies) / len(latencies), min(latencies), max(latencies)))
-        self.assertEqual(
-            [
-                (e["fetch_mean"], e["fetch_min"], e["fetch_max"])
-                for e in events.probe_rounds
-                if "fetch_n" in e
-            ],
-            means,
-        )
+        self.assertEqual(row["scan_wall_s"], 11.23)
+        self.assertEqual(row["scan_runs_ms"], [11.14, 11.32])
+        self.assertEqual(row["probe_rounds"], 20)
+        self.assertEqual(row["probe_rounds_total"], 20)
+        self.assertEqual(row["probe_rounds_valid"], 20)
+        self.assertEqual(row["phase_invalid"], 0)
+        self.assertEqual(row["warmup_valid"], "true")
+        self.assertEqual(row["scan_thumb_n"], 56)
+        self.assertEqual(len(row["drain_tables"]), 2)
+        self.assertEqual(len(row["stages"]), 24)
+        samples = row["samples"]
+        self.assertEqual(len(samples["latency|scan|prefetch"]), 60)
+        self.assertEqual(len(samples["latency|idle|prefetch"]), 3)
+        self.assertEqual(len(samples["latency|scan|scroll_bar"]), 20)
+        self.assertEqual(len(samples["latency|scan|scroll_rows"]), 142)
+        self.assertEqual(len(samples["latency|scan|thumb"]), 56)
+        self.assertEqual(len(samples["stage|scan|cpu_exec"]), 2)
 
 
 def _write_cell(outdir: Path) -> None:

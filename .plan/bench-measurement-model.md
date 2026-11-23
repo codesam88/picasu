@@ -61,6 +61,13 @@ that did not exist.
 
 ## Follow-ups
 
+- Matrix gaps: upload under a scan background; storm thumb/edit under an
+  idle background. The report states the upload gap; the storm gaps are
+  visible as missing rows.
+- Instrument: probe prefetch/edit are hyperfine-timed while probe thumb and
+  all storm ops are in-process. Unify on in-process per-request timing so a
+  foreground is comparable across backgrounds.
+
 - Larger image counts remain opt-in; the upload source (`set-upload`) is
   shared by every count.
 - Probe coverage on the gate control cell is ~29%; worth understanding

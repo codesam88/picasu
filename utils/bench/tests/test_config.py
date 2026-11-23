@@ -113,7 +113,7 @@ class CellConfigTest(unittest.TestCase):
 
     def test_flags_win_over_the_environment(self):
         cfg = cf.CellConfig.from_env(
-            {"OUT": str(self.root / "ignored"), "PORT": "5800", "HYPERFINE_BIN": sys.executable},
+            {"OUT": str(self.root / "ignored"), "PORT": "5800"},
             out_flag=str(self.root / "cell"),
             port_flag="5801",
         )
@@ -146,7 +146,6 @@ class WorkloadConfigTest(unittest.TestCase):
         env = {
             "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
             "IMAGE_REPO": str(self.repo),
-            "HYPERFINE_BIN": sys.executable,
         }
         env.update(kw)
         return env
@@ -238,7 +237,6 @@ class PreflightConfigTest(unittest.TestCase):
         self.assertEqual(cfg.out, "/tmp/flag-cell")
         self.assertEqual(cfg.port, "5800")
         self.assertEqual(cfg.sandbox, "/tmp/env-sandbox")
-        self.assertTrue(cfg.require_hyperfine)
 
     def test_absent_optional_inputs_stay_none(self):
         cfg = cf.PreflightConfig.from_env({})
@@ -268,7 +266,6 @@ class OneValidationThreeConsumersTest(unittest.TestCase):
         return {
             "OUT": str(self.root / "cell"),
             "PORT": port,
-            "HYPERFINE_BIN": sys.executable,
         }
 
     def workload_env(self, port):
@@ -290,43 +287,39 @@ class OneValidationThreeConsumersTest(unittest.TestCase):
         return {
             "LAUNCHER_INFO": str(cell / "launcher-info.json"),
             "IMAGE_REPO": str(repo),
-            "HYPERFINE_BIN": sys.executable,
             "PORT": port,
         }
 
-    def test_same_bad_port_same_message(self):
-        for bad, expected in (
-            ("abc", "PORT must be an integer, got 'abc'"),
-            ("0", "PORT must be in 1..65535, got 0"),
-            ("70000", "PORT must be in 1..65535, got 70000"),
-        ):
-            with self.subTest(port=bad):
-                with self.assertRaises(cf.ConfigError) as launcher:
-                    bl.config_from_env(self.launcher_env(bad))
-                with self.assertRaises(cf.ConfigError) as cell:
-                    oc.config_from_env(self.cell_env(bad))
-                with self.assertRaises(cf.ConfigError) as workload_cfg:
-                    workload.config_from_env(self.workload_env(bad))
-                self.assertEqual(str(launcher.exception), expected)
-                self.assertEqual(str(cell.exception), expected)
-                self.assertEqual(str(workload_cfg.exception), expected)
+    def _rejection_messages(self, bad_port, extra=None):
+        envs = (self.launcher_env(bad_port), self.cell_env(bad_port), self.workload_env(bad_port))
+        if extra is not None:
+            envs = tuple(env | extra for env in envs)
+        factories = (bl.config_from_env, oc.config_from_env, workload.config_from_env)
+        messages = []
+        for factory, env in zip(factories, envs, strict=True):
+            with self.assertRaises(cf.ConfigError) as caught:
+                factory(env)
+            messages.append(str(caught.exception))
+        return messages
 
-    def test_same_bad_profile_same_message(self):
-        expected = "BUILD_PROFILE must be release or debug, got 'prod'"
-        with self.assertRaises(cf.ConfigError) as launcher:
-            bl.config_from_env(self.launcher_env("5800") | {"BUILD_PROFILE": "prod"})
-        with self.assertRaises(cf.ConfigError) as cell:
-            oc.config_from_env(self.cell_env("5800") | {"BUILD_PROFILE": "prod"})
-        with self.assertRaises(cf.ConfigError) as workload_cfg:
-            workload.config_from_env(self.workload_env("5800") | {"BUILD_PROFILE": "prod"})
-        self.assertEqual(str(launcher.exception), expected)
-        self.assertEqual(str(cell.exception), expected)
-        self.assertEqual(str(workload_cfg.exception), expected)
+    def test_bad_port_is_reported_identically_by_all_three_layers(self):
+        for bad in ("abc", "0", "70000"):
+            with self.subTest(port=bad):
+                messages = self._rejection_messages(bad)
+                self.assertTrue(all(messages))
+                self.assertEqual(len(set(messages)), 1)
+
+    def test_bad_build_profile_is_reported_identically_by_all_three_layers(self):
+        messages = self._rejection_messages("5800", extra={"BUILD_PROFILE": "prod"})
+        self.assertTrue(all(messages))
+        self.assertEqual(len(set(messages)), 1)
 
     def test_preflight_reports_the_shared_port_rule(self):
         check = pf.check_port("abc")
         self.assertFalse(check.ok)
-        self.assertEqual(check.detail, "PORT must be an integer, got 'abc'")
+        with self.assertRaises(cf.ConfigError) as caught:
+            cf.validate_port("abc")
+        self.assertEqual(check.detail, str(caught.exception))
 
 
 if __name__ == "__main__":
@@ -358,7 +351,6 @@ class MinValidRoundsConfigTest(unittest.TestCase):
         env = {
             "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
             "IMAGE_REPO": str(self.repo),
-            "HYPERFINE_BIN": sys.executable,
         }
         env.update(kw)
         return env
@@ -403,7 +395,6 @@ class ProbeRefreshConfigTest(unittest.TestCase):
         env = {
             "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
             "IMAGE_REPO": str(self.repo),
-            "HYPERFINE_BIN": sys.executable,
         }
         env.update(kw)
         return env
@@ -452,7 +443,6 @@ class ScanWarmupConfigTest(unittest.TestCase):
         env = {
             "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
             "IMAGE_REPO": str(self.repo),
-            "HYPERFINE_BIN": sys.executable,
         }
         env.update(kw)
         return env
@@ -491,13 +481,10 @@ class MinProbeRoundsConfigTest(unittest.TestCase):
                     cf.BatteryConfig.from_env({"MIN_PROBE_ROUNDS": raw}, out=self.root / "gate")
 
 
-class StormProfileParsingTest(unittest.TestCase):
-    def test_cell_mode_accepts_named_profile(self):
-        # reuse WorkloadConfigTest-style env? Use a minimal config env
-        import json
-        import tempfile
-        from pathlib import Path
+class WorkloadProfileTest(unittest.TestCase):
+    """Every scenario profile is accepted; unknown labels are refused."""
 
+    def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
@@ -510,125 +497,37 @@ class StormProfileParsingTest(unittest.TestCase):
                     "base_url": "http://127.0.0.1:9999",
                     "cookie_jar": str(cell / "cookies.txt"),
                     "out": str(cell),
-                    "mode": "bench",
                 }
             )
         )
         repo = root / "repo"
         repo.mkdir()
-        env = {
+        self.base = {
             "LAUNCHER_INFO": str(cell / "launcher-info.json"),
             "IMAGE_REPO": str(repo),
-            "HYPERFINE_BIN": sys.executable,
-            "WORKLOAD": "storm-edit-16n",
         }
-        cfg = cf.WorkloadConfig.from_env(env)
-        self.assertEqual(cfg.workload, "storm-edit-16n")
 
-    def test_cell_mode_rejects_unknown_suffix(self):
-        import json
-        import tempfile
-        from pathlib import Path
+    def test_every_declared_profile_is_accepted(self):
+        import scenarios
 
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        root = Path(tmp.name)
-        cell = root / "cell"
-        cell.mkdir()
-        (cell / "cookies.txt").write_text("jwt\tx\n")
-        (cell / "launcher-info.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:9999",
-                    "cookie_jar": str(cell / "cookies.txt"),
-                    "out": str(cell),
-                    "mode": "bench",
-                }
-            )
-        )
-        repo = root / "repo"
-        repo.mkdir()
-        env = {
-            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
-            "IMAGE_REPO": str(repo),
-            "HYPERFINE_BIN": sys.executable,
-            "WORKLOAD": "storm-read-99",
-        }
+        for profile in cf.WORKLOADS:
+            with self.subTest(profile=profile):
+                cfg = cf.WorkloadConfig.from_env(dict(self.base, WORKLOAD=profile))
+                self.assertEqual(cfg.workload, profile)
+                self.assertTrue(scenarios.is_storm(profile) == scenarios.is_storm(cfg.workload))
+
+    def test_storm_clients_derive_from_the_level(self):
+        import scenarios
+
+        for profile in scenarios.storm_profiles():
+            with self.subTest(profile=profile):
+                _background, _kind, level = scenarios.storm_parts(profile)
+                cfg = cf.WorkloadConfig.from_env(dict(self.base, WORKLOAD=profile))
+                self.assertEqual(cfg.storm_clients, scenarios.level_clients(level, cfg.ncpu))
+
+    def test_unknown_profile_is_refused(self):
         with self.assertRaises(cf.ConfigError):
-            cf.WorkloadConfig.from_env(env)
-
-
-class StormProfileMoreTest(unittest.TestCase):
-    def test_clients_scale_with_ncpu(self):
-        self.assertEqual(cf.storm_profile_clients("storm-read-16n", 4), 64)
-        self.assertEqual(cf.storm_profile_clients("storm-thumb-8", 4), 8)
-        self.assertEqual(cf.storm_profile_clients("storm-edit", 4), None)
-
-
-class StormProfileExtraTest(unittest.TestCase):
-    def test_accepts_storm_read_8(self):
-        import json
-        import tempfile
-        from pathlib import Path
-
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        root = Path(tmp.name)
-        cell = root / "cell"
-        cell.mkdir()
-        (cell / "cookies.txt").write_text("jwt\tx\n")
-        (cell / "launcher-info.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:9999",
-                    "cookie_jar": str(cell / "cookies.txt"),
-                    "out": str(cell),
-                    "mode": "bench",
-                }
-            )
-        )
-        repo = root / "repo"
-        repo.mkdir()
-        env = {
-            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
-            "IMAGE_REPO": str(repo),
-            "HYPERFINE_BIN": sys.executable,
-            "WORKLOAD": "storm-read-8",
-        }
-        cfg = cf.WorkloadConfig.from_env(env)
-        self.assertEqual(cfg.workload, "storm-read-8")
-
-    def test_rejects_unknown_profile(self):
-        import json
-        import tempfile
-        from pathlib import Path
-
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        root = Path(tmp.name)
-        cell = root / "cell"
-        cell.mkdir()
-        (cell / "cookies.txt").write_text("jwt\tx\n")
-        (cell / "launcher-info.json").write_text(
-            json.dumps(
-                {
-                    "base_url": "http://127.0.0.1:9999",
-                    "cookie_jar": str(cell / "cookies.txt"),
-                    "out": str(cell),
-                    "mode": "bench",
-                }
-            )
-        )
-        repo = root / "repo"
-        repo.mkdir()
-        env = {
-            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
-            "IMAGE_REPO": str(repo),
-            "HYPERFINE_BIN": sys.executable,
-            "WORKLOAD": "storm-foo",
-        }
-        with self.assertRaises(cf.ConfigError):
-            cf.WorkloadConfig.from_env(env)
+            cf.WorkloadConfig.from_env(dict(self.base, WORKLOAD="not-a-declared-profile"))
 
 
 class StormMinCoverageConfigTest(unittest.TestCase):
@@ -656,7 +555,6 @@ class StormMinCoverageConfigTest(unittest.TestCase):
         env = {
             "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
             "IMAGE_REPO": str(self.repo),
-            "HYPERFINE_BIN": sys.executable,
         }
         env.update(kw)
         return env
@@ -674,3 +572,41 @@ class StormMinCoverageConfigTest(unittest.TestCase):
             with self.subTest(raw=raw):
                 with self.assertRaises(cf.ConfigError):
                     cf.WorkloadConfig.from_env(self.env(STORM_MIN_COVERAGE_PCT=raw))
+
+
+class ScenarioProfilesTest(unittest.TestCase):
+    """The workload set is the scenario table, with one probe cell."""
+
+    def test_workloads_are_the_scenario_profiles(self):
+        import scenarios
+
+        self.assertEqual(cf.WORKLOADS, scenarios.profiles())
+        for profile in (scenarios.PROBE, scenarios.IDLE_UPLOAD, scenarios.SCAN_UPLOAD):
+            self.assertIn(profile, cf.WORKLOADS)
+
+    def test_workload_min_probe_rounds_default_and_override(self):
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        cell = root / "cell"
+        cell.mkdir()
+        (cell / "cookies.txt").write_text("jwt\tx\n")
+        (cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(cell / "cookies.txt"),
+                    "out": str(cell),
+                }
+            )
+        )
+        repo = root / "repo"
+        repo.mkdir()
+        base = {"LAUNCHER_INFO": str(cell / "launcher-info.json"), "IMAGE_REPO": str(repo)}
+        self.assertEqual(cf.WorkloadConfig.from_env(dict(base)).min_probe_rounds, 20)
+        self.assertEqual(
+            cf.WorkloadConfig.from_env(dict(base, MIN_PROBE_ROUNDS="7")).min_probe_rounds, 7
+        )

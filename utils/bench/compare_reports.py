@@ -25,19 +25,6 @@ def _clients(value):
     return int(text) if text.isdigit() else value
 
 
-def _is_number(value) -> bool:
-    if value is None:
-        return False
-    text = str(value).strip()
-    if text in ("", "n/a", "NA", NA):
-        return False
-    try:
-        float(text)
-    except TypeError, ValueError:
-        return False
-    return True
-
-
 def _num(value):
     return float(str(value).strip())
 

@@ -34,7 +34,7 @@ Environment:
                          200 images, 3 above); an exported value wins
 
 Batteries pin every knob that changes a measurement (`SCAN_REPEATS`,
-hyperfine `REPEATS`/`WARMUP`, storm client/op counts and margin) plus the
+`REPEATS`/`WARMUP`, storm client/op counts and margin) plus the
 build profile, image set and CPU count. Cells run sequentially: backend
 tests and bench cells share tempdir state, so parallel cells would
 contaminate each other.
@@ -52,7 +52,6 @@ import os
 import re
 import shutil
 import signal
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -66,6 +65,7 @@ import environment  # noqa: E402
 import extract_bench  # noqa: E402
 import metrics  # noqa: E402
 import run_cell  # noqa: E402
+import scenarios  # noqa: E402
 from config import DEFAULT_SETS_ROOT, ConfigError  # noqa: E402
 
 DEFAULT_BASE_PORT = config.BATTERY_BASE_PORT
@@ -112,16 +112,15 @@ def _cell(
         "REPEATS": "3",
         "WARMUP": "1",
     }
-    if profile.startswith("storm-"):
-        derived = config.storm_profile_clients(profile, 8)
-        storm_clients = derived if derived is not None else config.DEFAULT_STORM_CLIENTS
+    if scenarios.is_storm(profile):
+        _background, _kind, level = scenarios.storm_parts(profile)
         env.update(
             {
-                "STORM_CLIENTS": str(storm_clients),
+                "STORM_CLIENTS": str(scenarios.level_clients(level, 8)),
                 "STORM_OPS": "10",
             }
         )
-    if profile == "upload":
+    if profile in (scenarios.IDLE_UPLOAD, scenarios.SCAN_UPLOAD):
         env["UPLOAD_FILES"] = str(config.DEFAULT_UPLOAD_FILES)
         # Uploaded files come from a distinct archive: the cell's own repo is
         # fully staged, so re-uploading it would ingest already-indexed images.
@@ -138,26 +137,15 @@ def _cell(
     )
 
 
-_SCENARIO_PROFILES = (
-    "control",
-    *config.CONCURRENT_STORM_PROFILES,
-    *(profile for profile in config.IDLE_STORM_PROFILES if "-read-" in profile),
-    "upload",
-)
+_SCENARIO_PROFILES = scenarios.profiles()
 
 CELL_ORDER = {}
-
-
-def storm_profile_access(profile: str) -> str:
-    """Access a storm profile drives; the profile names it explicitly."""
-    access = config.storm_profile_access(profile)
-    return access if access is not None else "read"
 
 
 def _cell_from_env(environ: dict) -> Cell:
     """Build the single cell for the debug `cell` battery from the environment."""
     environ = environ or {}
-    profile = environ.get("WORKLOAD", "control")
+    profile = environ.get("WORKLOAD", scenarios.PROBE)
     if profile not in config.WORKLOADS:
         raise config.ConfigError(f"WORKLOAD must be one of {config.WORKLOADS}, got '{profile}'")
 
@@ -170,7 +158,7 @@ def _cell_from_env(environ: dict) -> Cell:
     if "PORT" in environ:
         config.validate_port(environ["PORT"])
     scan_repeats = config.integer(environ, "SCAN_REPEATS", 2, minimum=1)
-    hyperfine_repeats = config.integer(environ, "REPEATS", config.DEFAULT_REPEATS, minimum=1)
+    repeats = config.integer(environ, "REPEATS", config.DEFAULT_REPEATS, minimum=1)
     warmup = config.integer(environ, "WARMUP", config.DEFAULT_WARMUP, minimum=0)
     if "WARMUP" in environ:
         pass
@@ -179,9 +167,11 @@ def _cell_from_env(environ: dict) -> Cell:
         storm_clients = config.integer(
             environ, "STORM_CLIENTS", config.DEFAULT_STORM_CLIENTS, minimum=1
         )
+    elif scenarios.is_storm(profile):
+        _background, _kind, level = scenarios.storm_parts(profile)
+        storm_clients = scenarios.level_clients(level, 8)
     else:
-        derived = config.storm_profile_clients(profile, 8)
-        storm_clients = derived if derived is not None else config.DEFAULT_STORM_CLIENTS
+        storm_clients = config.DEFAULT_STORM_CLIENTS
     storm_ops = (
         config.integer(environ, "STORM_OPS", config.DEFAULT_STORM_OPS, minimum=1)
         if "STORM_OPS" in environ
@@ -202,23 +192,25 @@ def _cell_from_env(environ: dict) -> Cell:
         "NCPU": str(ncpu),
         "BUILD_PROFILE": build_profile,
         "SCAN_REPEATS": str(scan_repeats),
-        "REPEATS": str(hyperfine_repeats),
+        "REPEATS": str(repeats),
+        "MIN_PROBE_ROUNDS": str(
+            config.integer(environ, "MIN_PROBE_ROUNDS", config.DEFAULT_MIN_PROBE_ROUNDS, minimum=1)
+        ),
         "WARMUP": str(warmup),
     }
-    if profile.startswith("storm-"):
+    if scenarios.is_storm(profile):
         env.update(
             {
                 "STORM_CLIENTS": str(storm_clients),
                 "STORM_OPS": str(storm_ops),
             }
         )
-    if profile == "upload":
+    if profile in (scenarios.IDLE_UPLOAD, scenarios.SCAN_UPLOAD):
         upload_files = config.integer(
             environ, "UPLOAD_FILES", config.DEFAULT_UPLOAD_FILES, minimum=1
         )
         env["UPLOAD_FILES"] = str(upload_files)
-        if "UPLOAD_REPO" in environ:
-            env["UPLOAD_REPO"] = environ["UPLOAD_REPO"]
+        env["UPLOAD_REPO"] = environ.get("UPLOAD_REPO", "set-upload")
 
     return Cell(
         profile=profile,
@@ -385,9 +377,6 @@ _BATTERY_PARENT_ALLOWED_FILES = {
     "report.tsv",
     "report.json",
     "orchestrator.log",
-    "report.md",
-    "matrix.tsv",
-    "confidence.tsv",
     "environment.json",
 }
 
@@ -470,21 +459,6 @@ def _manifest_identity(outdir: Path) -> dict:
     }
 
 
-def _read_stages(outdir: Path) -> list:
-    """Parsed `stages.json` content; an absent or corrupt file yields [].
-
-    `stages.json` is written by a standalone `extract_bench.py` run, so it
-    only exists for cells that were extracted by hand; the extract entry
-    prefers the drain rows `build_row` parsed from `server.log` and uses
-    this as the fallback for the rest.
-    """
-    try:
-        stages = json.loads((outdir / "stages.json").read_text())
-    except OSError, json.JSONDecodeError:
-        return []
-    return stages if isinstance(stages, list) else []
-
-
 def _terminal_state(outdir: Path) -> str:
     """Terminal server state from `status-final.json`, else "incomplete"."""
     try:
@@ -500,7 +474,7 @@ def _extract_entry(path: Path) -> dict:
     match = _REP_DIR_RE.match(path.name)
     cell = match.group("cell") if match else ""
     profile, separator, images = cell.rpartition("-")
-    if not separator or not images.isdigit() or profile not in config.WORKLOADS:
+    if not separator or not images.isdigit() or profile not in scenarios.profiles():
         return {
             "dir": path.name,
             "error": "cannot derive profile and images from directory name",
@@ -515,12 +489,10 @@ def _extract_entry(path: Path) -> dict:
         else:
             message = str(err) or type(err).__name__
         return {"dir": path.name, "error": message}
-    # The row's own drain parse first (the server.log the report's stage
-    # columns came from), then a hand-written stages.json for cells the
-    # standalone extractor summarised instead. The row stays report-shaped.
+    # The row's own drain parse: server.log's `observe drain:` tables.
     # Keep the stage rows on `row` as well: the diagnostic CI builder reads
     # their per-scan p50s before `_report_row` strips helper keys.
-    stages = row.get("stages") or _read_stages(path)
+    stages = row.get("stages") or []
     return {
         "dir": path.name,
         "row": row,
@@ -542,13 +514,6 @@ def _pooled_validity(records: list) -> dict:
                 continue
         if values:
             validity[field] = sum(values)
-    coverages = []
-    for record in records:
-        try:
-            coverages.append(float((record.get("validity") or {}).get("probe_coverage_pct")))
-        except TypeError, ValueError:
-            continue
-    validity["probe_coverage_pct"] = min(coverages) if coverages else NA
     warmups = [(record.get("validity") or {}).get("warmup_valid") for record in records]
     recorded = [value for value in warmups if value not in (NA, None)]
     if not recorded:
@@ -657,38 +622,6 @@ def _json_safe(value):
     if isinstance(value, list):
         return [_json_safe(item) for item in value]
     return value
-
-
-def _git_branch(commit: str = "") -> str:
-    """Branch holding `commit`, else the current checkout's branch."""
-    if commit:
-        try:
-            result = subprocess.run(
-                ["git", "name-rev", "--name-only", commit],
-                capture_output=True,
-                text=True,
-                cwd=str(SCRIPT_DIR),
-            )
-        except OSError:
-            result = None
-        if result is not None and result.returncode == 0:
-            name = result.stdout.strip()
-            if name and not name.startswith("undefined"):
-                for prefix in ("remotes/origin/", "remotes/", "tags/"):
-                    name = name.removeprefix(prefix)
-                return name
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=str(SCRIPT_DIR),
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except OSError:
-        pass
-    return "unknown"
 
 
 _DEFAULT_BASELINE_COMMENTS = [
@@ -1003,7 +936,12 @@ def record_baselines(parents, tsv_path, merge_path=None, md_path=None) -> int:
     if md_path is not None:
         md_out = Path(md_path)
         md_out.parent.mkdir(parents=True, exist_ok=True)
-        md_out.write_text(render(rows, merged_metadata, env_records))
+        try:
+            document = render(rows, merged_metadata, env_records)
+        except ValueError as err:
+            print(f"ERROR: {err}", file=sys.stderr)
+            return 2
+        md_out.write_text(document)
         print(f"wrote baselines Markdown: {md_out}", file=sys.stderr)
     return 0
 
@@ -1090,6 +1028,7 @@ def _cell_env(
     env["BUILD_PROFILE"] = run_config.build_profile
     env["WORKLOAD_TIMEOUT_S"] = run_config.workload_timeout_s
     env["BATTERY_REPEATS"] = str(run_config.repeats)
+    env["MIN_PROBE_ROUNDS"] = str(run_config.min_probe_rounds)
     env.update(
         {
             "OUT": str(cell_out),
@@ -1122,6 +1061,16 @@ def _reuse_row(cell: Cell, cell_out: Path) -> dict | None:
         return None
 
 
+def _run_argv(argv):
+    """Split `run cell ...` into argparse argv plus the debug flag."""
+    argv = list(argv)
+    debug = False
+    if argv and argv[0] == "run" and "cell" in argv[1:]:
+        argv.remove("cell")
+        debug = True
+    return argv, debug
+
+
 def run_battery(
     images: int,
     outdir: Path,
@@ -1130,6 +1079,7 @@ def run_battery(
     base_port: int = DEFAULT_BASE_PORT,
     build_profile: str = "release",
     fresh: bool = False,
+    debug: bool = False,
 ) -> int:
     """Run every cell sequentially, appending one row per cell.
 
@@ -1151,6 +1101,10 @@ def run_battery(
         validate_parent(outdir, fresh=False)
         outdir.mkdir(parents=True, exist_ok=True)
     environ = dict(os.environ)
+    debug_cell = None
+    if debug:
+        debug_cell = _cell_from_env(environ)
+        images = debug_cell.images
     # The debug cell is fully parameterized by env: honor PORT/BUILD_PROFILE when
     # the caller did not override them explicitly.
     if build_profile == "release" and "BUILD_PROFILE" in environ:
@@ -1167,7 +1121,7 @@ def run_battery(
         fresh=fresh,
     )
     n_repeats = run_config.repeats
-    cells = battery_cells(images)
+    cells = (debug_cell,) if debug_cell is not None else battery_cells(images)
     report = outdir / "report.tsv"
     report.unlink(missing_ok=True)
     report.parent.mkdir(parents=True, exist_ok=True)
@@ -1195,20 +1149,31 @@ def run_battery(
         for index, cell in enumerate(cells):
             repeat_rows = []
             min_probe_rounds = run_config.min_probe_rounds
-            for rep in range(1, n_repeats + 1):
+            spec = scenarios.build_spec(
+                cell.profile,
+                min_probe_rounds=min_probe_rounds,
+                repeats=run_config.repeats,
+                upload_files=config.DEFAULT_UPLOAD_FILES,
+                storm_ops=config.DEFAULT_STORM_OPS,
+                ncpu=cell.ncpu,
+            )
+            # Only the probe cell repeats to reach a round budget; every
+            # other cell is a single rep.
+            rep_cap = n_repeats if spec.probe_round_target > 0 else 1
+            for rep in range(1, rep_cap + 1):
                 cell_out = outdir / f"{cell.outdir_suffix}-rep{rep}"
                 # Default resume: a completed rep is reused; --fresh re-runs it.
                 row = None if fresh else _reuse_row(cell, cell_out)
                 if row is not None:
                     repeat_rows.append(row)
                     print(
-                        f"[battery {images}] {cell.cell_id}: rep={rep}/cap={n_repeats} reused {cell_out}",
+                        f"[battery {images}] {cell.cell_id}: rep={rep}/cap={rep_cap} reused {cell_out}",
                         flush=True,
                     )
                 else:
                     env = _cell_env(environ, run_config, cell, index, cell_out)
                     print(
-                        f"[battery {images}] {cell.cell_id}: rep={rep}/cap={n_repeats} port={env['PORT']} out={cell_out}",
+                        f"[battery {images}] {cell.cell_id}: rep={rep}/cap={rep_cap} port={env['PORT']} out={cell_out}",
                         flush=True,
                     )
                     cfg = orchestrator.config_from_env(env)
@@ -1244,15 +1209,15 @@ def run_battery(
                         valid_rounds += int(value)
                     except TypeError, ValueError:
                         continue
-                has_probes = config.profile_has_probes(cell.profile)
+                has_probes = spec.probe_round_target > 0
                 print(
-                    f"[battery {images}] {cell.cell_id}: rep={rep}/cap={n_repeats} "
+                    f"[battery {images}] {cell.cell_id}: rep={rep}/cap={rep_cap} "
                     f"rounds={valid_rounds}/{min_probe_rounds}"
                     + ("" if has_probes else " (no probe phase)"),
                     flush=True,
                 )
-                if not has_probes or valid_rounds >= min_probe_rounds or rep >= n_repeats:
-                    if has_probes and valid_rounds < min_probe_rounds and rep >= n_repeats:
+                if not has_probes or valid_rounds >= min_probe_rounds or rep >= rep_cap:
+                    if has_probes and valid_rounds < min_probe_rounds and rep >= rep_cap:
                         print(
                             f"[battery {images}] {cell.cell_id}: warn: probe rounds "
                             f"{valid_rounds} below target {min_probe_rounds}",
@@ -1342,6 +1307,7 @@ def main(argv=None) -> int:
         "parent's report.tsv (needs --baselines-tsv)",
     )
 
+    argv, debug = _run_argv(argv)
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -1350,7 +1316,11 @@ def main(argv=None) -> int:
             images = config.integer(os.environ, "IMAGES", config.DEFAULT_IMAGES, minimum=1)
         raw_out = args.out or os.environ.get("OUT", "")
         if raw_out == "":
-            raw_out = f"/tmp/picasu-battery-{images}-{datetime.now():%Y%m%d-%H%M%S}"
+            if debug:
+                profile = os.environ.get("WORKLOAD", scenarios.PROBE)
+                raw_out = f"/tmp/picasu-battery-{profile}-{datetime.now():%Y%m%d-%H%M%S}"
+            else:
+                raw_out = f"/tmp/picasu-battery-{images}-{datetime.now():%Y%m%d-%H%M%S}"
         # SIGTERM unwinds through run_cell's finally so the launcher and its
         # server are stopped instead of orphaned between cells.
         signal.signal(signal.SIGTERM, _interrupt)
@@ -1362,6 +1332,7 @@ def main(argv=None) -> int:
                 base_port=args.port,
                 build_profile=args.build,
                 fresh=args.fresh,
+                debug=debug,
             )
         except (ConfigError, ValueError) as err:
             print(f"ERROR: {err}", file=sys.stderr)

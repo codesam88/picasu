@@ -14,8 +14,7 @@ consumes attributes from then on:
 `from_env` (and `from_args` for the flag-only prepare step) is the single
 constructor: it applies every default and validation rule. Failures raise
 `ConfigError`, so one bad variable is rejected with one message wherever
-it is read. Layer-specific seams stay with the layer: the workload
-resolves hyperfine through the preflight checklist, and the launcher and
+it is read. Layer-specific seams stay with the layer: the launcher and
 orchestrator bind their own repository root and scripts.
 
 Defaults live here because they are part of the validated contract; the
@@ -34,6 +33,8 @@ import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import scenarios
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
@@ -49,7 +50,7 @@ BATTERY_BASE_PORT = 5795
 BATTERY_REPEATS_DEFAULT = 3
 BATTERY_REPEATS_MIN = 1
 DEFAULT_MIN_PROBE_ROUNDS = 20
-# The 2 h budget covers the measured ~1335 s single control cell at 5650 rows.
+# The 2 h budget covers the measured ~1335 s single probe cell at 5650 rows.
 
 DEFAULT_IMAGES = 100
 DEFAULT_REPEATS = 3
@@ -59,7 +60,7 @@ DEFAULT_SCAN_REPEATS = 3
 DEFAULT_FETCHES = 10
 DEFAULT_PROBE_PAGE = 1000
 DEFAULT_INDEX_SETTLE_TIMEOUT_S = 600.0
-DEFAULT_UPLOAD_TIMEOUT_S = 30.0
+DEFAULT_UPLOAD_TIMEOUT_S = 120.0
 DEFAULT_UPLOAD_POST_TIMEOUT_S = 60.0
 DEFAULT_STORM_CLIENTS = 8
 DEFAULT_STORM_OPS = 10
@@ -71,24 +72,9 @@ DEFAULT_MIN_VALID_ROUNDS = 3
 DEFAULT_SCAN_WARMUP = 1
 DEFAULT_PROBE_REFRESH_S = 0.0
 DEFAULT_BUILD_PROFILE = "debug"
-STORM_ACCESSES = ("read", "thumb", "edit")
-STORM_LEVELS = ("8", "16n")
-CONCURRENT_STORM_PROFILES = tuple(
-    f"storm-{access}-{level}" for access in STORM_ACCESSES for level in STORM_LEVELS
-)
-IDLE_STORM_PROFILES = tuple(
-    f"storm-idle-{access}-{level}" for access in STORM_ACCESSES for level in STORM_LEVELS
-)
-WORKLOADS = ("control", *CONCURRENT_STORM_PROFILES, *IDLE_STORM_PROFILES, "upload")
-PROBE_PROFILES = ("control", "upload")
 
-
-def profile_has_probes(profile: str) -> bool:
-    """True for profiles that run the probe phase (and therefore warm up)."""
-    return profile in PROBE_PROFILES
-
-
-HYPERFINE_MISSING = "run: just install hyperfine"
+# The scenario table is the single source of truth for the cell matrix.
+WORKLOADS = scenarios.profiles()
 
 
 class ConfigError(Exception):
@@ -150,53 +136,6 @@ def validate_build_profile(environ: dict, default: str) -> str:
     if profile not in ("release", "debug"):
         raise ConfigError(f"BUILD_PROFILE must be release or debug, got '{profile}'")
     return profile
-
-
-def storm_profile_parts(profile: str) -> tuple[str, str] | None:
-    """(access, level) of a storm profile, or None when it is not one."""
-    if not isinstance(profile, str) or not profile.startswith("storm-"):
-        return None
-    parts = profile.split("-")
-    if len(parts) == 4 and parts[1] == "idle":
-        access, level = parts[2], parts[3]
-    elif len(parts) == 3:
-        access, level = parts[1], parts[2]
-    else:
-        return None
-    if access not in STORM_ACCESSES or level not in STORM_LEVELS:
-        return None
-    return access, level
-
-
-def is_idle_storm(profile: str) -> bool:
-    return isinstance(profile, str) and profile.startswith("storm-idle-")
-
-
-def storm_profile_access(profile: str) -> str | None:
-    parts = storm_profile_parts(profile)
-    return parts[0] if parts else None
-
-
-def storm_profile_kind(profile: str) -> str | None:
-    """Request kind a storm profile drives: prefetch, thumb or edit."""
-    access = storm_profile_access(profile)
-    return {"read": "prefetch", "thumb": "thumb", "edit": "edit"}.get(access)
-
-
-def storm_profile_level(profile: str) -> str | None:
-    """Concurrency level of a storm profile: 8 or 16n."""
-    parts = storm_profile_parts(profile)
-    return parts[1] if parts else None
-
-
-def storm_profile_clients(profile: str, ncpu: int) -> int | None:
-    """Client count for a storm profile's named level."""
-    level = storm_profile_level(profile)
-    if level == "8":
-        return 8
-    if level == "16n":
-        return 16 * max(1, ncpu)
-    return None
 
 
 def allowed_out_roots() -> list:
@@ -270,21 +209,6 @@ def validate_image_home_src(raw: str) -> Path:
             f"IMAGE_HOME_SRC has no sandbox-manifest.json: {raw} (prepare it with `bench prepare`)"
         )
     return image_home_path
-
-
-def resolve_hyperfine(
-    environ: dict, *, which=shutil.which, missing: str = HYPERFINE_MISSING
-) -> str:
-    """Resolve the hyperfine binary; the orchestrator treats it as required."""
-    explicit = environ.get("HYPERFINE_BIN")
-    if explicit is not None:
-        if explicit == "" or not executable_file(Path(explicit)):
-            raise ConfigError(f"hyperfine is required — {missing}")
-        return explicit
-    found = which("hyperfine")
-    if not found:
-        raise ConfigError(f"hyperfine is required — {missing}")
-    return found
 
 
 def load_launcher_info(path: Path) -> dict:
@@ -405,7 +329,7 @@ class WorkloadConfig:
     ncpu: int = 4
     port: int = DEFAULT_PORT
     images: int = DEFAULT_IMAGES
-    workload: str = "control"
+    workload: str = scenarios.PROBE
     storm_clients: int = DEFAULT_STORM_CLIENTS
     storm_ops: int = DEFAULT_STORM_OPS
     storm_min_coverage_pct: float = DEFAULT_STORM_MIN_COVERAGE_PCT
@@ -416,6 +340,7 @@ class WorkloadConfig:
     upload_post_timeout_s: float = DEFAULT_UPLOAD_POST_TIMEOUT_S
     index_settle_timeout_s: float = DEFAULT_INDEX_SETTLE_TIMEOUT_S
     repeats: int = DEFAULT_REPEATS
+    min_probe_rounds: int = DEFAULT_MIN_PROBE_ROUNDS
     warmup: int = DEFAULT_WARMUP
     runs_during: int = DEFAULT_RUNS_DURING
     fetches: int = DEFAULT_FETCHES
@@ -433,22 +358,17 @@ class WorkloadConfig:
     image_home: str | None = None
     dataset_id: str = ""
     build_profile: str = DEFAULT_BUILD_PROFILE
-    hyperfine: str | None = None
     # Results recorded while the workload runs.
     image_count: int = 0
     image_bytes: int = 0
     expected_entries: int = 0
     scan_wall_ms: float = 0.0
     scan_runs: int = 0
+    scan_walls_ms: list = field(default_factory=list)
 
     @classmethod
-    def from_env(cls, environ: dict, *, hyperfine_lookup=resolve_hyperfine) -> WorkloadConfig:
-        """Build from the environment.
-
-        `hyperfine_lookup` is the layer's resolution seam: the workload
-        passes its checklist-backed resolver, everything else gets the
-        shared PATH lookup.
-        """
+    def from_env(cls, environ: dict) -> WorkloadConfig:
+        """Build from the environment."""
         for old, new in (
             ("N", "NCPU"),
             ("COUNT", "IMAGES"),
@@ -492,16 +412,16 @@ class WorkloadConfig:
         build_profile = validate_build_profile(environ, DEFAULT_BUILD_PROFILE)
 
         images = integer(environ, "IMAGES", DEFAULT_IMAGES, minimum=1)
-        workload = environ.get("WORKLOAD", "control")
+        workload = environ.get("WORKLOAD", scenarios.PROBE)
         if workload not in WORKLOADS:
             raise ConfigError(f"WORKLOAD must be one of {WORKLOADS}, got '{workload}'")
         if "STORM_CLIENTS" in environ:
             storm_clients = integer(environ, "STORM_CLIENTS", DEFAULT_STORM_CLIENTS, minimum=1)
+        elif scenarios.is_storm(workload):
+            _background, _kind, level = scenarios.storm_parts(workload)
+            storm_clients = scenarios.level_clients(level, ncpu)
         else:
-            derived_clients = storm_profile_clients(workload, ncpu)
-            storm_clients = (
-                derived_clients if derived_clients is not None else DEFAULT_STORM_CLIENTS
-            )
+            storm_clients = DEFAULT_STORM_CLIENTS
         storm_ops = integer(environ, "STORM_OPS", DEFAULT_STORM_OPS, minimum=1)
         storm_min_coverage = number(
             environ, "STORM_MIN_COVERAGE_PCT", DEFAULT_STORM_MIN_COVERAGE_PCT, minimum=1.0
@@ -523,6 +443,7 @@ class WorkloadConfig:
             environ, "INDEX_SETTLE_TIMEOUT_S", DEFAULT_INDEX_SETTLE_TIMEOUT_S, minimum=0.1
         )
         repeats = integer(environ, "REPEATS", DEFAULT_REPEATS, minimum=1)
+        min_probe_rounds = integer(environ, "MIN_PROBE_ROUNDS", DEFAULT_MIN_PROBE_ROUNDS, minimum=1)
         warmup = integer(environ, "WARMUP", DEFAULT_WARMUP, minimum=0)
         runs_during = integer(environ, "RUNS_DURING", DEFAULT_RUNS_DURING, minimum=1)
         fetches = integer(environ, "FETCHES", DEFAULT_FETCHES, minimum=0)
@@ -576,6 +497,7 @@ class WorkloadConfig:
             upload_post_timeout_s=upload_post_timeout,
             index_settle_timeout_s=index_settle_timeout,
             repeats=repeats,
+            min_probe_rounds=min_probe_rounds,
             warmup=warmup,
             runs_during=runs_during,
             fetches=fetches,
@@ -593,7 +515,6 @@ class WorkloadConfig:
             image_home=image_home_raw,
             dataset_id=dataset_id,
             build_profile=build_profile,
-            hyperfine=hyperfine_lookup(environ),
         )
 
 
@@ -634,7 +555,6 @@ class CellConfig:
         port = validate_port(str(raw_port))
 
         build_profile = validate_build_profile(environ, "release")
-        resolve_hyperfine(environ, which=which)
 
         return cls(
             out=out,
@@ -771,7 +691,6 @@ class PreflightConfig:
     archive: object
     sandbox: object
     binary: object
-    require_hyperfine: bool
     environ: dict
 
     @classmethod
@@ -785,7 +704,6 @@ class PreflightConfig:
         archive=None,
         sandbox=None,
         binary=None,
-        require_hyperfine: bool = True,
     ) -> PreflightConfig:
         return cls(
             out=out if out is not None else environ.get("OUT"),
@@ -794,6 +712,5 @@ class PreflightConfig:
             archive=archive,
             sandbox=sandbox if sandbox is not None else environ.get("IMAGE_HOME_SRC"),
             binary=binary,
-            require_hyperfine=require_hyperfine,
             environ=environ,
         )

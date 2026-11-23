@@ -37,25 +37,40 @@ statistic or execution path.
 
 ## Measurement model
 
-A cell is a point in a fixed space. The axes are independent, and a profile
-selects which points it visits; a profile never changes what a point means.
+The benchmark is a matrix: each foreground access is timed under each
+background that exercises the server differently.
 
-| axis       | values                                                                   |
-| ---------- | ------------------------------------------------------------------------ |
-| images     | image count (50, 100, 200, 5650, 50k+) and file-size class (small/large) |
-| background | `idle` (server at rest), `scan` (an album scan is running)               |
-| access     | `prefetch`, `thumb`, `edit`, `scroll_bar`, `scroll_rows`, `scroll_data`  |
-| profile    | the scenario, including a storm's client count                           |
-| statistic  | `p50`, `p95`, `max`                                                      |
-| repetition | scan (a populate scan inside a rep), rep (a whole cell invocation)       |
+| axis       | values                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------------- |
+| images     | image count — the sole size parameter (matrix: 50, 100, 200; larger counts opt-in for cost) |
+| background | `idle` (no scan, server settled), `scan` (an album scan is running)                         |
+| foreground | `prefetch` (read), `edit`, `thumb`, `scroll`, `upload`, `storm`                             |
+| statistic  | `p50`, `p95`, `max`                                                                         |
+| repetition | scan (a populate scan inside a rep), rep (a whole cell invocation)                          |
 
-The upload cell's during-scan probes are `scan` samples like any other; the
-previous `uscan` background named the cell, not the condition, and is gone.
-A concurrent stimulus is not an access: it is the same access driven by a
-storm profile, whose name carries the client count (`storm-read-8` is
-`prefetch` at 8 clients). `storm-idle` is the same access load against the
-tree at rest (`background = idle`). A cell records one concurrency, so a
-storm cell does not also run the single-client probe phase.
+`storm` is a foreground load family, not a background: it names the
+operation (read, thumb, edit) and the client count (`8`, `16n`). `upload`
+is a foreground as well; a cell that uploads while another upload runs is
+self-referential and is not executed. The target matrix is:
+
+| foreground             | idle            | scan                   |
+| ---------------------- | --------------- | ---------------------- |
+| read                   | baseline        | during indexing        |
+| edit                   | baseline        | during indexing        |
+| thumb                  | baseline        | during indexing        |
+| scroll                 | baseline        | during indexing        |
+| upload                 | ingest at rest  | ingest during a scan   |
+| storm-<kind>-<clients> | loaded baseline | loaded during indexing |
+
+A cell is an execution unit, not necessarily one matrix point: the `probe`
+cell produces all probe foregrounds under both backgrounds in one run
+because they share the same scan. A storm or upload cell produces one
+foreground under one background, because the load must be isolated. The
+report has one row per load profile with the two backgrounds side by side.
+The cell's
+phases — background, foregrounds, client count, issue policy and stop
+condition — are data in `utils/bench/scenarios.py`; one executor drives
+them and neither the workload nor the executor branches on profile name.
 
 A metric is a set of dimension values, never a name that encodes them:
 
@@ -74,7 +89,7 @@ generated from the dimensions; there is no second naming scheme.
 | latency | access              | `idle`, `scan` | one request                | p50, p95, max | p50 only |
 | wall    | scan                | `scan`         | one scan                   | p50, p95, max | p50 only |
 | stage   | stage name          | `scan`         | one scan's stage aggregate | p50, p95, max | p50 only |
-| upload  | `submit`, `visible` | `idle`         | one uploaded file          | p50, p95, max | p50 only |
+| upload  | `submit`, `visible` | `idle`, `scan` | one uploaded file          | p50, p95, max | p50 only |
 | gauge   | footprint name      | `idle`         | one rep's final value      | p50, p95, max | p50 only |
 | count   | access              | `idle`, `scan` | one timed run              | sum           | none     |
 
@@ -89,7 +104,7 @@ baselines. `count` reports a sum because a count has no distribution.
   of the pooled multiset, `p95` its 95th percentile (linear interpolation),
   `max` its maximum. One function implements each statistic.
 - **Raw sources.** Probe accesses pool the individual request timings
-  (fetch TSV rows, hyperfine `times`), not the per-round medians. Storm
+  (in-process probe samples), not the per-round medians. Storm
   accesses pool the individual operation timings. Upload pools the
   individual files. Scan wall pools the individual scans.
 - **Scan-level sources.** Server stage costs are reported by the observer as
@@ -112,46 +127,56 @@ baselines. `count` reports a sum because a count has no distribution.
 
 Every cell records, next to its metrics:
 
-- phase guard outcomes (probe, storm, storm-idle, post-scan): valid or not,
-  with the observed start/end state and counters;
-- probe rounds total and valid, and probe coverage (valid round wall over
-  scan wall);
-- storm coverage (active storm wall over scan wall) and ops done/planned;
+- phase guard outcomes (probe, storm, warmup): valid or not, with the
+  observed start/end state and counters;
+- probe rounds total and valid;
+- storm wall coverage (active storm wall over scan wall, the workload's
+  acceptance gate) and ops done/planned;
 - warmup validity;
 - failed operation counts.
 
-A rep with no valid round or an invalid guard is not pooled. A cell whose
-recorded validity is false is not accepted as a baseline. The final outputs
-carry the validity of the recording run, so a reader can tell a stable
-number from a lucky one.
+A storm or idle-storm guard that cannot prove the claimed background fails
+the cell before a report exists, as does a scan storm whose active wall
+falls below the coverage floor. A probe round whose guard fails contributes
+no samples; the cell records the exclusion count (`invalid`) and its
+reasons. A probe cell that ends under its round budget fails instead of
+recording a thin sample. Validity is carried into the final outputs, so a
+reader can tell a stable number from a lucky one.
 
-Warmup covers the single-client probe accesses on the first scan of a
-repetition. Sustained concurrency is not warmed: a storm's ramp is part of
-the load it claims to measure, and discarding a prefix of it would be an
-arbitrary threshold.
+Warmup covers the single-client probe accesses: on the first scan of a
+repetition, and before the at-rest rounds. Sustained concurrency is not
+warmed: a storm's ramp is part of the load it claims to measure, and
+discarding a prefix of it would be an arbitrary threshold.
 
 ## Scenarios
 
-Profiles select the measurement phase; they do not change metric meaning.
+A profile is an execution unit; the matrix point it fills is stated below.
+The profile set is `scenarios.profiles()`, and each profile's phases are
+built once in `scenarios.build_spec()`.
 
-| profile                         | phase plan                                                                                                            |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `control`                       | populate scans; probes and scroll during each scan; idle probes and scroll, then a final sweep, after it              |
-| `storm-<access>-<clients>`      | one populate scan; sustained ops at the profile's client count until terminal, with a coverage floor                  |
-| `storm-idle-<access>-<clients>` | one populate scan; one sustained burst at the same client count against the tree at rest, for a fixed op budget       |
-| `upload`                        | settle the library; upload the cell's file set; populate scan over the enlarged row space; probes during and after it |
+| profile                     | fills                                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `probe`                     | all probe foregrounds under `idle` and `scan`: rounds during each scan up to the round budget, then rounds at rest                   |
+| `scan-storm-<kind>-<level>` | storm foreground under `scan`: sustained ops at the profile's client count until terminal, with a coverage floor                     |
+| `idle-storm-<kind>-<level>` | storm foreground under `idle`: one populate scan, then a sustained burst at rest for a fixed op budget                               |
+| `idle-upload`               | upload foreground under `idle`: settle the index, then upload the cell's file set at rest                                            |
+| `scan-upload`               | upload foreground under `scan`: start the album scan over the materialised library, then submit the cell's file set while it indexes |
 
 Concurrent storms outlast the scan because the question is how the request
 path behaves under indexing load; an idle storm has no scan to outlast, so
-its budget is a fixed op count. Both record done/planned ops. An idle storm
-is one phase after the scan; storm profiles run one scan because they have no
-probe-round budget to accumulate.
+its budget is a fixed op count. Both record done/planned ops. The `probe`
+cell's round phase is the only one with a round budget; every other cell
+runs one rep.
 
-The upload cell's file set is part of the cell's declared stimulus: it
-comes from `UPLOAD_REPO` when set, otherwise from the cell repo beyond the
+Both upload cells use a fixed file set: it comes from `UPLOAD_REPO` when set
+(the battery pins `set-upload`), otherwise from the cell repo beyond the
 staged prefix, and the cell fails when the source cannot provide that many
 files. Re-uploading an image the cell already staged is not allowed: it
-changes the row space the cell claims to measure.
+changes the row space the cell claims to measure. Each file records whether
+a scan was active at submit and at visibility; a sample is valid when submit
+saw the cell's declared background.
+
+The probe cell is the only source of probe foreground rows.
 
 ## Image counts and matrix
 
@@ -159,16 +184,19 @@ The image count is the size parameter: `battery run --images N` runs the
 full profile matrix against `set-N`. A cell id is `<profile>-<images>`.
 There is no level above the image count.
 
-The measurement budget, not a repeat count, is the control: a cell adds
-scans until it has at least `MIN_PROBE_ROUNDS` (20) valid probe rounds, and
-the scan cap (5 at 200 images or fewer, 3 above) only bounds cost. A large
-image count usually satisfies the budget in one scan; a small one may need
-several. Cells without a probe phase measure every operation of one
-sustained run and need one scan. A cell that cannot reach the budget fails
-instead of recording a thin sample.
+The phase spec, not a repeat count, is the control. The `probe` cell's
+scan-round phase repeats scans until it has `MIN_PROBE_ROUNDS` (20) valid
+rounds; `SCAN_REPEATS` and `BATTERY_REPEATS` only bound cost. Its idle-round
+phase then runs once, taking `REPEATS` measured samples per access. Every
+other cell runs one rep: storms measure one
+sustained burst and uploads measure one file set. The probe cell fails if it
+cannot reach its round budget within the cap, instead of recording a thin
+sample.
 
 Every image count runs the same profiles with the same pinned environment;
-only the repo differs. A 5650-image run is opt-in for cost. The debug path
+only the repo differs. Larger image counts are opt-in for cost. The seed
+tool can also prepare a large-file-class archive (`--large`); it is a repo
+variant, not a matrix axis. The debug path
 (`bench run cell`) takes an arbitrary profile and environment; its rows are
 never recorded as baselines.
 
@@ -181,7 +209,7 @@ Client counts are resolved when the battery starts: `16n` becomes
 prepare   archive → sandbox
 launch    server + pinned env + identity
 stimulate workload phases emit raw samples and guard events
-validate  guards and coverage decide which samples count
+validate  phase guards decide which samples count
 reduce    one reducer: (cell, metric) → value, n_samples, n_clusters
 report    report.tsv: long staging record of the cell set
 baseline  baselines.tsv: accepted values + intervals + validity
@@ -206,25 +234,44 @@ integer counts, plus `ci_low`, `ci_high`, `recorded` and a note, and a
 accepted; there is no separate allow-list.
 
 `baselines.md` is rendered from `baselines.tsv` only, including its cell
-metadata. Tables name every
-statistic `p50`, `p95`, `max`; the interval appears inline after `p50`.
-`report.md`, `matrix.tsv` and `confidence.tsv` are not produced.
+metadata. One table per image count unless stated otherwise:
+
+- `Measurement validity`: one row per load profile with the `idle` and
+  `scan` accesses, invalid and failed counts side by side.
+- `Foreground latency`: one row per load profile with the `idle` and `scan`
+  statistics side by side.
+- `Scan time`: a load-profile by image-count matrix showing the
+  populate-scan wall clock and ingest rate; the `no-load` row is the median
+  populate scan of the idle-storm cells.
+- `Memory and storage footprint`: one profile-by-image-count table per
+  metric, in MB, sorted by peak VMM.
+
+Report profile labels are derived from the axis tables, never written by
+hand: `probe-<access>` for the single-client probe (`probe-read`,
+`probe-edit`, `probe-thumb`, `probe-scroll-bar`, `probe-scroll-rows`,
+`probe-scroll-data`), `storm-<kind>-<level>` for synthetic load, and
+`upload-<phase>` for ingest. `Scan time` uses `no-load`, the same storm
+labels, and `upload-loop`. An execution cell keeps its own profile name
+(`probe`, `scan-storm-*`, `idle-storm-*`, `idle-upload`, `scan-upload`);
+the label describes the measurement, the cell describes the run. The
+interval appears inline after `p50`. Stage metrics stay in the report and
+baselines; the rendered summary does not repeat them.
 
 ## Prohibited patterns
 
-These have appeared in this harness and are rejected in review:
+The protocol rejects:
 
-- a per-profile, per-metric or per-family branch in aggregation;
+- a per-profile, per-metric or per-family branch in aggregation or
+  execution;
 - a metric that is measured but not accepted, or rendered but not
   compared;
-- two execution paths for one label (`storm-diff`/`storm-edit`, numbered
-  and unnumbered storm names, `diff` remaps, duplicate scroll helpers);
+- two execution paths for one label (an extra alias alongside the canonical
+  profile name, a profile-name branch outside `scenarios`);
 - statistics computed from summaries (median of round medians, worst of
   run worsts) except where the source only provides aggregates, as stated
   for stage metrics;
 - hand-maintained metric allow-lists;
 - unrecorded identity, or comparison across different identities;
-- a range column that duplicates p95/max;
 - prose describing a gate, artifact or mechanism the code does not have.
 
 ## Open items
