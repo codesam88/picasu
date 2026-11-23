@@ -20,7 +20,7 @@ module inductive_proof {
     dupeIndex.in(HASHES.setOfMaps(IDS.powerset())) and
     thumbPresent.in(HASHES.setOfMaps(Set(true, false))) and
     sweepPending.in(ROOTS.setOfMaps(Set(true, false))) and
-    sweepBatch.in(PATHS.setOfMaps(Set(-1, 0, 1, 2))) and
+    sweepBatch.in(PATHS.setOfMaps(Set(-1).union(0.to(G)))) and
     leasedPaths.subseteq(PATHS) and
     unprocessable.subseteq(PATHS) and
     intake.forall(i =>
@@ -32,7 +32,6 @@ module inductive_proof {
       i.sidecar.in(SMALL) and
       i.assetHash.in(HASHES)
     ) and
-    nextAssetId.in(IDS) and
     phase.in(0.to(2)) and
     scannedRoots.subseteq(ROOTS) and
     faults.in(0.to(1))

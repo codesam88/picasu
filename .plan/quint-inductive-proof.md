@@ -655,6 +655,46 @@ then F3; §2.3 second saturation aliasing → F1 (epochs are the risk point).
 
 ## 9. Effort estimate and sequencing
 
+Phase 1 outcome record (2026-11-23):
+
+- **7a `files`: already total.** Init writes every path
+  (`PATHS.mapBy`), all 21 writes are `.set`/`.setBy` guarded into
+  `PATHS` or fold over `SUBTREE_PAIRS ⊆ PATHS`, removals keep the key
+  with `present: false`, no `.exclude`/key-drop site. No rewrite; the
+  only `files.keys()` use is `WithinBounds`'s own totality assertion.
+- **7b `generations`: landed.** `GEN_LIMIT = 7` + `satSucc` (the bound
+  is named `GEN_LIMIT` in the core because `G` collides with the
+  harness's `pure val G` under `import .*`, and a `const` would force
+  every entry to bind it; the audit pins `GEN_LIMIT == G`). 31 bumps
+  replaced; comparisons verbatim; residual `+1` grep empty.
+- **7c `intake`: STOPPED — the §2.1 premise is false.** Intake item
+  fields are not confined to the constant sets: `ForceModify` bumps
+  `assetHash`/`mtime`/`len` by +1 unbounded (`merged.qnt:548`), and
+  `RotateFinish` steps `sidecar` to 2 (∉ reduced `SMALL`), so file- and
+  record-derived intake fields leave `HASHES`/`SMALL` in reachable
+  states. `WithinBounds` checks only key domains, so the 70-run suite
+  cannot see it. Consequence: the `IntakeUniverse` Domains conjunct is
+  violated at both instances, and the `files` value set is unbounded —
+  the same root cause blocks the `setOfMaps` form for `files` (and,
+  transitively, `assetById`/`metadataPayload` value sets). This is a
+  SCOPE-2 conformance finding in the source model ("every run stays
+  inside them"), pending a model-level decision; no core rewrite can
+  fix it without changing model semantics.
+- **7d `nextAssetId`: eliminated.** `nextFreeId` quotient (10
+  allocation reads; 300 → 0 token occurrences). Known non-equivalence
+  in torn states: `RemoveIdOnly` can leave `assetByPath` pointing at an
+  absent record, so smallest-free-record-id may alias an id another
+  path still maps to — unreachable in `step`, to be covered by
+  SCOPE-17 wording and an invariant-round conjunct.
+- **Gate status after slice 7:** initiation PASSES (21 VCs,
+  NoError); consecution blocked by assignment-analysis errors
+  ("used before assigned") on `files`/`assetById` — the harness
+  `Domains` still uses `keys() == DOMAIN` forms where §2.1 requires
+  `setOfMaps`, and the `files` value set is unbounded (7c root cause).
+  Harness staleness fixed: `nextAssetId` conjunct deleted,
+  `sweepBatch` value set now `Set(-1).union(0.to(G))`. The
+  `setOfMaps` Domains rewrite waits on the 7c decision.
+
 | Phase | Work                                                                                   | Estimate  | Depends on                    | Parallelizable                                            |
 | ----- | -------------------------------------------------------------------------------------- | --------- | ----------------------------- | --------------------------------------------------------- |
 | 0     | Pre-flight: control spike, harness, baseline pin, A1–A6 (§4.0–§4.1 on unmodified copy) | 2–3 days  | —                             | A3/A4/A6 partly parallel                                  |
