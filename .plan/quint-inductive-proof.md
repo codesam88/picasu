@@ -497,7 +497,14 @@ states, so no strengthening of `Domains` alone can repair them:
 Resource calibration: consecution at 4 GB default heap OOMs (~4.5 min
 into the 15-VC check); 10 GB survives with VCs 0–2 holding and VC 3
 stalling past 30 min; 16 GB hits the host OOM killer. A
-Domains-minus-intake diagnostic is in flight to attribute the cost.
+Domains-minus-intake diagnostic is structurally impossible: removing a
+set-valued var's powerset conjunct leaves it without a first-occurrence
+domain constraint, which Apalache's assignment analysis rejects
+(`No assignments found for: intake`) — the powerset form is required
+for every set var, so the per-conjunct cost cannot be attributed by
+subtraction. The remaining levers are round-wall budget (the 30-minute
+stop predates the 10 GB/VC-stall reality) and the machine-level
+orphan budget (see below); both are recorded decisions below.
 
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
