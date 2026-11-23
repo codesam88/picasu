@@ -156,4 +156,40 @@ module inductive_proof {
     faults.in(0.to(1))
 
   val TypeOK: bool = Domains
+
+  // ---------- section: saturated-comparison witness (plan §2.3) ----------
+  // Eight submits on one path: the generation token saturates at G on the
+  // seventh bump, so the eighth item carries token G while eight logical
+  // generations have passed, and the Set collapses it onto the seventh
+  // item (same path, token, kind and file snapshot). This is the aliasing
+  // the polarity argument (SCOPE-18) must cover: the saturated item reads
+  // fresh (== comparison), i.e. extra work that the backstop re-derives,
+  // never a fresh item reading older.
+  run saturatedComparisonWitness = initCompletion
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(Stay(SubmitScan("p1")))
+    .then(all {
+      assert(
+        generations.get("p1") == G and
+        intake.exists(i => i.path == "p1" and i.generation == G) and
+        intake.size() == 7
+      ),
+      files' = files,
+      generations' = generations,
+      intake' = intake,
+      assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
+      sweepPending' = sweepPending,
+      unprocessable' = unprocessable,
+      sweepBatch' = sweepBatch,
+      leasedPaths' = leasedPaths,
+      phase' = phase,
+      scannedRoots' = scannedRoots,
+      faults' = faults,
+    })
 }
