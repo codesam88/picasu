@@ -13,7 +13,7 @@ Usage:
                  [--archive DIR] [--sandbox DIR] [--binary PATH]
 
 Flags override the environment; unset inputs fall back to the launcher
-contract (`PICASU_BIN`/`BUILD_PROFILE`, `HYPERFINE_BIN`, `PORT`, `OUT`,
+contract (`PICASU_BIN`/`BUILD_PROFILE`, `PORT`, `OUT`,
 `FRESH`, `IMAGE_HOME_SRC`). The archive check runs only when `--archive`
 names the canonical archive a `bench prepare` will consume, and the
 sandbox check only when a prepared sandbox is in play.
@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,7 +43,6 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import backend_launcher  # noqa: E402
 import config  # noqa: E402
 
-HYPERFINE_HINT = "run: just install hyperfine"
 SANDBOX_MANIFEST = "sandbox-manifest.json"
 
 
@@ -85,26 +83,6 @@ def check_server_binary(environ: dict, binary=None) -> Check:
             hint=f"build it: cargo build --profile {profile} --bin picasu",
         )
     return Check("binary", True, str(binary))
-
-
-def check_hyperfine(environ: dict) -> Check:
-    """The hyperfine binary the workload will drive."""
-    explicit = environ.get("HYPERFINE_BIN")
-    if explicit is not None:
-        if explicit == "":
-            return Check("hyperfine", False, "hyperfine is required", HYPERFINE_HINT)
-        if not backend_launcher.executable_file(Path(explicit)):
-            return Check(
-                "hyperfine",
-                False,
-                f"HYPERFINE_BIN is not executable: {explicit}",
-                HYPERFINE_HINT,
-            )
-        return Check("hyperfine", True, explicit)
-    found = shutil.which("hyperfine")
-    if found is None:
-        return Check("hyperfine", False, "hyperfine is required", HYPERFINE_HINT)
-    return Check("hyperfine", True, found)
 
 
 def check_archive(archive) -> Check:
@@ -203,14 +181,12 @@ def preflight(
     archive=None,
     sandbox=None,
     binary=None,
-    require_hyperfine: bool = True,
 ) -> list[Check]:
     """Build the checklist for one cell (or one sandbox preparation).
 
     `binary`, `out`, `fresh` and `port` are caller context: a caller that
     already resolved a value passes it in rather than letting the check
-    re-derive a different one. `require_hyperfine=False` is the
-    server-only subset (no workload will run).
+    re-derive a different one.
     """
     cfg = config.PreflightConfig.from_env(
         environ,
@@ -220,11 +196,8 @@ def preflight(
         archive=archive,
         sandbox=sandbox,
         binary=binary,
-        require_hyperfine=require_hyperfine,
     )
     checks = [check_server_binary(cfg.environ, binary=cfg.binary)]
-    if cfg.require_hyperfine:
-        checks.append(check_hyperfine(cfg.environ))
     if cfg.archive is not None:
         checks.append(check_archive(cfg.archive))
     if cfg.sandbox:

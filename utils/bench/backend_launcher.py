@@ -685,8 +685,6 @@ def run_backend(cfg: config.LauncherConfig, environ: dict, spawn=None) -> int:
 
     # Preflight before touching OUT: the checklist refuses the run before
     # any process spawns and leaves whatever state is already there alone.
-    # The hyperfine check belongs to the workload half; a server-only run
-    # must not require it.
     import preflight
 
     checks = preflight.preflight(
@@ -696,7 +694,6 @@ def run_backend(cfg: config.LauncherConfig, environ: dict, spawn=None) -> int:
         port=cfg.port,
         binary=cfg.binary,
         sandbox=cfg.image_home,
-        require_hyperfine=False,
     )
     if preflight.print_checklist(checks):
         return 1

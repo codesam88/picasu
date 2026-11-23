@@ -21,6 +21,10 @@ BENCH = Path(__file__).resolve().parent.parent
 if str(BENCH) not in sys.path:
     sys.path.insert(0, str(BENCH))
 
+import config  # noqa: E402
+import executor  # noqa: E402
+import scenarios  # noqa: E402
+
 
 def make_cookie_jar(path: Path) -> None:
     jar = http.cookiejar.MozillaCookieJar(str(path))
@@ -182,10 +186,11 @@ class ConfigTest(unittest.TestCase):
             repo.mkdir()
             base = {"LAUNCHER_INFO": str(info), "IMAGE_REPO": str(repo)}
             cfg = workload.config_from_env(dict(base))
-            self.assertEqual(cfg.workload, "control")
-            self.assertEqual(cfg.storm_clients, 8)
-            self.assertEqual(cfg.storm_ops, 10)
-            for bad in ("storm-everything", "CONTROL", ""):
+            self.assertIn(cfg.workload, config.WORKLOADS)
+            self.assertEqual(cfg.workload, scenarios.PROBE)
+            self.assertEqual(cfg.storm_clients, config.DEFAULT_STORM_CLIENTS)
+            self.assertEqual(cfg.storm_ops, config.DEFAULT_STORM_OPS)
+            for bad in ("not-a-profile", "", "PROBE"):
                 with self.subTest(workload=bad):
                     with self.assertRaises(workload.ConfigError):
                         workload.config_from_env(dict(base, WORKLOAD=bad))
@@ -216,7 +221,7 @@ class ConfigTest(unittest.TestCase):
             cfg = workload.config_from_env(dict(base))
             self.assertEqual(cfg.probe_page, 1000)
             self.assertEqual(cfg.index_settle_timeout_s, 600.0)
-            self.assertEqual(cfg.upload_timeout_s, 30.0)
+            self.assertEqual(cfg.upload_timeout_s, 120.0)
             self.assertEqual(cfg.upload_post_timeout_s, 60.0)
 
             cfg = workload.config_from_env(
@@ -243,38 +248,6 @@ class ConfigTest(unittest.TestCase):
                 with self.subTest(name=name, value=value):
                     with self.assertRaises(workload.ConfigError):
                         workload.config_from_env(dict(base, **{name: value}))
-
-    def test_missing_hyperfine_fails_fast(self):
-        workload = load_workload()
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            cell = tmp_path / "cell"
-            cell.mkdir()
-            make_cookie_jar(cell / "cookies.txt")
-            info = cell / "launcher-info.json"
-            info.write_text(
-                json.dumps(
-                    {
-                        "base_url": "http://127.0.0.1:9999",
-                        "cookie_jar": str(cell / "cookies.txt"),
-                        "pid": 1,
-                        "out": str(cell),
-                        "mode": "bench",
-                    }
-                )
-            )
-            repo = tmp_path / "repo"
-            repo.mkdir()
-            env = {
-                "LAUNCHER_INFO": str(info),
-                "IMAGE_REPO": str(repo),
-            }
-            with mock.patch.object(workload.shutil, "which", return_value=None):
-                with self.assertRaises(workload.ConfigError) as ctx:
-                    workload.config_from_env(env)
-                self.assertIn(
-                    "hyperfine is required (run: just install hyperfine)", str(ctx.exception)
-                )
 
 
 class StatusFinalTest(unittest.TestCase):
@@ -365,20 +338,55 @@ class UploadStimulusTest(unittest.TestCase):
         fields.update(overrides)
         return self.workload.config.WorkloadConfig(**fields)
 
+    def _phase(self, target=2):
+        return scenarios.Phase("idle", ("upload",), issue="files", stop="files", target=target)
+
     def test_post_budget_reaches_the_upload_call(self):
         client = RecordingUploadClient(["u1.jpg", "u2.jpg"])
         with (
             mock.patch.object(self.workload, "_uploaded_row_visible", return_value=True),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            self.workload.run_upload_stimulus(
-                self._cfg(upload_post_timeout_s=0.25), client, self._logger()
+            executor.drive_files(
+                self._cfg(upload_post_timeout_s=0.25), client, self._logger(), self._phase(), None
             )
         self.assertEqual(client.timeouts, [0.25, 0.25])
         log = (self.cell / "harness-a.log").read_text()
         self.assertRegex(log, r"upload file=u1\.jpg submit_ms=\d+ visible_ms=\d+")
         self.assertRegex(log, r"upload file=u2\.jpg submit_ms=\d+ visible_ms=\d+")
         self.assertRegex(log, r"upload submit_p50=\d+ visible_p50=\d+")
+
+    def test_files_record_the_scan_activity_at_submit(self):
+        client = RecordingUploadClient(["u1.jpg", "u2.jpg"])
+
+        class Session:
+            class Active:
+                def is_set(self):
+                    return True
+
+            active = Active()
+
+        with (
+            mock.patch.object(self.workload, "_uploaded_row_visible", return_value=True),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            executor.drive_files(self._cfg(), client, self._logger(), self._phase(), Session())
+        events = (self.cell / "events.jsonl").read_text().splitlines()
+        uploads = [json.loads(line) for line in events if json.loads(line)["type"] == "upload_file"]
+        self.assertEqual(len(uploads), 2)
+        self.assertTrue(all(event["scan_active_at_submit"] for event in uploads))
+        self.assertTrue(all(event["scan_active_at_visible"] for event in uploads))
+
+    def test_idle_upload_records_no_scan_activity(self):
+        client = RecordingUploadClient(["u1.jpg", "u2.jpg"])
+        with (
+            mock.patch.object(self.workload, "_uploaded_row_visible", return_value=True),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            executor.drive_files(self._cfg(), client, self._logger(), self._phase(), None)
+        events = (self.cell / "events.jsonl").read_text().splitlines()
+        uploads = [json.loads(line) for line in events if json.loads(line)["type"] == "upload_file"]
+        self.assertTrue(all(not event["scan_active_at_submit"] for event in uploads))
 
 
 class UploadSourceSelectionTest(unittest.TestCase):
@@ -481,21 +489,6 @@ class ScrollProbeTest(unittest.TestCase):
         self.assertTrue(any("/get/get-data?timestamp=42" in p for p in paths))
         # bearer token forwarded
         self.assertTrue(all(call[1] == "tok" for call in client.calls))
-
-    def test_scroll_probe_writes_artifact(self):
-        cfg = self._cfg()
-        client = self._client()
-        self.workload.scroll_probe(
-            cfg,
-            client,
-            1,
-            "t",
-            total_rows=10,
-            out=self.cell,
-            round_no=1,
-            round_dir=self.cell / "rounds",
-        )
-        self.assertTrue((self.cell / "scroll-probe.tsv").is_file())
 
 
 class ScanPhaseTest(unittest.TestCase):
@@ -602,585 +595,6 @@ class ScanPhaseTest(unittest.TestCase):
         result = guard.end()
         self.assertTrue(result["valid"])
         self.assertEqual(result["wall_ms"], 1000)
-
-
-class ProbeLoopTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_probe_phase = self.workload.probe_phase
-        self._orig_build = self.workload.build_probe_list
-        self._orig_probe_round = self.workload.probe_round
-        self._orig_snap = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.probe_phase = self._orig_probe_phase
-        self.workload.build_probe_list = self._orig_build
-        self.workload.probe_round = self._orig_probe_round
-        self.workload._status_snapshot = self._orig_snap
-        self.workload._status_state = self._orig_state
-
-    def _cfg(self, **overrides):
-        fields = {
-            "out": self.out,
-            "probe_interval_s": 0.0,
-            "probe_refresh_s": 0.0,
-            "scan_timeout_s": 0.0,
-            "min_valid_rounds": 1,
-        }
-        fields.update(overrides)
-        return self.workload.config.WorkloadConfig(**fields)
-
-    def test_continues_after_rows_reach_expected(self):
-        cfg = self._cfg()
-        self.workload.build_probe_list = lambda cfg, client: ["a\tt"]
-        self.workload.probe_round = lambda *a, **k: True
-        counter = {"n": 0}
-
-        def snap(out):
-            counter["n"] += 1
-            state = "running" if counter["n"] <= 12 else "completed"
-            return {
-                "state": state,
-                "scanned": counter["n"],
-                "processed": counter["n"],
-                "ts": float(counter["n"]),
-            }
-
-        def st(out):
-            return "running" if counter["n"] < 12 else "completed"
-
-        self.workload._status_snapshot = snap
-        self.workload._status_state = st
-        logger = self.workload.Logger(self.out / "h.log")
-        self.addCleanup(logger.close)
-        result = self.workload.probe_phase(cfg, object(), logger, self.out / "rounds-run-1")
-        self.assertGreaterEqual(result["rounds_total"], 3)
-        self.assertEqual(result["rounds_valid"], result["rounds_total"])
-
-    def test_probes_with_unchanged_rows(self):
-        cfg = self._cfg()
-        calls = {"n": 0}
-
-        def build(cfg, client):
-            calls["n"] += 1
-            return ["a\tt"]
-
-        self.workload.build_probe_list = build
-        self.workload.probe_round = lambda *a, **k: True
-        counter = {"n": 0}
-
-        def snap(out):
-            counter["n"] += 1
-            state = "running" if counter["n"] <= 8 else "completed"
-            return {
-                "state": state,
-                "scanned": counter["n"],
-                "processed": counter["n"],
-                "ts": float(counter["n"]),
-            }
-
-        def st(out):
-            return "running" if counter["n"] < 8 else "completed"
-
-        self.workload._status_snapshot = snap
-        self.workload._status_state = st
-        logger = self.workload.Logger(self.out / "h.log")
-        self.addCleanup(logger.close)
-        result = self.workload.probe_phase(cfg, object(), logger, self.out / "rounds-run-1")
-        self.assertGreaterEqual(result["rounds_total"], 2)
-
-    def test_failed_round_excluded(self):
-        cfg = self._cfg()
-        self.workload.build_probe_list = lambda cfg, client: ["a\tt"]
-
-        def fake_probe(*a, **k):
-            round_no = a[4]
-            return round_no != 2
-
-        self.workload.probe_round = fake_probe
-        counter = {"n": 0}
-
-        def snap(out):
-            counter["n"] += 1
-            state = "running" if counter["n"] <= 12 else "completed"
-            return {
-                "state": state,
-                "scanned": counter["n"],
-                "processed": counter["n"],
-                "ts": float(counter["n"]),
-            }
-
-        def st(out):
-            return "running" if counter["n"] < 12 else "completed"
-
-        self.workload._status_snapshot = snap
-        self.workload._status_state = st
-        logger = self.workload.Logger(self.out / "h.log")
-        self.addCleanup(logger.close)
-        result = self.workload.probe_phase(cfg, object(), logger, self.out / "rounds-run-1")
-        self.assertEqual(result["rounds_valid"], result["rounds_total"] - 1)
-
-    def test_aborts_below_min_valid_rounds(self):
-        import json as _json
-
-        class FakeClient:
-            def post(self, path, payload=None):
-                return 202, b"{}", 0.0
-
-            def __init__(self):
-                self.calls = 0
-
-            def get(self, path):
-                self.calls += 1
-                if self.calls == 1:
-                    body = _json.dumps(
-                        {
-                            "state": "running",
-                            "scanned": 1,
-                            "matched": 1,
-                            "processed": 1,
-                            "failed": 0,
-                        }
-                    ).encode()
-                else:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 1,
-                            "matched": 1,
-                            "processed": 1,
-                            "failed": 0,
-                        }
-                    ).encode()
-                return 200, body, 0.0
-
-        cfg = self._cfg(min_valid_rounds=3)
-        self.workload.probe_phase = lambda *a, **k: {
-            "rounds_total": 1,
-            "rounds_valid": 0,
-            "invalid_reasons": ["bad"],
-            "progress": False,
-        }
-        with self.assertRaises(self.workload.WorkloadError):
-            self.workload.run_scans(cfg, FakeClient(), self.workload.Logger(self.out / "h2.log"))
-
-
-class ProbeRefreshLoopTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_probe_phase = self.workload.probe_phase
-        self._orig_build = self.workload.build_probe_list
-        self._orig_probe_round = self.workload.probe_round
-        self._orig_snap = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.probe_phase = self._orig_probe_phase
-        self.workload.build_probe_list = self._orig_build
-        self.workload.probe_round = self._orig_probe_round
-        self.workload._status_snapshot = self._orig_snap
-        self.workload._status_state = self._orig_state
-
-    def _cfg(self, **overrides):
-        fields = {
-            "out": self.out,
-            "probe_interval_s": 0.0,
-            "probe_refresh_s": 10.0,
-            "scan_timeout_s": 0.0,
-            "min_valid_rounds": 1,
-        }
-        fields.update(overrides)
-        return self.workload.config.WorkloadConfig(**fields)
-
-    def test_build_probe_list_cached(self):
-        cfg = self._cfg()
-        calls = {"n": 0}
-
-        def build(cfg, client):
-            calls["n"] += 1
-            return ["a\tt"]
-
-        self.workload.build_probe_list = build
-        self.workload.probe_round = lambda *a, **k: True
-        counter = {"n": 0}
-
-        def snap(out):
-            counter["n"] += 1
-            state = "running" if counter["n"] <= 12 else "completed"
-            return {
-                "state": state,
-                "scanned": counter["n"],
-                "processed": counter["n"],
-                "ts": float(counter["n"]),
-            }
-
-        def st(out):
-            return "running" if counter["n"] < 12 else "completed"
-
-        self.workload._status_snapshot = snap
-        self.workload._status_state = st
-        logger = self.workload.Logger(self.out / "h.log")
-        self.addCleanup(logger.close)
-        result = self.workload.probe_phase(cfg, object(), logger, self.out / "rounds-run-1")
-        self.assertGreaterEqual(result["rounds_total"], 2)
-        self.assertEqual(calls["n"], 1)
-
-
-class ProbeRefreshZeroLoopTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_probe_phase = self.workload.probe_phase
-        self._orig_build = self.workload.build_probe_list
-        self._orig_probe_round = self.workload.probe_round
-        self._orig_snap = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.probe_phase = self._orig_probe_phase
-        self.workload.build_probe_list = self._orig_build
-        self.workload.probe_round = self._orig_probe_round
-        self.workload._status_snapshot = self._orig_snap
-        self.workload._status_state = self._orig_state
-
-    def _cfg(self, **overrides):
-        fields = {
-            "out": self.out,
-            "probe_interval_s": 0.0,
-            "probe_refresh_s": 0.0,
-            "scan_timeout_s": 0.0,
-            "min_valid_rounds": 1,
-        }
-        fields.update(overrides)
-        return self.workload.config.WorkloadConfig(**fields)
-
-    def test_build_probe_list_once_when_refresh_zero(self):
-        cfg = self._cfg()
-        calls = {"n": 0}
-
-        def build(cfg, client):
-            calls["n"] += 1
-            return ["a\tt"]
-
-        self.workload.build_probe_list = build
-        self.workload.probe_round = lambda *a, **k: True
-        counter = {"n": 0}
-
-        def snap(out):
-            counter["n"] += 1
-            state = "running" if counter["n"] <= 12 else "completed"
-            return {
-                "state": state,
-                "scanned": counter["n"],
-                "processed": counter["n"],
-                "ts": float(counter["n"]),
-            }
-
-        def st(out):
-            return "running" if counter["n"] < 12 else "completed"
-
-        self.workload._status_snapshot = snap
-        self.workload._status_state = st
-        logger = self.workload.Logger(self.out / "h.log")
-        self.addCleanup(logger.close)
-        result = self.workload.probe_phase(cfg, object(), logger, self.out / "rounds-run-1")
-        self.assertGreaterEqual(result["rounds_total"], 2)
-        self.assertEqual(calls["n"], 1)
-
-
-class ProbeNoProgressLoopTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_probe_phase = self.workload.probe_phase
-        self._orig_build = self.workload.build_probe_list
-        self._orig_probe_round = self.workload.probe_round
-        self._orig_snap = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.probe_phase = self._orig_probe_phase
-        self.workload.build_probe_list = self._orig_build
-        self.workload.probe_round = self._orig_probe_round
-        self.workload._status_snapshot = self._orig_snap
-        self.workload._status_state = self._orig_state
-
-    def test_no_phase_progress_does_not_abort(self):
-        import json as _json
-
-        class FakeClient:
-            def post(self, path, payload=None):
-                return 202, b"{}", 0.0
-
-            def __init__(self):
-                self.calls = 0
-
-            def get(self, path):
-                self.calls += 1
-                if self.calls > 4:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 7,
-                            "failed": 0,
-                        }
-                    ).encode()
-                elif self.calls % 2 == 1:
-                    body = _json.dumps(
-                        {
-                            "state": "running",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 7,
-                            "failed": 0,
-                        }
-                    ).encode()
-                else:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 7,
-                            "failed": 0,
-                        }
-                    ).encode()
-                return 200, body, 0.0
-
-        self.workload.probe_phase = lambda *a, **k: {
-            "rounds_total": 3,
-            "rounds_valid": 3,
-            "invalid_reasons": [],
-            "progress": False,
-        }
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.1,
-            min_valid_rounds=1,
-        )
-        self.workload.run_scans(cfg, FakeClient(), self.workload.Logger(self.out / "h3.log"))
-
-
-class ProbeAggregateLoopTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_probe_phase = self.workload.probe_phase
-        self._orig_build = self.workload.build_probe_list
-        self._orig_probe_round = self.workload.probe_round
-        self._orig_snap = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.probe_phase = self._orig_probe_phase
-        self.workload.build_probe_list = self._orig_build
-        self.workload.probe_round = self._orig_probe_round
-        self.workload._status_snapshot = self._orig_snap
-        self.workload._status_state = self._orig_state
-
-    def _fake_client(self):
-        import json as _json
-
-        class FakeClient:
-            def post(self, path, payload=None):
-                return 202, b"{}", 0.0
-
-            def __init__(self):
-                self.calls = 0
-
-            def get(self, path):
-                self.calls += 1
-                if self.calls > 4:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 7,
-                            "failed": 0,
-                        }
-                    ).encode()
-                elif self.calls % 2 == 1:
-                    body = _json.dumps(
-                        {
-                            "state": "running",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 7,
-                            "failed": 0,
-                        }
-                    ).encode()
-                else:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 7,
-                            "failed": 0,
-                        }
-                    ).encode()
-                return 200, body, 0.0
-
-        return FakeClient()
-
-    def test_two_repeats_aggregate_pass(self):
-        outcomes = iter(
-            [
-                {"rounds_total": 2, "rounds_valid": 2, "invalid_reasons": [], "progress": True},
-                {"rounds_total": 1, "rounds_valid": 1, "invalid_reasons": [], "progress": True},
-            ]
-        )
-        self.workload.probe_phase = lambda *a, **k: next(outcomes)
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            scan_repeats=2,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.1,
-            min_valid_rounds=3,
-        )
-        self.workload.run_scans(cfg, self._fake_client(), self.workload.Logger(self.out / "h.log"))
-
-    def test_two_repeats_aggregate_fail_names_counts(self):
-        outcomes = iter(
-            [
-                {"rounds_total": 1, "rounds_valid": 1, "invalid_reasons": [], "progress": True},
-                {"rounds_total": 1, "rounds_valid": 1, "invalid_reasons": [], "progress": True},
-            ]
-        )
-        self.workload.probe_phase = lambda *a, **k: next(outcomes)
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            scan_repeats=2,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.1,
-            min_valid_rounds=3,
-        )
-        with self.assertRaises(self.workload.WorkloadError) as ctx:
-            self.workload.run_scans(
-                cfg, self._fake_client(), self.workload.Logger(self.out / "h.log")
-            )
-        msg = str(ctx.exception)
-        self.assertIn("1, 1", msg)
-
-    def test_zero_valid_repeat_with_enough_total_does_not_abort(self):
-        outcomes = iter(
-            [
-                {"rounds_total": 0, "rounds_valid": 0, "invalid_reasons": [], "progress": False},
-                {"rounds_total": 3, "rounds_valid": 3, "invalid_reasons": [], "progress": True},
-            ]
-        )
-        self.workload.probe_phase = lambda *a, **k: next(outcomes)
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            scan_repeats=2,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.1,
-            min_valid_rounds=3,
-        )
-        self.workload.run_scans(cfg, self._fake_client(), self.workload.Logger(self.out / "h.log"))
-
-
-class ProbeCachedRowsLoopTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_build = self.workload.build_probe_list
-        self._orig_probe_round = self.workload.probe_round
-        self._orig_snap = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.build_probe_list = self._orig_build
-        self.workload.probe_round = self._orig_probe_round
-        self.workload._status_snapshot = self._orig_snap
-        self.workload._status_state = self._orig_state
-
-    def test_reuses_cached_rows_when_build_empty(self):
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            probe_interval_s=0.0,
-            probe_refresh_s=0.0,
-            scan_timeout_s=0.1,
-            min_valid_rounds=1,
-        )
-        calls = {"n": 0}
-
-        def build(cfg, client):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return ["a\tt", "b\tt"]
-            return []
-
-        self.workload.build_probe_list = build
-        self.workload.probe_round = lambda *a, **k: True
-        counter = {"n": 0}
-
-        def snap(out):
-            counter["n"] += 1
-            state = "running" if counter["n"] <= 12 else "completed"
-            return {
-                "state": state,
-                "scanned": counter["n"],
-                "processed": counter["n"],
-                "ts": float(counter["n"]),
-            }
-
-        def st(out):
-            return "running" if counter["n"] < 12 else "completed"
-
-        self.workload._status_snapshot = snap
-        self.workload._status_state = st
-        cache = []
-        logger = self.workload.Logger(self.out / "h.log")
-        self.addCleanup(logger.close)
-        result = self.workload.probe_phase(
-            cfg, object(), logger, self.out / "rounds-run-1", cached_rows=cache
-        )
-        self.assertGreaterEqual(result["rounds_total"], 2)
-        self.assertEqual(cache, ["a\tt", "b\tt"])
 
 
 class RefreshScanStatusTest(unittest.TestCase):
@@ -1387,239 +801,6 @@ class WarmupScanTest(unittest.TestCase):
         )
         self.assertFalse(result["valid"])
 
-    def test_warmup_zero_skips_in_run_scans(self):
-        calls = {"n": 0}
-
-        def fake_warmup(*a, **k):
-            calls["n"] += 1
-            return {"valid": True, "reason": "ok", "wall_ms": 1, "endpoints": []}
-
-        self.workload.warmup_scan = fake_warmup
-        import json as _json
-
-        class FakeClient:
-            def __init__(self):
-                self.calls = 0
-
-            def post(self, path, payload=None):
-                return 202, b"{}", 0.0
-
-            def get(self, path):
-                self.calls += 1
-                if self.calls == 1:
-                    body = _json.dumps(
-                        {
-                            "state": "running",
-                            "scanned": 1,
-                            "matched": 1,
-                            "processed": 1,
-                            "failed": 0,
-                        }
-                    ).encode()
-                else:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 1,
-                            "matched": 1,
-                            "processed": 1,
-                            "failed": 0,
-                        }
-                    ).encode()
-                return 200, body, 0.0
-
-        self.workload.probe_phase = lambda *a, **k: {
-            "rounds_total": 1,
-            "rounds_valid": 1,
-            "invalid_reasons": [],
-            "progress": True,
-        }
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            scan_warmup=0,
-            scan_repeats=1,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.1,
-            scan_stall_timeout_s=0.0,
-            min_valid_rounds=1,
-        )
-        self.workload.run_scans(cfg, FakeClient(), self.workload.Logger(self.out / "h3.log"))
-        self.assertEqual(calls["n"], 0)
-
-    def test_warmup_only_run_index_one(self):
-        calls = {"n": 0}
-
-        def fake_warmup(*a, **k):
-            calls["n"] += 1
-            return {"valid": True, "reason": "ok", "wall_ms": 1, "endpoints": []}
-
-        self.workload.warmup_scan = fake_warmup
-        import json as _json
-
-        class FakeClient:
-            def __init__(self):
-                self.calls = 0
-
-            def post(self, path, payload=None):
-                return 202, b"{}", 0.0
-
-            def get(self, path):
-                self.calls += 1
-                if self.calls == 1:
-                    body = _json.dumps(
-                        {
-                            "state": "running",
-                            "scanned": 1,
-                            "matched": 1,
-                            "processed": 1,
-                            "failed": 0,
-                        }
-                    ).encode()
-                else:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 1,
-                            "matched": 1,
-                            "processed": 1,
-                            "failed": 0,
-                        }
-                    ).encode()
-                return 200, body, 0.0
-
-        self.workload.probe_phase = lambda *a, **k: {
-            "rounds_total": 1,
-            "rounds_valid": 1,
-            "invalid_reasons": [],
-            "progress": True,
-        }
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            scan_warmup=1,
-            scan_repeats=2,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.1,
-            scan_stall_timeout_s=0.0,
-            min_valid_rounds=1,
-        )
-        self.workload.run_scans(cfg, FakeClient(), self.workload.Logger(self.out / "h4.log"))
-        self.assertEqual(calls["n"], 1)
-
-
-class PhaseGuardExtensionTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.repo = Path(self.tmp.name) / "repo"
-        self.repo.mkdir()
-        (self.repo / "img_0001.jpg").write_bytes(b"x" * 10)
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-        self._orig_run_storm = self.workload.run_storm
-        self._orig_check_margin = getattr(self.workload, "check_storm_coverage", None)
-        self._orig_snapshot = self.workload._status_snapshot
-        self._orig_state = self.workload._status_state
-        self._orig_post_scan = self.workload.run_post_scan
-        self._orig_prepare = self.workload.prepare_images
-        self._orig_probe = self.workload.probe_phase
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
-        self.workload.run_storm = self._orig_run_storm
-        self.workload.check_storm_coverage = self._orig_check_margin
-        self.workload._status_snapshot = self._orig_snapshot
-        self.workload._status_state = self._orig_state
-        self.workload.run_post_scan = self._orig_post_scan
-        self.workload.prepare_images = self._orig_prepare
-        self.workload.probe_phase = self._orig_probe
-
-    def _client(self):
-        import json as _json
-
-        class FakeClient:
-            def __init__(self):
-                self.calls = 0
-
-            def post(self, path, payload=None):
-                return 202, b"{}", 0.0
-
-            def get(self, path):
-                self.calls += 1
-                if self.calls == 1:
-                    body = _json.dumps(
-                        {
-                            "state": "running",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 5,
-                            "failed": 0,
-                        }
-                    ).encode()
-                else:
-                    body = _json.dumps(
-                        {
-                            "state": "completed",
-                            "scanned": 5,
-                            "matched": 5,
-                            "processed": 5,
-                            "failed": 0,
-                        }
-                    ).encode()
-                return 200, body, 0.0
-
-        return FakeClient()
-
-    def _cfg(self, **overrides):
-        fields = {
-            "out": self.out,
-            "image_repo": self.repo,
-            "image_path": self.out / "images",
-            "probe_interval_s": 0.0,
-            "scan_timeout_s": 0.1,
-            "scan_stall_timeout_s": 0.0,
-            "min_valid_rounds": 1,
-        }
-        fields.update(overrides)
-        return self.workload.config.WorkloadConfig(**fields)
-
-    def test_storm_concurrent_valid(self):
-        self.workload.run_storm = lambda *a, **k: {"done": 1, "total": 1, "wall": 0.1, "end": 0.0}
-        self.workload.check_storm_coverage = lambda *a, **k: None
-        self.workload._status_snapshot = lambda out: {
-            "state": "running",
-            "scanned": 1,
-            "processed": 1,
-            "ts": 1.0,
-        }
-        cfg = self._cfg(workload="storm-read")
-        self.workload.run_scans(cfg, self._client(), self.workload.Logger(self.out / "h.log"))
-
-    def test_post_scan_invalid(self):
-        self.workload.prepare_images = lambda cfg, logger: (1, 10)
-        self.workload.probe_phase = lambda *a, **k: {
-            "rounds_total": 1,
-            "rounds_valid": 1,
-            "invalid_reasons": [],
-            "progress": True,
-        }
-        self.workload.run_post_scan = lambda cfg, client, logger: None
-        self.workload._status_snapshot = lambda out: {
-            "state": "running",
-            "scanned": 1,
-            "processed": 1,
-            "ts": 1.0,
-        }
-        self.workload._status_state = lambda out: "completed"
-        client = self._client()
-        cfg = self._cfg(workload="control")
-        self.workload.HttpClient = lambda base_url, cookie_jar: client
-        self.workload.run_scans(cfg, client, self.workload.Logger(self.out / "h4.log"))
-        rc = self.workload.run_workload(cfg)
-        self.assertEqual(rc, 2)
-
 
 class StormSustainedTest(unittest.TestCase):
     def setUp(self):
@@ -1637,7 +818,7 @@ class StormSustainedTest(unittest.TestCase):
     def _cfg(self, **overrides):
         fields = {
             "out": self.out,
-            "workload": "storm-edit",
+            "workload": scenarios.storm_profiles()[0],
             "storm_clients": 2,
             "storm_ops": 2,
             "storm_min_coverage_pct": 50.0,
@@ -1726,7 +907,6 @@ class StormRowFloorTest(unittest.TestCase):
     def test_128_clients_floor_16(self):
         cfg = self.workload.config.WorkloadConfig(
             out=self.out,
-            workload="storm-edit-16n",
             storm_clients=128,
             storm_ops=10,
             expected_entries=100,
@@ -1737,26 +917,11 @@ class StormRowFloorTest(unittest.TestCase):
     def test_8_clients_floor_8_or_10(self):
         cfg = self.workload.config.WorkloadConfig(
             out=self.out,
-            workload="storm-edit-8",
             storm_clients=8,
             storm_ops=10,
             expected_entries=100,
         )
         self.assertEqual(min(cfg.expected_entries, max(8, cfg.storm_clients // 8)), 8)
-
-
-class StormTimestampRefreshTest(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.out = Path(self.tmp.name) / "cell"
-        self.out.mkdir()
-        self.workload = load_workload()
-        self._orig_sleep = self.workload.time.sleep
-        self.workload.time.sleep = lambda x: None
-
-    def tearDown(self):
-        self.workload.time.sleep = self._orig_sleep
 
 
 class ConcurrentMinimumCapTest(unittest.TestCase):
@@ -1802,57 +967,270 @@ class ConcurrentMinimumCapTest(unittest.TestCase):
         self.assertIn("minimum=256", str(caught.exception))
         self.assertIn("done=255", str(caught.exception))
 
-    def test_concurrent_run_reports_the_capped_total(self):
-        cfg = self.workload.config.WorkloadConfig(
-            out=self.out,
-            workload="storm-edit-16n",
-            storm_clients=128,
+
+class ScenarioSpecTest(unittest.TestCase):
+    """The cell matrix is data: each spec states its phases explicitly."""
+
+    def setUp(self):
+        self.workload = load_workload()
+
+    def spec(self, profile, **overrides):
+        fields = {
+            "min_probe_rounds": 20,
+            "repeats": 3,
+            "upload_files": 20,
+            "storm_ops": 10,
+            "ncpu": 8,
+        }
+        fields.update(overrides)
+        return scenarios.build_spec(profile, **fields)
+
+    def test_every_profile_builds_a_spec(self):
+        self.assertEqual(set(scenarios.profiles()), set(config.WORKLOADS))
+        for profile in scenarios.profiles():
+            with self.subTest(profile=profile):
+                spec = self.spec(profile)
+                self.assertEqual(spec.profile, profile)
+                self.assertTrue(spec.phases)
+
+    def test_probe_has_scan_rounds_then_idle_rounds(self):
+        spec = self.spec(scenarios.PROBE, min_probe_rounds=7)
+        self.assertEqual(spec.probe_round_target, 7)
+        scan, idle = spec.phases
+        self.assertEqual((scan.background, scan.issue, scan.stop), ("scan", "rounds", "scan"))
+        self.assertEqual(scan.foregrounds, scenarios.PROBE_FOREGROUNDS)
+        self.assertEqual((idle.background, idle.issue, idle.stop), ("idle", "rounds", "samples"))
+        self.assertEqual(idle.target, 3)
+        self.assertEqual(idle.foregrounds, scenarios.PROBE_FOREGROUNDS)
+
+    def test_storm_specs_match_their_background_kind_and_level(self):
+        for profile in scenarios.storm_profiles():
+            with self.subTest(profile=profile):
+                background, kind, level = scenarios.storm_parts(profile)
+                spec = self.spec(profile)
+                self.assertEqual(spec.probe_round_target, 0)
+                self.assertEqual(len(spec.phases), 1)
+                phase = spec.phases[0]
+                self.assertEqual(phase.background, background)
+                self.assertEqual(phase.foregrounds, (scenarios.STORM_ACCESS[kind],))
+                self.assertEqual(phase.clients, scenarios.level_clients(level, 8))
+                self.assertEqual(phase.issue, "stream")
+                self.assertEqual(phase.setup_scan, background == "idle")
+                self.assertEqual(phase.stop, "scan" if background == "scan" else "ops")
+
+    def test_upload_specs_differ_only_in_background(self):
+        idle = self.spec(scenarios.IDLE_UPLOAD).phases[0]
+        scan = self.spec(scenarios.SCAN_UPLOAD).phases[0]
+        self.assertEqual(idle.background, "idle")
+        self.assertEqual(scan.background, "scan")
+        for phase in (idle, scan):
+            self.assertEqual(phase.foregrounds, ("upload",))
+            self.assertEqual((phase.issue, phase.stop, phase.target), ("files", "files", 20))
+
+    def test_unknown_profile_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.spec("not-a-declared-profile")
+
+
+class _FakeSession:
+    """Minimal ScanSession stand-in for executor phase dispatch tests."""
+
+    def __init__(self, cfg, client, logger, run_index, **kwargs):
+        self.run_index = run_index
+        self.wall_ms = 100
+        self.started = 0.0
+        self.ended = 10.0
+        self.active = threading.Event()
+        self.active.set()
+        self.guard_result = {"valid": True, "reason": "ok"}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+
+class _FakeRequestClient:
+    def __init__(self):
+        self.calls = []
+
+    def post(self, path, payload=None, timeout=30.0):
+        self.calls.append(("post", path))
+        return 200, json.dumps({"prefetch": {"timestamp": 42}, "token": "tok"}).encode(), 0.01
+
+    def put(self, path, payload=None, timeout=30.0):
+        self.calls.append(("put", path))
+        return 200, b"{}", 0.01
+
+    def get(self, path, bearer=None, timeout=30.0):
+        self.calls.append(("get", path))
+        return 200, b"[]", 0.01
+
+
+class ExecutorTest(unittest.TestCase):
+    """The executor drives phases from a spec, with no profile-name branch."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out = Path(self.tmp.name) / "cell"
+        self.out.mkdir()
+        self.workload = load_workload()
+        self.logger = self.workload.Logger(self.out / "harness-a.log")
+        self.addCleanup(self.logger.close)
+        self._orig_sleep = self.workload.time.sleep
+        self.workload.time.sleep = lambda x: None
+        self.addCleanup(setattr, self.workload.time, "sleep", self._orig_sleep)
+        (self.out / "prefetch.json").write_text(
+            json.dumps({"prefetch": {"timestamp": 42}, "token": "tok"})
+        )
+
+    def _cfg(self, **overrides):
+        fields = {
+            "out": self.out,
+            "scan_repeats": 3,
+            "storm_min_coverage_pct": 50.0,
+            "warmup": 1,
+            "repeats": 2,
+            "min_probe_rounds": 5,
+            "images": 5,
+            "upload_files": 2,
+            "probe_page": 1000,
+            "upload_timeout_s": 0.1,
+            "poll_interval_s": 0.01,
+        }
+        fields.update(overrides)
+        return self.workload.config.WorkloadConfig(**fields)
+
+    def _events(self):
+        path = self.out / "events.jsonl"
+        if not path.is_file():
+            return []
+        return [json.loads(line) for line in path.read_text().splitlines()]
+
+    def test_probe_scans_repeat_to_the_round_target_then_runs_idle(self):
+        cfg = self._cfg(min_probe_rounds=5, scan_repeats=3)
+        spec = scenarios.build_spec(
+            scenarios.PROBE,
+            min_probe_rounds=5,
+            repeats=2,
+            upload_files=2,
             storm_ops=10,
-            storm_min_coverage_pct=50.0,
-            probe_interval_s=0.0,
-            scan_timeout_s=0.0,
+            ncpu=8,
         )
-        seen = {"ops": 0}
+        targets = []
+        idle_calls = []
 
-        class FakeClient:
-            def post(self, path, payload=None, timeout=30.0):
-                return (
-                    200,
-                    b'{"prefetch":{"timestamp":42},"token":"tok"}',
-                    0.0,
-                )
+        def fake_rounds(c, client, logger, session, target, warm):
+            targets.append((target, warm))
+            return 2 if len(targets) == 1 else 3
 
-            def put(self, path, payload=None, timeout=30.0):
-                seen["ops"] += 1
-                return 200, b"{}", 0.0
+        with (
+            mock.patch.object(executor, "ScanSession", _FakeSession),
+            mock.patch.object(executor, "drive_rounds_scan", side_effect=fake_rounds),
+            mock.patch.object(
+                executor, "drive_rounds_idle", side_effect=lambda *a: idle_calls.append(a)
+            ),
+        ):
+            executor.execute_cell(cfg, _FakeRequestClient(), self.logger, spec)
+        self.assertEqual(targets, [(5, True), (3, False)])
+        self.assertEqual(len(idle_calls), 1)
+        self.assertEqual(cfg.scan_runs, 2)
+        self.assertEqual(cfg.scan_wall_ms, 100)
 
-            def get(self, path, bearer=None, timeout=30.0):
-                return 200, b"{}", 0.0
+    def test_idle_rounds_discard_warmup_samples(self):
+        cfg = self._cfg(warmup=2, repeats=3)
+        phase = scenarios.Phase("idle", ("prefetch", "edit", "thumb", "scroll"), target=3)
+        with (
+            mock.patch.object(executor.wl, "build_probe_list", return_value=["h\ttok"]),
+            mock.patch.object(
+                executor.wl,
+                "scroll_probe",
+                return_value={"scrollbar": [0.01], "rows": [], "data": []},
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            executor.drive_rounds_idle(cfg, _FakeRequestClient(), self.logger, phase)
+        samples = [event for event in self._events() if event["type"] == "idle_sample"]
+        warmups = [event for event in samples if event["phase"] == "warmup"]
+        measured = [event for event in samples if event["phase"] == "measured"]
+        self.assertEqual(len(warmups), 2 * 3)
+        self.assertEqual(len(measured), 3 * 3)
+        self.assertEqual({event["access"] for event in measured}, {"prefetch", "edit", "thumb"})
 
-        self.workload.build_probe_list = lambda cfg, client: [f"h{i}\ttok" for i in range(5)]
-        (self.out / "rounds").mkdir(parents=True, exist_ok=True)
-        scan_active = threading.Event()
-        scan_active.set()
-        client = FakeClient()
-        original_put = client.put
+    def test_drive_rounds_scan_counts_only_valid_rounds(self):
+        cfg = self._cfg()
+        session = _FakeSession(cfg, None, self.logger, 1)
+        session.active.set()
+        validity = iter([True, False, True, True])
 
-        def put(path, payload=None, timeout=30.0):
-            result = original_put(path, payload, timeout)
-            if seen["ops"] >= 300:
-                scan_active.clear()
-            return result
+        class FakeGuard:
+            def __init__(self, *args, **kwargs):
+                pass
 
-        client.put = put
+            def start(self):
+                pass
 
-        summary = self.workload.run_storm(
-            cfg,
-            client,
-            self.workload.Logger(self.out / "cap.log"),
-            self.out / "rounds",
-            1,
-            scan_active,
+            def end(self):
+                return {"valid": next(validity), "reason": "ok"}
+
+        with (
+            mock.patch.object(executor.wl, "build_probe_list", return_value=["h\ttok"]),
+            mock.patch.object(executor.wl, "ScanPhase", FakeGuard),
+            mock.patch.object(executor.wl, "probe_round", return_value=True),
+            mock.patch.object(executor.wl, "_status_state", return_value="running"),
+            mock.patch.object(executor.wl, "warmup_scan", return_value={"valid": True}),
+        ):
+            valid = executor.drive_rounds_scan(
+                cfg, _FakeRequestClient(), self.logger, session, 3, False
+            )
+        self.assertEqual(valid, 3)
+
+    def test_idle_storm_stops_at_the_ops_target(self):
+        cfg = self._cfg(storm_ops=3)
+        phase = scenarios.Phase(
+            "idle", ("prefetch",), clients=2, issue="stream", stop="ops", target=6
+        )
+        with (
+            mock.patch.object(executor.wl, "build_probe_list", return_value=["h\ttok"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            summary = executor.drive_stream(cfg, _FakeRequestClient(), self.logger, phase, None, 1)
+        self.assertEqual(summary["done"], 6)
+        self.assertEqual(summary["total"], 6)
+        self.assertEqual(
+            len([event for event in self._events() if event["type"] == "storm_sample"]), 6
         )
 
-        self.assertEqual(summary["total"], 256)
-        self.assertGreaterEqual(summary["done"], 256)
-        self.assertLess(seen["ops"], 1280)
+    def test_scan_storm_coverage_uses_the_session_interval(self):
+        cfg = self._cfg(storm_min_coverage_pct=90.0)
+        spec = scenarios.build_spec(
+            next(p for p in scenarios.storm_profiles() if scenarios.storm_parts(p)[0] == "scan"),
+            min_probe_rounds=5,
+            repeats=2,
+            upload_files=2,
+            storm_ops=10,
+            ncpu=8,
+        )
+        summary = {
+            "kind": "prefetch",
+            "done": 10,
+            "total": 10,
+            "active_wall": 8.0,
+            "wall": 8.0,
+            "median": 0.01,
+            "p95": 0.02,
+            "max": 0.03,
+            "failed": 0,
+            "coverage_pct": None,
+        }
+        with (
+            mock.patch.object(executor, "ScanSession", _FakeSession),
+            mock.patch.object(executor, "drive_stream", return_value=summary),
+            mock.patch.object(executor, "_emit_storm_summary"),
+        ):
+            with self.assertRaises(self.workload.WorkloadError) as caught:
+                executor.execute_cell(cfg, _FakeRequestClient(), self.logger, spec)
+        self.assertIn("coverage too low", str(caught.exception))
+        self.assertEqual(summary["coverage_pct"], 80.0)

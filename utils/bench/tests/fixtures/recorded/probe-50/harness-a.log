@@ -1,0 +1,47 @@
+19:10:30 === workload preflight ===
+19:10:30 base_url=http://127.0.0.1:5795 out=/var/tmp/matrix-final4-20261122-191029/50/probe-50-rep1 workload=probe scan_repeats=2 repeats=3 warmup=1 runs_during=3 fetches=10 images=50
+19:10:30 === seeding images (repo=/home/codesam/picasu-bench/set-50 path=/var/tmp/matrix-final4-20261122-191029/50/probe-50-rep1/images) ===
+19:10:30 seeded 50 images from /home/codesam/picasu-bench/set-50 (source untouched)
+19:10:30 generated=50 bytes=31288181 wall_ms=4 mode=linked(/home/codesam/picasu-bench/set-50)
+19:10:30 === run parameters ===
+19:10:30 N=8 out=/var/tmp/matrix-final4-20261122-191029/50/probe-50-rep1
+19:10:30 image_count=50 image_bytes=31288181
+19:10:30 warmup=1 repeats=3 runs_during=3 scan_repeats=2 build_profile=release port=5795
+19:10:30 scan repeats: 2 (median wall time reported)
+19:10:30 cell spec: profile=probe phases=2
+19:10:30 === triggering index scan (run 1) ===
+19:10:30 index trigger=202 start_ms=1795374630708
+19:10:30 === polling /get/index/status ===
+19:10:31 warmup: valid=True reason=ok wall_ms=28
+19:10:31 probe round=1 rows=2 state=running
+19:10:32 probe round=2 rows=2 state=running
+19:10:32 probe round=3 rows=2 state=running
+19:10:33 probe round=4 rows=2 state=running
+19:10:34 probe round=5 rows=2 state=running
+19:10:34 probe round=6 rows=2 state=running
+19:10:35 probe round=7 rows=2 state=running
+19:10:35 probe round=8 rows=2 state=running
+19:10:36 probe round=9 rows=2 state=running
+19:10:36 probe round=10 rows=2 state=running
+19:10:37 probe round=11 rows=2 state=running
+19:10:38 probe round=12 rows=2 state=running
+19:10:38 probe round=13 rows=2 state=running
+19:10:39 probe round=14 rows=2 state=running
+19:10:39 probe round=15 rows=2 state=running
+19:10:40 probe round=16 rows=2 state=running
+19:10:40 probe round=17 rows=2 state=running
+19:10:41 probe round=18 rows=2 state=running
+19:10:41 scan run 1/2: state=completed polls=56 wall_ms=11140
+19:10:41 probe phase: rounds=18 valid=18
+19:10:41 === triggering index scan (run 2) ===
+19:10:41 index trigger=202 start_ms=1795374641966
+19:10:41 === polling /get/index/status ===
+19:10:42 probe round=1 rows=44 state=running
+19:10:42 probe round=2 rows=44 state=running
+19:10:42 probe phase: rounds=2 valid=2
+19:10:53 scan run 2/2: state=completed polls=57 wall_ms=11320
+19:10:53 === summary ===
+19:10:53 N=8 image_count=50 image_bytes=31288181
+19:10:53 scan wall median_ms=11230 over 2 run(s): 11140,11320
+19:10:53 artifacts: /var/tmp/matrix-final4-20261122-191029/50/probe-50-rep1
+19:10:53 done

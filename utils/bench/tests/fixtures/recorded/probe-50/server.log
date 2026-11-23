@@ -1,0 +1,36 @@
+2026-11-22T19:10:30Z WARN picasu
+           observer stats enabled (PICASU_OBSERVER_STATS=1): per-scan tables and wrap lines will be logged
+           observe drain: scan job=1 state=Completed scanned=50 matched=50 processed=10 failed=0
+             stage                     n   p50_us   p95_us    max_us
+             filter_snapshot_clone   20      317      693    13006
+             filter_par_iter         20     1698     4848     7082
+             compute_locate          20        0        0        0
+             tree_refresh_total      20      315      692    13002
+             tree_refresh_build      20      274      566    12916
+             tree_refresh_sort       20        3       17       21
+             tree_refresh_write_wait  20        0        0        0
+             cpu_permit_wait        166    31317   413933   900884
+             cpu_exec               160      329  1791368  2744733
+             prefetch_total          57       15     5016    14873
+             blocking_queue_wait     57       24      918     1908
+             interactive_exec         0        0        0        0
+2026-11-22T19:10:41Z INFO picasu::tasks::observe
+           observe counters: snapshot_memory_hit=2 snapshot_disk_fallback=321
+2026-11-22T19:10:41Z INFO picasu::tasks::actor::album_index
+           observe drain: scan job=2 state=Completed scanned=51 matched=50 processed=50 failed=0
+             stage                     n   p50_us   p95_us    max_us
+             filter_snapshot_clone    2      641      641      641
+             filter_par_iter          2     2803     2803     2803
+             compute_locate           2        0        0        0
+             tree_refresh_total       2      639      639      639
+             tree_refresh_build       2      519      519      519
+             tree_refresh_sort        2       17       17       17
+             tree_refresh_write_wait   2        0        0        0
+             cpu_permit_wait        150    20762   523215   922359
+             cpu_exec               156      323  2137360  2672339
+             prefetch_total           7       16     3483     3483
+             blocking_queue_wait      7       23      608      608
+             interactive_exec         0        0        0        0
+2026-11-22T19:10:53Z INFO picasu::tasks::observe
+           observe counters: snapshot_memory_hit=0 snapshot_disk_fallback=37
+2026-11-22T19:10:53Z WARN picasu::tasks::txn_probe

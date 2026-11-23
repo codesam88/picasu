@@ -3,21 +3,23 @@
 Benchmark and debug cells for the Picasu backend. The harness is stdlib-only
 Python; it is not part of the server binary.
 
-| Path                  | Role                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`   |
-| `workload.py`         | Image-set materialisation, scans, probes and bench transcript artifacts            |
-| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown               |
-| `battery.py`          | Pinned cell batteries, long `report.tsv`, JSON extract and baseline recording      |
-| `metrics.py`          | Families, statistics, percentiles, bootstrap intervals, long row schema            |
-| `compare_reports.py`  | Review a long report against accepted baselines or another report (`compare`)      |
-| `baselines.tsv`       | Checked-in accepted values in long format, with intervals (updated with rationale) |
-| `render_baselines.py` | Render `baselines.md` from the baselines and cell metadata only                    |
-| `extract_bench.py`    | Parse harness output directories into raw samples, identity and validity           |
-| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                 |
-| `preflight.py`        | Pre-spawn checklist: binary, hyperfine, archive, sandbox manifest, port, OUT       |
-| `config.py`           | Typed, validated per-layer configuration shared by every module                    |
-| `manifests/`          | PhotoSpec manifests for fixed image sets                                           |
+| Path                  | Role                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `backend_launcher.py` | State setup, port preflight, spawn, readiness, supervision, `launcher-info.json`    |
+| `workload.py`         | Image-set materialisation, shared request primitives and bench transcript artifacts |
+| `scenarios.py`        | The cell matrix as data: profiles, phase specs and storm levels                     |
+| `executor.py`         | One executor over the phase specs: scan session, rounds, streams, file uploads      |
+| `run_cell.py`         | One cell: launcher, workload, failure diagnostics, graceful shutdown                |
+| `battery.py`          | Pinned cell batteries, long `report.tsv`, JSON extract and baseline recording       |
+| `metrics.py`          | Families, statistics, percentiles, bootstrap intervals, long row schema             |
+| `compare_reports.py`  | Review a long report against accepted baselines or another report (`compare`)       |
+| `baselines.tsv`       | Checked-in accepted values in long format, with intervals (updated with rationale)  |
+| `render_baselines.py` | Render `baselines.md` from the baselines and cell metadata only                     |
+| `extract_bench.py`    | Parse harness output directories into raw samples, identity and validity            |
+| `prepare.py`          | Materialise a sandbox from a canonical archive, write its manifest                  |
+| `preflight.py`        | Pre-spawn checklist: binary, archive, sandbox manifest, port, OUT                   |
+| `config.py`           | Typed, validated per-layer configuration shared by every module                     |
+| `manifests/`          | PhotoSpec manifests for fixed image sets                                            |
 
 The environment contracts live in the module docstrings. Each producer writes
 into `$OUT`; the launcher writes `launcher-info.json`, which the workload
@@ -44,16 +46,16 @@ and binary path checks — are single functions imported by every consumer, so
 one bad variable is rejected with one message wherever it is read. All
 failures raise `ConfigError`. `battery.py` builds one `BatteryConfig` per run
 and derives every rep's cell environment from it; a rep never re-reads the
-battery knobs.
+battery knobs. The launcher and orchestrator bind their own repository root
+and script paths.
 
-Two seams stay with their layer: the workload resolves `hyperfine` through the
-preflight checklist, and the launcher and orchestrator bind their own
-repository root and script paths.
+`scenarios.py` is the only place that names profiles: `WORKLOADS` and the
+battery matrix are built from `scenarios.profiles()`, and each profile maps
+to a `CellSpec` of ordered phases (background, foregrounds, clients, issue
+policy, stop condition). `workload.py` resolves the spec and `executor.py`
+drives it; neither branches on the profile name.
 
 ## Prerequisites
-
-`hyperfine` is required for every bench cell. Install the managed build with
-`just install hyperfine`; cells fail fast with an install hint if it is missing.
 
 ## Preflight checklist
 
@@ -72,7 +74,6 @@ python3 utils/bench/battery.py preflight --archive ~/picasu-bench/set-100 \
 
 ```
 ok binary: /home/me/picasu/target/release/picasu
-ok hyperfine: /home/me/.local/bin/hyperfine
 ok archive: /home/me/picasu-bench/set-100 (100 jpg)
 ok sandbox: /dev/shm/scratchpad/sb-100 (count=100)
 ok out: /dev/shm/scratchpad/cell will be created
@@ -82,7 +83,6 @@ ok port: 5795 free
 ```sh
 $ PORT=5795 python3 utils/bench/battery.py preflight
 ok binary: /home/me/picasu/target/release/picasu
-ok hyperfine: /home/me/.local/bin/hyperfine
 FAIL port: port 5795 already in use: LISTEN 0 4096 127.0.0.1:5795 ... (pick a free PORT or stop the holder)
 ```
 
@@ -94,9 +94,8 @@ prepared sandbox is in play; the OUT check only when an OUT is configured.
 
 The same phase runs inside a cell: every launcher start checks its binary,
 sandbox manifest, OUT and port before it touches OUT or spawns the server,
-and the workload config runs the hyperfine check through the same
-implementation. The launcher subset skips hyperfine because a server-only
-run never drives it. There is one implementation of each rule, so the
+and the workload config runs through the same
+implementation. There is one implementation of each rule, so the
 standalone checklist and the in-cell guards cannot drift apart.
 
 ## Unified CLI
@@ -185,34 +184,25 @@ line with schema version `v` (currently 1). Event types: `probe_round`, `scroll_
 (wall-clock ISO timestamp). Incompatible schema changes bump `v`; readers
 switch on `v`.
 
-`extract_bench.py` reads that stream first: `read_events` returns one typed
-list per event type and `parse_log` takes its measurement fields from it.
-Without a usable stream the same fields come from the per-round artifacts
-(hyperfine exports, probe/storm TSVs, scan walls) that the workload writes
-alongside the transcript; the transcript itself carries only status lines,
-integer counts and millisecond walls — no floating-point stats. Every
-fallback prints one `warn: ...` line naming the reason (a version error
-names the version) and never fails the extraction. A stream counts as
-complete only when its per-phase counts match the transcript's status
-lines (probe rounds, hyperfine rounds, scan runs, storm summaries, canary
+`extract_bench.py` reads that stream: `read_events` returns one typed list
+per event type and `parse_log` takes every measurement from it. There is no
+artifact fallback — the stream is the measurement record, and a missing or
+unusable stream fails the cell instead of being silently replaced. A stream
+counts as complete only when its per-phase counts match the transcript's
+status lines (probe rounds, scan runs, storm summaries, canary
 verifications), so a cell killed mid-run cannot report a partly written
 stream.
 
 The stream carries full-precision floats. The extractor pins every
 reported value to a fixed decimal precision (fetch-round means at 4dp,
-storm medians at 3dp, scan walls as integer ms), so a cell with
-`events.jsonl` reports the same numbers as the same cell read from its
-artifacts, and recorded cells stay comparable with checked-in baselines.
+storm medians at 3dp, scan walls as integer ms), so recorded cells stay
+comparable with checked-in baselines.
 
 Coverage: the stream carries during-scan measurements (probe rounds, storm
-summaries and canary checks, scan walls). Cell identity, the post-scan
-hyperfine medians (from `hyperfine.json`) and the upload p50 columns in
-`report.tsv` are still read from the cell's artifacts and transcript.
-The p95/max cells of the report matrix pool raw samples the stream does
-not carry — the post-scan `hyperfine.json` runs, the per-round
-`hyperfine-round-*.json` exports and the per-fetch `probe-round-*.tsv`
-files — so those values come from the same artifacts for a cell with or
-without an event stream.
+samples, summaries and canary checks, scan walls) and in-process post-scan
+samples; per-file upload records carry the background that was active at
+submit. Cell identity still comes from the transcript and the run
+manifest.
 
 ## Extractor drain tables
 
@@ -220,12 +210,12 @@ When `PICASU_OBSERVER_STATS=1` (default in bench mode), the backend writes
 an `observe drain:` table per scan into `server.log` and one
 `observe counters:` line with the exact event counts that saturate a ring
 (`snapshot_memory_hit`, `snapshot_disk_fallback`). `extract_bench.py`
-parses these into `stages.json` in each cell outdir (one flat row per
-stage per scan: scan index, stage, n, p50_us, p95_us, max_us, context).
-Each scan's stage aggregate is one sample of the `stage` family, so a stage
-the backend logged with no samples contributes nothing rather than a zero.
-Cells without drain tables (stats off or older logs) still parse
-unchanged; their `stages.json` is an empty list.
+parses these tables straight from `server.log` into the row's stage
+samples (one flat row per stage per scan: scan index, stage, n, p50_us,
+p95_us, max_us, context). Each scan's stage aggregate is one sample of the
+`stage` family, so a stage the backend logged with no samples contributes
+nothing rather than a zero. Cells without drain tables (stats off) parse
+unchanged and carry no stage samples.
 
 The orchestrator writes `cell-metrics.json` in each cell while the server
 is still alive. `vm_hwm_mb` is the peak resident set from
@@ -243,9 +233,11 @@ extractor's functions over `server.log`, so the stage samples in
 separate `extract_bench.py` run is not required, and building a row writes
 nothing into the cell outdir.
 
-`extract_bench.py --profile <workload> <out>` labels a cell's during-scan
-probes as the `scan` background for every profile, including `upload`.
-The battery passes the profile of the cell it rebuilds.
+`extract_bench.py --profile <workload> <out>` uses the profile to resolve
+storm background and kind from `scenarios`, and to identify upload cells.
+An upload sample takes its report background from the event: `scan` when the
+submit saw a running scan, `idle` otherwise. The battery
+passes the profile of the cell it rebuilds.
 
 ## Canonical cell
 
@@ -261,11 +253,11 @@ just bench extract /tmp/picasu-bench-N8-100-r1
 `just bench run cell` runs one debug cell; everything
 is env-driven (`OUT`, `PORT`, `BUILD_PROFILE`, `NCPU`, `IMAGES`,
 `IMAGE_REPO`, `WORKLOAD`, ... — see `battery.py`, `_cell()` for the pinned
-defaults: `SCAN_REPEATS=2`, hyperfine `REPEATS=3`, `WARMUP=1`). An exported
+defaults: `SCAN_REPEATS=2`, `REPEATS=3`, `WARMUP=1`). An exported
 `IMAGE_HOME_SRC` selects a prepared sandbox (refused without a sandbox
 manifest by the launcher preflight); `WORKLOAD_TIMEOUT_S` bounds the whole
 cell (default 7200 s, sized for a single 5650-image cell — the
-measured 5650-row control cell needs ~1335 s). Binaries and the repo must
+measured 5650-row probe cell needs ~1335 s). Binaries and the repo must
 exist; the stack fails with a build/seed hint otherwise. `just bench
 server` serves a backend without driving any workload.
 
@@ -288,26 +280,25 @@ image count is the only size parameter: `battery run --images N` runs the
 full scenario matrix against `set-N`, and cells run sequentially because they
 share the tempdir and the host.
 
-| Profiles at every image count                                                     |
-| --------------------------------------------------------------------------------- |
-| `control`, `storm-{read,thumb,edit}-{8,16n}`, `storm-idle-read-{8,16n}`, `upload` |
+| Profiles at every image count                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------- |
+| `probe`, `scan-storm-{read,thumb,edit}-{8,16n}`, `idle-storm-{read,thumb,edit}-{8,16n}`, `idle-upload`, `scan-upload` |
 
-A cell id is `<profile>-<images>`, e.g. `control-100` or
-`storm-read-16n-100`. The storm client count (`8` or `16 × NCPU`) is part of
-the profile name and is resolved once when the battery starts.
+The matrix is foreground × background. A cell id is `<profile>-<images>`,
+e.g. `probe-100` or `scan-storm-read-16n-100`. The storm client count (`8`
+or `16 × NCPU`) is part of the profile name and is resolved by
+`scenarios.level_clients` when the battery starts.
 
 `bench run` (the `cell` command) still runs one debug cell from the
 environment; debug cells are reported but never recorded as baselines.
 
 ### Measurement budget
 
-Scan count is not a setting; it follows the budget. A cell adds scans until
-it has at least `MIN_PROBE_ROUNDS` (default 20) valid probe rounds, and the
-cap (`BATTERY_REPEATS`: 5 at 200 images or fewer, 3 above) only bounds cost.
-Large image counts usually reach the budget in one scan. Cells without a
-probe phase (storm profiles) measure every operation of one run, so they run
-one scan once. A cell that cannot reach the budget fails instead of recording a thin
-sample.
+Scan count follows the phase spec. Only the `probe` cell has a round budget:
+its scan-round phase repeats scans until it has `MIN_PROBE_ROUNDS` (default 20) valid rounds, capped by `SCAN_REPEATS`; then its idle-round phase runs.
+Every other cell runs exactly one rep, whether it storms under a scan, storms
+a populated tree at rest, or uploads under idle or scan. `BATTERY_REPEATS`
+(5 at 200 images or fewer, 3 above) caps only the probe cell's reps.
 
 `battery run` resumes by default: a rep whose `status-final.json` parses is
 reused (stdout says `reused`), a missing or unparseable one runs fresh. Pass
@@ -337,8 +328,8 @@ cell family background subject stat value unit n_samples n_clusters ci_low ci_hi
 Each cell is preceded by `# cell: {"identity": {...}, "validity": {...}}`.
 Identity records cell, source (`battery` or `debug`), profile, images, upload
 files, build, commit and scan runs; validity records probe rounds total/valid,
-probe coverage, storm coverage, ops done/planned, warmup, phase-invalid count
-and reasons, failed ops and reps. Values and bounds use one decimal; `count`
+storm wall coverage (the workload's gate), ops done/planned, warmup,
+phase-invalid count and reasons, failed ops and reps. Values and bounds use one decimal; `count`
 values are integers. `n_samples`/`n_clusters` stay in the TSV as evidence and
 are not rendered.
 
@@ -360,9 +351,33 @@ load, git identity) is merged as one `# env:` line per run.
 Rendered from `baselines.tsv` only (rows plus the `# cell:` metadata). Each
 section has a short intro and one table per image count:
 
-`Measurement validity`, `Idle access latency`, `During-scan access latency`,
-`Concurrent load`, `Scan wall and stages`, `Upload`,
-`Memory and storage footprint`, `Failed operations`, `Terms`.
+`Terms`, `Measurement validity`, `Foreground latency`, `Scan time`,
+`Memory and storage footprint`.
+
+`Foreground latency` has one table per image count with one row per load
+profile. Labels are generated from the axis tables: `probe-<access>`,
+`storm-<kind>-<level>`, `upload-<phase>`; the scan-time rows are `no-load`,
+the storm labels and `upload-loop`. The `idle`
+and `scan` columns sit side by side, so the same request shows its baseline
+and its loaded measurement next to each other. `Measurement validity`
+also uses one table per image count and shows the at-rest and scanning
+measurements side by side: accesses (the pooled sample count behind the
+percentiles), `invalid` and `failed`; failed operations are not repeated
+elsewhere. Memory and
+storage is one table per metric (peak VMM, compressed, index DB, temp,
+cache), each with profile rows and image-count columns, all in MB and sorted
+by peak VMM. `Scan time` is a matrix of
+load profile against image count, each cell showing the populate-scan wall
+clock and the resulting `images/s` rate; the `no-load` row is the median
+populate scan of the idle-storm cells, and the upload row is the serial upload
+loop, not a burst. Each cell contributes one scan wall, so small differences
+between rows are noise. Observer stage rows stay in
+`baselines.tsv` and the report; they are not part of the rendered summary.
+
+The environment section is printed once, from the earliest recorded run,
+after checking that every run agrees on host, CPU model and count, memory
+and git identity. Clock frequency and load are expected to differ and are
+not compared; a mismatch refuses the document.
 
 Rows are labelled by profile; the image count is the sub-table heading. The
 p50 interval is shown as a half-width (`7.2 ±0.3`), always present, `±n/a`
@@ -414,44 +429,54 @@ rep subdirs, `2` when every rep failed to parse.
 
 ## Workload profiles (`WORKLOAD`)
 
-`control` (default) runs the during-scan probes and scroll probes, then the
-idle probes, scroll probe and sweep after the scan settles.
+`probe` (the default) runs one scan-round phase — a bundle of prefetch, edit,
+thumbnail and scroll timed while the index runs — repeating scans to
+`MIN_PROBE_ROUNDS`, then an idle-round phase of the same bundle at rest.
+Round validity is the fraction of rounds whose guard saw the intended
+background; warmup timings are discarded.
 
-Storm profiles name their access and client count explicitly:
+Storm profiles name their background, kind and client level:
 
 ```sh
-WORKLOAD=storm-edit-8 just bench run cell --out /tmp/c-r1
-WORKLOAD=storm-read-16n just bench run cell --out /tmp/c-r2
-WORKLOAD=storm-idle-read-8 just bench run cell --out /tmp/c-r3
-WORKLOAD=storm-idle-read-16n just bench run cell --out /tmp/c-r4
+WORKLOAD=scan-storm-edit-8 just bench run cell --out /tmp/c-r1
+WORKLOAD=scan-storm-read-16n just bench run cell --out /tmp/c-r2
+WORKLOAD=idle-storm-read-8 just bench run cell --out /tmp/c-r3
+WORKLOAD=idle-storm-thumb-16n just bench run cell --out /tmp/c-r4
 ```
 
-Concurrent storms (`storm-{read,thumb,edit}-{8,16n}`) issue ops until the
-scan terminal state, with `min(STORM_CLIENTS × STORM_OPS, 256)` as a
-minimum; `storm-read` is a prefetch POST, `storm-thumb` a
-compressed-thumbnail GET, `storm-edit` an edit-rating PUT on a distinct
-asset. Per-op latencies land in `rounds-run-N/storm-round-N.tsv`; the
-reported statistics pool those ops. A concurrent storm below
-`STORM_MIN_COVERAGE_PCT` or below the minimum op count fails the cell.
+`scan-storm-*` runs N clients on one access until the scan terminal state,
+with `min(STORM_CLIENTS × STORM_OPS, 256)` as a minimum; `read` is a prefetch
+POST, `thumb` a compressed-thumbnail GET, `edit` an edit-rating PUT on a
+distinct asset. The reported statistics pool the per-op `storm_sample`
+events. The cell fails if the storm covers
+less than `STORM_MIN_COVERAGE_PCT` of the scan wall or falls short of the
+minimum op count. Coverage is computed from the scan session's started and
+ended instants after the session finishes.
 
-Idle storms (`storm-idle-<access>-<clients>`) run the populate scan, then one
-fixed burst against the tree at rest, with no coverage check because there
-is no concurrent scan. Their cells record done/planned ops.
+`idle-storm-*` first runs a populate scan, then one fixed burst of
+`STORM_CLIENTS × STORM_OPS` ops against the tree at rest, guarded by an idle
+phase guard. There is no coverage check because there is no concurrent scan;
+the cells record done/planned ops.
 
-`-8` is 8 clients; `-16n` is `16 × NCPU`, resolved when the battery starts
-and recorded per cell (128 at NCPU=8). No unnumbered or `storm-diff` aliases
-exist.
+`-8` is 8 clients; `-16n` is `16 × NCPU`, resolved by `scenarios.level_clients`
+when the battery starts and recorded per cell (128 at NCPU=8). The profile
+set in `scenarios.profiles()` is exhaustive: no unnumbered level, alternate
+kind name or legacy alias exists.
 
-`upload` measures the write path end to end: it waits for the library index
-to settle (`INDEX_SETTLE_TIMEOUT_S`, default 600 s), uploads `UPLOAD_FILES`
-(default 20) files through `/post/upload`, records per-file `submit_ms` and
-`visible_ms`, then runs the control probes during the next scan. Uploaded
-files come from `UPLOAD_REPO` when it is set (battery cells pin `set-200`);
-otherwise the cell's own repo must provide `UPLOAD_FILES` images beyond the
-staged prefix, so an indexed image is never re-ingested. A source without
-enough files fails the cell. Each POST is bounded by `UPLOAD_POST_TIMEOUT_S` (default 60 s) and
-each file's visibility by `UPLOAD_TIMEOUT_S` (default 30 s); a file that
-never becomes visible fails the cell.
+`idle-upload` and `scan-upload` measure the write path. Both wait for the
+library index to settle (`INDEX_SETTLE_TIMEOUT_S`, default 600 s) before the
+upload phase, then upload `UPLOAD_FILES` (default 20) files serially through
+`/post/upload`, recording per-file `submit_ms` and `visible_ms` and whether
+a scan was active at submit and at visibility. `scan-upload` runs the upload
+phase under a scan; `idle-upload` runs it at rest. An upload sample's report
+background is `scan` for `scan-upload` and `idle` for `idle-upload`, and
+Uploaded files come from `UPLOAD_REPO` when it is set (battery cells pin
+`set-upload` for both profiles); otherwise the cell's own repo must provide
+`UPLOAD_FILES` images beyond the staged prefix, so an indexed image is never
+re-ingested. A source without enough files fails the cell. Each POST is
+bounded by `UPLOAD_POST_TIMEOUT_S` (default 60 s) and each file's visibility
+by `UPLOAD_TIMEOUT_S` (default 120 s); a file that never becomes visible
+fails the cell.
 
 Snapshot lookups page instead of reading one window: the probe list,
 upload-visibility polls and the storm canary check walk the row space in
