@@ -61,6 +61,7 @@ Usage:
 """
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -141,14 +142,12 @@ ALL_ZERO_GENERATIONS_RE = r"PATHS\.mapBy\(_\s*=>\s*0\)"
 # The seven fields of the §2.1 intake universe, as the proof entry must bound
 # them (whitespace is normalised before matching).
 INTAKE_UNIVERSE_BOUNDS = (
-    "intake.forall(i =>",
-    "i.path.in(PATHS)",
-    "i.generation.in(0.to(G))",
-    'i.kind.in(Set("watcher", "remove", "scan"))',
-    "i.mtime.in(SMALL)",
-    "i.len.in(SMALL)",
-    "i.sidecar.in(SMALL)",
-    "i.assetHash.in(HASHES)",
+    "intake.in(INTAKE_UNIVERSE.powerset())",
+    "PATHS.fold(",
+    "0.to(G).fold(",
+    'Set("watcher", "scan").fold(',
+    "SMALL.fold(",
+    "HASHES.map(",
 )
 
 
@@ -506,8 +505,10 @@ def check_intake_universe(proof_text):
     return Check(
         name,
         True,
-        "proof entry bounds all 7 intake fields (path, generation, kind, mtime, "
-        "len, sidecar, assetHash)",
+        "proof entry bounds all 7 intake fields by construction: "
+        "INTAKE_UNIVERSE folds over PATHS x 0..G x {watcher,scan} + the "
+        "remove shape x SMALL^3 x HASHES; the var's domain conjunct uses "
+        "the Apalache-required powerset form",
     )
 
 
@@ -642,6 +643,28 @@ def check_module(core_text):
     )
 
 
+def check_parses(path, side):
+    # The entry typecheck cannot catch a syntax error inside an imported
+    # module: quint's parser silently repairs an unbalanced block at the
+    # next top-level declaration (observed on ForceModify). Parse each file
+    # directly, so the structural defect fails the audit instead.
+    proc = subprocess.run(
+        ["quint", "parse", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if proc.returncode == 0 and "error" not in proc.stderr.lower():
+        return Check("h.parse.%s" % side, True, "quint parse clean")
+    detail = (proc.stderr or proc.stdout).strip().splitlines()
+    tail = detail[-1] if detail else "no output"
+    return Check(
+        "h.parse.%s" % side,
+        False,
+        "quint parse failed: %s" % tail[:200],
+    )
+
+
 def run_audit(core_path, proof_path):
     try:
         core_text = core_path.read_text(encoding="utf-8", errors="replace")
@@ -674,6 +697,8 @@ def run_audit(core_path, proof_path):
     )
     checks.append(check_G(core_text, proof_text))
     checks.append(check_module(core_text))
+    checks.append(check_parses(core_path, "core"))
+    checks.append(check_parses(proof_path, "proof"))
     return checks
 
 
