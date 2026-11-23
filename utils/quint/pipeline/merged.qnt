@@ -545,10 +545,14 @@ module pipeline_merged {
     }
 
   // @exempt environment
-  action ForceModify(p: str): bool = all {
-    p.in(PATHS),
-    files.get(p).present,
-    files' = files.set(p, { present: true, assetHash: files.get(p).assetHash + 1, mtime: files.get(p).mtime + 1, len: files.get(p).len + 1, sidecar: files.get(p).sidecar }),
+  action ForceModify(p: str): bool = {
+    nondet cv = HASHES.exclude(Set(files.get(p).assetHash)).oneOf()
+    nondet mt = SMALL.exclude(Set(files.get(p).mtime)).oneOf()
+    nondet ln = SMALL.exclude(Set(files.get(p).len)).oneOf()
+    all {
+      p.in(PATHS),
+      files.get(p).present,
+      files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: files.get(p).sidecar }),
     generations' = generations,
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
