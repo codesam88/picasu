@@ -11,18 +11,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-MODULE_ALIASES = {
-    "battery": "battery",
-    "extract": "extract_bench",
-    "seed": "seed_images",
-    "server": "backend_launcher",
-    "prepare": "prepare",
-    "preflight": "preflight",
-}
-
 SUBCOMMAND_NAMES = (
     "run",
     "battery",
+    "compare",
     "extract",
     "seed",
     "server",
@@ -34,24 +26,11 @@ SUBCOMMAND_NAMES = (
 
 import backend_launcher  # noqa: E402
 import battery  # noqa: E402
+import compare_reports  # noqa: E402
 import extract_bench  # noqa: E402
 import preflight  # noqa: E402
 import prepare  # noqa: E402
 import seed_images  # noqa: E402
-
-launch_backend = backend_launcher
-run_prepare = prepare
-
-MODULES = {
-    "battery": battery,
-    "extract": extract_bench,
-    "seed": seed_images,
-    "server": backend_launcher,
-    "prepare": prepare,
-    "preflight": preflight,
-}
-
-ORIGINAL_MAINS = {}
 
 
 def _read_json(path: Path):
@@ -192,6 +171,9 @@ def main(argv=None) -> int:
 
     if cmd == "battery":
         return battery.main(list(rest))
+
+    if cmd == "compare":
+        return compare_reports.main(list(rest))
 
     if cmd == "extract":
         return extract_bench.main(list(rest))

@@ -42,35 +42,47 @@ server: _venv
 run *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/bench.py" run cell {{ args }}
 
-# Prepare a sandbox from a canonical archive.
+# Prepare a sandbox from an archive.
 prepare *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/bench.py" prepare {{ args }}
-
-# Run the preflight checklist.
-preflight *args: _venv
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" preflight {{ args }}
 
 # Seed an image repo.
 seed-images image_repo images="100" template="" jobs="4": _venv
     "{{ venv_python }}" "{{ source_directory() }}/bench.py" seed --repo "{{ image_repo }}" \
         --count "{{ images }}" --template "{{ template }}" --jobs "{{ jobs }}"
 
-# Extract a battery parent as JSON + report.
-extract parent out="": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery extract "{{ parent }}" --out "{{ out }}"
+# Record baselines + doc from a run.
+extract dir="": _venv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ dir }}"
+    if [ -z "$root" ]; then
+      root="$(ls -dt /tmp/picasu-battery-* /var/tmp/bench-* 2>/dev/null | head -n 1 || true)"
+      if [ -z "$root" ]; then echo "no battery output found; pass the battery folder" >&2; exit 2; fi
+      echo "using latest battery dir: $root" >&2
+    fi
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery extract "$root" \
+      --baselines-tsv "{{ source_directory() }}/baselines.tsv" \
+      --render-md "{{ source_directory() }}/baselines.md"
 
-# Run a pinned battery and write its report.
-battery level="gate" out="": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run "{{ level }}" --out "{{ out }}"
+# Run the default image counts (50, 200, 100).
+battery dir="": _venv
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{ dir }}"
+    if [ -z "$root" ]; then root="/tmp/picasu-battery-$(date +%Y%m%d-%H%M%S)"; fi
+    echo "battery output: $root" >&2
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 50 --out "$root/50"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 200 --out "$root/200"
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery run --images 100 --out "$root/100"
 
-# Compare a battery report against the checked-in baseline bands.
-battery-check report baselines="": _venv
-    "{{ venv_python }}" "{{ source_directory() }}/bench.py" battery check "{{ report }}" --baselines "{{ baselines }}"
+# Compare a report against accepted baselines or another report.
+compare base new *args: _venv
+    "{{ venv_python }}" "{{ source_directory() }}/bench.py" compare "{{base}}" "{{new}}" {{args}}
 
-# Report per-cell state under a battery parent.
+# Report per-cell state.
 status *args: _venv
     "{{ venv_python }}" "{{ source_directory() }}/bench.py" status {{ args }}
-
 
 # Remove the on-demand venv.
 clean:

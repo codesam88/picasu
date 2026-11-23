@@ -50,27 +50,26 @@ graph LR
 | `backend-build-release` | `format`              |
 | `backend-format`        | `frontend-format`     |
 | `bench::battery`        | `fuzz::clean`         |
-| `bench::battery-check`  | `fuzz::diff`          |
-| `bench::clean`          | `fuzz::roles`         |
+| `bench::clean`          | `fuzz::diff`          |
+| `bench::compare`        | `fuzz::roles`         |
 | `bench::extract`        | `fuzz::run`           |
 | `bench::format`         | `gates-docs`          |
 | `bench::lint`           | `install-dev`         |
-| `bench::preflight`      | `install-plan`        |
-| `bench::prepare`        | `openapi-gen`         |
-| `bench::run`            | `plan`                |
-| `bench::seed-images`    | `plan-format`         |
-| `bench::server`         | `quint::doc-check`    |
-| `bench::status`         | `quint::docs`         |
-| `bench::test`           | `quint::format`       |
-| `branches-prune`        | `quint::fulltest`     |
-| `build`                 | `quint::selftest`     |
-| `build-release`         | `run`                 |
-| `check-tools`           | `setup-dev`           |
-| `clean`                 | `setup-sccache`       |
-| `distclean`             | `test-release`        |
-| `docs-build`            | `utils-format`        |
-| `docs-format`           | `zizmor-check-online` |
-| `docs-openapi`          |                       |
+| `bench::prepare`        | `install-plan`        |
+| `bench::run`            | `openapi-gen`         |
+| `bench::seed-images`    | `plan`                |
+| `bench::server`         | `plan-format`         |
+| `bench::status`         | `quint::doc-check`    |
+| `bench::test`           | `quint::docs`         |
+| `branches-prune`        | `quint::format`       |
+| `build`                 | `quint::fulltest`     |
+| `build-release`         | `quint::selftest`     |
+| `check-tools`           | `run`                 |
+| `clean`                 | `setup-dev`           |
+| `distclean`             | `setup-sccache`       |
+| `docs-build`            | `test-release`        |
+| `docs-format`           | `utils-format`        |
+| `docs-openapi`          | `zizmor-check-online` |
 
 ## Rules by group
 
@@ -276,12 +275,11 @@ graph TD
 ```mermaid
 graph TD
   bench__battery["bench::battery"]
-  bench__battery-check["bench::battery-check"]
   bench__clean["bench::clean"]
+  bench__compare["bench::compare"]
   bench__extract["bench::extract"]
   bench__format["bench::format"]
   bench__lint["bench::lint"]
-  bench__preflight["bench::preflight"]
   bench__prepare["bench::prepare"]
   bench__run["bench::run"]
   bench__seed-images["bench::seed-images"]
@@ -290,21 +288,20 @@ graph TD
   bench__test["bench::test"]
 ```
 
-| Rule (justfile)        | Description                                                     | CI Workflow | Trigger |
-| ---------------------- | --------------------------------------------------------------- | ----------- | ------- |
-| `bench::battery`       | Run a pinned battery and write its report.                      | ❌️          | -       |
-| `bench::battery-check` | Compare a battery report against the checked-in baseline bands. | ❌️          | -       |
-| `bench::clean`         | Remove the on-demand venv.                                      | ❌️          | -       |
-| `bench::extract`       | Extract a battery parent as JSON + report.                      | ❌️          | -       |
-| `bench::format`        | Apply formatting.                                               | ❌️          | -       |
-| `bench::lint`          | Lint + format check.                                            | ❌️          | -       |
-| `bench::preflight`     | Run the preflight checklist.                                    | ❌️          | -       |
-| `bench::prepare`       | Prepare a sandbox from a canonical archive.                     | ❌️          | -       |
-| `bench::run`           | Run one cell (env-driven; see README).                          | ❌️          | -       |
-| `bench::seed-images`   | Seed an image repo.                                             | ❌️          | -       |
-| `bench::server`        | Serve a backend cell.                                           | ❌️          | -       |
-| `bench::status`        | Report per-cell state under a battery parent.                   | ❌️          | -       |
-| `bench::test`          | Run the bench unit tests.                                       | ❌️          | -       |
+| Rule (justfile)      | Description                                                    | CI Workflow | Trigger |
+| -------------------- | -------------------------------------------------------------- | ----------- | ------- |
+| `bench::battery`     | Run the default micro+gate batteries.                          | ❌️          | -       |
+| `bench::clean`       | Remove the on-demand venv.                                     | ❌️          | -       |
+| `bench::compare`     | Compare a report against accepted baselines or another report. | ❌️          | -       |
+| `bench::extract`     | Record baselines + doc from a run.                             | ❌️          | -       |
+| `bench::format`      | Apply formatting.                                              | ❌️          | -       |
+| `bench::lint`        | Lint + format check.                                           | ❌️          | -       |
+| `bench::prepare`     | Prepare a sandbox from an archive.                             | ❌️          | -       |
+| `bench::run`         | Run one cell (env-driven; see README).                         | ❌️          | -       |
+| `bench::seed-images` | Seed an image repo.                                            | ❌️          | -       |
+| `bench::server`      | Serve a backend cell.                                          | ❌️          | -       |
+| `bench::status`      | Report per-cell state.                                         | ❌️          | -       |
+| `bench::test`        | Run the bench unit tests.                                      | ❌️          | -       |
 
 ### Fuzz
 

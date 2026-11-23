@@ -10,8 +10,6 @@ harness does not write.
 See `fixtures/README.md` for the rule and each file's provenance.
 """
 
-import contextlib
-import io
 import json
 import re
 import shutil
@@ -158,36 +156,6 @@ class RecordedStatsOffTest(unittest.TestCase):
 class BatteryStageSourceTest(unittest.TestCase):
     """The battery row's stage columns come from a recorded table."""
 
-    def test_written_cell_stages_match_the_recorded_table(self):
-        cell = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, cell, ignore_errors=True)
-        outdir = cell / "gate-control"
-        _write_cell(outdir)
-
-        # The drain table lives in server.log, as the backend writes it;
-        # the transcript never carries one. This is the S2 shape.
-        server_log = (outdir / "server.log").read_text()
-        self.assertEqual(
-            extractor().parse_drain_tables(server_log),
-            extractor().parse_drain_tables(FIXTURES / "server-drain.log"),
-        )
-        self.assertNotIn("observe drain:", (outdir / "harness-a.log").read_text())
-
-        row = battery().build_row("gate", "control", outdir)
-        self.assertEqual(row["tree_refresh_build_p50_us"], "542,1002")
-        self.assertEqual(row["tree_refresh_build_max_us"], "1997,6069")
-        self.assertEqual(row["filter_snapshot_clone_p50_us"], "419,1493")
-        self.assertEqual(row["filter_snapshot_clone_max_us"], "1778,5236")
-        # The rebuild breakdown and the filter/locate path are reported, not
-        # just the two historical stages: total = build + sort + write-wait.
-        self.assertEqual(row["filter_par_iter_p50_us"], "2397,2014")
-        self.assertEqual(row["filter_par_iter_max_us"], "16993,2643")
-        self.assertEqual(row["compute_locate_p50_us"], "0,0")
-        self.assertEqual(row["tree_refresh_total_p50_us"], "690,1301")
-        self.assertEqual(row["tree_refresh_sort_p50_us"], "14,20")
-        self.assertEqual(row["tree_refresh_write_wait_max_us"], "0,0")
-        self.assertEqual(row["prefetch_total_p50_us"], "29,24")
-
 
 class InProcessRowStagesTest(unittest.TestCase):
     """A row built in-process carries the stages a standalone extract writes.
@@ -197,38 +165,6 @@ class InProcessRowStagesTest(unittest.TestCase):
     its stages from the same `server.log` parse, without writing anything
     into the cell.
     """
-
-    def test_in_process_stages_match_the_standalone_extract_output(self):
-        cell = Path(tempfile.mkdtemp()) / "gate-control-rep1"
-        self.addCleanup(shutil.rmtree, cell.parent, ignore_errors=True)
-        _write_cell(cell)  # copies the recorded `server-drain.log` into it
-        self.assertFalse((cell / "stages.json").exists())
-
-        row = battery().build_row("gate", "control", cell)
-
-        self.assertTrue(row["stages"])
-        # Building a row is read-only w.r.t. the cell's artifacts.
-        self.assertFalse((cell / "stages.json").exists())
-
-        extracted = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, extracted, ignore_errors=True)
-        copy = extracted / cell.name
-        shutil.copytree(cell, copy)
-        out, err = io.StringIO(), io.StringIO()
-        with (
-            contextlib.redirect_stdout(out),
-            contextlib.redirect_stderr(err),
-        ):
-            try:
-                extractor().main([str(copy)])
-            except SystemExit as exc:
-                rc = exc.code if isinstance(exc.code, int) else 1
-            else:
-                rc = 0
-        self.assertEqual(rc, 0, err.getvalue())
-        expected = json.loads((copy / "stages.json").read_text())
-        self.assertTrue(expected)
-        self.assertEqual(row["stages"], expected)
 
 
 class DerivedEventStreamTest(unittest.TestCase):

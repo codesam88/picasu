@@ -172,13 +172,16 @@ class BatteryConfigTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
 
     def test_level_defaults_and_exported_overrides(self):
-        cfg = cf.BatteryConfig.from_env({}, level="gate", out=self.root / "gate")
-        self.assertEqual(cfg.repeats, 3)
+        for images, repeats, timeout in ((50, 5, "1800"), (100, 5, "1800"), (5650, 3, "7200")):
+            with self.subTest(images=images):
+                cfg = cf.BatteryConfig.from_env({}, images=images, out=self.root / str(images))
+                self.assertEqual(cfg.repeats, repeats)
+        cfg = cf.BatteryConfig.from_env({}, images=100, out=self.root / "100")
         self.assertEqual(cfg.workload_timeout_s, "1800")
         cfg = cf.BatteryConfig.from_env(
             {"BATTERY_REPEATS": "1", "WORKLOAD_TIMEOUT_S": "999"},
-            level="scale",
-            out=self.root / "scale",
+            images=5650,
+            out=self.root / "5650",
         )
         self.assertEqual(cfg.repeats, 1)
         self.assertEqual(cfg.workload_timeout_s, "999")
@@ -187,9 +190,7 @@ class BatteryConfigTest(unittest.TestCase):
         for raw in ("zero", "0"):
             with self.subTest(raw=raw):
                 with self.assertRaises(cf.ConfigError):
-                    cf.BatteryConfig.from_env(
-                        {"BATTERY_REPEATS": raw}, level="gate", out=self.root / "gate"
-                    )
+                    cf.BatteryConfig.from_env({"BATTERY_REPEATS": raw}, out=self.root / "gate")
 
 
 class PrepareConfigTest(unittest.TestCase):
@@ -330,3 +331,346 @@ class OneValidationThreeConsumersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MinValidRoundsConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.cell = self.root / "cell"
+        self.cell.mkdir()
+        (self.cell / "cookies.txt").write_text("jwt\tx\n")
+        (self.cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(self.cell / "cookies.txt"),
+                    "out": str(self.cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+
+    def env(self, **kw):
+        env = {
+            "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
+            "IMAGE_REPO": str(self.repo),
+            "HYPERFINE_BIN": sys.executable,
+        }
+        env.update(kw)
+        return env
+
+    def test_min_valid_rounds_default(self):
+        cfg = cf.WorkloadConfig.from_env(self.env())
+        self.assertEqual(cfg.min_valid_rounds, 3)
+
+    def test_min_valid_rounds_override(self):
+        cfg = cf.WorkloadConfig.from_env(self.env(MIN_VALID_ROUNDS="5"))
+        self.assertEqual(cfg.min_valid_rounds, 5)
+
+    def test_min_valid_rounds_invalid(self):
+        for value in ("0", "abc"):
+            with self.subTest(value=value):
+                with self.assertRaises(cf.ConfigError):
+                    cf.WorkloadConfig.from_env(self.env(MIN_VALID_ROUNDS=value))
+
+
+class ProbeRefreshConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.cell = self.root / "cell"
+        self.cell.mkdir()
+        (self.cell / "cookies.txt").write_text("jwt\tx\n")
+        (self.cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(self.cell / "cookies.txt"),
+                    "out": str(self.cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+
+    def env(self, **kw):
+        env = {
+            "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
+            "IMAGE_REPO": str(self.repo),
+            "HYPERFINE_BIN": sys.executable,
+        }
+        env.update(kw)
+        return env
+
+    def test_probe_refresh_default(self):
+        cfg = cf.WorkloadConfig.from_env(self.env())
+        self.assertEqual(cfg.probe_refresh_s, 0.0)
+
+    def test_probe_refresh_override(self):
+        cfg = cf.WorkloadConfig.from_env(self.env(PROBE_REFRESH_S="0.5"))
+        self.assertEqual(cfg.probe_refresh_s, 0.5)
+
+    def test_probe_refresh_zero_valid(self):
+        cfg = cf.WorkloadConfig.from_env(self.env(PROBE_REFRESH_S="0"))
+        self.assertEqual(cfg.probe_refresh_s, 0.0)
+
+    def test_probe_refresh_invalid(self):
+        for value in ("-1", "abc"):
+            with self.subTest(value=value):
+                with self.assertRaises(cf.ConfigError):
+                    cf.WorkloadConfig.from_env(self.env(PROBE_REFRESH_S=value))
+
+
+class ScanWarmupConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.cell = self.root / "cell"
+        self.cell.mkdir()
+        (self.cell / "cookies.txt").write_text("jwt\tx\n")
+        (self.cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(self.cell / "cookies.txt"),
+                    "out": str(self.cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+
+    def env(self, **kw):
+        env = {
+            "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
+            "IMAGE_REPO": str(self.repo),
+            "HYPERFINE_BIN": sys.executable,
+        }
+        env.update(kw)
+        return env
+
+    def test_scan_warmup_default(self):
+        cfg = cf.WorkloadConfig.from_env(self.env())
+        self.assertEqual(cfg.scan_warmup, 1)
+
+    def test_scan_warmup_zero(self):
+        cfg = cf.WorkloadConfig.from_env(self.env(SCAN_WARMUP="0"))
+        self.assertEqual(cfg.scan_warmup, 0)
+
+    def test_scan_warmup_negative_invalid(self):
+        with self.assertRaises(cf.ConfigError):
+            cf.WorkloadConfig.from_env(self.env(SCAN_WARMUP="-1"))
+
+
+class MinProbeRoundsConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_default(self):
+        cfg = cf.BatteryConfig.from_env({}, out=self.root / "gate")
+        self.assertEqual(cfg.min_probe_rounds, 20)
+
+    def test_override(self):
+        cfg = cf.BatteryConfig.from_env({"MIN_PROBE_ROUNDS": "7"}, out=self.root / "gate")
+        self.assertEqual(cfg.min_probe_rounds, 7)
+
+    def test_invalid(self):
+        for raw in ("zero", "0"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(cf.ConfigError):
+                    cf.BatteryConfig.from_env({"MIN_PROBE_ROUNDS": raw}, out=self.root / "gate")
+
+
+class StormProfileParsingTest(unittest.TestCase):
+    def test_cell_mode_accepts_named_profile(self):
+        # reuse WorkloadConfigTest-style env? Use a minimal config env
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        cell = root / "cell"
+        cell.mkdir()
+        (cell / "cookies.txt").write_text("jwt\tx\n")
+        (cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(cell / "cookies.txt"),
+                    "out": str(cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        repo = root / "repo"
+        repo.mkdir()
+        env = {
+            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
+            "IMAGE_REPO": str(repo),
+            "HYPERFINE_BIN": sys.executable,
+            "WORKLOAD": "storm-edit-16n",
+        }
+        cfg = cf.WorkloadConfig.from_env(env)
+        self.assertEqual(cfg.workload, "storm-edit-16n")
+
+    def test_cell_mode_rejects_unknown_suffix(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        cell = root / "cell"
+        cell.mkdir()
+        (cell / "cookies.txt").write_text("jwt\tx\n")
+        (cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(cell / "cookies.txt"),
+                    "out": str(cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        repo = root / "repo"
+        repo.mkdir()
+        env = {
+            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
+            "IMAGE_REPO": str(repo),
+            "HYPERFINE_BIN": sys.executable,
+            "WORKLOAD": "storm-read-99",
+        }
+        with self.assertRaises(cf.ConfigError):
+            cf.WorkloadConfig.from_env(env)
+
+
+class StormProfileMoreTest(unittest.TestCase):
+    def test_clients_scale_with_ncpu(self):
+        self.assertEqual(cf.storm_profile_clients("storm-read-16n", 4), 64)
+        self.assertEqual(cf.storm_profile_clients("storm-thumb-8", 4), 8)
+        self.assertEqual(cf.storm_profile_clients("storm-edit", 4), None)
+
+
+class StormProfileExtraTest(unittest.TestCase):
+    def test_accepts_storm_read_8(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        cell = root / "cell"
+        cell.mkdir()
+        (cell / "cookies.txt").write_text("jwt\tx\n")
+        (cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(cell / "cookies.txt"),
+                    "out": str(cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        repo = root / "repo"
+        repo.mkdir()
+        env = {
+            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
+            "IMAGE_REPO": str(repo),
+            "HYPERFINE_BIN": sys.executable,
+            "WORKLOAD": "storm-read-8",
+        }
+        cfg = cf.WorkloadConfig.from_env(env)
+        self.assertEqual(cfg.workload, "storm-read-8")
+
+    def test_rejects_unknown_profile(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        cell = root / "cell"
+        cell.mkdir()
+        (cell / "cookies.txt").write_text("jwt\tx\n")
+        (cell / "launcher-info.json").write_text(
+            json.dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(cell / "cookies.txt"),
+                    "out": str(cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        repo = root / "repo"
+        repo.mkdir()
+        env = {
+            "LAUNCHER_INFO": str(cell / "launcher-info.json"),
+            "IMAGE_REPO": str(repo),
+            "HYPERFINE_BIN": sys.executable,
+            "WORKLOAD": "storm-foo",
+        }
+        with self.assertRaises(cf.ConfigError):
+            cf.WorkloadConfig.from_env(env)
+
+
+class StormMinCoverageConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.cell = self.root / "cell"
+        self.cell.mkdir()
+        (self.cell / "cookies.txt").write_text("jwt\tx\n")
+        (self.cell / "launcher-info.json").write_text(
+            __import__("json").dumps(
+                {
+                    "base_url": "http://127.0.0.1:9999",
+                    "cookie_jar": str(self.cell / "cookies.txt"),
+                    "out": str(self.cell),
+                    "mode": "bench",
+                }
+            )
+        )
+        self.repo = self.root / "repo"
+        self.repo.mkdir()
+
+    def env(self, **kw):
+        env = {
+            "LAUNCHER_INFO": str(self.cell / "launcher-info.json"),
+            "IMAGE_REPO": str(self.repo),
+            "HYPERFINE_BIN": sys.executable,
+        }
+        env.update(kw)
+        return env
+
+    def test_default(self):
+        cfg = cf.WorkloadConfig.from_env(self.env())
+        self.assertEqual(cfg.storm_min_coverage_pct, 50.0)
+
+    def test_override(self):
+        cfg = cf.WorkloadConfig.from_env(self.env(STORM_MIN_COVERAGE_PCT="75"))
+        self.assertEqual(cfg.storm_min_coverage_pct, 75.0)
+
+    def test_invalid(self):
+        for raw in ("0", "101", "abc"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(cf.ConfigError):
+                    cf.WorkloadConfig.from_env(self.env(STORM_MIN_COVERAGE_PCT=raw))
