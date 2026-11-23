@@ -659,7 +659,13 @@ module pipeline_merged {
     metadataPayload.keys().contains(assetByPath.get(p)),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: 1 }),
     generations' = generations.set(p, generations.get(p) + 1),
-    metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: 1, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
+    // The edit stores only the composed payload's user fields: sidecar_edit.rs::
+    // commit_metadata_edits writes the sidecar, then store_metadata_record
+    // upserts model/metadata_record.rs::to_metadata_record, which carries no
+    // content hash, mtime or size. The file snapshot lives in ASSET_BY_ID and
+    // is not rewritten, so the edit keeps assetHash/modified/fileSize as
+    // stored and cannot heal a stale snapshot without a reindex.
+    metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: metadataPayload.get(assetByPath.get(p)).assetHash, modified: metadataPayload.get(assetByPath.get(p)).modified, fileSize: metadataPayload.get(assetByPath.get(p)).fileSize, sidecar: 1, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
     assetById' = assetById,
     assetByPath' = assetByPath,
     dupeIndex' = dupeIndex,
@@ -743,6 +749,11 @@ module pipeline_merged {
   }
 
   // @scope SCOPE-5
+  // router/delete.rs::process_deletes submits FlushTreeTask::remove for the
+  // resolved records; flush_tree.rs::remove_asset_record_from_tables deletes
+  // the four tables in one transaction and, when the record belongs to an
+  // album and is not trashed, applies apply_album_delta(count -1,
+  // size -file_size, member removed).
   action ApiRemove(p: str): bool = all {
     p.in(PATHS),
     files.get(p).present,
@@ -750,12 +761,18 @@ module pipeline_merged {
     // process_deletes resolves the record by asset id and answers 404 when it
     // is gone, so a path row without its record (N5) cannot be deleted.
     assetById.keys().contains(assetByPath.get(p)),
+    // Album-liveness re-check: apply_album_delta no-ops without the album row.
+    metadataPayload.keys().contains(0),
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }),
     generations' = generations,
     intake' = intake,
     assetById' = assetById.keys().exclude(Set(assetByPath.get(p))).mapBy(k => assetById.get(k)),
     assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)),
-    metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k)),
+    metadataPayload' = metadataPayload.keys().exclude(Set(assetByPath.get(p))).mapBy(k => metadataPayload.get(k))
+      .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged,
+        itemCount: metadataPayload.get(0).itemCount - (if (assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)) { 1 } else { 0 }),
+        itemSize: metadataPayload.get(0).itemSize - (if (assetById.keys().contains(assetByPath.get(p)) and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)) { (if (metadataPayload.keys().contains(assetByPath.get(p))) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 }) } else { 0 }),
+        hasShareList: metadataPayload.get(0).hasShareList }),
     dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
     thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and dupeIndex.keys().contains(assetById.get(assetByPath.get(p)).contentHash)) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
     sweepPending' = sweepPending,
