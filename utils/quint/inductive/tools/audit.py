@@ -7,11 +7,13 @@ script checks the properties every landed slice must keep, so a later slice
 cannot silently undo an earlier one.
 
 Checks, per landed table T in {thumbPresent, sweepBatch, assetByPath,
-assetById, metadataPayload, dupeIndex}:
+assetById, metadataPayload, dupeIndex, files, generations}:
 
-a. No `T.keys()` site remains.  Totality made every presence test a sentinel
-   read, so a `keys()` call is either a missed rewrite or a reintroduced
-   sparse view.
+a. No `T.keys()` site remains, except a key-domain assertion (`T.keys() ==
+   DOMAIN` / `!=`).  Totality made every presence test a sentinel read, so a
+   `keys()` call is either a missed rewrite or a reintroduced sparse view;
+   `files` and `generations` carry their domain assertion in `WithinBounds`,
+   which is a fact about the model, not a sparse iteration.
 b. No dead definitions: every `def` / `pure def` declared in the core is
    referenced elsewhere in the file.  `ThumbPresent` (core line 1580) is
    declared but unreferenced in the core and in the source model; it is the
@@ -26,9 +28,26 @@ c. Sentinel coherence:
      and `HASHES.mapBy` (5) hold.  Floors are lower bounds: later slices may
      add sites.
 d. `pure val G = <int>` in the proof entry parses as an int and agrees with a
-   literal G declaration in the core, if the core has one.
+   literal bound declaration in the core (`G` or `GEN_LIMIT`), if the core has
+   one.  The core cannot spell the bound `G` itself: the proof entry declares
+   `G` and imports the core with `.*`, and Quint rejects conflicting
+   definitions.
 e. The core still declares `module pipeline_merged`, the copy-identity marker
    that ties it to the source model.
+f. Slice-7 rewrite invariants:
+   - every `files' =` write is one of the key-domain-preserving forms
+     (stutter, `.set`/`.setBy` overwrite, total initializer, per-pair
+     `.set` chain), and no `files.exclude`/`files.filter` removal exists;
+   - every `generations' =` write is one of the saturating forms and contains
+     `satSucc(` except the all-zero total resets; no `generations.get(X) + 1`
+     bump remains; `satSucc` is declared once, is saturating at `GEN_LIMIT`,
+     and is called;
+   - every `intake' =` write is a stutter, union, filter-removal, or the empty
+     set, and every generation field inside an intake element constructor is
+     `satSucc(...)` or `0`;
+   - the proof entry keeps the per-field intake universe conjunct (§2.1).
+g. The `nextAssetId` counter is gone (zero occurrences in the core) and
+   `nextFreeId` is declared once, reads the absent sentinel, and is used.
 
 Exit status: 0 when every check passes, 1 when a check fails, 2 on I/O or
 usage errors.  `--verbose` prints the per-check report; the default prints
@@ -49,8 +68,9 @@ LANE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CORE = LANE_DIR / "inductive-core.qnt"
 DEFAULT_PROOF = LANE_DIR / "inductive-proof.qnt"
 
-# Tables whose slices have landed.  The files/generations/intake group
-# (slice 7) joins this list when its slice lands.
+# Tables whose slices have landed, in slice order.  files/generations are
+# already total maps in the source model; slice 7a only verified that, slice
+# 7b added value saturation.
 LANDED_TABLES = (
     "thumbPresent",
     "sweepBatch",
@@ -58,6 +78,8 @@ LANDED_TABLES = (
     "assetById",
     "metadataPayload",
     "dupeIndex",
+    "files",
+    "generations",
 )
 
 # Initializer key domain per landed table and the minimum site count the
@@ -69,6 +91,8 @@ LANDED_TABLES = (
 #   assetById:    init, DbLoss, SweepRemoveBatchApply   -> 3 (IDS)
 #   metadataPayload: init, DbLoss, SweepRemoveBatchApply -> 3 (IDS)
 #   dupeIndex:    init, DbLoss                          -> 2 (HASHES)
+#   files:        init (DbLoss stutters)                -> 1 (PATHS)
+#   generations:  init, DbLoss                          -> 2 (PATHS)
 MIN_TABLE_INITIALIZERS = {
     "thumbPresent": ("HASHES", 3),
     "sweepBatch": ("PATHS", 6),
@@ -76,6 +100,8 @@ MIN_TABLE_INITIALIZERS = {
     "assetById": ("IDS", 3),
     "metadataPayload": ("IDS", 3),
     "dupeIndex": ("HASHES", 2),
+    "files": ("PATHS", 1),
+    "generations": ("PATHS", 2),
 }
 MIN_PATHS_MAPBY = 14
 MIN_IDS_MAPBY = 6
@@ -90,6 +116,40 @@ BASELINE_UNUSED_DEFS = {"ThumbPresent"}
 
 DEF_RE = re.compile(r"^\s*(?:pure\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
 MODULE_RE = re.compile(r"^module\s+pipeline_merged\s*\{", re.M)
+
+# Slice 7a: files stays total over PATHS.  A write may only stutter, overwrite
+# an existing key (`set`/`setBy`), rebuild the whole domain, or set both sides
+# of a declared pair.  Removal is written as `present: false`, never as a key
+# drop, so no removal form appears.
+FILES_WRITE_FORMS = (
+    "files.set(",
+    "files.setBy(",
+    "PATHS.mapBy(",
+    "SUBTREE_PAIRS.foldl(files,",
+)
+
+# Slice 7b: generations stays total over PATHS with values 0..GEN_LIMIT.  Every
+# non-reset write contains a satSucc bump; the resets rebuild the domain at 0.
+GENERATIONS_WRITE_FORMS = (
+    "PATHS.mapBy(",
+    "generations.set(",
+    "SUBTREE_PAIRS.foldl(generations,",
+)
+GENERATIONS_BUMP_RE = r"generations\.get\([^()]*\)\s*\+\s*1"
+ALL_ZERO_GENERATIONS_RE = r"PATHS\.mapBy\(_\s*=>\s*0\)"
+
+# The seven fields of the §2.1 intake universe, as the proof entry must bound
+# them (whitespace is normalised before matching).
+INTAKE_UNIVERSE_BOUNDS = (
+    "intake.forall(i =>",
+    "i.path.in(PATHS)",
+    "i.generation.in(0.to(G))",
+    'i.kind.in(Set("watcher", "remove", "scan"))',
+    "i.mtime.in(SMALL)",
+    "i.len.in(SMALL)",
+    "i.sidecar.in(SMALL)",
+    "i.assetHash.in(HASHES)",
+)
 
 
 class Check:
@@ -168,15 +228,23 @@ def table_initializers(text, table):
 
 def check_keys_gone(table, core_text):
     name = "a.%s" % table
-    sites = find_sites(r"\b%s\.keys\(\)" % re.escape(table), core_text)
+    sites = []
+    for m in re.finditer(r"\b%s\.keys\(\)" % re.escape(table), core_text):
+        # A total map may still assert its key domain; only a keys() read used
+        # for iteration/projection is a stale sparse view.
+        if re.match(r"\s*(==|!=)", core_text[m.end():]):
+            continue
+        sites.append((line_of(core_text, m.start()), core_text[
+            core_text.rfind("\n", 0, m.start()) + 1:core_text.find("\n", m.start())
+        ].strip()))
     if not sites:
-        return Check(name, True, "0 `%s.keys()` sites (expected 0)" % table)
+        return Check(name, True, "0 `%s.keys()` iteration sites (expected 0)" % table)
     return Check(
         name,
         False,
-        "%d `%s.keys()` site(s) remain; the table is total over a constant "
-        "domain, so presence must read the sentinel (slice rewrite incomplete)"
-        % (len(sites), table),
+        "%d `%s.keys()` iteration site(s) remain; the table is total over a "
+        "constant domain, so presence must read the sentinel (slice rewrite "
+        "incomplete)" % (len(sites), table),
         sites,
     )
 
@@ -243,6 +311,251 @@ def check_mapby_floor(core_text):
     return checks
 
 
+def rhs_of(expr):
+    """Return the right-hand side of an assignment expression including its
+    left-hand side (table_initializers returns `T' = ...`)."""
+    return expr.partition("=")[2].strip()
+
+
+def read_balanced_text(text, open_idx):
+    """Return the index of the ')' matching the '(' at open_idx, or -1."""
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def check_write_forms(table, forms, core_text):
+    name = "f.forms.%s" % table
+    bad = []
+    for line, expr in table_initializers(core_text, table):
+        stripped = rhs_of(expr)
+        if stripped == table or stripped.startswith(forms):
+            continue
+        bad.append((line, stripped[:110]))
+    if bad:
+        return Check(
+            name,
+            False,
+            "%d `%s' =` write(s) outside the total-domain forms (%s stutter or %s)"
+            % (len(bad), table, table, ", ".join(forms)),
+            bad,
+        )
+    return Check(
+        name,
+        True,
+        "every `%s' =` write is the stutter or one of: %s" % (table, ", ".join(forms)),
+    )
+
+
+def check_no_removal_sites(table, core_text):
+    name = "f.removals.%s" % table
+    sites = find_sites(r"\b%s\.(?:exclude|filter)\(" % re.escape(table), core_text)
+    if not sites:
+        return Check(name, True, "0 `%s.exclude/filter` key-drop sites" % table)
+    return Check(
+        name,
+        False,
+        "%d `%s.exclude/filter` site(s); a total map encodes removal as a "
+        "sentinel overwrite, not a key drop" % (len(sites), table),
+        sites,
+    )
+
+
+def check_generations_saturating(core_text):
+    name = "f.generations_bumps"
+    bumps = find_sites(GENERATIONS_BUMP_RE, core_text)
+    if bumps:
+        return Check(
+            name,
+            False,
+            "%d `generations.get(X) + 1` bump(s) remain; every bump must go "
+            "through satSucc" % len(bumps),
+            bumps,
+        )
+
+    unbounded = []
+    for line, expr in table_initializers(core_text, "generations"):
+        stripped = rhs_of(expr)
+        if stripped == "generations":
+            continue
+        if re.fullmatch(ALL_ZERO_GENERATIONS_RE, stripped):
+            continue
+        if "satSucc(" not in stripped:
+            unbounded.append((line, stripped[:110]))
+    if unbounded:
+        return Check(
+            name,
+            False,
+            "%d `generations' =` write(s) neither all-zero reset nor "
+            "satSucc-bounded" % len(unbounded),
+            unbounded,
+        )
+    return Check(
+        name,
+        True,
+        "0 residual bump(s); every non-reset generations write goes through satSucc",
+    )
+
+
+def check_satSucc(core_text):
+    name = "f.satSucc"
+    code = strip_comments(core_text)
+    decls = re.findall(r"(?m)^\s*pure def satSucc\(g: int\): int\s*=\s*(.+)$", code)
+    if len(decls) != 1:
+        return Check(
+            name,
+            False,
+            "%d `pure def satSucc(g: int): int` declaration(s), expected 1"
+            % len(decls),
+        )
+    body = decls[0].strip()
+    if not re.fullmatch(r"if\s*\(g\s*<\s*GEN_LIMIT\)\s*g\s*\+\s*1\s*else\s*g", body):
+        return Check(
+            name, False, "satSucc body is not the saturating form: %s" % body
+        )
+    uses = len(re.findall(r"\bsatSucc\(", code)) - 1
+    if uses < 1:
+        return Check(name, False, "satSucc is declared but never called")
+    return Check(
+        name,
+        True,
+        "satSucc declared once, saturating at GEN_LIMIT, %d call site(s)" % uses,
+    )
+
+
+def check_intake_sites(core_text):
+    name = "g.intake_sites"
+    counts = {}
+    for m in re.finditer(r"intake' = ", core_text):
+        rest = core_text[m.end():]
+        if rest.startswith("intake,"):
+            form = "stutter"
+        elif rest.startswith("intake.union("):
+            form = "union"
+        elif rest.startswith("intake.filter("):
+            form = "filter"
+        elif rest.startswith("Set()"):
+            form = "empty"
+        else:
+            return Check(
+                name,
+                False,
+                "`intake' =` write outside the set-preserving forms at line %d: %s"
+                % (line_of(core_text, m.start()), rest[:80]),
+                [(line_of(core_text, m.start()), rest[:80])],
+            )
+        counts[form] = counts.get(form, 0) + 1
+    return Check(
+        name,
+        True,
+        "intake writes: %s"
+        % ", ".join("%s=%d" % (k, v) for k, v in sorted(counts.items())),
+    )
+
+
+def check_intake_generation(core_text):
+    name = "g.intake_generation"
+    bad = []
+    unions = 0
+    for m in re.finditer(r"intake' = intake\.union\(", core_text):
+        open_idx = m.end() - 1
+        close_idx = read_balanced_text(core_text, open_idx)
+        if close_idx == -1:
+            return Check(name, False, "unbalanced intake.union( at line %d" % line_of(core_text, m.start()))
+        unions += 1
+        expr = core_text[open_idx + 1:close_idx]
+        for fm in re.finditer(r"generation:\s*", expr):
+            rest = expr[fm.end():]
+            if rest.startswith("satSucc(") or re.match(r"0\b", rest):
+                continue
+            bad.append(
+                (line_of(core_text, open_idx + 1 + fm.end()), rest[:70])
+            )
+    if bad:
+        return Check(
+            name,
+            False,
+            "%d intake generation field(s) not satSucc/0 bounded" % len(bad),
+            bad,
+        )
+    return Check(
+        name,
+        True,
+        "%d intake union site(s); every generation field is satSucc(...) or 0"
+        % unions,
+    )
+
+
+def check_intake_universe(proof_text):
+    name = "g.intake_universe"
+    proof_code = " ".join(strip_comments(proof_text).split())
+    missing = [p for p in INTAKE_UNIVERSE_BOUNDS if p not in proof_code]
+    if missing:
+        return Check(
+            name,
+            False,
+            "proof entry intake universe conjunct is missing: %s"
+            % "; ".join(missing),
+        )
+    return Check(
+        name,
+        True,
+        "proof entry bounds all 7 intake fields (path, generation, kind, mtime, "
+        "len, sidecar, assetHash)",
+    )
+
+
+def check_nextassetid(core_text):
+    name = "g.nextassetid"
+    sites = find_sites(r"\bnextAssetId\b", core_text)
+    if sites:
+        return Check(
+            name,
+            False,
+            "%d `nextAssetId` occurrence(s); the counter var is eliminated by "
+            "the nextFreeId quotient" % len(sites),
+            sites,
+        )
+    return Check(name, True, "0 `nextAssetId` occurrences (counter eliminated)")
+
+
+def check_nextfreeid(core_text):
+    name = "g.nextfreeid"
+    code = strip_comments(core_text)
+    decls = list(re.finditer(r"(?m)^[ \t]*def nextFreeId\s*:\s*int\s*=", code))
+    if len(decls) != 1:
+        return Check(
+            name, False, "%d `def nextFreeId: int` declaration(s), expected 1" % len(decls)
+        )
+    end = code.find("\n\n", decls[0].start())
+    body = code[decls[0].start():end if end != -1 else len(code)]
+    missing = []
+    if "1.to(PATHS.size() + 1)" not in body:
+        missing.append("candidate domain 1.to(PATHS.size() + 1)")
+    if 'assetById.get(id).kind == "absent"' not in body:
+        missing.append('absent-record test')
+    if missing:
+        return Check(
+            name,
+            False,
+            "nextFreeId does not read %s" % ", ".join(missing),
+        )
+    uses = len(re.findall(r"\bnextFreeId\b", code)) - 1
+    if uses < 1:
+        return Check(name, False, "nextFreeId is declared but never read")
+    return Check(
+        name,
+        True,
+        "nextFreeId declared once, reads the absent sentinel, %d read site(s)" % uses,
+    )
+
+
 def check_defs(core_text):
     code = strip_comments(core_text)
     declared = {}
@@ -291,23 +604,29 @@ def check_G(core_text, proof_text):
     g_entry = int(decls[0])
     refs = len(re.findall(r"\bG\b", code))
     core_literals = re.findall(
-        r"^\s*(?:pure\s+)?(?:val|const)\s+G\s*(?::\s*int)?\s*=\s*(-?\d+)\b",
+        r"^\s*(?:pure\s+)?(?:val|const)\s+(G|GEN_LIMIT)\s*(?::\s*int)?\s*=\s*(-?\d+)\b",
         code,
         flags=re.M,
     )
     if core_literals:
-        bad = [v for v in core_literals if int(v) != g_entry]
+        bad = [(name, v) for name, v in core_literals if int(v) != g_entry]
         if bad:
             return Check(
                 "d.G",
                 False,
-                "proof G = %d but core declares G = %s" % (g_entry, ", ".join(bad)),
+                "proof G = %d but core declares %s"
+                % (g_entry, ", ".join("%s = %s" % (n, v) for n, v in bad)),
             )
-        return Check("d.G", True, "G = %d, matches core declaration" % g_entry)
+        return Check(
+            "d.G",
+            True,
+            "G = %d, matches core declaration (%s)"
+            % (g_entry, ", ".join(n for n, _ in core_literals)),
+        )
     return Check(
         "d.G",
         True,
-        "G = %d; core has %d G reference(s) and no literal G declaration"
+        "G = %d; core has %d G reference(s) and no literal bound declaration"
         % (g_entry, refs),
     )
 
@@ -339,6 +658,20 @@ def run_audit(core_path, proof_path):
         checks.append(check_no_sparse_init(table, core_text))
         checks.append(check_table_initializers(table, core_text))
     checks.extend(check_mapby_floor(core_text))
+    checks.extend(
+        [
+            check_write_forms("files", FILES_WRITE_FORMS, core_text),
+            check_no_removal_sites("files", core_text),
+            check_write_forms("generations", GENERATIONS_WRITE_FORMS, core_text),
+            check_generations_saturating(core_text),
+            check_satSucc(core_text),
+            check_intake_sites(core_text),
+            check_intake_generation(core_text),
+            check_intake_universe(proof_text),
+            check_nextassetid(core_text),
+            check_nextfreeid(core_text),
+        ]
+    )
     checks.append(check_G(core_text, proof_text))
     checks.append(check_module(core_text))
     return checks

@@ -36,6 +36,16 @@ module pipeline_merged {
   // @scope SCOPE-2
   pure def rootOf(p: str): str = if (p.in(SECOND_ROOT_PATHS)) "r2" else "r1"
 
+  // Generation-token saturation bound for the epoch redesign
+  // (generations: PATHS -> 0..GEN_LIMIT). The bound lives in the core so
+  // satSucc is total; the proof entry's `G` must hold the same value (the
+  // audit pins the two).
+  pure val GEN_LIMIT = 7
+
+  // Epoch-token successor: monotone and saturating at GEN_LIMIT, so a bump
+  // never leaves the finite generation domain.
+  pure def satSucc(g: int): int = if (g < GEN_LIMIT) g + 1 else g
+
   type FileState = {
     present: bool,
     assetHash: int,
@@ -110,8 +120,6 @@ module pipeline_merged {
   var sweepBatch: str -> int
   // leasedPaths maps to EXACT_LEASES/SUBTREE_LEASES in tasks/path_epoch.rs.
   var leasedPaths: Set[str]
-  // nextAssetId models asset-id allocation via generate_random_hash in model/asset.rs (AssetRecord::new_media/new_album) and flush_tree.rs; code uses random hashes, not a counter.
-  var nextAssetId: int
   // unprocessable is model-only: no persistent code counterpart; ingest failures are logged via note_file_failed/handle_error, not stored as a set.
   var unprocessable: Set[str]
 
@@ -215,7 +223,6 @@ module pipeline_merged {
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = PATHS.mapBy(p => -1),
     leasedPaths' = Set(),
-    nextAssetId' = PATHS.size() + 1,
     unprocessable' = Set(),
   }
   // ---------- section: assumptions ----------
@@ -415,6 +422,15 @@ module pipeline_merged {
     }
   )
 
+  // Smallest free media id (SCOPE-17 quotient): allocation reads this
+  // instead of a counter. Reads the id table, like the code's allocator.
+  // With no free id left it returns PATHS.size() + 2, outside the id domain;
+  // the IdBudget conjunct is what rules that state out.
+  def nextFreeId: int =
+    1.to(PATHS.size() + 1).fold(PATHS.size() + 2, (acc, id) =>
+      if ((assetById.get(id).kind == "absent") and id < acc) id else acc
+    )
+
   // ---------- Environment injections ----------
 
   // @exempt environment
@@ -430,7 +446,6 @@ module pipeline_merged {
       intake' = intake,
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -445,7 +460,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -463,14 +477,13 @@ module pipeline_merged {
       not(files.get(q).present),
       files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
                   .set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
-      generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
+      generations' = generations.set(p, satSucc(generations.get(p))).set(q, satSucc(generations.get(q))),
       intake' = intake.union(Set(
-        { path: p, generation: generations.get(p) + 1, kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 },
-        { path: q, generation: generations.get(q) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash }
+        { path: p, generation: satSucc(generations.get(p)), kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 },
+        { path: q, generation: satSucc(generations.get(q)), kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash }
       )),
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -509,7 +522,6 @@ module pipeline_merged {
     metadataPayload' = metadataPayload,
     thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -523,11 +535,10 @@ module pipeline_merged {
       p.in(PATHS),
       files.get(p).present,
       files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: sc }),
-      generations' = generations.set(p, generations.get(p) + 1),
-      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: sc, assetHash: files.get(p).assetHash })),
+      generations' = generations.set(p, satSucc(generations.get(p))),
+      intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: sc, assetHash: files.get(p).assetHash })),
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -542,11 +553,10 @@ module pipeline_merged {
       p.in(PATHS),
       files.get(p).present,
       files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: sc }),
-      generations' = generations.set(p, generations.get(p) + 1),
-      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: sc, assetHash: files.get(p).assetHash })),
+      generations' = generations.set(p, satSucc(generations.get(p))),
+      intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: sc, assetHash: files.get(p).assetHash })),
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -560,11 +570,10 @@ module pipeline_merged {
       p.in(PATHS),
       files.get(p).present,
       files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: 0 }),
-      generations' = generations.set(p, generations.get(p) + 1),
-      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: 0, assetHash: files.get(p).assetHash })),
+      generations' = generations.set(p, satSucc(generations.get(p))),
+      intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: 0, assetHash: files.get(p).assetHash })),
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -579,7 +588,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -596,7 +604,6 @@ module pipeline_merged {
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
-    nextAssetId' = nextAssetId,
   }
 
   // @assumes ASS-5
@@ -609,7 +616,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -625,7 +631,6 @@ module pipeline_merged {
     generations' = generations,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
 
@@ -641,7 +646,6 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -657,7 +661,6 @@ module pipeline_merged {
     thumbPresent' = HASHES.mapBy(h => false),
 
     generations' = PATHS.mapBy(_ => 0),
-    nextAssetId' = 1,
     intake' = Set(),
     sweepPending' = ROOTS.mapBy(_ => false),
     sweepBatch' = PATHS.mapBy(p => -1),
@@ -679,7 +682,7 @@ module pipeline_merged {
     (assetById.get(assetByPath.get(p)).kind != "absent"),
     (metadataPayload.get(assetByPath.get(p)).kind != "absent"),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: 1 }),
-    generations' = generations.set(p, generations.get(p) + 1),
+    generations' = generations.set(p, satSucc(generations.get(p))),
     metadataPayload' = metadataPayload.put(assetByPath.get(p), { kind: metadataPayload.get(assetByPath.get(p)).kind, assetHash: files.get(p).assetHash, modified: files.get(p).mtime, fileSize: files.get(p).len, sidecar: 1, converged: true, itemCount: metadataPayload.get(assetByPath.get(p)).itemCount, itemSize: metadataPayload.get(assetByPath.get(p)).itemSize, hasShareList: metadataPayload.get(assetByPath.get(p)).hasShareList }),
     assetById' = assetById,
     assetByPath' = assetByPath,
@@ -687,7 +690,6 @@ module pipeline_merged {
     thumbPresent' = thumbPresent,
     intake' = intake,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -700,11 +702,10 @@ module pipeline_merged {
     files.get(p).present,
     rows.keys().contains(p),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: if (files.get(p).sidecar == 1) 2 else 1 }),
-    generations' = generations.set(p, generations.get(p) + 1),
+    generations' = generations.set(p, satSucc(generations.get(p))),
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     intake' = intake,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths.union(Set(p)),
@@ -737,7 +738,6 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths.exclude(Set(p)),
@@ -752,11 +752,10 @@ module pipeline_merged {
     all {
       p.in(PATHS),
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
-      generations' = generations.set(p, generations.get(p) + 1),
-      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
+      generations' = generations.set(p, satSucc(generations.get(p))),
+      intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -780,7 +779,6 @@ module pipeline_merged {
     dupeIndex' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and (assetById.get(assetByPath.get(p)).contentHash).in(HASHES)) { dupeIndex.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p)))) } else { dupeIndex },
     thumbPresent' = if (assetById.get(assetByPath.get(p)).contentHash >= 0 and (assetById.get(assetByPath.get(p)).contentHash).in(HASHES)) { thumbPresent.put(assetById.get(assetByPath.get(p)).contentHash, dupeIndex.get(assetById.get(assetByPath.get(p)).contentHash).exclude(Set(assetByPath.get(p))).size() > 0) } else { thumbPresent },
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -808,7 +806,6 @@ module pipeline_merged {
     dupeIndex' = dupeIndex,
     thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -846,7 +843,6 @@ module pipeline_merged {
     metadataPayload' = metadataPayload,
     thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -858,12 +854,11 @@ module pipeline_merged {
   action SubmitScan(p: str): bool = all {
     p.in(PATHS),
     files.get(p).present,
-    generations' = generations.set(p, generations.get(p) + 1),
-    intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "scan", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })),
+    generations' = generations.set(p, satSucc(generations.get(p))),
+    intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "scan", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })),
     files' = files,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -873,12 +868,11 @@ module pipeline_merged {
   action SubmitWatcherIndex(p: str): bool = all {
     p.in(PATHS),
     files.get(p).present,
-    generations' = generations.set(p, generations.get(p) + 1),
-    intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })),
+    generations' = generations.set(p, satSucc(generations.get(p))),
+    intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "watcher", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })),
     files' = files,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -888,12 +882,11 @@ module pipeline_merged {
   action SubmitWatcherRemove(p: str): bool = all {
     p.in(PATHS),
     not(files.get(p).present),
-    generations' = generations.set(p, generations.get(p) + 1),
-    intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 })),
+    generations' = generations.set(p, satSucc(generations.get(p))),
+    intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 })),
     files' = files,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -916,16 +909,16 @@ module pipeline_merged {
       files.get(it.path).present,
       snapshotMatches(files.get(it.path), it),
       assetById' = (if ((assetByPath.get(it.path) != 0)) { assetById } else { assetById }).put(
-        if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId },
-        { assetId: if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId },
+        if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextFreeId },
+        { assetId: if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextFreeId },
           kind: if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent")) { assetById.get(assetByPath.get(it.path)).kind } else { "media" },
           path: it.path,
           contentHash: it.assetHash,
           albumId: if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent")) { assetById.get(assetByPath.get(it.path)).albumId } else { 0 },
           isTrashed: if ((assetByPath.get(it.path) != 0) and (assetById.get(assetByPath.get(it.path)).kind != "absent")) { assetById.get(assetByPath.get(it.path)).isTrashed } else { false } }),
-      assetByPath' = assetByPath.put(it.path, if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId }),
+      assetByPath' = assetByPath.put(it.path, if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextFreeId }),
       metadataPayload' = metadataPayload.put(
-        if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId },
+        if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextFreeId },
         { kind: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).kind } else { "media" },
           assetHash: it.assetHash,
           modified: it.mtime,
@@ -935,13 +928,12 @@ module pipeline_merged {
           itemCount: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).itemCount } else { 0 },
           itemSize: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).itemSize } else { 0 },
           hasShareList: if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent")) { metadataPayload.get(assetByPath.get(it.path)).hasShareList } else { false } }),
-      dupeIndex' = (if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent") and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and (metadataPayload.get(assetByPath.get(it.path)).assetHash).in(HASHES)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if ((it.assetHash).in(HASHES)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextAssetId }))),
+      dupeIndex' = (if ((assetByPath.get(it.path) != 0) and (metadataPayload.get(assetByPath.get(it.path)).kind != "absent") and metadataPayload.get(assetByPath.get(it.path)).assetHash >= 0 and metadataPayload.get(assetByPath.get(it.path)).assetHash != it.assetHash and (metadataPayload.get(assetByPath.get(it.path)).assetHash).in(HASHES)) { dupeIndex.put(metadataPayload.get(assetByPath.get(it.path)).assetHash, dupeIndex.get(metadataPayload.get(assetByPath.get(it.path)).assetHash).exclude(Set(assetByPath.get(it.path)))) } else { dupeIndex }).put(it.assetHash, (if ((it.assetHash).in(HASHES)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(it.path) != 0)) { assetByPath.get(it.path) } else { nextFreeId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == it.path and i.generation == it.generation)),
       files' = files,
       generations' = generations,
       sweepPending' = sweepPending,
-      nextAssetId' = if ((assetByPath.get(it.path) != 0)) { nextAssetId } else { nextAssetId + 1 },
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -959,7 +951,6 @@ module pipeline_merged {
       generations' = generations,
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -979,7 +970,6 @@ module pipeline_merged {
       generations' = generations,
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1014,7 +1004,6 @@ module pipeline_merged {
       generations' = generations,
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1034,7 +1023,6 @@ module pipeline_merged {
       generations' = generations,
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1061,7 +1049,6 @@ module pipeline_merged {
       files' = files,
       generations' = generations,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1074,16 +1061,15 @@ module pipeline_merged {
   action ScanRoot(r: str): bool = all {
     r.in(ROOTS),
     generations' = PATHS.mapBy(p =>
-      if (rootOf(p) == r and files.get(p).present) { generations.get(p) + 1 } else { generations.get(p) }
+      if (rootOf(p) == r and files.get(p).present) { satSucc(generations.get(p)) } else { generations.get(p) }
     ),
     intake' = intake.union(
       PATHS.filter(p => rootOf(p) == r and files.get(p).present)
-           .map(p => { path: p, generation: generations.get(p) + 1, kind: "scan", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })
+           .map(p => { path: p, generation: satSucc(generations.get(p)), kind: "scan", mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar, assetHash: files.get(p).assetHash })
     ),
     sweepPending' = sweepPending.put(r, true),
     files' = files,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1102,7 +1088,6 @@ module pipeline_merged {
     files' = files,
     generations' = generations,
     intake' = intake,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1115,7 +1100,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1130,7 +1114,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1188,14 +1171,14 @@ module pipeline_merged {
   run scanApplyTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt no-backing
   run skipSupersededTest = init
     .then(SubmitScan("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerSkipSuperseded)
-    .then(all { assert(NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // Pins the FS_MODIFY_INFLIGHT gap: the in-flight item is dropped and nothing resubmits the path until the next scan, so permanent staleness is expected here.
   // @assumes ASS-5
@@ -1203,7 +1186,7 @@ module pipeline_merged {
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(WorkerSkipStale)
-    .then(all { assert(NoLostUpload and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoLostUpload and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-5
   run skipUnchangedTest = init
@@ -1211,7 +1194,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(SubmitScan("p1"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-5
   run restoreSkipsTest = init
@@ -1221,7 +1204,7 @@ module pipeline_merged {
     .then(RestoreIndexed("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   run copyDistinctIdsTest = init
@@ -1229,7 +1212,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(SubmitScan("p2"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetHash == rows.get("p2").assetHash and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetHash == rows.get("p2").assetHash and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run sidecarDeleteConvergesTest = init
@@ -1239,7 +1222,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(ExternalSidecarDelete("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run renameFileTest = init
@@ -1251,13 +1234,13 @@ module pipeline_merged {
     .then(ExternalRenameFile("p1", "p2"))
     .then(WorkerRemoveApply)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and rows.keys().contains("p2")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and rows.keys().contains("p2")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   run uploadTest = init
     .then(ApiUpload("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run removeTest = init
@@ -1266,7 +1249,7 @@ module pipeline_merged {
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   // @assumes ASS-6
@@ -1279,7 +1262,7 @@ module pipeline_merged {
     .then(ApiMove("p1", "p2"))
     .then(SubmitWatcherIndex("p2"))
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p2").assetId == 1), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p2").assetId == 1), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   run apiRemoveTest = init
@@ -1288,19 +1271,19 @@ module pipeline_merged {
     .then(ApiRemove("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run scanOnlyConvergenceTest = init
     .then(ExternalDelete("p1"))
-    .then(all { assert(rows.keys().contains("p1") and not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
-    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SweepRoot("r1"))
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run scanHealsMissingRowTest = init
@@ -1308,7 +1291,7 @@ module pipeline_merged {
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(ExternalModify("p1"))
-    .then(all { assert(not(rows.keys().contains("p1")) and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
@@ -1317,32 +1300,32 @@ module pipeline_merged {
     .then(WorkerSkipSuperseded)
     .then(WorkerSkipSuperseded)
     .then(WorkerSkipSuperseded)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run scanHealsStaleRowTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
     .then(ForceModify("p1"))
-    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run perRootSweepTest = init
     .then(ExternalDelete("p5"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r2"))
-    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SweepRoot("r2"))
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   run fsCreateTest = init
@@ -1351,7 +1334,7 @@ module pipeline_merged {
     .then(ExternalModify("p1"))
     .then(SubmitWatcherIndex("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   run fsModifyTest = init
@@ -1360,20 +1343,20 @@ module pipeline_merged {
     .then(ExternalModify("p1"))
     .then(SubmitWatcherIndex("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-5
   run fsModifyInflightTest = init
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(WorkerSkipStale)
-    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run fsAtomicReplaceTest = init
@@ -1382,7 +1365,7 @@ module pipeline_merged {
     .then(ExternalModify("p1"))
     .then(SubmitWatcherIndex("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run sidecarCreateTest = init
@@ -1390,7 +1373,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(ExternalSidecarCreate("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == files.get("p1").sidecar and rows.get("p1").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").sidecar == files.get("p1").sidecar and rows.get("p1").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run sidecarModifyTest = init
@@ -1398,7 +1381,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(ExternalSidecarModify("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   // @scope SCOPE-5
@@ -1411,7 +1394,7 @@ module pipeline_merged {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(ExternalRenameDir)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-1
   // @scope SCOPE-5
@@ -1424,16 +1407,16 @@ module pipeline_merged {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(ApiAssignDirMove)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and not(rows.keys().contains("p1")) and not(rows.keys().contains("p2")) and rows.keys().contains("p3") and rows.keys().contains("p4") and rows.get("p3").assetId == 1 and rows.get("p4").assetId == 2), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   run rotateTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
     .then(RotateWriteSidecar("p1"))
-    .then(all { assert(rows.get("p1").sidecar != files.get("p1").sidecar and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.get("p1").sidecar != files.get("p1").sidecar and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   // @scope SCOPE-6
@@ -1447,7 +1430,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run watcherGapTest = init
@@ -1459,7 +1442,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // A scan that snapshots before the change drops the stale item; the next
   // backstop scan heals it, so convergence is bounded by two scan cycles
@@ -1473,33 +1456,33 @@ module pipeline_merged {
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged) and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-6
   run crashTest = init
     .then(SubmitScan("p1"))
     .then(ForceModify("p1"))
     .then(ProcessCrash)
-    .then(all { assert(intake.size() == 0 and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(intake.size() == 0 and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-4
   run derivedLossTest = init
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
     .then(LoseThumbs)
-    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(ScanRoot("r2"))
     .then(WorkerApplySuccess)
@@ -1507,7 +1490,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-6
   run dbLossTest = init
@@ -1516,7 +1499,7 @@ module pipeline_merged {
     .then(SubmitScan("p2"))
     .then(WorkerApplySuccess)
     .then(DbLoss)
-    .then(all { assert(rows.keys().size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(ScanRoot("r2"))
     .then(WorkerApplySuccess)
@@ -1524,7 +1507,7 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale and rows.get("p1").assetId != rows.get("p2").assetId), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt no-backing
   run failingForeverTest = init
@@ -1538,19 +1521,19 @@ module pipeline_merged {
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(not(rows.keys().contains("p1")) and Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   run readMissingTest = init
     .then(ExternalDelete("p1"))
     .then(ReadMissing("p1"))
-    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
-    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and NoLostUpload and NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
   // ---------- section: asset-aspect slice ----------
   // Asset-aspect slice of the index pipeline model.
   //
@@ -1609,13 +1592,12 @@ module pipeline_merged {
          .set(pr.dst, { present: true, assetHash: files.get(pr.src).assetHash, mtime: files.get(pr.src).mtime, len: files.get(pr.src).len, sidecar: files.get(pr.src).sidecar })
     ),
     generations' = SUBTREE_PAIRS.foldl(generations, (acc, pr) =>
-      acc.set(pr.src, generations.get(pr.src) + 1)
-         .set(pr.dst, generations.get(pr.dst) + 1)
+      acc.set(pr.src, satSucc(generations.get(pr.src)))
+         .set(pr.dst, satSucc(generations.get(pr.dst)))
     ),
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1632,11 +1614,10 @@ module pipeline_merged {
     not(files.get(q).present),
     rows.keys().contains(p),
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }).set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
-    generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
+    generations' = generations.set(p, satSucc(generations.get(p))).set(q, satSucc(generations.get(q))),
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths.union(Set(p, q)),
@@ -1670,7 +1651,6 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths,
   }
@@ -1698,7 +1678,6 @@ module pipeline_merged {
     generations' = generations,
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths,
   }
@@ -1741,7 +1720,6 @@ module pipeline_merged {
     files' = files,
     generations' = generations,
     intake' = intake,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths,
   }
@@ -1758,11 +1736,10 @@ module pipeline_merged {
     rows.keys().contains(p),
     files' = files,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
-    generations' = generations.set(p, generations.get(p) + 1).set(q, generations.get(q) + 1),
+    generations' = generations.set(p, satSucc(generations.get(p))).set(q, satSucc(generations.get(q))),
     intake' = intake,
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     leasedPaths' = leasedPaths.union(Set(p, q)),
   }
@@ -1796,7 +1773,6 @@ module pipeline_merged {
     intake' = intake,
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
 
@@ -1807,11 +1783,10 @@ module pipeline_merged {
     files.get(p).present,
     rows.keys().contains(p),
     files' = files.setBy(p, f => { present: f.present, assetHash: f.assetHash, mtime: f.mtime, len: f.len, sidecar: if (f.sidecar == 0) 1 else 0 }),
-    generations' = generations.set(p, generations.get(p) + 1),
+    generations' = generations.set(p, satSucc(generations.get(p))),
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1827,7 +1802,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -1838,7 +1812,7 @@ module pipeline_merged {
     .then(ForceModify("p1"))
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -1846,7 +1820,7 @@ module pipeline_merged {
     .then(SubmitScan("p1"))
     .then(AppSidecarEdit("p1"))
     .then(WorkerSkipSuperseded)
-    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -1862,7 +1836,7 @@ module pipeline_merged {
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -1876,12 +1850,12 @@ module pipeline_merged {
     .then(SubmitWatcherRemove("p4"))
     .then(WorkerRemoveApply)
     .then(DirMoveFsOnly)
-    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -1894,42 +1868,42 @@ module pipeline_merged {
     .then(SubmitWatcherRemove("p3"))
     .then(WorkerRemoveApply)
     .then(ApiMoveFsOnly("p1", "p3"))
-    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(AspectsAligned and (assetByPath.get("p3") != 0) and metadataPayload.get(assetByPath.get("p3")).sidecar == files.get("p3").sidecar and files.get("p3").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AspectsAligned and (assetByPath.get("p3") != 0) and metadataPayload.get(assetByPath.get("p3")).sidecar == files.get("p3").sidecar and files.get("p3").sidecar != 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @operation OP-7
   // @scope SCOPE-5
   // @assumes ASS-6
   run aspectsSidecarPartialEditTest = init
     .then(SidecarEditPartial("p1"))
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @exempt environment
   // @assumes ASS-6
   // @assumes ASS-7
   run aspectsDroppedSidecarTest = init
     .then(DroppedSidecarModify("p1"))
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-4
   // @assumes ASS-6
   run aspectsThumbLossTest = init
     .then(LoseThumbs)
-    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(SubmitScan("p1"))
     .then(WorkerApplySuccess)
-    .then(all { assert(AspectAligned("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AspectAligned("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -1937,7 +1911,7 @@ module pipeline_merged {
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -1952,7 +1926,7 @@ module pipeline_merged {
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
-    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -1968,9 +1942,9 @@ module pipeline_merged {
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
-    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and not(files.get("p1").present)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(MoveRowRewrite("p1", "p3"))
-    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -1981,7 +1955,7 @@ module pipeline_merged {
     .then(SweepEnumerate("r1"))
     .then(SubmitWatcherRemove("p1"))
     .then(SweepRecheck)
-    .then(all { assert(rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -1992,7 +1966,7 @@ module pipeline_merged {
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2006,10 +1980,10 @@ module pipeline_merged {
     .then(SweepRecheck)
     .then(MoveLeaseAcquire("p1", "p3"))
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not(rows.keys().contains("p3"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p3"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ApiMoveFsOnly("p1", "p3"))
     .then(MoveRowRewrite("p1", "p3"))
-    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and rows.keys().contains("p3")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -2018,14 +1992,14 @@ module pipeline_merged {
     .then(RotateWriteSidecar("p1"))
     .then(WorkerSkipSuperseded)
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @scope SCOPE-5
   // @assumes ASS-6
   run aspectsRotateTest = init
     .then(RotateWriteSidecar("p1"))
     .then(RotateFinish("p1"))
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   def UploadingWindow(p: str): bool =
@@ -2064,11 +2038,10 @@ module pipeline_merged {
       p.in(PATHS),
       not(files.get(p).present),
       files' = files.set(p, { present: true, assetHash: cv, mtime: mt, len: ln, sidecar: sc }),
-      generations' = generations.set(p, generations.get(p) + 1),
-      intake' = intake.union(Set({ path: p, generation: generations.get(p) + 1, kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
+      generations' = generations.set(p, satSucc(generations.get(p))),
+      intake' = intake.union(Set({ path: p, generation: satSucc(generations.get(p)), kind: "watcher", mtime: mt, len: ln, sidecar: sc, assetHash: cv })),
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -2095,18 +2068,17 @@ module pipeline_merged {
       it.generation == generations.get(p),
       files.get(p).present,
       snapshotMatches(files.get(p), it),
-      assetById' = assetById.put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, { assetId: if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, kind: if ((assetByPath.get(p) != 0) and (assetById.get(assetByPath.get(p)).kind != "absent")) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if ((assetByPath.get(p) != 0) and (assetById.get(assetByPath.get(p)).kind != "absent")) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if ((assetByPath.get(p) != 0) and (assetById.get(assetByPath.get(p)).kind != "absent")) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
-      assetByPath' = assetByPath.put(p, if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }),
+      assetById' = assetById.put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextFreeId }, { assetId: if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextFreeId }, kind: if ((assetByPath.get(p) != 0) and (assetById.get(assetByPath.get(p)).kind != "absent")) { assetById.get(assetByPath.get(p)).kind } else { "media" }, path: p, contentHash: it.assetHash, albumId: if ((assetByPath.get(p) != 0) and (assetById.get(assetByPath.get(p)).kind != "absent")) { assetById.get(assetByPath.get(p)).albumId } else { 0 }, isTrashed: if ((assetByPath.get(p) != 0) and (assetById.get(assetByPath.get(p)).kind != "absent")) { assetById.get(assetByPath.get(p)).isTrashed } else { false } }),
+      assetByPath' = assetByPath.put(p, if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextFreeId }),
       metadataPayload' = metadataPayload
-        .put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }, { kind: if ((assetByPath.get(p) != 0) and (metadataPayload.get(assetByPath.get(p)).kind != "absent")) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
+        .put(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextFreeId }, { kind: if ((assetByPath.get(p) != 0) and (metadataPayload.get(assetByPath.get(p)).kind != "absent")) { metadataPayload.get(assetByPath.get(p)).kind } else { "media" }, assetHash: it.assetHash, modified: it.mtime, fileSize: it.len, sidecar: it.sidecar, converged: true, itemCount: 0, itemSize: 0, hasShareList: false })
         .put(0, { kind: metadataPayload.get(0).kind, assetHash: metadataPayload.get(0).assetHash, modified: metadataPayload.get(0).modified, fileSize: metadataPayload.get(0).fileSize, sidecar: metadataPayload.get(0).sidecar, converged: metadataPayload.get(0).converged, itemCount: metadataPayload.get(0).itemCount + (if ((assetByPath.get(p) != 0)) { 0 } else { 1 }), itemSize: metadataPayload.get(0).itemSize + (it.len - (if ((assetByPath.get(p) != 0) and (metadataPayload.get(assetByPath.get(p)).kind != "absent")) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })), hasShareList: metadataPayload.get(0).hasShareList }),
-      dupeIndex' = dupeIndex.put(it.assetHash, (if ((it.assetHash).in(HASHES)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextAssetId }))),
+      dupeIndex' = dupeIndex.put(it.assetHash, (if ((it.assetHash).in(HASHES)) { dupeIndex.get(it.assetHash) } else { Set() }).union(Set(if ((assetByPath.get(p) != 0)) { assetByPath.get(p) } else { nextFreeId }))),
       thumbPresent' = thumbPresent.put(it.assetHash, true),
       intake' = intake.filter(i => not (i.path == p and i.generation == it.generation)),
       files' = files,
       generations' = generations,
       sweepPending' = sweepPending,
-      nextAssetId' = if (rows.keys().contains(p)) { nextAssetId } else { nextAssetId + 1 },
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -2131,7 +2103,6 @@ module pipeline_merged {
       generations' = generations,
       assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
       sweepPending' = sweepPending,
-      nextAssetId' = nextAssetId,
       unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -2145,11 +2116,11 @@ module pipeline_merged {
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadStoredOnly("p1"))
-    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadIndexed("p1"))
-    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AspectsAligned and rows.keys().contains("p1")), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2159,7 +2130,7 @@ module pipeline_merged {
     .then(UploadStoredOnly("p1"))
     .then(ScanRoot("r1"))
     .then(SweepRoot("r1"))
-    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2171,7 +2142,7 @@ module pipeline_merged {
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerSkipSuperseded)
     .then(WorkerRemoveApply)
-    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not(rows.keys().contains("p1")) and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2182,7 +2153,7 @@ module pipeline_merged {
     .then(ExternalSidecarModify("p1"))
     .then(WorkerSkipSuperseded)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned and rows.get("p1").sidecar == files.get("p1").sidecar), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2191,13 +2162,13 @@ module pipeline_merged {
     .then(ExternalDelete("p1"))
     .then(UploadStoredOnly("p1"))
     .then(ProcessCrash)
-    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(files.get("p1").present and intake.size() == 0), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
-    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2265,7 +2236,6 @@ module pipeline_merged {
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
 
@@ -2291,7 +2261,6 @@ module pipeline_merged {
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
 
@@ -2314,7 +2283,6 @@ module pipeline_merged {
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
 
@@ -2346,7 +2314,6 @@ module pipeline_merged {
     sweepPending' = sweepPending,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
   }
 
@@ -2356,12 +2323,12 @@ module pipeline_merged {
   run aspectsN5SplitWindowTest = init
     .then(ExternalDelete("p1"))
     .then(RemoveIdOnly("p1"))
-    .then(all { assert((assetByPath.get("p1") != 0) and not((assetById.get(assetByPath.get("p1")).kind != "absent"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert((assetByPath.get("p1") != 0) and not((assetById.get(assetByPath.get("p1")).kind != "absent"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not((assetByPath.get("p1") != 0))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not((assetByPath.get("p1") != 0))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2379,11 +2346,11 @@ module pipeline_merged {
     .then(ExternalDelete("p5"))
     .then(SubmitWatcherRemove("p5"))
     .then(WorkerRemoveApply)
-    .then(all { assert((assetByPath.get("p1") != 0) and thumbPresent.get(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert((assetByPath.get("p1") != 0) and thumbPresent.get(0)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ExternalDelete("p1"))
     .then(SubmitWatcherRemove("p1"))
     .then(WorkerRemoveApply)
-    .then(all { assert(not((assetByPath.get("p1") != 0)) and (not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not((assetByPath.get("p1") != 0)) and (not(thumbPresent.get(0)))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
   // @assumes ASS-6
@@ -2391,18 +2358,18 @@ module pipeline_merged {
   run aspectsRemoveTornWindowTest = init
     .then(ExternalDelete("p1"))
     .then(RemoveIdOnly("p1"))
-    .then(all { assert((assetByPath.get("p1") != 0) and not((assetById.get(assetByPath.get("p1")).kind != "absent"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert((assetByPath.get("p1") != 0) and not((assetById.get(assetByPath.get("p1")).kind != "absent"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(not((assetByPath.get("p1") != 0))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(not((assetByPath.get("p1") != 0))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
   // Delta: aggregates are exact in the initial state by construction.
   run aspectsAlbumDeltaConsistentOnInitTest = init
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -2410,9 +2377,9 @@ module pipeline_merged {
   // stay exact both directions.
   run aspectsAlbumDeltaTrashToggleTest = init
     .then(TrashToggle("p1"))
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(TrashToggle("p1"))
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -2420,7 +2387,7 @@ module pipeline_merged {
   run aspectsAlbumDeltaThenShareEditTest = init
     .then(TrashToggle("p1"))
     .then(AlbumShareEdit)
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom and metadataPayload.get(0).hasShareList), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom and metadataPayload.get(0).hasShareList), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -2428,7 +2395,7 @@ module pipeline_merged {
   run aspectsShareEditThenAlbumDeltaTest = init
     .then(AlbumShareEdit)
     .then(TrashToggle("p1"))
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom and metadataPayload.get(0).hasShareList), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom and metadataPayload.get(0).hasShareList), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -2437,7 +2404,7 @@ module pipeline_merged {
   run aspectsAlbumDeltaReapplyIdempotenceTest = init
     .then(ScanRoot("r1"))
     .then(UploadIndexed("p1"))
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
@@ -2449,14 +2416,14 @@ module pipeline_merged {
     .then(SweepEnumerate("r1"))
     .then(SweepRecheck)
     .then(SweepRemoveBatchApply)
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // @scope SCOPE-5
   // Pure metadata write leaves aggregates untouched.
   run aspectsAlbumDeltaMemberWritePureTest = init
     .then(MemberWrite("p1"))
-    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, nextAssetId' = nextAssetId, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(all { assert(AlbumStatsConsistent and AlbumStatsNoPhantom), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-6
   // Stats are exact in every reachable state: deltas are applied in the
@@ -2609,7 +2576,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -2744,7 +2710,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
@@ -2765,7 +2730,6 @@ module pipeline_merged {
     intake' = intake,
     assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
-    nextAssetId' = nextAssetId,
     unprocessable' = unprocessable,
     sweepBatch' = sweepBatch,
     leasedPaths' = leasedPaths,
