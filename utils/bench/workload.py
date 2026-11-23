@@ -881,6 +881,31 @@ def _status_snapshot(out):
     }
 
 
+def _atomic_write_json_bytes(out_dir: Path, name: str, body: bytes) -> None:
+    """Atomically publish ``body`` as ``out_dir/name``.
+
+    Writers that truncate-then-write (``Path.write_bytes``) can be observed
+    mid-write by a concurrent reader, yielding partial JSON.  Writing to a
+    uniquely-named temp file in the same directory and ``os.replace``-ing it
+    onto the target makes every read see either the previous complete file
+    or the new complete file, never a torn one.  Stdlib only.
+    """
+    out_dir = Path(out_dir)
+    target = out_dir / name
+    tmp = out_dir / f"{name}.tmp-{os.getpid()}-{threading.get_ident()}"
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(body)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, target)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _counter_ok(value):
     return not isinstance(value, bool) and isinstance(value, (int, float))
 
@@ -1150,7 +1175,7 @@ def _refresh_scan_status(
         try:
             code, body, _ = client.get("/get/index/status")
             if code == 200:
-                (out / "status-last.json").write_bytes(body)
+                _atomic_write_json_bytes(out, "status-last.json", body)
         except WorkloadError:
             logger.log("status refresh failed")
         state = _status_state(out)

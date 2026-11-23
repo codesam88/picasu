@@ -91,7 +91,7 @@ class ScanSession:
             try:
                 code, body, _ = self.client.get("/get/index/status")
                 if code == 200:
-                    (out / "status-last.json").write_bytes(body)
+                    wl._atomic_write_json_bytes(out, "status-last.json", body)
             except wl.WorkloadError:
                 self.logger.log("status poll failed")
             self.state = wl._status_state(out)

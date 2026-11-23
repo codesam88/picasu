@@ -13,6 +13,7 @@ import json
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1234,3 +1235,60 @@ class ExecutorTest(unittest.TestCase):
                 executor.execute_cell(cfg, _FakeRequestClient(), self.logger, spec)
         self.assertIn("coverage too low", str(caught.exception))
         self.assertEqual(summary["coverage_pct"], 80.0)
+
+
+class AtomicWriteJsonBytesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out = Path(self.tmp.name) / "cell"
+        self.out.mkdir()
+        self.workload = load_workload()
+
+    def test_concurrent_writers_readers_never_see_partial_json(self):
+        name = "status-last.json"
+        bodies = [
+            json.dumps({"state": "running", "n": i, "scanned": i * 7}).encode() for i in range(6)
+        ]
+        stop = threading.Event()
+        errors = []
+
+        def writer(index):
+            while not stop.is_set():
+                body = bodies[index % len(bodies)]
+                try:
+                    self.workload._atomic_write_json_bytes(self.out, name, body)
+                except Exception as exc:  # pragma: no cover - failure path
+                    errors.append(("writer", exc))
+                    stop.set()
+
+        def reader():
+            while not stop.is_set():
+                path = self.out / name
+                if not path.exists():
+                    continue
+                try:
+                    raw = path.read_bytes()
+                    parsed = json.loads(raw)
+                except (OSError, json.JSONDecodeError) as exc:
+                    errors.append(("reader", exc, raw if "raw" in locals() else b""))
+                    stop.set()
+                    return
+                if raw not in bodies:
+                    errors.append(("reader", "unknown body", raw))
+                    stop.set()
+                    return
+                if not isinstance(parsed, dict):
+                    errors.append(("reader", "non-object", raw))
+                    stop.set()
+                    return
+
+        writers = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+        readers = [threading.Thread(target=reader) for _ in range(4)]
+        for thread in writers + readers:
+            thread.start()
+        time.sleep(0.5)
+        stop.set()
+        for thread in writers + readers:
+            thread.join(timeout=5)
+        self.assertFalse(errors, errors)
