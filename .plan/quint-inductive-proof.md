@@ -452,11 +452,34 @@ invariant, and record the partial result. Never just wait.
 
 ### 4.1 Minimal inductive TypeOK check (first, before any invariant work)
 
+Outcome history (recorded):
+
+- 2026-11-22 (pre-redesign control, A2): FAILS at initiation — counterexample
+  on the `assetById`/`metadataPayload`/`sweepBatch` totality conjuncts.
+- 2026-11-23 (after slice 6, `Set[int]` decision gate): initiation PASS;
+  consecution fails on `files` assignment analysis (slice-7 group pending).
+- 2026-11-23 (after slice 7 + the ForceModify fix + the `Domains`
+  `setOfMaps` rewrite, the form below): **assignment-analysis errors gone;
+  initiation PASS (15 VCs, NoError); consecution UNDECIDED in budget** —
+  VCs 0–2 hold, VC 3 exceeded the 1800 s cap at 10 GB heap (16 GB hit the
+  host OOM killer; 12 GB killed the server). Apalache reports VC index
+  only, not the conjunct; reordering conjuncts changed nothing.
+
+`Domains` is expected to be non-inductive (album `itemCount`/`itemSize`
+deltas can leave the range from a domain state; `nextFreeId` can emit
+`PATHS.size() + 2` under id exhaustion) — the consecution stall on a
+`Domains`-only run does not block the round loop, whose `I` adds the
+goal-directed conjuncts. Resource protocol for rounds: the 30-minute
+stop applies per round; a round whose single VC stalls gets one
+diagnostic re-run at a longer wall (record it) before the invariant is
+split further.
+
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
 quint verify utils/quint/inductive/inductive-proof.qnt --main inductive_proof \
   --init initCompletion --step stepCompletion \
   --invariant TypeOK --backend apalache --inductive-invariant TypeOK \
+  --server-endpoint localhost:8822 \
   > /tmp/opencode/logs/<date>-inductive-typeok.log 2>&1
 ```
 
@@ -531,18 +554,44 @@ soundness, never as the inductiveness argument or the §5 implication.
 
 ### 4.5 Core↔merged differential (standing gate, run after Phase 2)
 
-Paired forward-simulation over a fixed seed list (recorded; start with 20
-seeds × 100 samples): run `merged.qnt` (reduced entry) and
-`inductive-core.qnt` under identical seeds and sample counts, and compare
-per step (1) the action-name sequence (ITF `mbt::actionTaken`) and (2) the
-goal-relevant projection — per-path row/record/metadata presence and
-content, intake size, `Converged`, `AspectsAligned` — comparing projected
-fields wherever the encodings align. Harness under
-`utils/quint/inductive/tools/` (committed, derived). Any divergence: STOP,
-classify as rewrite bug (fix the codemod, regenerate, re-run the owning
-slice's test points) or a genuine model delta (file it, re-copy). This gate
-re-runs after any later change to either model. It is the semantic half of
-the core↔merged bridge; the 70-run suite is the assertion half.
+**Status (recorded 2026-11-23): harness landed and green.**
+`tools/differential.py` pairs seeded `quint run --mbt` traces of both
+models at identical bindings (path-complete 5-path instance with the
+reduced HASHES/SMALL — the 3-path instance is not simulator-runnable:
+environment actions evaluate their `nondet` preambles before the
+`p.in(PATHS)` guard, `QNT507` on a selected out-of-instance path; Apalache
+is unaffected). Recorded gate run: 20 seeds × 100 traces × 10 steps —
+**no divergence across 2000 trace pairs (22,000 state pairs)**, action
+sequences and goal-relevant projections identical everywhere; 5108
+state pairs differ only in asset-id values / allocation cursor (the
+SCOPE-17 quotient, not a divergence). Mutation catches proven (a flipped
+write and a sentinel swap both fire at the right step).
+
+**Regime (F1).** The identity claim holds below epoch saturation. At
+`G = 7` a saturated path coalesces intake items whose generations
+straddle the bound, changing intake cardinality and the enabled set —
+that is SCOPE-18's "extra work" allowance, not a rewrite delta (verified:
+the same seeds at `GEN_LIMIT = 1000` give 100/100 identical traces). The
+gate therefore runs a saturation-free horizon (`--max-steps 10`,
+measured max token 5) and classifies any saturated batch out of regime.
+
+**Coverage note.** Random-walk coverage is not exhaustive: at the 10-step
+horizon 13/20 seeds never select the fault and sweep-removal actions;
+the deep action set is covered by the `GEN_LIMIT = 1000` companion run.
+The gate re-runs after any later change to either model; it is the
+semantic half of the core↔merged bridge, the 70-run suite the assertion
+half. Toolchain lesson (F3): `quint typecheck` cannot catch a syntax
+error inside an imported module (the parser silently repairs an
+unbalanced block at the next top-level declaration — observed on
+`ForceModify`); the audit's `quint parse` checks are the structural gate.
+
+Harness design details: pair only identical
+`--seed/--n-traces/--max-samples/--n-threads` (all samples of one
+invocation share the simulator seed stream — F4);
+`Converged`/`AspectsAligned` are compared via a Python port of the
+source definitions over both sides' decoded states (F5); the core's
+extra `contentHash.in(HASHES)` dupe guard (slice 6) is redundant under
+the value domains (F6).
 
 ## 5. Goal implication
 
