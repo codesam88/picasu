@@ -481,17 +481,26 @@ size −file_size)` for non-trashed album members
   `ASSET_BY_ID`) — narrowed to keep the stored snapshot, which also
   removes the drift chain through `RemoveIdOnly`. All gates re-run:
   70/70 both models, audit 42/42, differential clean.
-- **Id spill (reachable, depth ~35) — backend-faithful, decision
-  pending.** Backend verification: `assign_album.rs::move_asset_mapping`
-  overwrites the destination's path mapping without reading or removing
-  the pre-existing id (`asset_store.rs:147-190`), and no later path
-  cleans orphan ids (the sweep resolves rows by path and never sees an
-  unmapped id) — the backend leaks orphan records on move-over-ghost-row
-  and the model matches. Orphan accumulation is therefore real
-  behavior, not a model defect. Consequence for the finite-domain
-  proof: no finite `IDS` is sound without bounding orphan creation, so
-  the proof needs a move-over-ghost-row budget (machine-level, like the
-  fault budget) or the lane falls back. Decision recorded below.
+- **Id spill — move source closed; SweepRoot source discovered
+  (2026-11-24, `96cf8827` + `9a73a5ec`).** The backend retracts the
+  displaced ghost row on move overwrites (REQ-17, gate-tested) and the
+  model mirrors it in the four move-family actions — the
+  move-over-ghost orphan source is closed. **New blocker, pre-existing:**
+  `SweepRoot` (merged.qnt:1172) prunes path rows for missing files while
+  stuttering records/payload/dupe/thumb — a mapping-only prune that
+  orphans records in reachable states (ExternalDelete → ScanRoot →
+  SweepRoot). Backend verification: `sweep_stale_asset_paths` only
+  enumerates mappings and submits `SweepRemoveBatch`; the writer drops
+  records and mapping together, and no mapping-only prune exists. It
+  also lacks the lease/generation re-check the batch chain has
+  (`SweepRecheck`), so it can prune a row under an active move lease.
+  Reconciliation is required before `IdBudget` is sound, and the
+  shape-track heal evidence may depend on `SweepRoot`'s prune (the
+  all-ghost trace "reaches quiescence through sweep alone") — changing
+  it re-runs that evidence. Investigation next: backend sweep-trigger
+  semantics, then the model reconciliation (merge into the batch chain
+  vs full-removal semantics), with user sign-off on the sweep-structure
+  change.
 - Consecution holes that are _not_ reachable (constructed-state only):
   kind/key shape-copy coherence (`UploadIndexed`/`WorkerApplySuccess`
   copy `kind`/`albumId`; a key-incoherent domain state writes shapes
