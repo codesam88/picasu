@@ -54,6 +54,37 @@ def rewrite_presence(text):
     return "".join(out), count
 
 
+def rewrite_exclude_removal(text):
+    """`assetById.keys().exclude(X).mapBy(k => assetById.get(k))` -> sentinel wipe."""
+    needle = "assetById.keys().exclude("
+    tail = ".mapBy(k => assetById.get(k))"
+    count = 0
+    out = []
+    i = 0
+    while True:
+        idx = text.find(needle, i)
+        if idx == -1:
+            out.append(text[i:])
+            break
+        out.append(text[i:idx])
+        open_idx = idx + len(needle) - 1
+        close_idx = read_balanced(text, open_idx)
+        if close_idx == -1 or not text.startswith(tail, close_idx + 1):
+            out.append(text[idx:close_idx + 1 if close_idx != -1 else idx + len(needle)])
+            i = (close_idx + 1) if close_idx != -1 else idx + len(needle)
+            continue
+        arg = text[open_idx + 1:close_idx]
+        out.append(
+            IDS_EXPR
+            + ".mapBy(id => if (id.in("
+            + arg
+            + ")) { absentAssetRecord } else { assetById.get(id) })"
+        )
+        count += 1
+        i = close_idx + 1 + len(tail)
+    return "".join(out), count
+
+
 ABSENT_DEF = (
     "\n"
     "  // Absent-row sentinel for the total-map redesign (assetById: IDS -> AssetRecord).\n"
@@ -137,6 +168,9 @@ def main():
     )
     text, c = count_replace(text, old_srba, new_srba)
     counts["sweepremovebatchapply"] = c
+
+    # 6b. Move-retraction removal (REQ-17): exclude a set of displaced ids.
+    text, counts["retraction"] = rewrite_exclude_removal(text)
 
     # 7. AssetIdKeyCoherent invariant: sentinel form.
     old_akc = "  val AssetIdKeyCoherent: bool =\n    assetById.keys().forall(id => assetById.get(id).assetId == id)\n"

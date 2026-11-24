@@ -389,6 +389,89 @@ module pipeline_merged {
     }
   )
 
+  // ---------- Move retraction (REQ-17) ----------
+  // A move writes its destination mapping over whatever id was stored there.
+  // A row still mapped at the destination while its file is gone is a ghost
+  // whose sweep has not run: the mapping is the only reference that reaches
+  // the record, so overwriting it would orphan the id. The move retracts the
+  // displaced row first (storage/asset_store.rs::retract_overwritten_mapping).
+  // Skipped in the code: no destination mapping, the mover's own id, a
+  // mapping without a record, and a record naming another path (its own
+  // mapping still reaches it, so the row is not a ghost).
+  // @requires REQ-17
+  def displacedBy(dst: str, moverId: int): Set[int] = {
+    if (assetByPath.keys().contains(dst) and assetByPath.get(dst) != moverId and
+        assetById.keys().contains(assetByPath.get(dst)) and
+        assetById.get(assetByPath.get(dst)).path == dst) {
+      Set(assetByPath.get(dst))
+    } else {
+      Set()
+    }
+  }
+
+  // Directory moves plan one destination per moved path and
+  // apply_dir_move_plans retracts every plan before the prefix rewrite, so
+  // every read here is of the pre-move mapping.
+  // @requires REQ-17
+  def displacedByDirMove: Set[int] =
+    SUBTREE_PAIRS.foldl(Set(), (acc, pr) =>
+      if (assetByPath.keys().contains(pr.src)) {
+        acc.union(displacedBy(pr.dst, assetByPath.get(pr.src)))
+      } else {
+        acc
+      }
+    )
+
+  // Retracted ids that are live album-0 members: the removal subtracts the
+  // same count/size delta as ApiRemove. apply_album_delta no-ops against a
+  // missing album row, so the delta is applied only when the row is present.
+  // @requires REQ-17
+  def retractedAlbumMembers(ids: Set[int]): Set[int] =
+    ids.filter(id =>
+      assetById.keys().contains(id) and
+      assetById.get(id).albumId == 0 and
+      not(assetById.get(id).isTrashed)
+    )
+
+  // @requires REQ-17
+  def retractedAlbumSize(ids: Set[int]): int =
+    retractedAlbumMembers(ids).fold(0, (acc, id) =>
+      acc + (if (metadataPayload.keys().contains(id)) { metadataPayload.get(id).fileSize } else { 0 })
+    )
+
+  // The displaced records and payloads leave their tables. Displaced ids are
+  // present records (displacedBy admits only those), so the album delta reads
+  // their payload exactly as ApiRemove does.
+  // @requires REQ-17
+  def recordsAfterRetraction(ids: Set[int]): int -> AssetRecord =
+    assetById.keys().exclude(ids).mapBy(k => assetById.get(k))
+
+  // @requires REQ-17
+  def payloadAfterRetraction(ids: Set[int]): int -> MetadataRecord =
+    if (metadataPayload.keys().contains(0)) {
+      metadataPayload.keys().exclude(ids).mapBy(k => metadataPayload.get(k)).put(0, {
+        kind: metadataPayload.get(0).kind,
+        assetHash: metadataPayload.get(0).assetHash,
+        modified: metadataPayload.get(0).modified,
+        fileSize: metadataPayload.get(0).fileSize,
+        sidecar: metadataPayload.get(0).sidecar,
+        converged: metadataPayload.get(0).converged,
+        itemCount: metadataPayload.get(0).itemCount - retractedAlbumMembers(ids).size(),
+        itemSize: metadataPayload.get(0).itemSize - retractedAlbumSize(ids),
+        hasShareList: metadataPayload.get(0).hasShareList
+      })
+    } else {
+      metadataPayload.keys().exclude(ids).mapBy(k => metadataPayload.get(k))
+    }
+
+  // The displaced ids leave their content-hash group; an emptied bucket stays
+  // keyed, as in ApiRemove. Thumbnail bytes are not this path's to delete:
+  // remove_asset_rows_in_txn leaves them to the confirmed file removal, so a
+  // bucket's thumb flag keeps its value.
+  // @requires REQ-17
+  def dupeIndexAfterRetraction(ids: Set[int]): int -> Set[int] =
+    HASHES.mapBy(h => dupeIndex.get(h).exclude(ids.filter(id => assetById.get(id).contentHash == h)))
+
   // ---------- Environment injections ----------
 
   // @exempt environment
@@ -465,7 +548,7 @@ module pipeline_merged {
     ),
     generations' = generations,
     intake' = intake,
-    assetById' = SUBTREE_PAIRS.foldl(assetById, (acc, pr) =>
+    assetById' = SUBTREE_PAIRS.foldl(recordsAfterRetraction(displacedByDirMove), (acc, pr) =>
       if (assetByPath.keys().contains(pr.src)) {
         acc.put(assetByPath.get(pr.src), { assetId: assetByPath.get(pr.src), kind: acc.get(assetByPath.get(pr.src)).kind, path: pr.dst, contentHash: acc.get(assetByPath.get(pr.src)).contentHash, albumId: acc.get(assetByPath.get(pr.src)).albumId, isTrashed: acc.get(assetByPath.get(pr.src)).isTrashed })
       } else {
@@ -479,8 +562,8 @@ module pipeline_merged {
         acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k))
       }
     ),
-    dupeIndex' = dupeIndex,
-    metadataPayload' = metadataPayload,
+    dupeIndex' = dupeIndexAfterRetraction(displacedByDirMove),
+    metadataPayload' = payloadAfterRetraction(displacedByDirMove),
     thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
@@ -798,10 +881,10 @@ module pipeline_merged {
     files' = files.set(p, { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }).set(q, { present: true, assetHash: files.get(p).assetHash, mtime: files.get(p).mtime, len: files.get(p).len, sidecar: files.get(p).sidecar }),
     generations' = generations,
     intake' = intake,
-    assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
+    assetById' = recordsAfterRetraction(displacedBy(q, assetByPath.get(p))).put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
     assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
-    metadataPayload' = metadataPayload,
-    dupeIndex' = dupeIndex,
+    metadataPayload' = payloadAfterRetraction(displacedBy(q, assetByPath.get(p))),
+    dupeIndex' = dupeIndexAfterRetraction(displacedBy(q, assetByPath.get(p))),
     thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
@@ -824,7 +907,7 @@ module pipeline_merged {
     ),
     generations' = generations,
     intake' = intake,
-    assetById' = SUBTREE_PAIRS.foldl(assetById, (acc, pr) =>
+    assetById' = SUBTREE_PAIRS.foldl(recordsAfterRetraction(displacedByDirMove), (acc, pr) =>
       if (assetByPath.keys().contains(pr.src)) {
         acc.put(assetByPath.get(pr.src), { assetId: assetByPath.get(pr.src), kind: acc.get(assetByPath.get(pr.src)).kind, path: pr.dst, contentHash: acc.get(assetByPath.get(pr.src)).contentHash, albumId: acc.get(assetByPath.get(pr.src)).albumId, isTrashed: acc.get(assetByPath.get(pr.src)).isTrashed })
       } else {
@@ -838,8 +921,8 @@ module pipeline_merged {
         acc.keys().exclude(Set(pr.src)).mapBy(k => acc.get(k))
       }
     ),
-    dupeIndex' = dupeIndex,
-    metadataPayload' = metadataPayload,
+    dupeIndex' = dupeIndexAfterRetraction(displacedByDirMove),
+    metadataPayload' = payloadAfterRetraction(displacedByDirMove),
     thumbPresent' = thumbPresent,
     sweepPending' = sweepPending,
     nextAssetId' = nextAssetId,
@@ -1772,10 +1855,10 @@ module pipeline_merged {
     not(files.get(p).present),
     files.get(q).present,
     leasedPaths' = leasedPaths.exclude(Set(p, q)),
-    assetById' = assetById.put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
+    assetById' = recordsAfterRetraction(displacedBy(q, assetByPath.get(p))).put(assetByPath.get(p), { assetId: assetByPath.get(p), kind: assetById.get(assetByPath.get(p)).kind, path: q, contentHash: assetById.get(assetByPath.get(p)).contentHash, albumId: assetById.get(assetByPath.get(p)).albumId, isTrashed: assetById.get(assetByPath.get(p)).isTrashed }),
     assetByPath' = assetByPath.keys().exclude(Set(p)).mapBy(k => assetByPath.get(k)).put(q, assetByPath.get(p)),
-    metadataPayload' = metadataPayload,
-    dupeIndex' = dupeIndex,
+    metadataPayload' = payloadAfterRetraction(displacedBy(q, assetByPath.get(p))),
+    dupeIndex' = dupeIndexAfterRetraction(displacedBy(q, assetByPath.get(p))),
     thumbPresent' = thumbPresent,
     files' = files,
     generations' = generations,
