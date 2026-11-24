@@ -474,8 +474,7 @@ pub(crate) fn remove_asset_record_from_tables(
     kind: AssetKind,
 ) -> anyhow::Result<()> {
     use crate::storage::asset_store;
-    use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, METADATA_TABLE, TREE};
-    use redb::ReadableTable;
+    use crate::storage::db::TREE;
 
     // Thumbnail deletion belongs to the confirmed record removal, not to the
     // sweep/verify pre-check: a path can transiently vanish while a mutation
@@ -517,71 +516,22 @@ pub(crate) fn remove_asset_record_from_tables(
         .begin_write()
         .context("Failed to begin write transaction for asset remove")?;
     {
-        // Record deletes.
-        let mut t = write_txn
-            .open_table(ASSET_BY_ID)
-            .context("Failed to open ASSET_BY_ID for remove")?;
-        t.remove(&**asset_id)
-            .context("Failed to remove ASSET_BY_ID row")?;
-        drop(t);
+        crate::storage::asset_store::remove_asset_rows_in_txn(
+            &write_txn,
+            asset_id,
+            path,
+            &content_hash,
+            album_id.as_ref(),
+            is_trashed,
+            file_size,
+        )
+        .context("Failed to remove asset rows")?;
 
-        let mut t = write_txn
-            .open_table(ASSET_BY_PATH)
-            .context("Failed to open ASSET_BY_PATH for remove")?;
-        t.remove(path)
-            .context("Failed to remove ASSET_BY_PATH row")?;
-        drop(t);
-
-        // Dupe index: drop this asset from its group.
-        let mut t = write_txn
-            .open_table(DUPE_INDEX)
-            .context("Failed to open DUPE_INDEX for remove")?;
-        let prior: Vec<String> = t
-            .get(content_hash.as_str())
-            .context("Failed to read DUPE_INDEX group")?
-            .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
-            .unwrap_or_default();
-        let retained: Vec<String> = prior
-            .into_iter()
-            .filter(|id| id.as_str() != asset_id.as_str())
-            .collect();
-        if retained.is_empty() {
-            t.remove(content_hash.as_str())
-                .context("Failed to remove DUPE_INDEX group")?;
-        } else {
-            let json = serde_json::to_string(&retained)
-                .context("Failed to serialize retained dupe group")?;
-            t.insert(content_hash.as_str(), json.as_str())
-                .context("Failed to update DUPE_INDEX group")?;
-        }
-        drop(t);
-
-        // Metadata row.
-        let mut t = write_txn
-            .open_table(METADATA_TABLE)
-            .context("Failed to open METADATA_TABLE for remove")?;
-        t.remove(&**asset_id)
-            .context("Failed to remove METADATA_TABLE row")?;
-        drop(t);
-
-        // Member row + album aggregate delta + ancestor cover refresh.
+        // Ancestor cover refresh is a sweep/flush concern, not part of the
+        // shared exact-identity removal.
         if let Some(alb) = album_id
             && !is_trashed
         {
-            crate::storage::asset_store::apply_album_delta(
-                &write_txn,
-                alb.as_str(),
-                crate::storage::asset_store::AlbumDelta {
-                    count_delta: -1,
-                    size_delta: -file_size.cast_signed(),
-                    member: Some(*asset_id),
-                    is_add: false,
-                    member_timestamp: None,
-                    member_size_override: Some(file_size),
-                    is_update: false,
-                },
-            )
-            .with_context(|| format!("Failed to apply removal delta for album {alb}"))?;
             for anc in
                 crate::process::dir_album::ancestor_album_ids_for_path(std::path::Path::new(path))
             {

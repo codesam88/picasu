@@ -149,6 +149,114 @@ fn deleted_album_detach_drops_member_rows() {
     reset_backend_state();
 }
 
+/// A move lands on a destination the guard proved has no file. If a row still
+/// maps that path it is a ghost (the sweep has not run): overwriting the only
+/// mapping that can find it must retract it — record, metadata payload, dupe
+/// membership, album member row and aggregate — instead of orphaning the
+/// record in `ASSET_BY_ID`.
+#[test]
+fn move_onto_ghost_retracts_displaced_row_and_album_delta() {
+    let _guard = lock();
+    let _ = &*TEST_ENV;
+    reset_backend_state();
+    let (ghost_album, dest_dir) = create_album("ghost_dest");
+    let (source_album, source_dir) = create_album("ghost_source");
+
+    // The ghost: indexed as a destination-album member, then its file is
+    // deleted outside the delete/sweep path so the row stays behind.
+    let ghost_path = flush_member(&dest_dir, "photo.jpg", 4, ghost_album);
+    let ghost_id = member_id_at(&ghost_path);
+    let ghost_hash = hash_file(&ghost_path);
+    assert_eq!(
+        album_member_ids(ghost_album.as_str()),
+        vec![ghost_id.to_string()]
+    );
+    assert_album_aggregates_exact(ghost_album.as_str());
+    assert!(
+        crate::process::transitor::load_metadata_record(ghost_id.as_str())
+            .expect("read ghost metadata")
+            .is_some(),
+        "ghost must hold a metadata payload before the move"
+    );
+    std::fs::remove_file(&ghost_path).expect("delete ghost file without the delete path");
+
+    // The mover: a real asset in another album, moved onto the ghost's path.
+    let source_path = flush_member(&source_dir, "photo.jpg", 8, source_album);
+    let mover_id = member_id_at(&source_path);
+    let mover_hash = hash_file(&source_path);
+    let mut moved = asset_store::get_asset_by_id(mover_id.as_str())
+        .expect("read mover record")
+        .expect("mover record exists");
+    let new_path = ghost_path.to_string_lossy().into_owned();
+    std::fs::rename(&source_path, &new_path).expect("move mover file onto ghost path");
+    moved.path.clone_from(&new_path);
+    moved.album_id = Some(ghost_album);
+    asset_store::move_asset_mapping(&source_path.to_string_lossy(), &new_path, &moved)
+        .expect("move onto ghost path");
+
+    // The destination now names the mover, whose record and payload survive.
+    assert_eq!(
+        asset_store::get_asset_id_by_path(&new_path).expect("read destination path"),
+        Some(mover_id),
+        "destination mapping must name the mover"
+    );
+    let stored = asset_store::get_asset_by_id(mover_id.as_str())
+        .expect("read mover record")
+        .expect("mover record exists");
+    assert_eq!(
+        stored.path, new_path,
+        "mover record path must be the destination"
+    );
+    assert!(
+        crate::process::transitor::load_metadata_record(mover_id.as_str())
+            .expect("read mover metadata")
+            .is_some(),
+        "mover metadata payload must survive"
+    );
+    assert!(
+        asset_store::get_dupe_ids(mover_hash.as_str())
+            .expect("read mover dupe group")
+            .contains(&mover_id),
+        "mover dupe membership must survive"
+    );
+
+    // The displaced ghost is retracted from every table.
+    assert!(
+        asset_store::get_asset_by_id(ghost_id.as_str())
+            .expect("read ghost record")
+            .is_none(),
+        "the displaced record must leave ASSET_BY_ID"
+    );
+    assert!(
+        crate::process::transitor::load_metadata_record(ghost_id.as_str())
+            .expect("read ghost metadata")
+            .is_none(),
+        "the displaced payload must leave METADATA_TABLE"
+    );
+    assert!(
+        !asset_store::get_dupe_ids(ghost_hash.as_str())
+            .expect("read ghost dupe group")
+            .contains(&ghost_id),
+        "the displaced id must leave DUPE_INDEX"
+    );
+    assert_eq!(
+        album_member_ids(ghost_album.as_str()),
+        vec![mover_id.to_string()],
+        "the ghost member row must be retracted before the mover joins"
+    );
+    let payload = read_album_payload(ghost_album.as_str());
+    assert_eq!(
+        payload.item_count, 1,
+        "the ghost must not remain in the album aggregate"
+    );
+    assert_album_aggregates_exact(ghost_album.as_str());
+    assert_album_aggregates_exact(source_album.as_str());
+
+    std::fs::remove_dir_all(&dest_dir).ok();
+    std::fs::remove_dir_all(&source_dir).ok();
+    reset_backend_state();
+}
+
 /// Drift guard over the membership-mutation sites: every site must leave
 /// `ASSET_BY_ALBUM` and the album aggregates exact. A mutation that updates
 /// one without the other fails here.

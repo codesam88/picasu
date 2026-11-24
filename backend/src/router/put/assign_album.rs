@@ -545,6 +545,23 @@ pub(crate) fn apply_dir_move_plans(plans: &[DirMovePlan]) -> Result<(), AppError
         .in_disk
         .begin_write()
         .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
+    // Destination paths are file-absent (the rename target did not exist),
+    // so a row still mapped at a new path is a ghost. Retract each before the
+    // rewrite overwrites its only path reference. The retraction runs in the
+    // same transaction as the prefix rewrite.
+    for plan in plans {
+        crate::storage::asset_store::retract_overwritten_mapping(
+            &txn,
+            plan.new_path.as_str(),
+            &plan.record.asset_id,
+        )
+        .or_raise(|| {
+            (
+                ErrorKind::Database,
+                "Failed to retract mapping overwritten by dir move",
+            )
+        })?;
+    }
     {
         let mut path_table = txn
             .open_table(ASSET_BY_PATH)
@@ -1302,6 +1319,136 @@ mod tests {
         let payload = read_album_payload(album_id.as_str());
         assert_eq!(payload.item_count, 1);
         assert_album_aggregates_exact(album_id.as_str());
+
+        std::fs::remove_dir_all(&root).ok();
+        reset_backend_state();
+    }
+
+    /// A directory move can land on destination paths whose rows are ghosts
+    /// (file gone, sweep not yet run). The prefix rewrite overwrites those
+    /// mappings, so it must retract the displaced rows in the same
+    /// transaction instead of orphaning their records.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn dir_move_onto_ghost_retracts_displaced_row() {
+        use crate::model::abstract_data::AbstractData;
+        use crate::process::hash::blake3_hasher;
+        use crate::storage::asset_store;
+        use crate::tasks::batcher::flush_tree::flush_tables;
+        use crate::tests::bootstrap::{
+            TEST_ENV, album_member_ids, assert_album_aggregates_exact, lock, read_album_payload,
+            reset_backend_state, test_image_home,
+        };
+        use snapfab::{PhotoSpec, generate_batch};
+        use std::fs::File;
+
+        let _guard = lock();
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let root = test_image_home().join("dir_move_ghost");
+        let src = root.join("album");
+        let dst = root.join("moved");
+        std::fs::create_dir_all(&src).expect("create source dir");
+        std::fs::create_dir_all(&dst).expect("create ghost destination dir");
+        let src_album =
+            crate::process::dir_album::get_or_create_dir_album(src.clone()).expect("source album");
+        let dst_album =
+            crate::process::dir_album::get_or_create_dir_album(dst.clone()).expect("dest album");
+
+        // The ghost at the destination path.
+        let ghost_path = dst.join("photo.jpg");
+        generate_batch(&[PhotoSpec {
+            output: Some(ghost_path.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate ghost photo");
+        let ghost_hash = blake3_hasher(File::open(&ghost_path).expect("open ghost photo"))
+            .expect("hash ghost photo");
+        let mut ghost_data = AbstractData::new(&ghost_path, ghost_hash).expect("build ghost data");
+        ghost_data.set_album(Some(dst_album));
+        flush_tables(&[ghost_data], &[]).expect("flush ghost member");
+        let ghost_id = asset_store::get_asset_id_by_path(&ghost_path.to_string_lossy())
+            .expect("read ghost path")
+            .expect("ghost path exists");
+        assert_album_aggregates_exact(dst_album.as_str());
+        std::fs::remove_file(&ghost_path).expect("delete ghost file");
+        std::fs::remove_dir_all(&dst).expect("remove ghost destination dir");
+
+        // The asset whose directory moves onto the ghost's path.
+        let source = src.join("photo.jpg");
+        generate_batch(&[PhotoSpec {
+            output: Some(source.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate mover photo");
+        let mover_hash =
+            blake3_hasher(File::open(&source).expect("open mover photo")).expect("hash mover");
+        let mut mover_data = AbstractData::new(&source, mover_hash).expect("build mover data");
+        mover_data.set_album(Some(src_album));
+        flush_tables(&[mover_data], &[]).expect("flush mover");
+        let mover_id = asset_store::get_asset_id_by_path(&source.to_string_lossy())
+            .expect("read mover path")
+            .expect("mover path exists");
+
+        std::fs::rename(&src, &dst).expect("move album directory");
+        let plans = collect_dir_move_plans(&src, &dst).expect("collect dir move plans");
+        apply_dir_move_plans(&plans).expect("apply dir move plans");
+
+        // The destination path names the mover, whose record survives.
+        let moved_path = dst.join("photo.jpg").to_string_lossy().into_owned();
+        assert_eq!(
+            asset_store::get_asset_id_by_path(&moved_path).expect("read moved path"),
+            Some(mover_id),
+            "destination mapping must name the mover"
+        );
+        let stored = asset_store::get_asset_by_id(mover_id.as_str())
+            .expect("read mover record")
+            .expect("mover record exists");
+        assert_eq!(
+            stored.path, moved_path,
+            "mover record path must be rewritten"
+        );
+
+        // The displaced ghost is retracted from every table and its album.
+        assert!(
+            asset_store::get_asset_by_id(ghost_id.as_str())
+                .expect("read ghost record")
+                .is_none(),
+            "the displaced record must leave ASSET_BY_ID"
+        );
+        assert!(
+            crate::process::transitor::load_metadata_record(ghost_id.as_str())
+                .expect("read ghost metadata")
+                .is_none(),
+            "the displaced payload must leave METADATA_TABLE"
+        );
+        assert!(
+            !asset_store::get_dupe_ids(ghost_hash.as_str())
+                .expect("read ghost dupe group")
+                .contains(&ghost_id),
+            "the displaced id must leave DUPE_INDEX"
+        );
+        assert_eq!(
+            album_member_ids(dst_album.as_str()),
+            Vec::<String>::new(),
+            "the ghost member row must be retracted"
+        );
+        let payload = read_album_payload(dst_album.as_str());
+        assert_eq!(payload.item_count, 0);
+        assert_eq!(payload.item_size, 0);
+        assert_album_aggregates_exact(dst_album.as_str());
+        assert_album_aggregates_exact(src_album.as_str());
 
         std::fs::remove_dir_all(&root).ok();
         reset_backend_state();

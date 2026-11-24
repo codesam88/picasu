@@ -22,7 +22,7 @@ the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
 
 - Proof: 70 scenario runs in merged.qnt; `just quint test` executes the entries and the runs they import; simulator traces are advisory.
 - Goals: 2 committed, 1 queued, 1 dropped.
-- Requirements: 14 verified, 2 open (REQ-1, REQ-8).
+- Requirements: 15 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 3 held, 1 unverified, 1 open, 1 partial.
 - Events: 21 established, 2 proposed.
 - Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes, the request phase is crash-free, and the drain admits one budgeted fault per attempt that reboots into the request phase; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply, with batches accumulating across roots; move lease window is visible.
@@ -366,6 +366,14 @@ Derived from: G1. Owner: storage/asset_store.rs::apply_album_delta; flush_tables
 
 Gate: Backend tests per delta site; OP-8 marker on apply_album_delta.
 
+### REQ-17: Moves retract displaced ghost rows (status: verified)
+
+A move or directory move that overwrites an existing destination path mapping retracts the displaced asset in the same transaction: its ASSET_BY_ID record, METADATA_TABLE payload, DUPE_INDEX membership, album member row, and album aggregate delta are removed, so no row is left without a path reference.
+
+Derived from: G1. Owner: backend storage (storage/asset_store.rs move helpers; router/put/assign_album.rs dir move).
+
+Gate: Backend test: seed a ghost row at a destination path (file gone without the delete path), move another asset onto that path, then assert the destination maps to the mover, the displaced id is absent from ASSET_BY_ID/METADATA_TABLE/DUPE_INDEX, and its album aggregate was decremented; a dir-move variant does the same through apply_dir_move_plans.
+
 ## Implementation
 
 How each requirement was satisfied, its gate tests, and known limits.
@@ -568,6 +576,17 @@ Tests:
 - `tests::album_delta::membership_mutations_leave_members_and_aggregates_exact`
 - `tasks::queue::writer::tests::album_member_write_keeps_aggregates_exact`
 - `tasks::actor::album_index::tests::reset_rescan_reseeds_album_member_rows_and_aggregates`
+
+### REQ-17: Moves retract displaced ghost rows (status: verified)
+
+Implementation: retract_overwritten_mapping reads ASSET_BY_PATH[destination] before the overwrite and, when it names a different id whose record path is the destination, removes the row through remove_asset_rows_in_txn (shared with the flush/sweep remover) inside the move's write transaction. Wired into move_asset_mapping and apply_dir_move_plans.
+
+Tests:
+
+- `backend/src/tests/album_delta.rs::move_onto_ghost_retracts_displaced_row_and_album_delta`
+- `backend/src/router/put/assign_album.rs::dir_move_onto_ghost_retracts_displaced_row`
+
+Limits: A mapping whose record names another path is left alone (its own mapping still reaches it); a mapping with no record is replaced by the insert.
 
 ## Events
 

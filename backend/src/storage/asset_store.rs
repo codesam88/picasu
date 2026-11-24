@@ -151,6 +151,13 @@ pub fn move_asset_mapping(old_path: &str, new_path: &str, updated: &AssetRecord)
         .begin_write()
         .context("Failed to begin write transaction for asset move")?;
     {
+        // The move guard admits only a destination with no file, so a row
+        // still mapped at `new_path` is a ghost whose sweep has not run.
+        // Retract it before the insert below overwrites its only path
+        // reference.
+        retract_overwritten_mapping(&txn, new_path, &updated.asset_id)
+            .with_context(|| format!("Failed to retract mapping overwritten at {new_path}"))?;
+
         let mut id_table = txn
             .open_table(ASSET_BY_ID)
             .context("Failed to open ASSET_BY_ID for write")?;
@@ -449,6 +456,175 @@ pub fn remove_asset(record: &AssetRecord) -> Result<()> {
         remove_from_dupe_group(hash, record.asset_id)?;
     }
     Ok(())
+}
+
+/// Remove one asset's rows by exact identity inside the caller's write
+/// transaction: `ASSET_BY_ID`, `ASSET_BY_PATH`, its `DUPE_INDEX` group
+/// membership, `METADATA_TABLE`, and — for an album member that is not
+/// trashed — the member row plus the album aggregate delta. Thumbnail bytes
+/// stay with the caller: file deletion has its own ownership rules.
+pub(crate) fn remove_asset_rows_in_txn(
+    txn: &redb::WriteTransaction,
+    asset_id: &ArrayString<64>,
+    path: &str,
+    content_hash: &ArrayString<64>,
+    album_id: Option<&ArrayString<64>>,
+    is_trashed: bool,
+    file_size: u64,
+) -> anyhow::Result<()> {
+    use crate::storage::db::METADATA_TABLE;
+    use redb::ReadableTable;
+
+    {
+        let mut table = txn
+            .open_table(ASSET_BY_ID)
+            .context("Failed to open ASSET_BY_ID for remove")?;
+        table
+            .remove(asset_id.as_str())
+            .context("Failed to remove ASSET_BY_ID row")?;
+    }
+
+    {
+        let mut table = txn
+            .open_table(ASSET_BY_PATH)
+            .context("Failed to open ASSET_BY_PATH for remove")?;
+        table
+            .remove(path)
+            .context("Failed to remove ASSET_BY_PATH row")?;
+    }
+
+    {
+        let mut table = txn
+            .open_table(DUPE_INDEX)
+            .context("Failed to open DUPE_INDEX for remove")?;
+        let prior: Vec<String> = table
+            .get(content_hash.as_str())
+            .context("Failed to read DUPE_INDEX group")?
+            .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
+            .unwrap_or_default();
+        let retained: Vec<String> = prior
+            .into_iter()
+            .filter(|id| id.as_str() != asset_id.as_str())
+            .collect();
+        if retained.is_empty() {
+            table
+                .remove(content_hash.as_str())
+                .context("Failed to remove DUPE_INDEX group")?;
+        } else {
+            let json = serde_json::to_string(&retained)
+                .context("Failed to serialize retained dupe group")?;
+            table
+                .insert(content_hash.as_str(), json.as_str())
+                .context("Failed to update DUPE_INDEX group")?;
+        }
+    }
+
+    {
+        let mut table = txn
+            .open_table(METADATA_TABLE)
+            .context("Failed to open METADATA_TABLE for remove")?;
+        table
+            .remove(asset_id.as_str())
+            .context("Failed to remove METADATA_TABLE row")?;
+    }
+
+    if let Some(album_id) = album_id
+        && !is_trashed
+    {
+        apply_album_delta(
+            txn,
+            album_id.as_str(),
+            AlbumDelta {
+                count_delta: -1,
+                size_delta: -file_size.cast_signed(),
+                member: Some(*asset_id),
+                is_add: false,
+                member_timestamp: None,
+                member_size_override: Some(file_size),
+                is_update: false,
+            },
+        )
+        .with_context(|| format!("Failed to apply removal delta for album {album_id}"))?;
+    }
+
+    Ok(())
+}
+
+/// Retract the row mapped at `path` when a move overwrites that mapping with a
+/// different asset. The move guard admits only destinations with no file, so a
+/// row still mapped there is a ghost whose sweep has not run; overwriting its
+/// only path reference would orphan it in `ASSET_BY_ID` forever. Runs in the
+/// caller's write transaction so the overwrite and the retraction land
+/// together. A mapping whose record names another path is not a ghost (the
+/// record stays reachable through its own key) and is left alone.
+pub(crate) fn retract_overwritten_mapping(
+    txn: &redb::WriteTransaction,
+    path: &str,
+    keep_id: &ArrayString<64>,
+) -> anyhow::Result<()> {
+    use redb::ReadableTable;
+
+    let displaced_id: Option<ArrayString<64>> = {
+        let table = txn
+            .open_table(ASSET_BY_PATH)
+            .context("Failed to open ASSET_BY_PATH for overwrite retraction")?;
+        match table
+            .get(path)
+            .context("Failed to read overwritten path mapping")?
+        {
+            Some(guard) => {
+                let id_str = guard.value();
+                Some(
+                    ArrayString::from(id_str)
+                        .map_err(|_| anyhow::anyhow!("Asset ID exceeds 64 bytes: {id_str}"))?,
+                )
+            }
+            None => None,
+        }
+    };
+    let Some(displaced_id) = displaced_id else {
+        return Ok(());
+    };
+    if displaced_id == *keep_id {
+        return Ok(());
+    }
+
+    let record = {
+        let table = txn
+            .open_table(ASSET_BY_ID)
+            .context("Failed to open ASSET_BY_ID for overwrite retraction")?;
+        match table
+            .get(displaced_id.as_str())
+            .context("Failed to read displaced ASSET_BY_ID row")?
+        {
+            Some(guard) => Some(
+                serde_json::from_str::<AssetRecord>(guard.value())
+                    .context("Failed to deserialize displaced AssetRecord")?,
+            ),
+            None => None,
+        }
+    };
+    let Some(record) = record else {
+        // A torn remove can leave a mapping without a record; the caller's
+        // insert replaces the key, so nothing else is orphaned.
+        return Ok(());
+    };
+    if record.path != path {
+        // The record names another path, so its own mapping still finds it.
+        // Retracting would delete a live row.
+        return Ok(());
+    }
+
+    let content_hash = record.content_hash.unwrap_or(record.asset_id);
+    remove_asset_rows_in_txn(
+        txn,
+        &displaced_id,
+        path,
+        &content_hash,
+        record.album_id.as_ref(),
+        record.is_trashed,
+        record.file_size,
+    )
 }
 
 // ── Album membership index (txn-scoped) ──────────────────────────────────────
