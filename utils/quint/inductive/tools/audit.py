@@ -85,26 +85,27 @@ LANDED_TABLES = (
 
 # Initializer key domain per landed table and the minimum site count the
 # slice rewrote, from the codemod scripts:
-#   thumbPresent: init, LoseThumbs, DbLoss              -> 3 (HASHES)
+#   thumbPresent: init, LoseThumbs, DbLoss,
+#                 SweepRemoveBatchApply                 -> 4 (HASHES)
 #   sweepBatch:   init, ProcessCrash, DbLoss,
 #                 SweepEnumerate, SweepRecheck, Apply   -> 6 (PATHS)
-#   assetByPath:  init, DbLoss, SweepRoot, Apply        -> 4 (PATHS)
+#   assetByPath:  init, DbLoss, Apply                   -> 3 (PATHS)
 #   assetById:    init, DbLoss, SweepRemoveBatchApply   -> 3 (IDS)
 #   metadataPayload: init, DbLoss, SweepRemoveBatchApply -> 3 (IDS)
-#   dupeIndex:    init, DbLoss                          -> 2 (HASHES)
+#   dupeIndex:    init, DbLoss, SweepRemoveBatchApply   -> 3 (HASHES)
 #   files:        init (DbLoss stutters)                -> 1 (PATHS)
 #   generations:  init, DbLoss                          -> 2 (PATHS)
 MIN_TABLE_INITIALIZERS = {
     "thumbPresent": ("HASHES", 3),
     "sweepBatch": ("PATHS", 6),
-    "assetByPath": ("PATHS", 4),
+    "assetByPath": ("PATHS", 3),
     "assetById": ("IDS", 3),
     "metadataPayload": ("IDS", 3),
     "dupeIndex": ("HASHES", 2),
     "files": ("PATHS", 1),
     "generations": ("PATHS", 2),
 }
-MIN_PATHS_MAPBY = 14
+MIN_PATHS_MAPBY = 13
 MIN_IDS_MAPBY = 6
 MIN_HASHES_MAPBY = 5
 

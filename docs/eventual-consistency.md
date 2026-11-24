@@ -187,7 +187,7 @@ Lifting: Hierarchical path IDs with arbitrary subtree enumeration.
 
 Bound: SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; the root's candidates are added to the batch accumulated from the other roots' submissions (paths are root-disjoint, so one path-keyed batch holds them); chunking/cancel are abstracted.
 
-Why safe: Enumeration only reads, and accumulation mirrors the code: sweep_stale_asset_paths submits one WriteOp::SweepRemoveBatch per root to the writer queue, so submissions queue up rather than replacing each other. The per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.
+Why safe: Enumeration only reads, and accumulation mirrors the code: sweep_stale_asset_paths submits one WriteOp::SweepRemoveBatch per chunk of ≤200 survivors to the writer queue, so submissions queue up rather than replacing each other. The sweep stage is entered only from the scan job's walk (single active job; no standalone trigger). The per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.
 
 Lifting: Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).
 
@@ -215,7 +215,7 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-11: sweep_remove_batch micro-stage
 
-Bound: SweepRemoveBatchApply drains the accumulated re-checked batch (one writer submission per root, applied per path), pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
+Bound: SweepRemoveBatchApply drains the accumulated re-checked batch (one writer submission per chunk of ≤200 survivors, applied per path), pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
 
 Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
 
@@ -967,7 +967,7 @@ Faults:
 
 - no scan trigger enabled (open): a gap with no rescan and no backstop heals never (REQ-5, REQ-6 open)
 
-Notes: Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop.
+Notes: Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; the scan job's walk followed by the sweep chain (enumerate, re-check, apply) repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop.
 
 ### PROCESS_CRASH (established, actor: environment)
 

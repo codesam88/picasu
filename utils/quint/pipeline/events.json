@@ -553,7 +553,7 @@
           "status": "open"
         }
       ],
-      "notes": "Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop."
+      "notes": "Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; the scan job's walk followed by the sweep chain (enumerate, re-check, apply) repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop."
     },
     {
       "name": "PROCESS_CRASH",

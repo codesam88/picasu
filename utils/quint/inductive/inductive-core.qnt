@@ -114,7 +114,7 @@ module pipeline_merged {
   var metadataPayload: int -> MetadataRecord
   // thumbPresent maps to the thumbnail store paths (aspect (c), content-hash keyed).
   var thumbPresent: int -> bool
-      // sweepPending maps to the per-root sweep pending flag set by ScanRoot/the scan job in tasks/actor/album_index.rs (sweep_stale_asset_paths runs after the walk).
+      // sweepPending is the job-local stage between the walk and the sweep in tasks/actor/album_index.rs; the backend keeps no persistent flag.
   var sweepPending: str -> bool
   // sweepBatch maps to sweep_stale_asset_paths survivors -> WriteOp::SweepRemoveBatch.
   var sweepBatch: str -> int
@@ -1180,24 +1180,6 @@ module pipeline_merged {
     leasedPaths' = leasedPaths,
   }
 
-  // @assumes ASS-3
-  action SweepRoot(r: str): bool = all {
-    r.in(ROOTS),
-    sweepPending.get(r),
-    assetByPath' = PATHS.mapBy(p => if (rootOf(p) == r and not(files.get(p).present)) { 0 } else { assetByPath.get(p) }),
-    assetById' = assetById,
-    metadataPayload' = metadataPayload,
-    dupeIndex' = dupeIndex,
-    thumbPresent' = thumbPresent,
-    sweepPending' = sweepPending.put(r, false),
-    files' = files,
-    generations' = generations,
-    intake' = intake,
-    unprocessable' = unprocessable,
-    sweepBatch' = sweepBatch,
-    leasedPaths' = leasedPaths,
-  }
-
   // @exempt observer
   action ApiRead: bool = all {
     files' = files,
@@ -1233,7 +1215,7 @@ module pipeline_merged {
   // @step-universe ApiRemove, ApiMove, ApiAssignDirMove, SubmitScan, SubmitWatcherIndex,
   // @step-universe SubmitWatcherRemove, WorkerApplySuccess, WorkerSkipSuperseded,
   // @step-universe WorkerSkipStale, WorkerSkipUnchanged, WorkerOpenFails, WorkerRemoveApply,
-  // @step-universe ScanRoot, SweepRoot, ApiRead, ReadMissing
+  // @step-universe ScanRoot, SweepEnumerate, SweepRecheck, SweepRemoveBatchApply, ApiRead, ReadMissing
   action step: bool = any {
     ExternalModify("p1"), ExternalModify("p2"), ExternalModify("p3"), ExternalModify("p4"), ExternalModify("p5"),
     ExternalDelete("p1"), ExternalDelete("p2"), ExternalDelete("p3"), ExternalDelete("p4"), ExternalDelete("p5"),
@@ -1265,7 +1247,8 @@ module pipeline_merged {
     SubmitWatcherIndex("p1"), SubmitWatcherIndex("p2"), SubmitWatcherIndex("p3"), SubmitWatcherIndex("p4"), SubmitWatcherIndex("p5"),
     SubmitWatcherRemove("p1"), SubmitWatcherRemove("p2"), SubmitWatcherRemove("p3"), SubmitWatcherRemove("p4"), SubmitWatcherRemove("p5"),
     WorkerApplySuccess, WorkerSkipSuperseded, WorkerSkipStale, WorkerSkipUnchanged, WorkerOpenFails, WorkerRemoveApply,
-    ScanRoot("r1"), ScanRoot("r2"), SweepRoot("r1"), SweepRoot("r2"),
+    ScanRoot("r1"), ScanRoot("r2"),
+    SweepEnumerate("r1"), SweepEnumerate("r2"), SweepRecheck, SweepRemoveBatchApply,
     ApiRead,
     ReadMissing("p1"), ReadMissing("p2"), ReadMissing("p3"), ReadMissing("p4"), ReadMissing("p5"),
   }
@@ -1384,7 +1367,9 @@ module pipeline_merged {
     .then(all { assert(rows.keys().contains("p1") and not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
     .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
@@ -1394,7 +1379,9 @@ module pipeline_merged {
   run scanHealsMissingRowTest = init
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
     .then(ExternalModify("p1"))
     .then(all { assert(not(rows.keys().contains("p1")) and not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
@@ -1421,11 +1408,13 @@ module pipeline_merged {
   run perRootSweepTest = init
     .then(ExternalDelete("p5"))
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
     .then(all { assert(not(Converged) and not(NoPermanentStale)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r2"))
     .then(all { assert(NoPermanentStale), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
-    .then(SweepRoot("r2"))
+    .then(SweepEnumerate("r2"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
@@ -1634,7 +1623,9 @@ module pipeline_merged {
     .then(ReadMissing("p1"))
     .then(all { assert(not(Converged)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
     .then(WorkerSkipUnchanged)
@@ -1732,11 +1723,11 @@ module pipeline_merged {
   // @scope SCOPE-8
   // SweepEnumerate maps to the enumeration loop of tasks/actor/album_index.rs::sweep_stale_asset_paths (candidates from ASSET_BY_PATH rows with missing files, per-candidate generation snapshot).
   // Enumeration accumulates: sweep_stale_asset_paths submits one
-  // WriteOp::SweepRemoveBatch per root to the writer queue, so a root's
-  // enumeration adds its candidates to the submissions already queued for the
-  // other roots instead of replacing them. Paths are root-disjoint (rootOf is
-  // static), so one path-keyed map holds every queued submission; the
-  // enumerated root's own entries are rebuilt from this walk.
+  // WriteOp::SweepRemoveBatch per chunk of <=200 survivors to the writer
+  // queue, so a root's enumeration adds its candidates to the submissions
+  // already queued for the other roots instead of replacing them. Paths are
+  // root-disjoint (rootOf is static), so one path-keyed map holds every queued
+  // submission; the enumerated root's own entries are rebuilt from this walk.
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
@@ -1791,7 +1782,7 @@ module pipeline_merged {
   // @scope SCOPE-11
   // SweepRemoveBatchApply maps to flush_tree.rs::sweep_remove_batch, submitted as WriteOp::SweepRemoveBatch via tasks/queue/writer.rs::submit; checks path.exists skip + asset-id/record resolution only, no generation/lease check.
   // The apply drains the whole accumulated batch: one writer submission per
-  // root, each applied per path in the writer queue.
+  // chunk of <=200 survivors, each applied per path in the writer queue.
   // @operation OP-8
   action SweepRemoveBatchApply: bool = all {
     PATHS.exists(p => sweepBatch.get(p) != -1),
@@ -1818,8 +1809,28 @@ module pipeline_merged {
         itemCount: metadataPayload.get(0).itemCount - PATHS.filter(p => sweepBatch.get(p) != -1 and (assetByPath.get(p) != 0) and not(files.get(p).present) and (assetById.get(assetByPath.get(p)).kind != "absent") and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).size(),
         itemSize: metadataPayload.get(0).itemSize - PATHS.filter(p => sweepBatch.get(p) != -1 and (assetByPath.get(p) != 0) and not(files.get(p).present) and (assetById.get(assetByPath.get(p)).kind != "absent") and assetById.get(assetByPath.get(p)).albumId == 0 and not(assetById.get(assetByPath.get(p)).isTrashed)).fold(0, (acc, p) => acc + (if ((metadataPayload.get(assetByPath.get(p)).kind != "absent")) { metadataPayload.get(assetByPath.get(p)).fileSize } else { 0 })),
         hasShareList: metadataPayload.get(0).hasShareList }),
-    dupeIndex' = dupeIndex,
-    thumbPresent' = thumbPresent,
+    // The backend removal drops the record's DUPE_INDEX membership and deletes
+    // the thumbnail when the content-hash group has no survivors
+    // (asset_store.rs::remove_asset_rows_in_txn,
+    // flush_tree.rs::remove_asset_record_from_tables).
+    dupeIndex' = HASHES.mapBy(h => dupeIndex.get(h).exclude(
+      PATHS.filter(p =>
+        sweepBatch.get(p) != -1 and
+        assetByPath.get(p) != 0 and
+        not(files.get(p).present) and
+        (assetById.get(assetByPath.get(p)).kind != "absent") and
+        assetById.get(assetByPath.get(p)).contentHash == h
+      ).map(p => assetByPath.get(p))
+    )),
+    thumbPresent' = HASHES.mapBy(h => dupeIndex.get(h).exclude(
+      PATHS.filter(p =>
+        sweepBatch.get(p) != -1 and
+        assetByPath.get(p) != 0 and
+        not(files.get(p).present) and
+        (assetById.get(assetByPath.get(p)).kind != "absent") and
+        assetById.get(assetByPath.get(p)).contentHash == h
+      ).map(p => assetByPath.get(p))
+    ).size() > 0),
     sweepBatch' = PATHS.mapBy(p => -1),
     sweepPending' = sweepPending,
     files' = files,
@@ -1938,7 +1949,7 @@ module pipeline_merged {
     .then(WorkerRemoveApply)
     .then(ApiMove("p1", "p3"))
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
@@ -1957,7 +1968,9 @@ module pipeline_merged {
     .then(DirMoveFsOnly)
     .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(all { assert(Converged and AspectsAligned), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
@@ -1973,9 +1986,12 @@ module pipeline_merged {
     .then(SubmitWatcherRemove("p3"))
     .then(WorkerRemoveApply)
     .then(ApiMoveFsOnly("p1", "p3"))
+    .then(ProcessCrash)
     .then(all { assert(not(AspectsAligned)), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
     .then(WorkerApplySuccess)
@@ -2220,8 +2236,10 @@ module pipeline_merged {
   run aspectsUploadVsSweepPruneTest = init
     .then(ExternalDelete("p1"))
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
-    .then(all { assert(not(rows.keys().contains("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
+    .then(SweepEnumerate("r1"))
+    .then(SweepRecheck)
+    .then(SweepRemoveBatchApply)
+    .then(all { assert(not(rows.keys().contains("p1")) and assetById.get(1).kind == "absent" and metadataPayload.get(1).kind == "absent"), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadStoredOnly("p1"))
     .then(all { assert(UploadingWindow("p1") and not(AspectAligned("p1"))), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
     .then(UploadIndexed("p1"))
@@ -2234,7 +2252,7 @@ module pipeline_merged {
     .then(ExternalDelete("p1"))
     .then(UploadStoredOnly("p1"))
     .then(ScanRoot("r1"))
-    .then(SweepRoot("r1"))
+    .then(SweepEnumerate("r1"))
     .then(all { assert(rows.keys().contains("p1") and files.get("p1").present), files' = files, generations' = generations, intake' = intake, assetById' = assetById, assetByPath' = assetByPath, dupeIndex' = dupeIndex, metadataPayload' = metadataPayload, thumbPresent' = thumbPresent, sweepPending' = sweepPending, unprocessable' = unprocessable, sweepBatch' = sweepBatch, leasedPaths' = leasedPaths })
 
   // @assumes ASS-3
@@ -2610,7 +2628,6 @@ module pipeline_merged {
   //     SweepEnumerate          album_index.rs::sweep_stale_asset_paths enumeration
   //     SweepRecheck            sweep_stale_asset_paths inline re-check
   //     SweepRemoveBatchApply   flush_tree.rs::sweep_remove_batch
-  //     SweepRoot               album_index.rs sweep trigger
   //     MoveRowRewrite          assign_album.rs::move_asset_into_album row rewrite + lease release
   //     RotateFinish            router/put/rotate_image.rs finish phase
   //     MemberWrite             mark_album_for_update (no-op in this model)
@@ -2875,7 +2892,7 @@ module pipeline_merged {
   // @step-universe ApiRemove, ApiMove, ApiAssignDirMove, SubmitScan, SubmitWatcherIndex,
   // @step-universe SubmitWatcherRemove, WorkerApplySuccess, WorkerSkipSuperseded,
   // @step-universe WorkerSkipStale, WorkerSkipUnchanged, WorkerOpenFails, WorkerRemoveApply,
-  // @step-universe ScanRoot, SweepRoot, ApiRead, ReadMissing, DirMoveFsOnly, ApiMoveFsOnly,
+  // @step-universe ScanRoot, ApiRead, ReadMissing, DirMoveFsOnly, ApiMoveFsOnly,
   // @step-universe SweepEnumerate, SweepRecheck, SweepRemoveBatchApply, MoveLeaseAcquire,
   // @step-universe MoveRowRewrite, SidecarEditPartial, DroppedSidecarModify, UploadStoredOnly,
   // @step-universe UploadIndexed, IntakePickupFileGone, RemoveIdOnly, MemberWrite,
@@ -3013,8 +3030,6 @@ module pipeline_merged {
     all { phase == 0, Stay(WorkerRemoveApply) },
     all { phase == 0, Stay(ScanRoot("r1")) },
     all { phase == 0, Stay(ScanRoot("r2")) },
-    all { phase == 0, Stay(SweepRoot("r1")) },
-    all { phase == 0, Stay(SweepRoot("r2")) },
     all { phase == 0, Stay(ApiRead) },
     all { phase == 0, Stay(ReadMissing("p1")) },
     all { phase == 0, Stay(ReadMissing("p2")) },
@@ -3140,8 +3155,6 @@ module pipeline_merged {
     all { phase == 1, Stay(SweepEnumerate("r2")) },
     all { phase == 1, Stay(SweepRecheck) },
     all { phase == 1, Stay(SweepRemoveBatchApply) },
-    all { phase == 1, Stay(SweepRoot("r1")) },
-    all { phase == 1, Stay(SweepRoot("r2")) },
     all { phase == 1, Stay(UploadIndexed("p1")) },
     all { phase == 1, Stay(UploadIndexed("p2")) },
     all { phase == 1, Stay(UploadIndexed("p3")) },
@@ -3220,8 +3233,6 @@ module pipeline_merged {
     all { phase == 2, Stay(SweepEnumerate("r2")) },
     all { phase == 2, Stay(SweepRecheck) },
     all { phase == 2, Stay(SweepRemoveBatchApply) },
-    all { phase == 2, Stay(SweepRoot("r1")) },
-    all { phase == 2, Stay(SweepRoot("r2")) },
     all { phase == 2, Stay(UploadIndexed("p1")) },
     all { phase == 2, Stay(UploadIndexed("p2")) },
     all { phase == 2, Stay(UploadIndexed("p3")) },
@@ -3295,8 +3306,8 @@ module pipeline_merged {
     .then(CompleteScan("r1"))
     .then(CompleteScan("r2"))
     .then(all { assert(scannedRoots == ROOTS and sweepPending.get("r1") and sweepPending.get("r2")), Skip })
-    .then(Stay(SweepRoot("r1")))
-    .then(Stay(SweepRoot("r2")))
+    .then(Stay(SweepEnumerate("r1")))
+    .then(Stay(SweepEnumerate("r2")))
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))
@@ -3348,8 +3359,10 @@ module pipeline_merged {
     .then(BeginScan)
     .then(CompleteScan("r1"))
     .then(CompleteScan("r2"))
-    .then(Stay(SweepRoot("r1")))
-    .then(Stay(SweepRoot("r2")))
+    .then(Stay(SweepEnumerate("r1")))
+    .then(Stay(SweepEnumerate("r2")))
+    .then(Stay(SweepRecheck))
+    .then(Stay(SweepRemoveBatchApply))
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))
     .then(Stay(WorkerSkipUnchanged))

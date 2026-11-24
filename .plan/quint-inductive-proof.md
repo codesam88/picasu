@@ -494,13 +494,28 @@ size −file_size)` for non-trashed album members
   records and mapping together, and no mapping-only prune exists. It
   also lacks the lease/generation re-check the batch chain has
   (`SweepRecheck`), so it can prune a row under an active move lease.
-  Reconciliation is required before `IdBudget` is sound, and the
-  shape-track heal evidence may depend on `SweepRoot`'s prune (the
-  all-ghost trace "reaches quiescence through sweep alone") — changing
-  it re-runs that evidence. Investigation next: backend sweep-trigger
-  semantics, then the model reconciliation (merge into the batch chain
-  vs full-removal semantics), with user sign-off on the sweep-structure
-  change.
+  Reconciliation executed 2026-11-24 (user sign-off given for the
+  sweep-structure change): `SweepRoot` deleted from both model copies;
+  the `SweepEnumerate → SweepRecheck → SweepRemoveBatchApply` chain is
+  the model's only sweep mechanism (matching the backend's single
+  mechanism); `step` carries the chain; the 11 runs calling `SweepRoot`
+  were rewritten to the chain, with `aspectsMoveCrashHealsFromSidecar`
+  additionally gaining its declared `ProcessCrash` step (the run models
+  the crash-heal window; the crash releases the volatile move leases —
+  the old prune masked this by ignoring leases); `SweepRemoveBatchApply`
+  now mirrors the backend's dupe-membership and last-ref thumbnail
+  removal; `stepHeal` drops its `SweepRoot` branches; catalog/doc
+  corrections (per-chunk submission fact, `sweepPending` as a job-local
+  stage — the backend has no such flag). Re-verification: 70/70 both
+  models, audit 42/42 (floors deliberately adjusted: `PATHS.mapBy` 13,
+  assetByPath initializers 3, dupe/thumb initializers +1 each),
+  differential clean in both modes (pipeline mode first exercised),
+  proof reachability 6/6, antecedent witnesses 10/10, `Covering`/
+  `ShapeSound` green, shape-track heal checks 9/10 green with depths
+  unchanged — `initShapeCombination` times out in initial-state
+  enumeration, reproduced at pristine HEAD (the recorded cap-bound full
+  cross-product family; the durable `initCombinationWitness` remains
+  green).
 - Consecution holes that are _not_ reachable (constructed-state only):
   kind/key shape-copy coherence (`UploadIndexed`/`WorkerApplySuccess`
   copy `kind`/`albumId`; a key-incoherent domain state writes shapes

@@ -36,7 +36,6 @@
         "merged.qnt:ScanRoot",
         "merged.qnt:SweepRecheckBatchClean",
         "merged.qnt:SweepRemoveBatchSkipsPresentFile",
-        "merged.qnt:SweepRoot",
         "merged.qnt:WorkerRemoveApply",
         "merged.qnt:aspectsAbsorbedSweepTest",
         "merged.qnt:aspectsCleanSweepTest",

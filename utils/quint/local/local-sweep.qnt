@@ -27,6 +27,8 @@ module local_sweep {
       2 -> { kind: "media", assetHash: 0, modified: 0, fileSize: 1, sidecar: 0, converged: true, itemCount: 0, itemSize: 0, hasShareList: false },
       3 -> { kind: "media", assetHash: 0, modified: 0, fileSize: 0, sidecar: 0, converged: true, itemCount: 0, itemSize: 0, hasShareList: false }
     ),
+    // The pending flags represent the walk having happened: the sweep stage is
+    // entered from the scan job, not from a standalone trigger.
     sweepPending' = Map("r1" -> true, "r2" -> true),
     sweepBatch' = Map(),
     intake' = Set(),
@@ -37,7 +39,7 @@ module local_sweep {
     thumbPresent' = Map(0 -> true),
   }
 
-  // @mirrors-merged merged.qnt:1649 SweepEnumerate
+  // @mirrors-merged merged.qnt:1724 SweepEnumerate
   action SweepEnumerate(root: str): bool = all {
     root.in(ROOTS),
     sweepPending.get(root),
@@ -56,7 +58,7 @@ module local_sweep {
     leasedPaths' = leasedPaths,
   }
 
-  // @mirrors-merged merged.qnt:1673 SweepRecheck
+  // @mirrors-merged merged.qnt:1748 SweepRecheck
   action SweepRecheck: bool = all {
     sweepBatch.keys().size() > 0,
     sweepBatch' = sweepBatch.keys().filter(p =>
@@ -74,7 +76,7 @@ module local_sweep {
     leasedPaths' = leasedPaths,
   }
 
-  // @mirrors-merged merged.qnt:1696 SweepRemoveBatchApply
+  // @mirrors-merged merged.qnt:1771 SweepRemoveBatchApply
   action SweepRemoveBatchApply: bool = all {
     sweepBatch.keys().size() > 0,
     // Album-liveness re-check (SCOPE-12): apply_album_delta no-ops without the album row.

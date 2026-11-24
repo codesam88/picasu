@@ -66,7 +66,8 @@ def main():
     text, c = count_replace(text, "  val rows = assetByPath.keys().mapBy(p =>", "  val rows = PATHS.filter(p => assetByPath.get(p) != 0).mapBy(p =>")
     counts["rows_proj"] = c
 
-    # 3. SweepRoot removal filter.
+    # 3. Pre-chain sweep-removal filter (the action this slice rewrote has
+    # since been deleted; kept so re-running the codemod on an old copy works).
     old_sweeproot = "    assetByPath' = assetByPath.keys().filter(p => not (rootOf(p) == r and not(files.get(p).present))).mapBy(k => assetByPath.get(k)),\n"
     new_sweeproot = "    assetByPath' = PATHS.mapBy(p => if (rootOf(p) == r and not(files.get(p).present)) { 0 } else { assetByPath.get(p) }),\n"
     text, c = count_replace(text, old_sweeproot, new_sweeproot)

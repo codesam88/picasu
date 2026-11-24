@@ -244,8 +244,6 @@ module proof {
     all { Stay(SweepEnumerate("r2")) },
     all { Stay(SweepRecheck) },
     all { Stay(SweepRemoveBatchApply) },
-    all { Stay(SweepRoot("r1")) },
-    all { Stay(SweepRoot("r2")) },
     all { Stay(WorkerApplySuccess) },
     all { Stay(WorkerSkipSuperseded) },
     all { Stay(WorkerSkipStale) },
@@ -685,8 +683,9 @@ module proof {
   // combination-family state instead: all three paths ghost (a file-less row
   // with its record and metadata), no move, no thumbnail, no sweep owed, no
   // stale dupe extra, no intake, no unprocessable path, generation 0. The heal
-  // reaches quiescence through the sweep alone; the combination-family heal
-  // run records that. Only the drawn fields change here relative to
+  // reaches quiescence through the sweep chain alone (SweepEnumerate,
+  // SweepRecheck, SweepRemoveBatchApply); the combination-family heal run
+  // records that. Only the drawn fields change here relative to
   // `initShapeCombination`, so the single state is a member of that family.
   action initCombinationWitness: bool = all {
     files' = PATHS.mapBy(p => comboFile(p, effKind(p, "ghost", "ghost", "ghost", "none", false))),

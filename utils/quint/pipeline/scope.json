@@ -63,7 +63,7 @@
       "id": "SCOPE-8",
       "title": "Sweep enumeration micro-stage",
       "bound": "SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; the root's candidates are added to the batch accumulated from the other roots' submissions (paths are root-disjoint, so one path-keyed batch holds them); chunking/cancel are abstracted.",
-      "why_safe": "Enumeration only reads, and accumulation mirrors the code: sweep_stale_asset_paths submits one WriteOp::SweepRemoveBatch per root to the writer queue, so submissions queue up rather than replacing each other. The per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.",
+      "why_safe": "Enumeration only reads, and accumulation mirrors the code: sweep_stale_asset_paths submits one WriteOp::SweepRemoveBatch per chunk of ≤200 survivors to the writer queue, so submissions queue up rather than replacing each other. The sweep stage is entered only from the scan job's walk (single active job; no standalone trigger). The per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.",
       "lifting": "Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).",
       "provisional": true
     },
@@ -86,7 +86,7 @@
     {
       "id": "SCOPE-11",
       "title": "sweep_remove_batch micro-stage",
-      "bound": "SweepRemoveBatchApply drains the accumulated re-checked batch (one writer submission per root, applied per path), pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.",
+      "bound": "SweepRemoveBatchApply drains the accumulated re-checked batch (one writer submission per chunk of ≤200 survivors, applied per path), pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.",
       "why_safe": "Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.",
       "lifting": "Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).",
       "provisional": true
