@@ -522,17 +522,29 @@ size −file_size)` for non-trashed album members
   outside the record sets) — these are genuine round-1 conjuncts
   (metadata kind/key coherence as the partner of `AssetIdKeyCoherent`).
 
-Resource calibration: consecution at 4 GB default heap OOMs (~4.5 min
-into the 15-VC check); 10 GB survives with VCs 0–2 holding and VC 3
-stalling past 30 min; 16 GB hits the host OOM killer. A
-Domains-minus-intake diagnostic is structurally impossible: removing a
-set-valued var's powerset conjunct leaves it without a first-occurrence
-domain constraint, which Apalache's assignment analysis rejects
-(`No assignments found for: intake`) — the powerset form is required
-for every set var, so the per-conjunct cost cannot be attributed by
-subtraction. The remaining levers are round-wall budget (the 30-minute
-stop predates the 10 GB/VC-stall reality) and the machine-level
-orphan budget (see below); both are recorded decisions below.
+Resource calibration (final, 2026-11-24): the consecution check is
+**toolchain-walled**. Measured matrix — every configuration dies at the
+4th top-level consecution VC, positionally (rotating `Domains` moved the
+crash with the position: `assetByPath` crashes at index 3 and passes in
+0.1 s at index 0; the new index-3 conjunct crashes in turn), never at a
+specific conjunct. Configurations tested: oopsla19 at 4/10/12 GB heaps
+(4 GB OOMs during VC 0; 10/12 GB hold VCs 0–2 in seconds then die
+instantly), `algo=offline` (VC 1 takes 11 min, still dies at index 3),
+nested-conjunct grouping (Apalache flattens through named vals — 15 VCs
+again), the documented `search.invariantFilter` partition (the filter
+works — "Checking 3 state invariants" — but the full 15-conjunct
+hypothesis per query OOMs even for 3 VCs), and the `arrays` SMT encoding
+(initiation drops from ~10 min to 12 s — the encoding change is real —
+but consecution VC 0 does not finish in 75 min). The base case is
+proven in every configuration. Splitting is sound for the var-disjoint
+domain conjuncts but structurally blocked: the inductive invariant must
+domain-assign all 15 variables in one check (Apalache assignment
+analysis rejects subsets), so every partition carries the full
+hypothesis that explodes. Strengthening cannot help: `I` is
+structurally ≥ `Domains`, so no invariant-level change lifts a
+hypothesis-size wall. The inductive route is closed at the toolchain
+level for quint 0.33.1 + Apalache 0.62.4; a toolchain upgrade or an
+upstream fix is the only reopening path.
 
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
