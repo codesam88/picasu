@@ -553,6 +553,21 @@ group per round. Upstream report candidates remain: the deadlock check
 running in inductive mode, and the single-run consecution's unbounded
 growth.
 
+**Round 1 verdict (2026-11-25): `Round1 = TypeOK and KeyCoherent` is
+inductively verified.** 20/20 partitioned rungs green
+(`logs/partitioned-Round1-20261125-1825.tsv`; plan §3.2 items 1–2:
+Domains + `WithinBoundsCore`/`AssetIdKeyCoherentCore`/
+`MetadataKeyCoherent`/`IdBudget`, ported to sentinel form; `Round1`
+defined in `inductive-proof.qnt`, committed with the runner). The
+conservative corner prediction (id-exhaustion allocation leaving
+`IDS`) did not materialize as a counterexample — the per-VC
+consecution for `IdBudget` holds at this instance. Tooling:
+`tools/apalache-server.sh` + `tools/partitioned-typeok.sh`
+(`just quint inductive-partitioned`), exercised end-to-end by this
+series. Round 2 next: the §3.2 item-3 group (the shape track's banked
+reachability rows ported to sentinel form) + the album-row conjunct
+per the A3 resolution, same protocol.
+
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
 quint verify utils/quint/inductive/inductive-proof.qnt --main inductive_proof \
