@@ -10,14 +10,15 @@ area: backend
 ## Goal
 
 Read image metadata and write XMP sidecars entirely in-process with two Rust
-crates — `kamadak-exif` for EXIF, `xmpkit` for XMP — removing the byte-scan XMP
-reader and the hand-rolled sidecar writer. No write-back to image files, ever;
-sidecars (`.xmp`, `.albuminfo.xmp`) are the only metadata this backend writes.
-The backend stops needing `exiftool` at runtime. Snapfab keeps `exiftool` for
-fixture generation. The branch also carries the format-capability package
-(capabilities manifest, upload content-type validation, pinned metadata-contract
-scenarios) ported from `feat/exif-xmp-handling` with its assertions rewritten to
-the kamadak/xmpkit output contracts.
+crates — `kamadak-exif` for EXIF, `xmpkit` for XMP — removing the byte-scan
+XMP reader and the hand-rolled sidecar writer. No write-back to image files,
+ever; sidecars (`.xmp`, `.albuminfo.xmp`) are the only metadata this backend
+writes. The backend stops needing `exiftool` at runtime. Snapfab keeps
+`exiftool` for fixture generation. The branch also carries the
+format-capability package (capabilities manifest, upload content-type
+validation, pinned metadata-contract scenarios) ported from
+`feat/exif-xmp-handling` with its assertions rewritten to the kamadak/xmpkit
+output contracts.
 
 ## Decisions (settled with the user, 2026-10-04)
 
@@ -49,8 +50,8 @@ the kamadak/xmpkit output contracts.
 
 - **EXIF read:** `process/exif.rs` via `kamadak-exif`, PRIMARY IFD only,
   `field.display_value()` strings (dash dates, orientation prose). `misc.rs`
-  orientation/dimension matching already matches these strings — unchanged
-  by this plan.
+  orientation/dimension matching already matches these strings — unchanged by
+  this plan.
 - **XMP read:** `process/xmp.rs::extract_xmp_data(bytes)` — hand-rolled byte
   scan of four managed fields (`dc:subject`, `dc:description`, `xmp:Rating`,
   `dc:title`). Container-unaware; compact XMP not matched; compressed PNG
@@ -66,8 +67,8 @@ the kamadak/xmpkit output contracts.
 - **Rebuild:** `rebuild.rs` clears and repopulates identity tables only;
   metadata cache is not re-read from raw files.
 - **Snapfab:** `little_exif = "0.6"` + `iptc = "0.3"` fixture writers; no
-  `capabilities.json` on this branch (`schema.json` exists; `scenario_schema.rs`
-  does not).
+  `capabilities.json` on this branch (`schema.json` exists;
+  `scenario_schema.rs` does not).
 - **Suite:** 108 scenarios, no format-manifest gates, no upload content-type
   validation, no `exiftool`/`ffmpeg` in CI (neither is needed yet).
 
@@ -88,16 +89,16 @@ Explicitly non-portable — record here so a later port does not rediscover it:
 
 Nothing merges until this measures. Numbers and verdicts go into Progress.
 
-- **xmpkit (read):** against checked-in fixtures — JPEG embedded APP1 XMP,
-  the compressed-PNG-`iTXt` fixture, TIFF/WebP embedded, a plain `.xmp`
-  sidecar, a corrupt sidecar, compact/attribute-form XMP. Record which read,
-  what the `XmpData` four fields come out as, and whether `XmpFile::from_bytes`
-  accepts whole-image bytes (matters for the read seam).
+- **xmpkit (read):** against checked-in fixtures — JPEG embedded APP1 XMP, the
+  compressed-PNG-`iTXt` fixture, TIFF/WebP embedded, a plain `.xmp` sidecar, a
+  corrupt sidecar, compact/attribute-form XMP. Record which read, what the
+  `XmpData` four fields come out as, and whether `XmpFile::from_bytes` accepts
+  whole-image bytes (matters for the read seam).
 - **xmpkit (write):** open a sidecar carrying foreign properties
   (`xmp:CreatorTool`, `Iptc4xmpCore:*`), set the four managed fields, write;
-  verify foreign properties survive, the output re-reads through xmpkit itself,
-  and the serialization form (plain packet vs `<?xpacket?>`) is stable across
-  two writes. Verify new-sidecar creation and `.albuminfo.xmp` naming.
+  verify foreign properties survive, the output re-reads through xmpkit
+  itself, and the serialization form (plain packet vs `<?xpacket?>`) is stable
+  across two writes. Verify new-sidecar creation and `.albuminfo.xmp` naming.
 - **kamadak (baseline):** record current PRIMARY-IFD display strings for the
   pinned fixtures (dash dates, orientation prose) and the known WebP bare-TIFF
   quirk — these are this branch's existing `exifVec` contract, kept as-is.
@@ -119,8 +120,8 @@ Nothing merges until this measures. Numbers and verdicts go into Progress.
   goes away with the scanner. Add the corrupt-sidecar pin: sidecar present but
   unreadable suppresses the file's own XMP (no fallback to embedded) — the
   pre-existing precedence contract, now through a real parser.
-- **Implementation:** swap the internals of `extract_xmp_data_from_file`
-  (keep the seam and `XmpData` shape; callers untouched) to xmpkit open of
+- **Implementation:** swap the internals of `extract_xmp_data_from_file` (keep
+  the seam and `XmpData` shape; callers untouched) to xmpkit open of
   sidecar-or-file. Delete `extract_xmp_data` byte-scan and its tests once
   replaced. If Iteration 0 forced the bytes path, keep `XmpFile::from_bytes`
   for sidecar content and the documented fallback for the one carrier.
@@ -141,8 +142,8 @@ Nothing merges until this measures. Numbers and verdicts go into Progress.
   the xmpkit parse error as the refusal signal).
 - **Implementation:** rewrite `write_sidecar_for` to open-edit-serialize via
   xmpkit inside the existing temp-file + rename; map xmpkit errors onto the
-  current `io::Result` signature (no caller churn). Keep naming rules
-  (`.xmp` beside the asset, `.albuminfo.xmp` in the album dir).
+  current `io::Result` signature (no caller churn). Keep naming rules (`.xmp`
+  beside the asset, `.albuminfo.xmp` in the album dir).
 - **Gate:** full suite + the new preserve scenarios green.
 
 ## Iteration 3 — Transactional sidecar edits (port `sidecar_edit.rs`, `53cba9e2`)
@@ -190,7 +191,8 @@ Split into three phases; each has its own gate.
   post-`7a7721cd` state).
 - CI: add the pinned `just install exiftool` step to both jobs (snapfab tests
   now need it). No ffmpeg step yet.
-- Gate: `cargo test -p snapfab`, manifest-consistency tests, `just utils-check`.
+- Gate: `cargo test -p snapfab`, manifest-consistency tests,
+  `just utils-check`.
 
 **5b — Upload content-type validation (port `d459e5e5`, `1ec3e490`)**
 
@@ -213,10 +215,11 @@ Split into three phases; each has its own gate.
   `exifVec` assertion to this branch's contracts** (dash dates, orientation
   prose, kamadak tag names; xmpkit-derived sidecar values). The IPTC-only
   fixture scenario is not ported (decision 6).
-- CI: add the ffmpeg install step (the MP4/MOV scenarios need `ffprobe`;
-  their video-duration pins are engine-independent).
-- Gate: full backend suite, `cargo test -p snapfab`, schema validation of every
-  scenario, `just frontend-test` for the smoke flows, CI green on the PR.
+- CI: add the ffmpeg install step (the MP4/MOV scenarios need `ffprobe`; their
+  video-duration pins are engine-independent).
+- Gate: full backend suite, `cargo test -p snapfab`, schema validation of
+  every scenario, `just frontend-test` for the smoke flows, CI green on the
+  PR.
 
 ## Iteration 6 — Docs, cleanup, final gates
 
@@ -258,8 +261,8 @@ Split into three phases; each has its own gate.
 ## Risks and open questions
 
 - **xmpkit maturity** (0.1.6, published 2026-09-28, single maintainer, README
-  claims broader formats than the released crate). Mitigation: Iteration 0 is a
-  hard gate; the fallback rule (unclaimed, not a gap) keeps scope honest.
+  claims broader formats than the released crate). Mitigation: Iteration 0 is
+  a hard gate; the fallback rule (unclaimed, not a gap) keeps scope honest.
 - **Serialization stability:** if xmpkit's sidecar output is unstable across
   versions, scenario pins on packet bytes would churn — pin semantic content
   (parsed properties), never packet bytes.
@@ -273,31 +276,33 @@ Split into three phases; each has its own gate.
 
 ## Notes
 
-- 2026-10-04 — **Iteration 6 done (plan complete → status: done).**
-  Docs repaired against the shipped tree: `metadata.md` (crate/engine/writer
-  tables → kamadak-exif + xmpkit + ffprobe/ffmpeg; exiftool scoped to snapfab;
+- 2026-10-04 — **Iteration 6 done (plan complete → status: done).** Docs
+  repaired against the shipped tree: `metadata.md` (crate/engine/writer tables
+  → kamadak-exif + xmpkit + ffprobe/ffmpeg; exiftool scoped to snapfab;
   little_exif/iptc rows dropped; sidecar-only write + precedence prose made
   true), `linux.md` (exiftool = dev/tests-only bullet; ffmpeg keeps runtime
   scope), `scenario-dsl.md` (rebuilt against schema+harness: `then:` not
   `assert:` for API, given/when/assertion vocabulary incl. inline `then:`,
-  `randomize:`/seeds, `chmod` with `octal`, given-only `truncate_file`;
-  false `build.rs`-validates-openapi claim removed; forms the harness lacks
+  `randomize:`/seeds, `chmod` with `octal`, given-only `truncate_file`; false
+  `build.rs`-validates-openapi claim removed; forms the harness lacks
   documented out), `test-strategy.md` (fixture/toolchain/randomization/
   OpenAPI-four-phase/gap-list truth-ups; unverifiable prefetch-race bullet
-  dropped), `paste-shim/README` little_exif→exr fix. `docs/openapi-reference.md`
-  regenerated — note: HEAD's committed reference did not reproduce from
-  HEAD's own `openapi.json` even before this work (pre-existing staleness,
-  5.6k lines), the regen corrects it. Cleanup: `.gitignore` tsbuildinfo hunk
+  dropped), `paste-shim/README` little_exif→exr fix.
+  `docs/openapi-reference.md` regenerated — note: HEAD's committed reference
+  did not reproduce from HEAD's own `openapi.json` even before this work
+  (pre-existing staleness, 5.6k lines), the regen corrects it. Cleanup:
+  `.gitignore` tsbuildinfo hunk
   - `git rm --cached` of both tracked artifacts (f6f5d593, pulled into scope
     as gate hygiene); `deny.toml` quick-xml comment rewritten for the real
     provenance (xmpkit runtime, not little_exif dev) — **no deny entries
     needed**; reference sweep leaves only true hits (snapfab's writer, the
-    install recipe, an `Iptc4xmpCore` namespace URI in a preserve-test packet).
-    Worker gates: `just test` exit 0 (backend 442, snapfab 77, vitest 87,
-    playwright 39), `just openapi-check` exit 0 (all four phases: sanity 63
-    handlers, json-match, spectral 0 errors/53 baseline warnings, routes 61),
-    `just backend-audit` exit 0, `just plan-lint` exit 0; `just check` failed
-    only on this plan file's prettier (parent formats at closeout).
+    install recipe, an `Iptc4xmpCore` namespace URI in a preserve-test
+    packet). Worker gates: `just test` exit 0 (backend 442, snapfab 77, vitest
+    87, playwright 39), `just openapi-check` exit 0 (all four phases: sanity
+    63 handlers, json-match, spectral 0 errors/53 baseline warnings,
+    routes 61), `just backend-audit` exit 0, `just plan-lint` exit 0;
+    `just check` failed only on this plan file's prettier (parent formats at
+    closeout).
 - 2026-10-04 — **Iterations 5c-1/2/3 done** (three workers, each reviewed;
   parent re-ran gates and closed two follow-ups). **5c-1**: inline `then:`
   body/file assertions were parsed-and-dropped on base (status-only) — ported
@@ -305,78 +310,77 @@ Split into three phases; each has its own gate.
   `image_home_path`; three pre-existing scenarios corrected exactly as the
   source commit did; snapfab `selection`/`seeds`/library + `randomize:`
   harness landed (compile-red → 77 snapfab / 417 suite green); CI gained
-  `Install ffmpeg` in both jobs; `further_iptc` given-form removed from
-  schema (mutation-teeth shown); `sidecar_read_failure_*` already green
-  (It3 behavior); capabilities second test green after selection existed.
-  **5c-2**: 25 scenarios ported (JPEG/PNG 3, TIFF/WebP 4, MP4/MOV 6,
-  fallbacks 9 +1 cross-ref, randomized 3), all green first run with
-  expectations **measured** pre-run (kamadak dash dates/names, ffprobe values
-  kept — local 8.0.1 matches CI-validated set, JPEG EXIF byte order measured
-  `MM\0*`); `rebuild_reconstructs_identity_but_not_metadata` not ported
-  (superseded on the source branch itself by It4's family); when-verb
-  decisions: given `truncate_file`+`patch_file` ported, when-`truncate_file`
-  and non-boolean `wait_index` removed from schema (nothing dispatches them);
-  no IPTC/furtherMetadata references remain (grep-verified). **5c-3**: 3 UI
-  smoke flows + `010c9854` port-probe/reap infra ported (playwright 39 green,
+  `Install ffmpeg` in both jobs; `further_iptc` given-form removed from schema
+  (mutation-teeth shown); `sidecar_read_failure_*` already green (It3
+  behavior); capabilities second test green after selection existed. **5c-2**:
+  25 scenarios ported (JPEG/PNG 3, TIFF/WebP 4, MP4/MOV 6, fallbacks 9 +1
+  cross-ref, randomized 3), all green first run with expectations **measured**
+  pre-run (kamadak dash dates/names, ffprobe values kept — local 8.0.1 matches
+  CI-validated set, JPEG EXIF byte order measured `MM\0*`);
+  `rebuild_reconstructs_identity_but_not_metadata` not ported (superseded on
+  the source branch itself by It4's family); when-verb decisions: given
+  `truncate_file`+`patch_file` ported, when-`truncate_file` and non-boolean
+  `wait_index` removed from schema (nothing dispatches them); no
+  IPTC/furtherMetadata references remain (grep-verified). **5c-3**: 3 UI smoke
+  flows + `010c9854` port-probe/reap infra ported (playwright 39 green,
   frontend-test 74→87 after follow-up, frontend-check exit 0);
   `edit-rating-via-sidebar` expectation measured-corrected to xmpkit's
-  attribute-form `xmp:Rating="3"`. **Parent follow-ups after 5c-3**:
-  retained `frontend/tests/paths.test.ts` from the branch (transient-run
-  13/13 → now permanent, +13 tests); replaced the worker's local
-  eslint-disable with the branch's faithful `eslint.config.mjs` fix
-  (TS-aware `no-unused-vars` for the tests block) and removed the orphaned
-  enable — eslint 0 problems. Carried to It6: docs (scenario-dsl/test-
-  strategy updates for the harness verbs both source commits documented,
-  metadata/linux/paste-shim sweeps, `just docs-openapi` regen), `.gitignore`
-  tsbuildinfo hunk from `f6f5d593` (amendment: pulled into scope — every
-  `frontend-check` run dirties the tracked artifact), `deny.toml` sweep,
-  final gates.
+  attribute-form `xmp:Rating="3"`. **Parent follow-ups after 5c-3**: retained
+  `frontend/tests/paths.test.ts` from the branch (transient-run 13/13 → now
+  permanent, +13 tests); replaced the worker's local eslint-disable with the
+  branch's faithful `eslint.config.mjs` fix (TS-aware `no-unused-vars` for the
+  tests block) and removed the orphaned enable — eslint 0 problems. Carried to
+  It6: docs (scenario-dsl/test- strategy updates for the harness verbs both
+  source commits documented, metadata/linux/paste-shim sweeps,
+  `just docs-openapi` regen), `.gitignore` tsbuildinfo hunk from `f6f5d593`
+  (amendment: pulled into scope — every `frontend-check` run dirties the
+  tracked artifact), `deny.toml` sweep, final gates.
 - 2026-10-04 — **Iteration 5b done** (worker; parent re-ran gates and fixed
   the one environmental gap). Content-type validation ported from
-  `d459e5e5`+`1ec3e490`: `process/format.rs` (table as single source of
-  truth, ffprobe-rationale comment included), config flag + spec, upload
-  always-rejects-unidentifiable / mismatch-only-flag, index treats mismatch
-  as unrecognized (skip+log, `unsupported_skipped`), `is_valid_media_file`
-  stays name-only; 8 source files verified byte-identical to the commit's
+  `d459e5e5`+`1ec3e490`: `process/format.rs` (table as single source of truth,
+  ffprobe-rationale comment included), config flag + spec, upload
+  always-rejects-unidentifiable / mismatch-only-flag, index treats mismatch as
+  unrecognized (skip+log, `unsupported_skipped`), `is_valid_media_file` stays
+  name-only; 8 source files verified byte-identical to the commit's
   post-state, `rebuild.rs` reconciled onto It4's shared-pipeline shape
   (disclosed), `m4v` extension added. Red evidence: 6 scenario reds against
   base (2 genuine index-behavior reds — base indexed PNG bytes under `.jpg`
   and scan-failed on garbage — 4 message-contract reds, honestly labeled;
   flag-off path already green, its predecessor scenario deleted per the
   commit's rename), compile-red via the manifest↔backend capabilities
-  cross-check (first test only; second deferred to 5c for `snapfab::selection`).
-  Spec: `validateUploadContent` description hunk → `just openapi-gen`;
-  json-match green. Gates (parent-re-run): full suite **382** green,
-  `just backend-check` exit 0, `just openapi-json-match` exit 0. Also fixed
-  locally: `@stoplight/spectral-cli` was in `package.json` but absent from
-  stale `node_modules` — ran `npm ci`; `just openapi-lint` now exit 0
-  (0 errors, 53 baseline warnings).
+  cross-check (first test only; second deferred to 5c for
+  `snapfab::selection`). Spec: `validateUploadContent` description hunk →
+  `just openapi-gen`; json-match green. Gates (parent-re-run): full suite
+  **382** green, `just backend-check` exit 0, `just openapi-json-match`
+  exit 0. Also fixed locally: `@stoplight/spectral-cli` was in `package.json`
+  but absent from stale `node_modules` — ran `npm ci`; `just openapi-lint` now
+  exit 0 (0 errors, 53 baseline warnings).
 - 2026-10-04 — **Iteration 5a done** (worker; parent re-ran every gate,
   verified claim set + SHAs + CI steps). Manifest
   (`utils/snapfab/capabilities.json`, 6 formats/7 fixtures) records exactly
   It0's claim set: `xmp:embedded` for JPEG/PLAIN-PNG/TIFF/WebP,
   `iptc:embedded` and `text:embedded` under unsupported (decision 6 ✓ no
-  format claims IPTC), video `container:[probe]`+sidecar; compressed-iTXt
-  PNG recorded in the `png-48x32-xmp-text` fixture's provenance prose. 7
-  fixtures copied byte-exact from the branch (SHA-verified, parent
-  spot-checked 2) + 1 created (`picasu-png-48x32-xmp-plain.png`,
-  `f699ae00…`, generator script + reproducible exiftool steps checked in).
-  Snapfab writer swapped to exiftool (deps: `little_exif`/`iptc` out,
-  `exiftool`/`tempfile` in); red evidence: 3 semantic reds against the old
-  writer (char-boundary clip, missing eXIf chunk, XMPToolkit absence), claim-
-  rewrite reds against the branch-verbatim manifest (8), digest teeth via a
-  mutated SHA; green: snapfab 62, `scenario_schema` 4 (teeth demonstrated by
-  removing `apiChmod` → 5 scenario reds → reverted), full suite 361,
-  `just utils-check` + `just backend-check` exit 0 (parent-re-run), CI YAML
-  parses with `Install ExifTool` (pinned recipe + PATH lines) in **both**
-  jobs; justfile gained `exiftool_version`/`install-exiftool`. Disclosed
-  wiring: `tests/mod.rs` module line, `jsonschema` dev-dep,
-  `snapfab/main.rs` lib-target switch. Carried forward: schema.json still
-  documents a `further_iptc` given-form the harness does not dispatch (inert;
-  5c decides); `backend/src/tests/capabilities.rs` cross-check from `4a8ada54`
-  **not ported — decide at 5b**; stale prose in `docs/metadata.md`,
-  `deny.toml`, `utils/paste-shim/README.md` → It6; CI ffmpeg step deferred
-  to 5c; selection/seeds/library tests deferred to 5c.
+  format claims IPTC), video `container:[probe]`+sidecar; compressed-iTXt PNG
+  recorded in the `png-48x32-xmp-text` fixture's provenance prose. 7 fixtures
+  copied byte-exact from the branch (SHA-verified, parent spot-checked 2) + 1
+  created (`picasu-png-48x32-xmp-plain.png`, `f699ae00…`, generator script +
+  reproducible exiftool steps checked in). Snapfab writer swapped to exiftool
+  (deps: `little_exif`/`iptc` out, `exiftool`/`tempfile` in); red evidence: 3
+  semantic reds against the old writer (char-boundary clip, missing eXIf
+  chunk, XMPToolkit absence), claim- rewrite reds against the branch-verbatim
+  manifest (8), digest teeth via a mutated SHA; green: snapfab 62,
+  `scenario_schema` 4 (teeth demonstrated by removing `apiChmod` → 5 scenario
+  reds → reverted), full suite 361, `just utils-check` + `just backend-check`
+  exit 0 (parent-re-run), CI YAML parses with `Install ExifTool` (pinned
+  recipe + PATH lines) in **both** jobs; justfile gained
+  `exiftool_version`/`install-exiftool`. Disclosed wiring: `tests/mod.rs`
+  module line, `jsonschema` dev-dep, `snapfab/main.rs` lib-target switch.
+  Carried forward: schema.json still documents a `further_iptc` given-form the
+  harness does not dispatch (inert; 5c decides);
+  `backend/src/tests/capabilities.rs` cross-check from `4a8ada54` **not ported
+  — decide at 5b**; stale prose in `docs/metadata.md`, `deny.toml`,
+  `utils/paste-shim/README.md` → It6; CI ffmpeg step deferred to 5c;
+  selection/seeds/library tests deferred to 5c.
 - 2026-10-04 — **Iteration 4 done** (worker; parent re-ran gates, spot-checked
   pipeline wiring). Rebuild now shares the incremental indexer's pipeline:
   `process_media_info` extracted as the single entry (`process/index.rs`),
@@ -389,36 +393,36 @@ Split into three phases; each has its own gate.
   tags surviving), then green; two precedence pins (`corrupt_xmp_sidecar_*`,
   `an_external_partial_sidecar_*`) ran **already green before any change** —
   It1's seam already implements `0f42f977`'s contract on this base (no
-  IPTC/PNG fall-through exists here) — ported as regression pins, no fake
-  red. Adaptations all disclosed: `furtherMetadata`/`IPTC:*` assertions and
+  IPTC/PNG fall-through exists here) — ported as regression pins, no fake red.
+  Adaptations all disclosed: `furtherMetadata`/`IPTC:*` assertions and
   `further_iptc` givens stripped (decisions 4/6), comments reworded off
-  ExifTool/IIM. Counters (`metadataIndexed`/`metadataFailed`…) **not
-  ported** — no ported scenario asserts them (rule followed); recoverability
-  kept, reporting dropped; three branch unit tests unportable (exiftool
-  seam) — reported, not improvised. `backend/openapi.json` regenerated
-  anyway because the route doc-comment feeds the spec and
-  `committed_artifact_is_up_to_date` enforces it (2 hunks, description/
-  summary only). Gates (parent-re-run): full suite 357 green,
-  `just backend-check` exit 0, `just openapi-json-match` exit 0.
+  ExifTool/IIM. Counters (`metadataIndexed`/`metadataFailed`…) **not ported**
+  — no ported scenario asserts them (rule followed); recoverability kept,
+  reporting dropped; three branch unit tests unportable (exiftool seam) —
+  reported, not improvised. `backend/openapi.json` regenerated anyway because
+  the route doc-comment feeds the spec and `committed_artifact_is_up_to_date`
+  enforces it (2 hunks, description/ summary only). Gates (parent-re-run):
+  full suite 357 green, `just backend-check` exit 0, `just openapi-json-match`
+  exit 0.
 - 2026-10-04 — **Iteration 3 done** (worker, scenario + unit red-green shown;
   parent verified restore ordering, `commit_with` seam, re-ran gates).
   `process/sidecar_edit.rs` ported: sidecars first (It2's xmpkit writer),
   failure → `Err` before any payload row/commit, per-item sidecar backups
   restored on a later item's failure (batch rollback), writer injectable for
-  tests. The four edit endpoints now fail the request on sidecar-write
-  failure instead of `warn!`-then-commit. Five `sidecar_write_failure_*`
-  scenarios ported (injection = `chmod 0500` on the asset dir; temp+rename
-  fails with EACCES; non-root only). Harness additions, disclosed:
-  `chmod` when-verb + `assert_json_not_contains` in `backend_api.rs`, and
-  the remembered-modes restore placed **before** `reset_backend_state()`
-  (verified at `backend_api.rs:854-857`) so a mid-scenario panic cannot
-  leave a read-only dir breaking later resets. Red evidence: 5 scenarios
-  failed 200-vs-500 under the old flow + diagnostic probe showing the cache
-  mutated; unit red = compile-red then 5/7 semantic failures against a
-  base-semantics stub. Endpoints ended byte-identical to the branch's final
-  files (its annotations already match this base's style). Deferred to 5c:
-  the branch's `sidecar_read_failure_rolls_back_the_batch.yaml` (name
-  outside the It3 family; behavior is unit-pinned by
+  tests. The four edit endpoints now fail the request on sidecar-write failure
+  instead of `warn!`-then-commit. Five `sidecar_write_failure_*` scenarios
+  ported (injection = `chmod 0500` on the asset dir; temp+rename fails with
+  EACCES; non-root only). Harness additions, disclosed: `chmod` when-verb +
+  `assert_json_not_contains` in `backend_api.rs`, and the remembered-modes
+  restore placed **before** `reset_backend_state()` (verified at
+  `backend_api.rs:854-857`) so a mid-scenario panic cannot leave a read-only
+  dir breaking later resets. Red evidence: 5 scenarios failed 200-vs-500 under
+  the old flow + diagnostic probe showing the cache mutated; unit red =
+  compile-red then 5/7 semantic failures against a base-semantics stub.
+  Endpoints ended byte-identical to the branch's final files (its annotations
+  already match this base's style). Deferred to 5c: the branch's
+  `sidecar_read_failure_rolls_back_the_batch.yaml` (name outside the It3
+  family; behavior is unit-pinned by
   `a_sidecar_that_cannot_be_read_rolls_back_the_batch_written_before_it`).
   Gates (parent-re-run): full suite 349 green + integration binaries,
   `just backend-check` exit 0.
@@ -427,23 +431,22 @@ Split into three phases; each has its own gate.
   writes now go through xmpkit: `load_sidecar` = NotFound → `XmpMeta::new()`,
   non-UTF-8/parse `Err` → warn + replace with a clean managed packet, other io
   errors propagate; managed fields set (subject Bag replaced wholesale,
-  description/rating set, `dc:title` `TitleEdit::Unmanaged` for assets —
-  never touched — `Set(custom_title)` for albums, freeze-bug contract kept);
+  description/rating set, `dc:title` `TitleEdit::Unmanaged` for assets — never
+  touched — `Set(custom_title)` for albums, freeze-bug contract kept);
   `serialize_packet` through the existing temp+rename. Red drivers ran first:
-  unit preservation (`xmpRights:Marked was dropped`) and both ported
-  scenarios (`file.contains` on `Iptc4xmpCore:Location`/`photoshop:City`
-  missing under the fresh-packet writer). Ported scenarios:
+  unit preservation (`xmpRights:Marked was dropped`) and both ported scenarios
+  (`file.contains` on `Iptc4xmpCore:Location`/`photoshop:City` missing under
+  the fresh-packet writer). Ported scenarios:
   `sidecar_edit_preserves_unmanaged_xmp`,
   `albuminfo_edit_preserves_unmanaged_xmp` — no harness change needed
-  (`raw_file` given already exists on this base at
-  `backend_api.rs:796`; verified). Truncated-sidecar pin records the
-  measured behavior: parse-Ok keeps fully-written properties and the write
-  repairs the file; a cut inside a tag → `Err` → replacement path. One
-  additional pin (`photo_title_is_left_where_someone_else_put_it`, ported
-  from the branch's test list) was added green, not red — it fails under the
-  old fresh-packet writer by construction; disclosed by the worker. Gates
-  (parent-re-run): full suite 337 green + integration binaries,
-  `just backend-check` exit 0.
+  (`raw_file` given already exists on this base at `backend_api.rs:796`;
+  verified). Truncated-sidecar pin records the measured behavior: parse-Ok
+  keeps fully-written properties and the write repairs the file; a cut inside
+  a tag → `Err` → replacement path. One additional pin
+  (`photo_title_is_left_where_someone_else_put_it`, ported from the branch's
+  test list) was added green, not red — it fails under the old fresh-packet
+  writer by construction; disclosed by the worker. Gates (parent-re-run): full
+  suite 337 green + integration binaries, `just backend-check` exit 0.
 - 2026-10-04 — **Iteration 1 done** (worker, TDD red-green shown; parent
   reviewed diff, re-ran gates). XMP read now goes through xmpkit:
   `extract_xmp_data_from_file` = sidecar → `read_to_string` + `XmpMeta::parse`
@@ -484,9 +487,9 @@ Split into three phases; each has its own gate.
     `Err`. It2's refusal signal = parse `Err`; the truncated case gets its own
     observed-behavior pin written test-first in It2.
   - **Shape contract for It1**: title/description/subject arrive as
-    `Array([String])` or, in compact/attribute form, a plain `String`
-    (subject as one comma-joined string); Rating arrives as `String`. The
-    seam normalizes into `XmpData` (Bag flatten, Alt first element, subject
+    `Array([String])` or, in compact/attribute form, a plain `String` (subject
+    as one comma-joined string); Rating arrives as `String`. The seam
+    normalizes into `XmpData` (Bag flatten, Alt first element, subject
     comma-split, Rating through the existing i32→u8 ≤5 clamp rule).
   - **kamadak baseline (unchanged contract)**: dash dates
     (`2024-05-06 07:08:09`), orientation prose (`row 0 at top and column 0 at

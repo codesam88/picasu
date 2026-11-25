@@ -103,11 +103,12 @@ backend/src/
 1. **`model/abstract_data` → `process/hash` circular dep** —
    `generate_random_data()` on `AbstractData` was dead code after the
    `random::generate_random_data` endpoint was removed. Deleted the method;
-   the only remaining caller of `generate_random_hash()` is `process/dir_album.rs`,
-   which is in the same layer. No layering violation remains.
+   the only remaining caller of `generate_random_hash()` is
+   `process/dir_album.rs`, which is in the same layer. No layering violation
+   remains.
 
-2. **`storage/ser_de` → `router/get/get_prefetch` circular dep** —
-   `Prefetch` was moved from the router layer to `model/response.rs`.
+2. **`storage/ser_de` → `router/get/get_prefetch` circular dep** — `Prefetch`
+   was moved from the router layer to `model/response.rs`.
 
 ### Accidental artifact
 

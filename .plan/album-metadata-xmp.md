@@ -28,13 +28,14 @@ albums) via the shared `ObjectSchema` fields, and already call
 `write_sidecar_for` derives the sidecar path from the item's alias file, and
 albums have none (`AbstractData::Album(_).alias()` is always `&[]`).
 
-1. **XMP module** (`backend/src/process/xmp.rs`, `xmp_write.rs`): add `dc:title`
-   (currently missing — only `dc:subject`/`dc:description`/`xmp:Rating` exist)
-   and a new `dc:date` (ISO 8601 text) for the custom date override.
+1. **XMP module** (`backend/src/process/xmp.rs`, `xmp_write.rs`): add
+   `dc:title` (currently missing — only
+   `dc:subject`/`dc:description`/`xmp:Rating` exist) and a new `dc:date` (ISO
+   8601 text) for the custom date override.
 2. **`write_sidecar_for`**: add an `AbstractData::Album` branch resolving the
-   sidecar path as `dir_path.join(".albuminfo.xmp")` instead of
-   alias-derived. No-ops (`Ok(())`) when `dir_path` is `None` (manual,
-   non-directory albums have nowhere on disk to write).
+   sidecar path as `dir_path.join(".albuminfo.xmp")` instead of alias-derived.
+   No-ops (`Ok(())`) when `dir_path` is `None` (manual, non-directory albums
+   have nowhere on disk to write).
 3. **`set_album_title`** (`backend/src/router/put/edit_album.rs`): currently
    DB-only — extend to also call the now album-aware `write_sidecar_for`,
    matching the photo/video edit endpoints.
@@ -51,20 +52,20 @@ albums have none (`AbstractData::Album(_).alias()` is always `&[]`).
    directory and gets re-read regardless of the album getting a new ID.
 6. **Frontend**: `DisplayAlbum.vue` is dead code (confirmed unreachable both
    before and after the `feat/ui-overlays` route-flattening — a single click
-   on an album-type grid item always routed directly to `/album/:hash`,
-   never through the fullscreen viewer where `DisplayAlbum.vue` would have
-   mounted). Remove/repurpose it. Add an "Album Info" item to
-   `BatchMenu.vue`'s single-select context menu (shown when the one selected
-   item is album-type), opening a new modal with title/description/keywords/
-   date fields — all optional, "unintrusive" per user request (no forced
-   fields, reachable only via explicit menu action, not the default view).
-   Saved per-field via the endpoints above, matching the existing
-   auto-save-on-edit pattern used elsewhere (not one big "Save" button).
+   on an album-type grid item always routed directly to `/album/:hash`, never
+   through the fullscreen viewer where `DisplayAlbum.vue` would have mounted).
+   Remove/repurpose it. Add an "Album Info" item to `BatchMenu.vue`'s
+   single-select context menu (shown when the one selected item is
+   album-type), opening a new modal with title/description/keywords/ date
+   fields — all optional, "unintrusive" per user request (no forced fields,
+   reachable only via explicit menu action, not the default view). Saved
+   per-field via the endpoints above, matching the existing auto-save-on-edit
+   pattern used elsewhere (not one big "Save" button).
 
-Rejected alternative: a single new unified `PUT /put/edit_album_info`
-endpoint saving all fields at once. Would duplicate logic already in three
-working endpoints and break from the established one-endpoint-per-field
-convention used everywhere else in the app.
+Rejected alternative: a single new unified `PUT /put/edit_album_info` endpoint
+saving all fields at once. Would duplicate logic already in three working
+endpoints and break from the established one-endpoint-per-field convention
+used everywhere else in the app.
 
 ### Verification
 
@@ -74,10 +75,10 @@ convention used everywhere else in the app.
    `.albuminfo.xmp` present, confirm the new album ID picks up the custom
    title/description/tags/date rather than re-deriving from the path.
 3. `just check && just test` green (backend + vitest + Playwright).
-4. Manual: edit album title/description/keywords/date via the new "Album
-   Info" modal, confirm `.albuminfo.xmp` appears in the directory with
-   correct content, and confirm the values survive a manual directory
-   rename on disk followed by a re-scan.
+4. Manual: edit album title/description/keywords/date via the new "Album Info"
+   modal, confirm `.albuminfo.xmp` appears in the directory with correct
+   content, and confirm the values survive a manual directory rename on disk
+   followed by a re-scan.
 
 ## Notes
 
@@ -99,25 +100,25 @@ convention used everywhere else in the app.
     endpoint independently reads-modifies-writes the same album record —
     concurrent requests raced and silently dropped edits (title in
     particular). Fixed to await sequentially.
-  - `just check` and `just test` pass (117 backend, 35 vitest, 17
-    Playwright including the new album-info-modal.yaml scenario, which
-    exercises the full round trip: edit all four fields, verify sidecar
-    content on disk, confirm persistence after modal reopen).
+  - `just check` and `just test` pass (117 backend, 35 vitest, 17 Playwright
+    including the new album-info-modal.yaml scenario, which exercises the full
+    round trip: edit all four fields, verify sidecar content on disk, confirm
+    persistence after modal reopen).
 - 2026-07-01: Code review found `write_sidecar_for`'s Album branch always
   wrote `metadata.title` (auto-derived-or-custom, indistinguishable) into
-  `.albuminfo.xmp` on _any_ field edit, freezing the auto-derived default
-  the first time a user edited rating/tags/description without ever
-  touching the title — defeating the "survives directory rename" goal.
-  Fixed by adding `AlbumMetadata.custom_title: Option<String>` (raw,
-  explicitly-user-set value only) alongside the existing `title` (resolved
-  display value); `write_sidecar_for` now serializes `custom_title`, not
-  `title`. Schema version bumped 4->5. Also, per user direction, description/
-  date/tags were dropped from the "Album Info" modal (description/tags were
-  already editable elsewhere for albums via the per-item metadata panel and
-  EditTagsModal; the custom date override had no display consumer anywhere)
-  — the modal and `PUT /put/set_album_title` are now the only surface for
-  this feature, so the Promise.all-race workaround noted above is now moot
-  (a single field, no ordering to get wrong). `PUT /put/set_album_date` and
-  `custom_date` removed entirely. `just check` and `just test` pass (121
-  backend — 4 new regression tests, including an e2e scenario asserting a
-  rating-only edit does not write `dc:title` — 35 vitest, 17 Playwright).
+  `.albuminfo.xmp` on _any_ field edit, freezing the auto-derived default the
+  first time a user edited rating/tags/description without ever touching the
+  title — defeating the "survives directory rename" goal. Fixed by adding
+  `AlbumMetadata.custom_title: Option<String>` (raw, explicitly-user-set value
+  only) alongside the existing `title` (resolved display value);
+  `write_sidecar_for` now serializes `custom_title`, not `title`. Schema
+  version bumped 4->5. Also, per user direction, description/ date/tags were
+  dropped from the "Album Info" modal (description/tags were already editable
+  elsewhere for albums via the per-item metadata panel and EditTagsModal; the
+  custom date override had no display consumer anywhere) — the modal and
+  `PUT /put/set_album_title` are now the only surface for this feature, so the
+  Promise.all-race workaround noted above is now moot (a single field, no
+  ordering to get wrong). `PUT /put/set_album_date` and `custom_date` removed
+  entirely. `just check` and `just test` pass (121 backend — 4 new regression
+  tests, including an e2e scenario asserting a rating-only edit does not write
+  `dc:title` — 35 vitest, 17 Playwright).

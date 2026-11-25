@@ -1,51 +1,51 @@
 # Authentication Flows
 
-How authentication is used, from the user's perspective: the desired
-sequences (frontend + API interaction), the precise API semantics derived
-from them, and the server-side enforcement rules. `docs/auth.md` describes
-the mechanism; `docs/authz-model.md` states the invariants; this document
-states the intended behavior at the user/API boundary.
+How authentication is used, from the user's perspective: the desired sequences
+(frontend + API interaction), the precise API semantics derived from them, and
+the server-side enforcement rules. `docs/auth.md` describes the mechanism;
+`docs/authz-model.md` states the invariants; this document states the intended
+behavior at the user/API boundary.
 
 ## User journeys
 
 ### J1 — First startup (empty store, `--bootstrap-admin` on)
 
-No user exists yet. The browser holds no token, so the user panel is
-hidden until sign-in.
+No user exists yet. The browser holds no token, so the user panel is hidden
+until sign-in.
 
 1. User opens the app. The SPA's boot guard pings `GET /get/server-info`,
    which answers `{enrolled: false, enrollmentOpen: true, captcha: null}`:
    - `enrollmentOpen: true` (empty store + `--bootstrap-admin`) → the app
      shows the admin registration screen (username, password, confirm).
-   - `enrollmentOpen: false` (flag off, or an enrolled store) → the app
-     falls through to `/login` and every guarded route answers 401
+   - `enrollmentOpen: false` (flag off, or an enrolled store) → the app falls
+     through to `/login` and every guarded route answers 401
      `no administrator enrolled` (J2, closed install).
 2. Registering submits the new administrator (any id — never a forced
    invisible name) and auto-logins:
-   - API: `POST /post/users/bootstrap {userId, password}` → 200. This is
-     the only online path that can create an admin: the request body has
-     no `admin` field, and the user is always forced `admin: true`.
+   - API: `POST /post/users/bootstrap {userId, password}` → 200. This is the
+     only online path that can create an admin: the request body has no
+     `admin` field, and the user is always forced `admin: true`.
    - The page then issues `POST /post/users/authenticate` with the entered
-     credentials and receives the 14-day session cookie. A failed enroll
-     (409 — another administrator won the first-create race) falls back
-     to `/login` with a notice.
-3. All further access uses the enrolled identity: the session was minted
-   by the login round-trip in step 2, and guarded routes re-check the
-   user's live record on every request.
+     credentials and receives the 14-day session cookie. A failed enroll (409
+     — another administrator won the first-create race) falls back to `/login`
+     with a notice.
+3. All further access uses the enrolled identity: the session was minted by
+   the login round-trip in step 2, and guarded routes re-check the user's live
+   record on every request.
 
 ### J2 — Closed install (store empty and `--bootstrap-admin` off)
 
 1. Every guarded route answers 401 with the same refusal message, and
    `POST /post/users/authenticate` accepts nothing (the login page shows the
-   ordinary form; any attempt is refused). There is no enrollment
-   surface online — an unauthenticated caller cannot reach the user
-   panel, list users, or log in. The browser falls through to `/login`.
-2. Recovery is operator-only: restart with `--bootstrap-admin` on the
-   empty store (J1, step 2), or provision via the `picasu-cmd` CLI.
+   ordinary form; any attempt is refused). There is no enrollment surface
+   online — an unauthenticated caller cannot reach the user panel, list users,
+   or log in. The browser falls through to `/login`.
+2. Recovery is operator-only: restart with `--bootstrap-admin` on the empty
+   store (J1, step 2), or provision via the `picasu-cmd` CLI.
    `POST /post/users/register` can still create non-admin accounts while
    registration is open or a valid invite exists, but no online path ever
-   grants admin — an admin-less store gains an administrator only through
-   the CLI.
+   grants admin — an admin-less store gains an administrator only through the
+   CLI.
 
 ### J3 — Admin adds a user
 
@@ -53,7 +53,8 @@ hidden until sign-in.
    included).
 2. Admin registers the user: `POST /post/users/register {userId,
 password}` → 200; the account is always `admin: false` (the body has
-   no `admin` field; elevation is `PUT /put/users/admin`); duplicate id → 409. With the `allowRegistration` knob off, the admin session is the
+   no `admin` field; elevation is `PUT /put/users/admin`); duplicate id → 409.
+   With the `allowRegistration` knob off, the admin session is the
    gate that skips the invite; a non-admin or anonymous caller needs a
    valid invite (403 registration disabled / 404 unknown, revoked or
    expired invite token). The same flow is available from the admin panel's
@@ -65,33 +66,32 @@ password}` → 200; the account is always `admin: false` (the body has
 
 - Login: `POST /post/users/authenticate {userId, password}` → 200 + session
   profile `{ userId, admin }` in the body; the 14-day JWT travels in an
-  HttpOnly `Set-Cookie` the page never sees (R5). Unknown user and
-  wrong password both answer 401 with no distinguishing detail, and the
-  unknown-user path still costs one KDF round (no timing oracle).
-- Logout is `POST /post/logout` → 204: it revokes the presented `jti`
-  (the token stops working until its expiry) and clears the cookie
-  server-side (idempotent); the client also drops its session profile and
-  capability tokens. Only the presented device is logged out — other
-  sessions survive.
+  HttpOnly `Set-Cookie` the page never sees (R5). Unknown user and wrong
+  password both answer 401 with no distinguishing detail, and the unknown-user
+  path still costs one KDF round (no timing oracle).
+- Logout is `POST /post/logout` → 204: it revokes the presented `jti` (the
+  token stops working until its expiry) and clears the cookie server-side
+  (idempotent); the client also drops its session profile and capability
+  tokens. Only the presented device is logged out — other sessions survive.
 
 ### J5 — Password change
 
 - Route: `PUT /put/users/password`, guarded by `GuardUser` +
   `GuardReadOnlyMode` + `GuardReauth`. The caller's own password travels in
-  the `X-Picasu-Password` header and is verified (constant-time) against
-  the stored argon2id hash. `oldPassword` stays in the DTO for parse
-  compatibility but no longer authenticates.
+  the `X-Picasu-Password` header and is verified (constant-time) against the
+  stored argon2id hash. `oldPassword` stays in the DTO for parse compatibility
+  but no longer authenticates.
 - Self-service: the caller targets their own id and presents their own
-  password in the header (missing or wrong → 403, with the attempts-left
-  body; budget overstep → 401 with session revocation).
-- Admin reset: an admin targets any user and presents the admin's own
-  password in the header; no old password for the target is needed.
+  password in the header (missing or wrong → 403, with the attempts-left body;
+  budget overstep → 401 with session revocation).
+- Admin reset: an admin targets any user and presents the admin's own password
+  in the header; no old password for the target is needed.
 - Passwords are trimmed on write and on verify (one canonical form).
-- Outstanding sessions die with the change: the new hash and the user's
-  token version are written in one transaction, so every token the target
-  holds is stale and all devices re-login with the new password.
-- Empty new password → 400. There is no "clear to open": the bootstrap
-  window is store-empty only.
+- Outstanding sessions die with the change: the new hash and the user's token
+  version are written in one transaction, so every token the target holds is
+  stale and all devices re-login with the new password.
+- Empty new password → 400. There is no "clear to open": the bootstrap window
+  is store-empty only.
 - Throttling: keyed on `(client-ip, session-jti)`; the kill switch
   `PICASU_RATE_LIMITS=false` bypasses it.
 
@@ -103,17 +103,17 @@ password}` → 200; the account is always `admin: false` (the body has
    gates before the DB re-read).
 3. A demotes self (allowed while other admins exist, with an explicit
    self-demotion confirm in the UI).
-4. Refusals: demoting the sole admin (self or other) → 409; the check and
-   the write are one atomic transaction, so concurrent demotions cannot
-   strand zero admins. Every change writes one audit log line
-   (actor, target, new flag).
+4. Refusals: demoting the sole admin (self or other) → 409; the check and the
+   write are one atomic transaction, so concurrent demotions cannot strand
+   zero admins. Every change writes one audit log line (actor, target, new
+   flag).
 
 ### J7 — Guest access (no login)
 
-- Anonymous share link: `POST /get/prefetch` + `GET /get/get-data` +
-  media serving with `x-album-id`/`x-share-id` headers (or
-  `albumId`/`shareId` query), no cookie. Password-protected shares add the
-  `x-share-password` header.
+- Anonymous share link: `POST /get/prefetch` + `GET /get/get-data` + media
+  serving with `x-album-id`/`x-share-id` headers (or `albumId`/`shareId`
+  query), no cookie. Password-protected shares add the `x-share-password`
+  header.
 - A logged-in non-admin with share headers gets the share's scoped access;
   without them, share-guarded routes are 401. An admin-role user passes
   share-guarded routes without share headers.
@@ -144,12 +144,11 @@ password}` → 200; the account is always `admin: false` (the body has
 - **R2 — enrollment windows are one-shot and non-first.** Only
   `POST /post/users/bootstrap` can create an admin: open while
   `--bootstrap-admin` ∧ empty store, closed afterwards (a second attempt
-  401s). `POST /post/users/register` refuses an empty store whatever the
-  gate that would otherwise pass (admin session, open knob, valid
-  invite). Pinned: bootstrap on a seeded store 401 with the count
-  unchanged, register on an empty store 401 with knob on and with a
-  valid invite, second concurrent bootstrap → exactly one user
-  (first-create race).
+  401s). `POST /post/users/register` refuses an empty store whatever the gate
+  that would otherwise pass (admin session, open knob, valid invite). Pinned:
+  bootstrap on a seeded store 401 with the count unchanged, register on an
+  empty store 401 with knob on and with a valid invite, second concurrent
+  bootstrap → exactly one user (first-create race).
 - **R3 — deny is live, grant needs re-login.** Demotion/removal is honored
   before token expiry (per-request re-read); promotion mints only via fresh
   login. Pinned both directions.
@@ -164,11 +163,11 @@ password}` → 200; the account is always `admin: false` (the body has
   the only exception is the read-only lift itself
   (`POST /post/admin/config/disable-read-only`), gated by `GuardAuth` +
   `GuardReauth` (the admin's password in `X-Picasu-Password`).
-- **R9 — tokens are typed and bound** (`typ`, witness consumption, scope;
-  see `authz-model.md` AUTH-1/4/6–8).
+- **R9 — tokens are typed and bound** (`typ`, witness consumption, scope; see
+  `authz-model.md` AUTH-1/4/6–8).
 - **R10 — privileged operations re-authenticate.** Lifting read-only mode,
-  changing a password, and changing a role require the caller's password
-  proof in `X-Picasu-Password`; a live token alone is insufficient. Pinned:
+  changing a password, and changing a role require the caller's password proof
+  in `X-Picasu-Password`; a live token alone is insufficient. Pinned:
   `backend/src/router/put/users_password.rs` tests
   (`admin_self_change_without_old_is_403`,
   `self_service_with_wrong_old_password_is_403`,
@@ -177,13 +176,19 @@ password}` → 200; the account is always `admin: false` (the body has
   (`disable_read_only_missing_password_403`,
   `disable_read_only_wrong_password_403`), and
   `backend/src/router/put/users_admin.rs` tests
-  (`missing_reauth_password_is_403`,
-  `wrong_reauth_password_is_403`).
-- **R11 — deletion gates and cascade.** `DELETE /delete/users/{user_id}` refuses to leave zero admins (409), atomically with the write; `user_store::delete` and `set_admin_role` share the `Conflict` path. Requires re-auth via `X-Picasu-Password` (403 missing/wrong), refuses while personal photos remain (409 with remedy naming `USERS_HOME/<username>` and lock/remove/revoke shares), cascades owned shares first then deletes identity, and prunes an empty personal album record on success. Pinned by tests in `backend/src/router/delete.rs`.
+  (`missing_reauth_password_is_403`, `wrong_reauth_password_is_403`).
+- **R11 — deletion gates and cascade.** `DELETE /delete/users/{user_id}`
+  refuses to leave zero admins (409), atomically with the write;
+  `user_store::delete` and `set_admin_role` share the `Conflict` path.
+  Requires re-auth via `X-Picasu-Password` (403 missing/wrong), refuses while
+  personal photos remain (409 with remedy naming `USERS_HOME/<username>` and
+  lock/remove/revoke shares), cascades owned shares first then deletes
+  identity, and prunes an empty personal album record on success. Pinned by
+  tests in `backend/src/router/delete.rs`.
 
 - **R12 — bearer tokens are header-only.** `extract_bearer_token` rejects
-  `?token=`; credentials travel only in the `Authorization` header.
-  Pinned: `backend/src/tests/authz.rs`
+  `?token=`; credentials travel only in the `Authorization` header. Pinned:
+  `backend/src/tests/authz.rs`
   (`a_valid_bearer_token_in_the_query_is_refused`).
 - **R13 — media responses are not shared-cacheable.** `/object` serves
   `Cache-Control: private`. Pinned: `backend/src/tests/authz.rs`
@@ -210,16 +215,14 @@ password}` → 200; the account is always `admin: false` (the body has
 
 ## Gaps (no API tests)
 
-- **G2 — read-only 405 untested** for `users/bootstrap`,
-  `users/register`, and `users/password`; login-while-read-only is also
-  unpinned. Only `users/admin` pins 405
-  (`read_only_mode_is_405`).
+- **G2 — read-only 405 untested** for `users/bootstrap`, `users/register`, and
+  `users/password`; login-while-read-only is also unpinned. Only `users/admin`
+  pins 405 (`read_only_mode_is_405`).
 - **G3 — password-protected share flow** end-to-end (share with password →
   correct/wrong/missing `x-share-password`).
 - **G4 — identity-token expiry** → 401 (craft an expired token; timestamp
   tokens have the mint-expired helper, identity tokens do not).
 - **G8 — share-credential callers on register/list/password routes** (only
   set-admin pins the share-headers 401).
-- **G9 — demoted user's share access still works** (by design — share caps
-  are independent; worth pinning so a future change cannot silently couple
-  them).
+- **G9 — demoted user's share access still works** (by design — share caps are
+  independent; worth pinning so a future change cannot silently couple them).

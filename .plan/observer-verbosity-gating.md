@@ -8,14 +8,14 @@ area: backend
 ## Notes
 
 Rename Cargo feature `observe` -> `task-observer`; gate extra observer stats
-behind env-only `PICASU_OBSERVER_STATS` (default-disabled) + `--observer-stats`
-CLI flag. Breach warnings stay on; recording stays always-on when feature
-enabled.
+behind env-only `PICASU_OBSERVER_STATS` (default-disabled) +
+`--observer-stats` CLI flag. Breach warnings stay on; recording stays
+always-on when feature enabled.
 
 ### Decisions
 
-- Feature rename: `observe` -> `task-observer` (kebab-case) in Cargo.toml,
-  cfg attrs, openapi_parity KNOWN_FEATURES, comments.
+- Feature rename: `observe` -> `task-observer` (kebab-case) in Cargo.toml, cfg
+  attrs, openapi_parity KNOWN_FEATURES, comments.
 - Opt-in literal `1` (like `PICASU_WEAK_PWHASH`).
 - `drain_report`: table + info! only when `observer_stats()`; always reset.
 - `emit_wrap`: skip release info! when flag false; debug demotion unchanged.

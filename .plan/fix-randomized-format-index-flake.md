@@ -12,8 +12,8 @@ default-parallel nextest with `Index did not complete within 30000 ms
 (state=running)` at `backend/src/tests/fixtures/wait.rs:33`. Isolated and
 `-j 1` runs pass. Upload always 200; only the index wait times out.
 
-Goal: eliminate the parallel-only flake, prove slow-under-load vs stuck,
-drive `just test` green, open scoped PR.
+Goal: eliminate the parallel-only flake, prove slow-under-load vs stuck, drive
+`just test` green, open scoped PR.
 
 Steps:
 

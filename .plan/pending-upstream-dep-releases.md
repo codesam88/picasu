@@ -7,15 +7,16 @@ area: devops
 
 ## Notes
 
-Two dependency shims/waivers exist only because their fixes are merged upstream
-but unreleased. When the releases land, remove the shims and their waivers in
-the same change. Both waits are external; check upstream before starting.
+Two dependency shims/waivers exist only because their fixes are merged
+upstream but unreleased. When the releases land, remove the shims and their
+waivers in the same change. Both waits are external; check upstream before
+starting.
 
 ### 1. quick-xml >= 0.41 (RUSTSEC-2026-0194 / -0195)
 
-- Blocker: xmpkit pins `quick-xml ^0.40`; published latest is 0.1.6.
-  Upstream main already requires 0.41 (dependabot PR to 0.42 open); release
-  tracked in cavivie/xmpkit issue #138 ("chore: release v0.1.7").
+- Blocker: xmpkit pins `quick-xml ^0.40`; published latest is 0.1.6. Upstream
+  main already requires 0.41 (dependabot PR to 0.42 open); release tracked in
+  cavivie/xmpkit issue #138 ("chore: release v0.1.7").
 - Verified 2026-10-09: xmpkit 0.1.6 compiles against quick-xml 0.41.0 with
   zero source changes (probe in /tmp), so 0.1.7 should be drop-in. 0.41.0's
   changelog contains only the two advisory fixes + one new feature.
@@ -35,9 +36,9 @@ the same change. Both waits are external; check upstream before starting.
 - On release: `cargo update -p pulp -p rav1e` (confirm `paste` left
   `Cargo.lock`), delete `utils/paste-shim/` and the root
   `[patch.crates-io] paste` line.
-- Note: the shim does not hide the advisory from OSV (name+version match);
-  its value is compiling maintained `pastey`. deny.toml has no 2024-0436
-  entry — it was removed when the shim landed; do not re-add one.
+- Note: the shim does not hide the advisory from OSV (name+version match); its
+  value is compiling maintained `pastey`. deny.toml has no 2024-0436 entry —
+  it was removed when the shim landed; do not re-add one.
 
 ### Checks for either change
 

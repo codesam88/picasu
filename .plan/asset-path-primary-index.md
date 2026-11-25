@@ -11,8 +11,8 @@ area: backend
 
 The original data model used the content hash as the primary asset identity.
 One database record could contain several filesystem aliases. This coupled
-deduplication, filesystem identity, album membership, thumbnail ownership,
-and API presentation.
+deduplication, filesystem identity, album membership, thumbnail ownership, and
+API presentation.
 
 That caused observable ambiguity:
 
@@ -46,11 +46,11 @@ ASSET_BY_ID[asset_id] -> {
 DUPE_INDEX[blake_hash] -> { asset_id1, asset_id2, ... }
 ```
 
-`ASSET_BY_PATH` is the authoritative unique path constraint, not a second
-copy of the asset record. `ASSET_BY_ID` is the normal API and mutation lookup.
-The canonical path appears in both the path key and the asset record because
-the record must resolve the current file without scanning the path index; this
-is limited, intentional denormalization. Both entries must be updated and
+`ASSET_BY_PATH` is the authoritative unique path constraint, not a second copy
+of the asset record. `ASSET_BY_ID` is the normal API and mutation lookup. The
+canonical path appears in both the path key and the asset record because the
+record must resolve the current file without scanning the path index; this is
+limited, intentional denormalization. Both entries must be updated and
 consistency-checked together.
 
 Albums are a kind of asset in the same path/ID namespace:
@@ -80,8 +80,8 @@ Content deduplication remains available for:
 - sharing thumbnails or other content-derived objects;
 - reverse lookup of all assets with the same content.
 
-Deduplication no longer merges independent filesystem files into one
-presented asset record.
+Deduplication no longer merges independent filesystem files into one presented
+asset record.
 
 ## Why This Design
 
@@ -122,8 +122,8 @@ Existing structures to inventory and revise, rather than replace blindly:
 
 - `DATA_TABLE` and `TREE`: currently hash-keyed records and in-memory tree
   construction.
-- `FlushTreeTask` and all insert/remove/update callers: primary-key changes and
-  multi-index updates.
+- `FlushTreeTask` and all insert/remove/update callers: primary-key changes
+  and multi-index updates.
 - `DeduplicateTask`: stop merging aliases into the existing asset; create or
   update the independent path asset and update `DUPE_INDEX`.
 - Album/path handling in `process/dir_album.rs`: preserve canonical directory
@@ -147,8 +147,8 @@ Existing structures to inventory and revise, rather than replace blindly:
 
 Additional concrete identity consumers found during the audit:
 
-- `storage/cache.rs`, `model/response.rs`, and `process/transitor.rs` store and
-  resolve snapshot positions as hashes;
+- `storage/cache.rs`, `model/response.rs`, and `process/transitor.rs` store
+  and resolve snapshot positions as hashes;
 - `router/get/get_img.rs` resolves originals by hash and first alias;
 - `router/auth.rs` creates and validates hash-bound tokens;
 - `router/delete.rs`, `router/put/assign_album.rs`, edit routes, rotation, and
@@ -163,8 +163,8 @@ These are required refactor sites, not optional compatibility cleanup.
 
 The existing Redb layout must be versioned explicitly. The current value
 serialization version is not a database migration mechanism: changing the
-`AbstractData` value does not split one hash record into several path assets or
-create new tables.
+`AbstractData` value does not split one hash record into several path assets
+or create new tables.
 
 The minimum durable structures are:
 
@@ -211,8 +211,8 @@ selected database engine. Low-selectivity boolean fields may be better handled
 by snapshots or residual filtering rather than separate indexes. Do not add
 one durable index per response filter without a concrete query requirement.
 
-`ASSET_BY_PATH` is a narrow unique lookup/constraint, not a second copy of
-the asset record. `ASSET_BY_ID` is the normal API and mutation lookup. The
+`ASSET_BY_PATH` is a narrow unique lookup/constraint, not a second copy of the
+asset record. `ASSET_BY_ID` is the normal API and mutation lookup. The
 canonical path appears in both the path key and the asset record because the
 asset record must be able to resolve the current file without scanning the
 path index; this is limited, intentional denormalization. The two values must
@@ -239,15 +239,15 @@ records remain independently addressable even when they share one hash.
 The canonical path index is the unique filesystem constraint. The asset-ID
 table is the normal API lookup. Both must be updated in the same durable
 transaction or through replayable journal state. Path normalization must
-define relative/absolute representation, separators, case sensitivity,
-Unicode normalization, symlink policy, and containment under `IMAGE_PATH`.
+define relative/absolute representation, separators, case sensitivity, Unicode
+normalization, symlink policy, and containment under `IMAGE_PATH`.
 
 ## Database Engine Status
 
 Engine selection is intentionally deferred to the idea-level task
 `.plan/database-engine-evaluation.md`. The asset design must not currently
-assume that Redb requires bespoke query planning, recovery, or journaling code;
-those are questions to verify against the actual workload and documented
+assume that Redb requires bespoke query planning, recovery, or journaling
+code; those are questions to verify against the actual workload and documented
 engine behavior.
 
 Backward compatibility is not a goal for this redesign. A new database
@@ -442,10 +442,10 @@ contracts:
 - moving one duplicate leaves the other path and API item untouched;
 - deleting one duplicate leaves the other file, record, and shared thumbnail;
 - deleting the final duplicate removes generated state when policy allows;
-- path, tag, trash, album, and duplicate queries return the expected asset
-  IDs after moves;
-- API responses and mutations no longer require hashes or surfaced alias
-  paths as identity.
+- path, tag, trash, album, and duplicate queries return the expected asset IDs
+  after moves;
+- API responses and mutations no longer require hashes or surfaced alias paths
+  as identity.
 
 ### UI scenarios
 
@@ -484,8 +484,8 @@ Current contract tests added before the replacement implementation:
   returned one merged media item plus the album discovery fixture.
 - `frontend/tests/playwright/scenarios/duplicate-files-visible-independently.yaml`
   asserts that two identical uploads remain as two grid items after a fresh
-  route load. It failed because the frontend received one merged
-  duplicate item.
+  route load. It failed because the frontend received one merged duplicate
+  item.
 
 Independent duplicate move/delete scenarios are intentionally deferred until
 the asset-ID response and mutation contract is fixed. Writing those scenarios
@@ -493,29 +493,37 @@ against the current `hash + alias` request shape would preserve the ambiguity
 the replacement implementation is intended to remove.
 
 These scenarios are acceptance tests for the replacement implementation. The
-hash-primary failures were intentional evidence of behavior that the
-new implementation had to change.
+hash-primary failures were intentional evidence of behavior that the new
+implementation had to change.
 
 ## Closure note (2026-09-23)
 
-Implemented in full via `path-primary-asset-execution.md` (all phases done, commits `16467741` + `33354c27`),
-followed by the names/docs/structure cleanup in `design-sweep-and-structure-collapse.md` (`0c9d4ea3` through
-`65f16c95`). Gates at closure:
-`just check` 0, `just test` 0 — backend 263, utils 24, vitest 65, playwright 34.
+Implemented in full via `path-primary-asset-execution.md` (all phases done,
+commits `16467741` + `33354c27`), followed by the names/docs/structure cleanup
+in `design-sweep-and-structure-collapse.md` (`0c9d4ea3` through `65f16c95`).
+Gates at closure: `just check` 0, `just test` 0 — backend 263, utils 24,
+vitest 65, playwright 34.
 
 Open questions resolved by the implementation:
 
-- **asset_id allocation:** random (`generate_random_hash`), not path-derived — stable across moves/renames; path→id is a
-  separate `ASSET_BY_PATH` mapping.
-- **asset-specific vs content-shared:** lean `AssetRecord` (id, path, kind, size, times, album) is asset-specific;
-  content-shared state is `content_hash` + `DUPE_INDEX` group + the shared compressed thumbnail keyed by hash.
-- **thumbnail sharing:** automatic while a `DUPE_INDEX` group has >1 member; removed with the last member
-  (`remove_compressed_thumbnail` group check, pinned by `dup_delete_preserves_shared_thumbnail`).
-- **duplicate representation:** `DUPE_INDEX` only — no dedicated duplicate-management table.
-- **category indexes:** filtering is a full in-memory tree scan plus per-timestamp/count query-snapshot caches; no
-  durable tag/category index (deferred, see execution plan Phase 14).
-- **rebuild authority:** the filesystem is authoritative; `.albuminfo`/XMP sidecars enrich album metadata on write;
-  `rebuild_from_filesystem` derives album membership from parent directories.
+- **asset_id allocation:** random (`generate_random_hash`), not path-derived —
+  stable across moves/renames; path→id is a separate `ASSET_BY_PATH` mapping.
+- **asset-specific vs content-shared:** lean `AssetRecord` (id, path, kind,
+  size, times, album) is asset-specific; content-shared state is
+  `content_hash` + `DUPE_INDEX` group + the shared compressed thumbnail keyed
+  by hash.
+- **thumbnail sharing:** automatic while a `DUPE_INDEX` group has >1 member;
+  removed with the last member (`remove_compressed_thumbnail` group check,
+  pinned by `dup_delete_preserves_shared_thumbnail`).
+- **duplicate representation:** `DUPE_INDEX` only — no dedicated
+  duplicate-management table.
+- **category indexes:** filtering is a full in-memory tree scan plus
+  per-timestamp/count query-snapshot caches; no durable tag/category index
+  (deferred, see execution plan Phase 14).
+- **rebuild authority:** the filesystem is authoritative; `.albuminfo`/XMP
+  sidecars enrich album metadata on write; `rebuild_from_filesystem` derives
+  album membership from parent directories.
 
-Initial Validation scenarios listed here as intentionally red are now green: `duplicate_files_are_independent_album_items`
-and the Playwright `duplicate-files-*` suite pass in every full gate.
+Initial Validation scenarios listed here as intentionally red are now green:
+`duplicate_files_are_independent_album_items` and the Playwright
+`duplicate-files-*` suite pass in every full gate.

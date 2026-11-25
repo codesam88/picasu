@@ -29,10 +29,12 @@ Move all image-generation code from `xtask/src/test_image.rs` into a new crate
 `utils/snapfab` with both `[lib]` and `[[bin]]` targets.
 
 - Add `utils/snapfab` to workspace `members` in root `Cargo.toml`
-- Update `backend/Cargo.toml` dev-dependency: `xtask` → `snapfab = { path = "../utils/snapfab" }`
-- Update all `use xtask::test_image::…` imports in `backend/src/tests/` to `use snapfab::…`
-- Update `executeGiven.ts` spawn call:
-  `['xtask', 'test-image', 'batch', '-']` → `['run', '-p', 'snapfab', '--quiet', '--', 'batch', '-']`
+- Update `backend/Cargo.toml` dev-dependency: `xtask` →
+  `snapfab = { path = "../utils/snapfab" }`
+- Update all `use xtask::test_image::…` imports in `backend/src/tests/` to
+  `use snapfab::…`
+- Update `executeGiven.ts` spawn call: `['xtask', 'test-image', 'batch', '-']`
+  → `['run', '-p', 'snapfab', '--quiet', '--', 'batch', '-']`
 - Update justfile references to `cargo xtask test-image` accordingly
 
 ### 2. Extract `utils/plan`
@@ -84,10 +86,10 @@ and propagate it through `generate_photo`.
 
 ## Update `executeGiven.ts`
 
-Pass `minimal: true` in every spec emitted for playwright tests (all entries in
-`photoManifest` constructed from `photo` and `dir_album` given items). The
-`photo_raw` path in `executeGiven.ts` that intentionally leaves files unindexed
-should also use minimal mode.
+Pass `minimal: true` in every spec emitted for playwright tests (all entries
+in `photoManifest` constructed from `photo` and `dir_album` given items). The
+`photo_raw` path in `executeGiven.ts` that intentionally leaves files
+unindexed should also use minimal mode.
 
 ## Non-goals
 
@@ -113,6 +115,8 @@ should also use minimal mode.
 
 ## Progress
 
-- 2026-09-24: Closed. Scope items 1, 3, 4, and `executeGiven.ts` landed as specified (`utils/snapfab`, `xtask/` removed,
-  `PhotoSpec.minimal`, spawn via `cargo run -p snapfab`). Scope item 2 (`utils/plan`) was not built: the plan CLI now
-  comes from the external `tablethat` tool (see `.cargo/config.toml` and justfile install recipe).
+- 2026-09-24: Closed. Scope items 1, 3, 4, and `executeGiven.ts` landed as
+  specified (`utils/snapfab`, `xtask/` removed, `PhotoSpec.minimal`, spawn via
+  `cargo run -p snapfab`). Scope item 2 (`utils/plan`) was not built: the plan
+  CLI now comes from the external `tablethat` tool (see `.cargo/config.toml`
+  and justfile install recipe).

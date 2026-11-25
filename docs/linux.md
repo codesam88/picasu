@@ -14,10 +14,10 @@ This will create a folder called `./picasu`.
 
 ### 2. Install Dependencies
 
-**Development and tests run against pinned versions.** The external
-binaries the test suite needs are installed from a pinned release with a
-checked digest, so a test run is reproducible and the version the tests
-exercise is the version the release workflow packages:
+**Development and tests run against pinned versions.** The external binaries
+the test suite needs are installed from a pinned release with a checked
+digest, so a test run is reproducible and the version the tests exercise is
+the version the release workflow packages:
 
 ```bash
 just setup-dev    # installs every pinned tool, including ffmpeg and ExifTool
@@ -43,12 +43,12 @@ just setup-dev    # installs every pinned tool, including ffmpeg and ExifTool
   ```
 
   A distribution's package works too (Debian/Ubuntu:
-  `sudo apt install libimage-exiftool-perl`), but then the tested ExifTool
-  and the developer's can differ.
+  `sudo apt install libimage-exiftool-perl`), but then the tested ExifTool and
+  the developer's can differ.
 
 **A deployment does not need either of these.** The server needs ffmpeg at
-runtime and nothing else; see [Deploying a release](#deploying-a-release)
-for the recommended way to get it.
+runtime and nothing else; see [Deploying a release](#deploying-a-release) for
+the recommended way to get it.
 
 - **Rust**: Install Rust using the official installer:
 
@@ -63,7 +63,9 @@ for the recommended way to get it.
   sudo apt install -y nodejs npm
   ```
 
-  For other Linux distributions, use the appropriate package manager (e.g., `dnf`, `yum`, `pacman`) and find the corresponding package name for installation.
+  For other Linux distributions, use the appropriate package manager (e.g.,
+  `dnf`, `yum`, `pacman`) and find the corresponding package name for
+  installation.
 
 ---
 
@@ -79,13 +81,16 @@ npm run build
 
 ### 4. Run the Application
 
-Navigate to the `backend` directory and run the following command to start the app:
+Navigate to the `backend` directory and run the following command to start the
+app:
 
 ```bash
 cargo run --release
 ```
 
-You can now access the app via [http://127.0.0.1:5673](http://127.0.0.1:5673) or [http://127.0.0.1](http://127.0.0.1):\<your_port> if you configured a custom port in Rocket.toml.
+You can now access the app via [http://127.0.0.1:5673](http://127.0.0.1:5673)
+or [http://127.0.0.1](http://127.0.0.1):\<your_port> if you configured a
+custom port in Rocket.toml.
 
 ---
 
@@ -98,8 +103,8 @@ A release publishes two packages:
 | `picasu-linux-<version>.tar.gz`      | the server                            | you install ffmpeg from your own distribution |
 | `picasu-linux-<version>-bundled.tgz` | the server + the pinned static ffmpeg | you want the exact build the release tested   |
 
-**The plain package is the recommended one.** The only runtime dependency
-is ffmpeg, and your distribution ships a version it supports and updates:
+**The plain package is the recommended one.** The only runtime dependency is
+ffmpeg, and your distribution ships a version it supports and updates:
 
 ```bash
 sudo apt update && sudo apt install -y ffmpeg   # Debian/Ubuntu
@@ -116,8 +121,8 @@ cd picasu-linux
 
 The bundled package is the alternative for a host without a package manager
 for ffmpeg, or when the exact tested build matters more than the
-distribution's. It carries the pinned static ffmpeg and ffprobe in `bin/`,
-so the server finds them next to itself:
+distribution's. It carries the pinned static ffmpeg and ffprobe in `bin/`, so
+the server finds them next to itself:
 
 ```bash
 tar -xzf picasu-linux-<version>-bundled.tgz
@@ -126,8 +131,8 @@ PATH="$PWD/bin:$PATH" ./picasu
 ```
 
 The bundled ffmpeg is a fixed version: it does not move with your
-distribution's security updates, which is the reason the plain package is
-the default.
+distribution's security updates, which is the reason the plain package is the
+default.
 
 ---
 
@@ -171,4 +176,5 @@ git pull
    cargo run --release
    ```
 
-After following these steps, your Picasu app will be updated to the latest version.
+After following these steps, your Picasu app will be updated to the latest
+version.

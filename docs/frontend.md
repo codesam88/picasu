@@ -2,7 +2,8 @@
 
 ## Stack Overview
 
-The frontend is a **Vue 3 single-page application** written in **TypeScript**, built with **Vite**.
+The frontend is a **Vue 3 single-page application** written in **TypeScript**,
+built with **Vite**.
 
 | Layer             | Technology              | Role                                              |
 | ----------------- | ----------------------- | ------------------------------------------------- |
@@ -29,42 +30,54 @@ Every UI piece is a `.vue` file with three sections:
 <style>      ← Scoped CSS
 ```
 
-The `<template>` is **reactive**: any variable from `<script>` that changes causes the DOM to update automatically. You never call render() manually.
+The `<template>` is **reactive**: any variable from `<script>` that changes
+causes the DOM to update automatically. You never call render() manually.
 
 ### Reactive Primitives
 
 Three building blocks from Vue:
 
-- **`ref(value)`** — a box holding one value. Read it with `.value`; write to `.value` to trigger a re-render.
-- **`computed(() => expr)`** — a cached derived value. Recomputes automatically when its dependencies change. Read-only unless you define a getter+setter.
-- **`watch(source, fn)`** — runs a side-effect function whenever `source` changes.
+- **`ref(value)`** — a box holding one value. Read it with `.value`; write to
+  `.value` to trigger a re-render.
+- **`computed(() => expr)`** — a cached derived value. Recomputes
+  automatically when its dependencies change. Read-only unless you define a
+  getter+setter.
+- **`watch(source, fn)`** — runs a side-effect function whenever `source`
+  changes.
 
 ### Props and Events
 
-Components communicate downward via **props** (parent passes data to child) and upward via **emits** (child signals events to parent). In this codebase, Pinia stores are used heavily instead of prop-drilling for shared state.
+Components communicate downward via **props** (parent passes data to child)
+and upward via **emits** (child signals events to parent). In this codebase,
+Pinia stores are used heavily instead of prop-drilling for shared state.
 
 ---
 
 ## How Vue Router Works
 
-Vue Router maps URLs to components. This app uses **nested routes**: a parent component stays on screen while a child component renders inside it.
+Vue Router maps URLs to components. This app uses **nested routes**: a parent
+component stays on screen while a child component renders inside it.
 
 ### `<router-view>`
 
-A `<router-view>` tag in a component's template is a **slot** where the router inserts the matched child component.
+A `<router-view>` tag in a component's template is a **slot** where the router
+inserts the matched child component.
 
 ### `useRoute()` / `useRouter()`
 
-- `useRoute()` — returns the current route object: `.params`, `.query`, `.meta`, `.name`. Reactive; updates when the URL changes.
+- `useRoute()` — returns the current route object: `.params`, `.query`,
+  `.meta`, `.name`. Reactive; updates when the URL changes.
 - `useRouter()` — returns the router instance for programmatic navigation.
 
 ---
 
 ## How Pinia Stores Work
 
-A **store** is a globally shared reactive object. Any component can read or write it; changes propagate to all components that use it.
+A **store** is a globally shared reactive object. Any component can read or
+write it; changes propagate to all components that use it.
 
-In this codebase every store is **keyed by isolationId** so the main grid and the album grid each get their own independent instance:
+In this codebase every store is **keyed by isolationId** so the main grid and
+the album grid each get their own independent instance:
 
 ```
 useDataStore('mainId')  // one store instance for the level-1 page
@@ -77,7 +90,10 @@ Same store name + same ID = same singleton. Different ID = different instance.
 
 ## How Vuetify's `v-overlay` Works
 
-`v-overlay` is a full-screen layer that renders **outside the normal component tree** (Vuetify teleports it to `<body>`). It stacks visually using z-index. Levels 2, 3, and 4 each render as overlays. Closing the overlay (ESC or back gesture) calls `router.back()`, which pops the URL back one level.
+`v-overlay` is a full-screen layer that renders **outside the normal component
+tree** (Vuetify teleports it to `<body>`). It stacks visually using z-index.
+Levels 2, 3, and 4 each render as overlays. Closing the overlay (ESC or back
+gesture) calls `router.back()`, which pops the URL back one level.
 
 ---
 
@@ -101,9 +117,9 @@ route structure, parameterized by `baseName`:
 - `share` — 2 levels (`/share/:albumId-:shareId` and
   `/share/:albumId-:shareId/view/:assetId`, child name `shareViewPage`)
 - `tags`, `config`, `links`, `login`, `register` — flat single pages
-  (`register` is the first-admin enrollment screen; the boot guard
-  routes there only when the anonymous `GET /get/server-info` ping
-  reports `enrolled: false` + `enrollmentOpen: true`)
+  (`register` is the first-admin enrollment screen; the boot guard routes
+  there only when the anonymous `GET /get/server-info` ping reports
+  `enrolled: false` + `enrollmentOpen: true`)
 
 ---
 
@@ -140,11 +156,13 @@ App.vue
 
 ### Home.vue
 
-The reusable infinite-scroll photo grid. Used at both level 1 (main page) and level 3 (inside an album).
+The reusable infinite-scroll photo grid. Used at both level 1 (main page) and
+level 3 (inside an album).
 
 - **Props:** `basicString` (filter query), `isolation-id`, `searchString`
 - **Contains:** a `<router-view>` that the next overlay level renders into
-- **Key behavior:** calls `usePrefetch` on mount to fetch rows from the backend
+- **Key behavior:** calls `usePrefetch` on mount to fetch rows from the
+  backend
 
 ### ViewPage.vue
 
@@ -160,15 +178,19 @@ Shown inside `ViewPage.vue` when the current item is an album.
 
 - Shows cover image and metadata card
 - Shows an **"Enter Album"** button at level 2, which navigates to level 3
-- Contains a `<router-view>` — this is how `HomeIsolated` (level 3) renders on top
+- Contains a `<router-view>` — this is how `HomeIsolated` (level 3) renders on
+  top
 
 ### HomeIsolated.vue
 
-Level 3 component: a full-screen v-overlay wrapping `Home.vue` with a filter scoped to one album.
+Level 3 component: a full-screen v-overlay wrapping `Home.vue` with a filter
+scoped to one album.
 
 ### HomeTemp.vue
 
-A third overlay scope (`isolation-id="tempId"`) used for the move-to-album selection dialog. Provides a separate grid instance for browsing albums during item moves.
+A third overlay scope (`isolation-id="tempId"`) used for the move-to-album
+selection dialog. Provides a separate grid instance for browsing albums during
+item moves.
 
 ---
 
@@ -182,9 +204,13 @@ A third overlay scope (`isolation-id="tempId"`) used for the move-to-album selec
 | `prefetchStore`   | `mainId`/`subId` | Scroll/prefetch state for each grid                                                       |
 | `collectionStore` | `mainId`/`subId` | Selected items (edit mode)                                                                |
 
-`albumStore('mainId')` is fetched once per session and contains every album including sub-albums. `dataStore` only contains what the current page's `basicString` filter returns.
+`albumStore('mainId')` is fetched once per session and contains every album
+including sub-albums. `dataStore` only contains what the current page's
+`basicString` filter returns.
 
-Additional stores exist for configuration (`configStore`), messages (`messageStore`), uploads (`uploadStore`), tags (`tagStore`), and other concerns — ~28 stores total.
+Additional stores exist for configuration (`configStore`), messages
+(`messageStore`), uploads (`uploadStore`), tags (`tagStore`), and other
+concerns — ~28 stores total.
 
 ---
 
@@ -213,7 +239,8 @@ Additional stores exist for configuration (`configStore`), messages (`messageSto
 
 ## Filter System
 
-Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`). Each page sets a `basicString` that determines what `dataStore` contains:
+Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`).
+Each page sets a `basicString` that determines what `dataStore` contains:
 
 | Page         | basicString                                                 |
 | ------------ | ----------------------------------------------------------- |
@@ -224,7 +251,8 @@ Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`). Each
 | VideosPage   | `and(type:"video", trashed:false)`                          |
 | HomeIsolated | `and(trashed:false, or(album:"<id>", parent_album:"<id>"))` |
 
-`parent_album:"<id>"` matches album objects whose directory parent is the given album. It is always false for images/videos.
+`parent_album:"<id>"` matches album objects whose directory parent is the
+given album. It is always false for images/videos.
 
 ---
 
@@ -260,4 +288,7 @@ The config page at `ConfigPage.vue` contains:
 | `/post/index/album`   | `StorageAndSync.vue` (scan trigger) | —                              |
 | `/post/index/cancel`  | `StorageAndSync.vue` (cancel scan)  | —                              |
 
-The grid uses a Web Worker (`toDataWorker.ts`) to fetch item batches via `/get/get-data` without blocking the UI. The layout calculation (`/get/get-rows`) runs first and determines how many rows exist; the worker then fills them in on demand as the user scrolls.
+The grid uses a Web Worker (`toDataWorker.ts`) to fetch item batches via
+`/get/get-data` without blocking the UI. The layout calculation
+(`/get/get-rows`) runs first and determines how many rows exist; the worker
+then fills them in on demand as the user scrolls.

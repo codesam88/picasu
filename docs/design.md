@@ -5,14 +5,18 @@
 ### Galleries come and go - photos do not
 
 - option to keep original photos totally untouched (R/O)
-- keep added metadata in interoperable formats (adjust folders, add xmp sidecars,...?)
-- sufficient to backup the photo repo, no worry about DB consistency/versioning
+- keep added metadata in interoperable formats (adjust folders, add xmp
+  sidecars,...?)
+- sufficient to backup the photo repo, no worry about DB
+  consistency/versioning
 
 ### Design around specific use cases and support them well
 
 - personal photo gallery and backup
-  - upload pre-processed photos directly to target albums (file sharing with global write access)
-  - upload to configured ingress folder (automated via app or filesharing, sort/manage via gallery, no global write API)
+  - upload pre-processed photos directly to target albums (file sharing with
+    global write access)
+  - upload to configured ingress folder (automated via app or filesharing,
+    sort/manage via gallery, no global write API)
 
 - shared gallery with trusted family and friends
   - manage users and private/shared album access, including to ingress folder
@@ -21,7 +25,8 @@
 
 ### Keep it robust, low footprint, modular
 
-- best practice devops: memory safe languages, static checks, code smell, depency audits
+- best practice devops: memory safe languages, static checks, code smell,
+  depency audits
 - backend fully self-contained, API supports scripting and alternate frontends
 - frontend should focus on major supported use cases, clean and simple
 
@@ -48,9 +53,9 @@ a hash.
 The distinction between these operations is important:
 
 - **Index/ingest** discovers files and never moves or deletes existing files.
-- **Move** moves the selected media file and its sidecar to another album.
-  On filename conflict the file is either left in place (`skip`) or moved
-  under a unique name (`rename`). No file is ever overwritten.
+- **Move** moves the selected media file and its sidecar to another album. On
+  filename conflict the file is either left in place (`skip`) or moved under a
+  unique name (`rename`). No file is ever overwritten.
 
 The backend manages metadata and thumbnails in `STATE_HOME`, and writes
 user-authored photo metadata back to the repository as sidecar XMP files.
@@ -65,23 +70,22 @@ app's other managed properties), so it is rebuilt with the record instead of
 dying with the database cache. The database remains a cache of the file plus
 its sidecar for those fields; it is never the only copy.
 
-User identity follows the same rule with the roles swapped: the account
-record (`<DATA_HOME>/auth/users.redb` — id, password hash, role, home) is
-the persistent copy and the only one; the gallery index database holds
-nothing about it. What the index database keeps for authentication is
-runtime state — the capabilities that must not work any more (a logged-out
-session, a redeemed invite) — and that state is disposable: losing it
-revokes nothing that matters, because the tokens it describes are already
-dead. A token is a self-contained capability: it carries the role, the
-expiry and the user's token version, so the server never has to remember
-that a session exists.
+User identity follows the same rule with the roles swapped: the account record
+(`<DATA_HOME>/auth/users.redb` — id, password hash, role, home) is the
+persistent copy and the only one; the gallery index database holds nothing
+about it. What the index database keeps for authentication is runtime state —
+the capabilities that must not work any more (a logged-out session, a redeemed
+invite) — and that state is disposable: losing it revokes nothing that
+matters, because the tokens it describes are already dead. A token is a
+self-contained capability: it carries the role, the expiry and the user's
+token version, so the server never has to remember that a session exists.
 
 Database updates and filesystem operations are not one atomic transaction. A
 journal records the intended filesystem operation and its progress; startup
-recovery and indexing rebuild or reconcile generated state from the repository.
-No operation may report success until its required filesystem changes are
-durable, and a partial operation must remain visible for repair rather than
-silently deleting user files.
+recovery and indexing rebuild or reconcile generated state from the
+repository. No operation may report success until its required filesystem
+changes are durable, and a partial operation must remain visible for repair
+rather than silently deleting user files.
 
 #### Identity and serving invariants
 
@@ -108,7 +112,8 @@ surfaces require the others to be regenerated or checked together.
 
   - Folder indexing via `index_path(src)`
     - src path must be relative to `IMAGE_HOME`
-    - loop recursively over src path and execute `index_image(src)` on every image file
+    - loop recursively over src path and execute `index_image(src)` on every
+      image file
 
 - On re-indexing, images with an existing hash may be grouped in the generated
   index and share thumbnails. Every physical file remains visible in its
@@ -129,9 +134,9 @@ surfaces require the others to be regenerated or checked together.
   another indexed file or its metadata.
 
 - The duplicate view groups files by hash and shows their paths, albums,
-  sidecars, and metadata differences. Per-group cleanup actions are an explicit,
-  separate operation with preview and recovery; they must never run as a side
-  effect of moving or uploading files.
+  sidecars, and metadata differences. Per-group cleanup actions are an
+  explicit, separate operation with preview and recovery; they must never run
+  as a side effect of moving or uploading files.
 
 ### Moving / Deleting
 
@@ -142,8 +147,8 @@ surfaces require the others to be regenerated or checked together.
 
 - Filename conflicts never overwrite bytes or sidecars. `skip` leaves both
   source and destination untouched. `rename` moves the source under a
-  deterministic unique name (`photo-001.jpg`, then `photo-002.jpg`) and reports
-  the final path.
+  deterministic unique name (`photo-001.jpg`, then `photo-002.jpg`) and
+  reports the final path.
 
 - A selected file may be deleted explicitly. The file and its sidecar are
   removed only after confirmation. Generated records and thumbnails may remain
@@ -155,16 +160,16 @@ surfaces require the others to be regenerated or checked together.
   sidecar. The trash flag is durable — the app writes it into the sidecar as
   the managed `picasu:Trashed` property (albums record it in
   `.albuminfo.xmp`), and a rebuild reads it back, because the filesystem
-  cannot otherwise express "the file is still here on purpose". Only an
-  item whose file is gone is deleted outright; trashing never deletes, and
-  a rebuild of generated state never resurrects a file but does keep a
-  trashed file trashed.
+  cannot otherwise express "the file is still here on purpose". Only an item
+  whose file is gone is deleted outright; trashing never deletes, and a
+  rebuild of generated state never resurrects a file but does keep a trashed
+  file trashed.
 
 - Moving a directory into a target with the same child name is a single
   `fs::rename` operation. `skip` leaves both source and target untouched.
-  `rename` moves the source directory under a unique sibling name. No recursive
-  directory merge or file flattening occurs. The source directory is always
-  moved as one unit.
+  `rename` moves the source directory under a unique sibling name. No
+  recursive directory merge or file flattening occurs. The source directory is
+  always moved as one unit.
 
 - Directory indexing and the watcher do not move files. They reconcile the
   index with the filesystem and report changes for explicit operations.
@@ -186,10 +191,8 @@ surfaces require the others to be regenerated or checked together.
 
 - Initial album names are derived from the respective path names
 - Users may move albums, set the pretty name and set the album image
-- Album properties are saved per directory in a file .albuminfo:
-  albumimage = path/to/image
-  albumname = pretty name
-  albumnotes = {markdown text?}
+- Album properties are saved per directory in a file .albuminfo: albumimage =
+  path/to/image albumname = pretty name albumnotes = {markdown text?}
 
 ### Photo Properties
 
@@ -207,7 +210,8 @@ surfaces require the others to be regenerated or checked together.
 - integrate/interoperate port knocking
 
 - stories - generate virtual albums (tags?) based on similar location/date
-- streams - support social streaming and sharing endpoints (activitypub? chatbots?)
+- streams - support social streaming and sharing endpoints (activitypub?
+  chatbots?)
 
 - storage and transfer optimizations
   - push compressed images on mobile, replace with high-res original later

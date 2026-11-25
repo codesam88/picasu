@@ -5,64 +5,83 @@ priority: medium
 area: testing
 ---
 
-Remaining filename-sanitization corner cases to test, raised in PR \#17 review (2026-09-07). Existing coverage: 16 unit
-tests on `sanitize_filename` (`backend/src/process/sanitize.rs`, `mod tests`) and 5 backend YAML scenarios
-(`upload_auto_rename_*`, `upload_path_traversal`). Gaps below are untested; some also expose undecided behavior.
+Remaining filename-sanitization corner cases to test, raised in PR \#17 review
+(2026-09-07). Existing coverage: 16 unit tests on `sanitize_filename`
+(`backend/src/process/sanitize.rs`, `mod tests`) and 5 backend YAML scenarios
+(`upload_auto_rename_*`, `upload_path_traversal`). Gaps below are untested;
+some also expose undecided behavior.
 
 ## Corner-case gaps
 
-1. **Control characters are not filtered at all.** `is_forbidden_filename_char` (`sanitize.rs:50`) strips tier-0
-   separators/null, tier-1 Windows chars, tier-2 noncharacters/zero-width/bidi — but not C0 (`\u{0001}`–`\u{001F}`),
-   DEL (`\u{007F}`), or C1 (`\u{0080}`–`\u{009F}`). A filename containing `\n` or `\u{0001}` passes through.
-   `sanitize_text` filters these via `is_valid_xml_char`; decide whether `sanitize_filename` should too, then pin with a
-   test. (Untested behavior, not necessarily a defect.)
+1. **Control characters are not filtered at all.**
+   `is_forbidden_filename_char` (`sanitize.rs:50`) strips tier-0
+   separators/null, tier-1 Windows chars, tier-2 noncharacters/zero-width/bidi
+   — but not C0 (`\u{0001}`–`\u{001F}`), DEL (`\u{007F}`), or C1
+   (`\u{0080}`–`\u{009F}`). A filename containing `\n` or `\u{0001}` passes
+   through. `sanitize_text` filters these via `is_valid_xml_char`; decide
+   whether `sanitize_filename` should too, then pin with a test. (Untested
+   behavior, not necessarily a defect.)
 
-2. **`resolve_filename` (`post_upload.rs:74`) has no unit tests** — only integration coverage via the YAML scenarios.
-   Needs direct tests for:
+2. **`resolve_filename` (`post_upload.rs:74`) has no unit tests** — only
+   integration coverage via the YAML scenarios. Needs direct tests for:
 
-   - the generated-name fallback: when the sanitized stem is empty the result must be `upload-{uuid}.{ext}`; the
-     existing `upload_auto_rename_fallback` scenario only asserts `file_absent .jpeg`, never the actual final name
+   - the generated-name fallback: when the sanitized stem is empty the result
+     must be `upload-{uuid}.{ext}`; the existing `upload_auto_rename_fallback`
+     scenario only asserts `file_absent .jpeg`, never the actual final name
      (`save_file` appends the UUID only when `on_conflict` is `None`).
-   - stem-derivation edges through `Path::file_stem`: `...jpg`, `..jpg`, `.jpg`, trailing-dot names like `foo.`.
-   - `auto_rename=false` reject-message building (`auto_rename_rejected_error`) for each reason class: forbidden chars,
+   - stem-derivation edges through `Path::file_stem`: `...jpg`, `..jpg`,
+     `.jpg`, trailing-dot names like `foo.`.
+   - `auto_rename=false` reject-message building
+     (`auto_rename_rejected_error`) for each reason class: forbidden chars,
      reserved name, normalization.
-   - degenerate-name `auto_rename=true` + `on_conflict=rename|replace` interaction.
+   - degenerate-name `auto_rename=true` + `on_conflict=rename|replace`
+     interaction.
 
-3. **Fullwidth / homoglyph separators are not stripped or tested**: U+FF0F `／`, U+2215 `∕`, U+FF5C `｜`, U+FF08
-   etc. pass through the tiers. Decide whether these belong in tier 2.
+3. **Fullwidth / homoglyph separators are not stripped or tested**: U+FF0F
+   `／`, U+2215 `∕`, U+FF5C `｜`, U+FF08 etc. pass through the tiers. Decide
+   whether these belong in tier 2.
 
-4. **Tier-2 boundary coverage is thin**: tests cover BMP `U+FFFE` and `U+FDD0`/`U+200B`/`U+202E` only — not the other
-   planes' `FFFE/FFFF` (`(c as u32) & 0xFFFF == 0xFFFE` branch), the `FDD1`–`FDEF` interior,
+4. **Tier-2 boundary coverage is thin**: tests cover BMP `U+FFFE` and
+   `U+FDD0`/`U+200B`/`U+202E` only — not the other planes' `FFFE/FFFF`
+   (`(c as u32) & 0xFFFF == 0xFFFE` branch), the `FDD1`–`FDEF` interior,
    `U+200E/200F`/`U+2066`–`U+2069` bidi set, or `U+FEFF`/`U+2060`.
 
-5. **NFC-off path has no backend scenario** (unit tests cover it; `control` verbs cannot currently encode NFD filenames
-   in the upload DSL).
+5. **NFC-off path has no backend scenario** (unit tests cover it; `control`
+   verbs cannot currently encode NFD filenames in the upload DSL).
 
 ## Related
 
-Tracked in `upload-conflict.md` (done) is the tier design + auto\_rename decision; this ticket tracks the remaining
-test/decision space only.
+Tracked in `upload-conflict.md` (done) is the tier design + auto\_rename
+decision; this ticket tracks the remaining test/decision space only.
 
 ## Progress (2026-09-08)
 
-Items 1 and 2 resolved in PR \#17: control chars (C0 U+0000–U+001F, DEL U+007F, C1 U+0080–U+009F) are now stripped by
-the always-on control-char tier in `sanitize_filename` (`filename_strips_c0_controls`/`_del`/`_c1_controls` +
-`filename_only_controls_degrade_to_empty`); `resolve_filename` gained 11 unit tests
-(`resolve_filename_tests` module) covering the `upload` fallback stem, `file_stem` edges (`.jpg`, `..jpg`, `foo.`), the
-four `auto_rename=false` reject reasons, and control-char strip/reject.
+Items 1 and 2 resolved in PR \#17: control chars (C0 U+0000–U+001F, DEL
+U+007F, C1 U+0080–U+009F) are now stripped by the always-on control-char tier
+in `sanitize_filename` (`filename_strips_c0_controls`/`_del`/`_c1_controls` +
+`filename_only_controls_degrade_to_empty`); `resolve_filename` gained 11 unit
+tests (`resolve_filename_tests` module) covering the `upload` fallback stem,
+`file_stem` edges (`.jpg`, `..jpg`, `foo.`), the four `auto_rename=false`
+reject reasons, and control-char strip/reject.
 
 ## Progress (2026-10-08)
 
-Items 3 and 4 resolved: separator homoglyphs are now stripped by tier 2 (decision: fullwidth `／＼｜` plus the
-fraction/division/big-solidus and set-minus/reverse-solidus look-alikes — 9 code points in `is_forbidden_filename_char`)
-with unit tests per family (`filename_strips_slash/backslash/pipe_homoglyphs_tier2`), two `resolve_filename` tests, and
-scenario `upload_homoglyph_separator_sanitized`. Tier-2 boundary coverage extended: supplementary-plane noncharacters
-(U+1FFFE/U+1FFFF), FDD0–FDEF interior (FDE0/FDEF), LRM/RLM + bidi isolates (200E/200F/202A/2066–2069), BOM + word
-joiner (FEFF/2060).
+Items 3 and 4 resolved: separator homoglyphs are now stripped by tier 2
+(decision: fullwidth `／＼｜` plus the fraction/division/big-solidus and
+set-minus/reverse-solidus look-alikes — 9 code points in
+`is_forbidden_filename_char`) with unit tests per family
+(`filename_strips_slash/backslash/pipe_homoglyphs_tier2`), two
+`resolve_filename` tests, and scenario `upload_homoglyph_separator_sanitized`.
+Tier-2 boundary coverage extended: supplementary-plane noncharacters
+(U+1FFFE/U+1FFFF), FDD0–FDEF interior (FDE0/FDEF), LRM/RLM + bidi isolates
+(200E/200F/202A/2066–2069), BOM + word joiner (FEFF/2060).
 
-Item 5 resolved: the ticket's premise that the upload DSL cannot encode NFD filenames was wrong — YAML double-quoted
-scalars decode `\uXXXX` through `serde_yaml`, so `"cafe\u0301.jpg"` reaches the multipart as genuine NFD bytes. The only
-missing piece was the `config` given-verb (and `tests/schema.json`) not exposing `normalize_upload_filenames`; both now
-do. Scenarios `upload_nfc_on_collapses_nfd_filename` (default: NFD input → NFC on disk) and
-`upload_nfc_off_keeps_nfd_filename` (flag off: NFD preserved) pin both directions. Note: escape-bearing paths in
-`then` assertions must be double-quoted — plain YAML scalars keep `\u0301` as literal backslash text.
+Item 5 resolved: the ticket's premise that the upload DSL cannot encode NFD
+filenames was wrong — YAML double-quoted scalars decode `\uXXXX` through
+`serde_yaml`, so `"cafe\u0301.jpg"` reaches the multipart as genuine NFD
+bytes. The only missing piece was the `config` given-verb (and
+`tests/schema.json`) not exposing `normalize_upload_filenames`; both now do.
+Scenarios `upload_nfc_on_collapses_nfd_filename` (default: NFD input → NFC on
+disk) and `upload_nfc_off_keeps_nfd_filename` (flag off: NFD preserved) pin
+both directions. Note: escape-bearing paths in `then` assertions must be
+double-quoted — plain YAML scalars keep `\u0301` as literal backslash text.

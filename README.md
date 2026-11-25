@@ -1,6 +1,7 @@
 # Picasu - a filesystem-first photo gallery
 
-_**Disclaimer** Picasu is fully vibe-coded work in progress. Not ready. Use at your own risk._
+_**Disclaimer** Picasu is fully vibe-coded work in progress. Not ready. Use at
+your own risk._
 
 Picasu is a self-hosted photo gallery based on
 [urocissa](https://github.com/tedsamhain/urocissa). In contrast to most
@@ -9,12 +10,14 @@ language), Picasu treats your filesystem as the source of truth - additional
 database content is purely used to accelerate lookups and will be re-generated
 based on filesystem updates. This results in a few desirable features:
 
-- Launch Picasu on an existing image repo to generate an online view with paths mapped to Albums
+- Launch Picasu on an existing image repo to generate an online view with paths
+  mapped to Albums
 - Share an image repository over the network to edit or re-arrange with
   external tools[^1], Picasu will detect and adopt the changes on the fly
 - Stay in control over your files, to know what you have backed up or to move on
 
-[^1]: Metadata is (will be) kept in XMP sidecars, which is supported by many professional photo editing tools.
+[^1]: Metadata is (will be) kept in XMP sidecars, which is supported by many
+professional photo editing tools.
 
 ## Quick Start
 
@@ -75,7 +78,8 @@ Shared compile cache (optional): `just setup-dev` writes a gitignored
 Local workspace crates are usually cache misses; dependencies are shared.
 
 - `just check` — lint + format check (backend, frontend, docs)
-- `just test` — run all tests (backend cargo-nextest + frontend vitest/playwright)
+- `just test` — run all tests (backend cargo-nextest + frontend
+  vitest/playwright)
 - `just run` — build and launch against `sandbox/`
 - `just plan` — view the project board (see `.plan/`; needs `just install-plan`)
 
@@ -88,4 +92,5 @@ negative tests for the test-infrastructure itself. For more details check
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Picasu is based on urocissa by [hsa00000](https://github.com/hsa00000), also MIT-licensed.
+MIT — see [LICENSE](LICENSE). Picasu is based on urocissa by
+[hsa00000](https://github.com/hsa00000), also MIT-licensed.

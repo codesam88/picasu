@@ -12,46 +12,46 @@ area: backend
 The server memorizes auth state it does not need:
 
 - The index DB's `USERS` table holds a **live session list** per user, and
-  every guarded request asks "is this jti live?" (`router/auth.rs:917`).
-  The list exists so the admin UI could show active sessions — a use case
-  that does not survive contact with reality: unused devices are covered by
-  the 14-day token expiry, and a suspected compromise is covered by a
-  password change (or "revoke all sessions"), not by a device inventory.
+  every guarded request asks "is this jti live?" (`router/auth.rs:917`). The
+  list exists so the admin UI could show active sessions — a use case that
+  does not survive contact with reality: unused devices are covered by the
+  14-day token expiry, and a suspected compromise is covered by a password
+  change (or "revoke all sessions"), not by a device inventory.
 - Every outstanding **invite** is stored (hash-keyed), and redemption scans
   the table to enforce single use.
 - Every **share** is stored in the album record's `share_list`, even though
   the share capability already travels inside the token
   (`Role::Share(ResolvedShare)`).
 
-All three are _revocation_ problems wearing the costume of _memorization_.
-The paradigm in `docs/auth.md` already claims a stateless capability-token
+All three are _revocation_ problems wearing the costume of _memorization_. The
+paradigm in `docs/auth.md` already claims a stateless capability-token
 architecture; the mechanism section describes the opposite.
 
-The store split is half-done too: `users.redb` holds the identity record,
-but the index DB still holds a second, partial copy of identity (which ids
-exist) — `get_user` is used as the existence gate by the login, the admin
-listing and the password-change route, so a user provisioned offline (by
-`picasu-cmd`) gets 401 at login, is missing from `GET /get/users`, and gets
-404 on a password change.
+The store split is half-done too: `users.redb` holds the identity record, but
+the index DB still holds a second, partial copy of identity (which ids exist)
+— `get_user` is used as the existence gate by the login, the admin listing and
+the password-change route, so a user provisioned offline (by `picasu-cmd`)
+gets 401 at login, is missing from `GET /get/users`, and gets 404 on a
+password change.
 
 ## Goal (owner decisions 2026-10-20)
 
-- **Stateless capabilities.** A token carries everything needed to use it.
-  The server remembers **revocations only**, until they expire.
+- **Stateless capabilities.** A token carries everything needed to use it. The
+  server remembers **revocations only**, until they expire.
 - **Two files, two lifetimes.**
   - `auth/users.redb` — persistent: the identity record
     `UserRecord {hash?, admin, home, ver}`.
   - `db/index_v5.redb` — ephemeral: the revocation list.
-- **`ver` is a per-user token version in `users.redb`.** Bumped by a
-  password change, an admin-role change, or an explicit invalidation; the
-  token carries the version it was minted with and the guard requires an
-  exact match. The CLI can bump it, so `picasu-cmd` can invalidate tokens
-  without touching the server.
+- **`ver` is a per-user token version in `users.redb`.** Bumped by a password
+  change, an admin-role change, or an explicit invalidation; the token carries
+  the version it was minted with and the guard requires an exact match. The
+  CLI can bump it, so `picasu-cmd` can invalidate tokens without touching the
+  server.
 - **The signing secret is the global epoch.** Rotating it invalidates every
   token at once (the signature no longer verifies); the `ver` counters may be
   reset alongside it, but need not be — they are per-record, not per-secret.
-- **No live session list, no stored invites, no stored share list.** All
-  three become revocation entries.
+- **No live session list, no stored invites, no stored share list.** All three
+  become revocation entries.
 
 ## The guard (identity token)
 
@@ -76,36 +76,34 @@ listing and the password-change route, so a user provisioned offline (by
 | user delete           | delete the identity row — no user, no access    |
 | secret rotation       | none — the new signature invalidates everything |
 
-The **invites** and the **shares** stay memorized (owner decision
-2026-10-22): an invite is few and spends most of its life in the
-"used or revoked" state, so a list of them has to be maintained either
-way; a share token has to be listed and revoked by id on the admin page.
-Neither is identity, and both live in the index database next to the
-revocation list.
+The **invites** and the **shares** stay memorized (owner decision 2026-10-22):
+an invite is few and spends most of its life in the "used or revoked" state,
+so a list of them has to be maintained either way; a share token has to be
+listed and revoked by id on the admin page. Neither is identity, and both live
+in the index database next to the revocation list.
 
 ## Implementation steps (TDD, one slice per commit)
 
 **S1 — legacy artifacts.** _(done)_ Rename `auth/passwd_store.rs` →
-`auth/user_store.rs`, `PasswdFile`/`PasswdStore` → `UserStore`, `UserEntry`
-→ `UserRecord`, the index DB's `UserRecord` → `SessionBundle`, table
-`users` → `sessions`, `storage::db::USERS` → `SESSIONS`, store values
-`&[u8]` → `&str` (JSON text, one encoding rule).
+`auth/user_store.rs`, `PasswdFile`/`PasswdStore` → `UserStore`, `UserEntry` →
+`UserRecord`, the index DB's `UserRecord` → `SessionBundle`, table `users` →
+`sessions`, `storage::db::USERS` → `SESSIONS`, store values `&[u8]` → `&str`
+(JSON text, one encoding rule).
 
-**S2 — stateless identity.** _(done)_ `ver` in the identity record; the
-token carries it; the guard checks it; the index DB's session table becomes
-the revocation table (`auth/revocations.rs`); login writes nothing; logout
+**S2 — stateless identity.** _(done)_ `ver` in the identity record; the token
+carries it; the guard checks it; the index DB's session table becomes the
+revocation table (`auth/revocations.rs`); login writes nothing; logout
 revokes; the password change and the role change bump `ver`; the existence
 checks read the store, so a user provisioned offline can log in;
 `GET /get/sessions` goes.
 
 **S3 — CLI token control.** _(done)_ `passwd` and `mod` bump `ver`; a new
-`user invalidate <user>` bumps it alone; `user del` no longer purges
-sessions (there are none) — `--userdb` alone becomes a complete operation.
+`user invalidate <user>` bumps it alone; `user del` no longer purges sessions
+(there are none) — `--userdb` alone becomes a complete operation.
 
-**S4 — stateless invites.** _Dropped (owner decision 2026-10-22):_ the
-invites stay memorized. Their storage and their redemption are unchanged;
-only the session-row write inside the redemption went with the session
-list.
+**S4 — stateless invites.** _Dropped (owner decision 2026-10-22):_ the invites
+stay memorized. Their storage and their redemption are unchanged; only the
+session-row write inside the redemption went with the session list.
 
 **S5 — stateless shares.** _Dropped (owner decision 2026-10-22):_ the share
 tokens stay memorized — the admin page lists and revokes them by id.

@@ -7,14 +7,13 @@ area: backend
 
 ## Notes
 
-Consolidate `utils/bench/` from accreted layers into one designed
-harness: a single CLI, a single config, an explicit prepare step, a
-preflight checklist, structured events instead of log dialects, and the
-battery as the only runner. Greenfield analysis (2026-11-15): the
-harness grew by transliteration (shell driver → Python → launcher split
-→ orchestrator → battery → extractor), and each layer talks in its
-predecessor's dialect — env strings, legacy log lines, scraped server
-logs. Every step below removes a dialect.
+Consolidate `utils/bench/` from accreted layers into one designed harness: a
+single CLI, a single config, an explicit prepare step, a preflight checklist,
+structured events instead of log dialects, and the battery as the only runner.
+Greenfield analysis (2026-11-15): the harness grew by transliteration (shell
+driver → Python → launcher split → orchestrator → battery → extractor), and
+each layer talks in its predecessor's dialect — env strings, legacy log lines,
+scraped server logs. Every step below removes a dialect.
 
 Settled 2026-11-15: archaeology cleanup goes first as the behavior-neutral
 clearing pass; prepare + preflight next as the enabling pair.
@@ -24,24 +23,23 @@ clearing pass; prepare + preflight next as the enabling pair.
 The harness exists to produce trusted numbers for the perf-investigation
 items. Characteristics it must keep through every step:
 
-- Measurements: request latencies (per-op medians/p95/max from storm
-  TSVs and hyperfine exports), scan walls and convergence
-  (per-run walls, watermark trail, time-to-terminal, upload
-  time-to-visible), server stage costs (observer drain tables joined by
-  scan index), failure shape (write-probe verification, margin
-  verdicts, breach lines). No tuning without a measured number.
-- Scenarios: control (request path under indexing load), storm-read /
-  thumb / diff (burst headroom), storm-idle (serving floor), upload
-  (submit-to-200 plus time-to-visible, with during-scan probes so
-  upload-scan interference compares against background scans).
-  Profiles × scales × load states; 100-image gate on every harness
-  change, larger scales only when smaller is clean; medians across
-  repeats, never single cells.
-- Outputs: one machine-readable row per cell plus raw artifacts, a
-  pooled `:median` row per cell as the comparison unit, checked-in
-  baselines with bands, `battery-check` failing out-of-band cells until
-  explained and re-recorded. `battery extract` dumps a whole battery
-  parent as one JSON document.
+- Measurements: request latencies (per-op medians/p95/max from storm TSVs and
+  hyperfine exports), scan walls and convergence (per-run walls, watermark
+  trail, time-to-terminal, upload time-to-visible), server stage costs
+  (observer drain tables joined by scan index), failure shape (write-probe
+  verification, margin verdicts, breach lines). No tuning without a measured
+  number.
+- Scenarios: control (request path under indexing load), storm-read / thumb /
+  diff (burst headroom), storm-idle (serving floor), upload (submit-to-200
+  plus time-to-visible, with during-scan probes so upload-scan interference
+  compares against background scans). Profiles × scales × load states;
+  100-image gate on every harness change, larger scales only when smaller is
+  clean; medians across repeats, never single cells.
+- Outputs: one machine-readable row per cell plus raw artifacts, a pooled
+  `:median` row per cell as the comparison unit, checked-in baselines with
+  bands, `battery-check` failing out-of-band cells until explained and
+  re-recorded. `battery extract` dumps a whole battery parent as one JSON
+  document.
 
 ## CLI look and feel
 
@@ -60,12 +58,12 @@ bench battery-check <report>           # conformance against baselines.tsv
 bench seed-images ...                  # kept as the archive-seeding primitive
 ```
 
-`status` doubles as the debug entry: points at the failing cell's
-`server.log` tail and `diag-orchestrator/` bundle instead of grepping
-outdirs by hand. Today's four entry points (`launch-backend.py`,
-`run-workload.py`, `run-cell.py`, `battery.py run`) and the justfile
-`workload` recipe collapse into `bench run`; the recipe's hidden
-`timeout` wrapper goes away in favor of the per-level budget.
+`status` doubles as the debug entry: points at the failing cell's `server.log`
+tail and `diag-orchestrator/` bundle instead of grepping outdirs by hand.
+Today's four entry points (`launch-backend.py`, `run-workload.py`,
+`run-cell.py`, `battery.py run`) and the justfile `workload` recipe collapse
+into `bench run`; the recipe's hidden `timeout` wrapper goes away in favor of
+the per-level budget.
 
 ## Steps
 
@@ -76,74 +74,70 @@ battery gate` after steps 2-5).
 
 1. [architecture-neutral cleanup] Delete the archaeology: `compressed-get`
    wording branches, `harness-A` naming, `N`→`NCPU` guard, `DATASET_ID`
-   aliases, `__getattr__` shims, stale docstrings. Tests pin current
-   behavior first where missing; extractor keeps parsing all recorded
-   cells byte-identically.
+   aliases, `__getattr__` shims, stale docstrings. Tests pin current behavior
+   first where missing; extractor keeps parsing all recorded cells
+   byte-identically.
 2. [`bench prepare`] One explicit step builds a sandbox from a canonical
-   archive and writes a sandbox manifest (archive id, count, bytes,
-   linkage). Cells point at prepared sandboxes and never materialise;
-   link-or-copy fallback, `MATERIALISE`, and the manifest
-   read-modify-write go away. `IMAGE_HOME_SRC` becomes "prepared by
-   `bench prepare`".
-3. [`bench preflight`] One checklist phase (binary, hyperfine, archive,
-   ports, sandbox manifest) that fails before any process spawns, with
-   one message shape. Absorbs the scattered guards; a cell whose
-   preconditions don't hold is refused, never failed 20 minutes in.
-4. [one CLI, one config] Single entry point with subcommands and one
-   validated config object built once, replacing per-module
-   `config_from_env` parsing. Justfile recipes become thin aliases.
-5. [structured events] Workload emits JSONL events; observer data
-   arrives as data (endpoint snapshot or harness-curled file), not
-   scraped logs. Extractor becomes a pure function over typed rows;
-   regex generations collapse to a versioned schema reader.
-6. [battery absorbs run-cell] The battery is the only runner; the
-   justfile `workload` recipe becomes a one-cell level. Resume,
-   repeats, medians, and report logic live in exactly one place.
+   archive and writes a sandbox manifest (archive id, count, bytes, linkage).
+   Cells point at prepared sandboxes and never materialise; link-or-copy
+   fallback, `MATERIALISE`, and the manifest read-modify-write go away.
+   `IMAGE_HOME_SRC` becomes "prepared by `bench prepare`".
+3. [`bench preflight`] One checklist phase (binary, hyperfine, archive, ports,
+   sandbox manifest) that fails before any process spawns, with one message
+   shape. Absorbs the scattered guards; a cell whose preconditions don't hold
+   is refused, never failed 20 minutes in.
+4. [one CLI, one config] Single entry point with subcommands and one validated
+   config object built once, replacing per-module `config_from_env` parsing.
+   Justfile recipes become thin aliases.
+5. [structured events] Workload emits JSONL events; observer data arrives as
+   data (endpoint snapshot or harness-curled file), not scraped logs.
+   Extractor becomes a pure function over typed rows; regex generations
+   collapse to a versioned schema reader.
+6. [battery absorbs run-cell] The battery is the only runner; the justfile
+   `workload` recipe becomes a one-cell level. Resume, repeats, medians, and
+   report logic live in exactly one place.
 7. [golden-file rule] Parser fixtures are recorded real artifacts, not
-   fabricated lines; the S2 miss (green tests, empty `stages.json` in
-   real cells) is the standing example in the test docs.
-8. [enforced parents] The runner owns outdir creation under its parent
-   and refuses foreign outdirs; manual loose cells become impossible.
+   fabricated lines; the S2 miss (green tests, empty `stages.json` in real
+   cells) is the standing example in the test docs.
+8. [enforced parents] The runner owns outdir creation under its parent and
+   refuses foreign outdirs; manual loose cells become impossible.
 
 Order: 1, then 2+3 (either order), then 4, then 5+6, then 7+8.
 
 ## Completion (2026-11-15)
 
-Steps 1-8 implemented on `bench/work` (commits `26f3dfba`..`7b6ccbcf`;
-suite 139 → 256 tests, all green; gate baselines recorded separately).
+Steps 1-8 implemented on `bench/work` (commits `26f3dfba`..`7b6ccbcf`; suite
+139 → 256 tests, all green; gate baselines recorded separately).
 
 ## Follow-up: quiet transcript, single parsing path (2026-11-15)
 
-The transcript now logs what ran, not numbers: per-round hyperfine
-means, fetch means, storm summaries, and the per-bench post-scan detail
-lines are gone (hyperfine's own stdout dump too). The numbers live where
-they are computed — hyperfine JSON exports, probe/storm TSVs, post-scan
-export, scan walls — and the extractor reads those artifacts. The old
-inline-stat dialects (probe fetch/hyperfine lines, hyperfine mean-only
-and curl-sweep fallbacks, inline storm summaries) are deleted, not
-deprecated: there is one parsing path per artifact kind, each shared by
-the event and legacy readers. The dual fixture cells were converted to
-the new format (inline stats removed, medians moved verbatim into added
-per-round/post-scan JSONs) and the byte-identical events-vs-legacy gate
-still holds on the recorded data. Upload per-file/summary lines stay
-(they are integers, human-readable progress, and the battery's upload
-source); scan state/walls/median lines stay (integer ms, load-bearing).
-Deliberately left out, future work, not oversights:
+The transcript now logs what ran, not numbers: per-round hyperfine means,
+fetch means, storm summaries, and the per-bench post-scan detail lines are
+gone (hyperfine's own stdout dump too). The numbers live where they are
+computed — hyperfine JSON exports, probe/storm TSVs, post-scan export, scan
+walls — and the extractor reads those artifacts. The old inline-stat dialects
+(probe fetch/hyperfine lines, hyperfine mean-only and curl-sweep fallbacks,
+inline storm summaries) are deleted, not deprecated: there is one parsing path
+per artifact kind, each shared by the event and legacy readers. The dual
+fixture cells were converted to the new format (inline stats removed, medians
+moved verbatim into added per-round/post-scan JSONs) and the byte-identical
+events-vs-legacy gate still holds on the recorded data. Upload
+per-file/summary lines stay (they are integers, human-readable progress, and
+the battery's upload source); scan state/walls/median lines stay (integer ms,
+load-bearing). Deliberately left out, future work, not oversights:
 
-- `bench setup` from the CLI sketch (venv + managed deps + build +
-  seed + verify in one command) was never a numbered step and is not
-  built. The pieces all exist (`just bench` recipes, `install`,
-  `seed-images`, `preflight`).
+- `bench setup` from the CLI sketch (venv + managed deps + build + seed +
+  verify in one command) was never a numbered step and is not built. The
+  pieces all exist (`just bench` recipes, `install`, `seed-images`,
+  `preflight`).
 - Observer-as-data (endpoint snapshot or harness-curled file instead of
-  scraped `server.log`) needs a backend change; explicitly out of bench
-  scope. The drain-table parse stays.
-- Transcript-sourced leftovers noted at 5b (identity, post-scan
-  hyperfine, upload p50s, `scan state=` keys) stay: they carry no
-  floating-point stats, and the post-scan medians, upload p50s, scan
-  walls, verify counts and identity come from them or the files they
-  point at.
+  scraped `server.log`) needs a backend change; explicitly out of bench scope.
+  The drain-table parse stays.
+- Transcript-sourced leftovers noted at 5b (identity, post-scan hyperfine,
+  upload p50s, `scan state=` keys) stay: they carry no floating-point stats,
+  and the post-scan medians, upload p50s, scan walls, verify counts and
+  identity come from them or the files they point at.
 
-Verified end to end on a live set-100 control cell (3 reps):
-slim-only logs, events path and file path produce byte-identical rows,
-and `battery extract` renders populated p50/p95/max matrices plus 24
-stage rows per cell.
+Verified end to end on a live set-100 control cell (3 reps): slim-only logs,
+events path and file path produce byte-identical rows, and `battery extract`
+renders populated p50/p95/max matrices plus 24 stage rows per cell.

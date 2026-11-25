@@ -7,6 +7,5 @@ Thin wrapper around the maintained `pastey` crate, re-exporting its `paste!`,
 
 The original `paste` crate (dtolnay/paste) is unmaintained (RUSTSEC-2024-0436)
 but is pulled in as a transitive dependency by `rav1e` and `exr` (both inside
-the `image` crate's dependency tree). This
-shim lets us replace it via `[patch.crates-io]` without waiting for upstream
-updates.
+the `image` crate's dependency tree). This shim lets us replace it via
+`[patch.crates-io]` without waiting for upstream updates.

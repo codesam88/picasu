@@ -11,8 +11,8 @@ tests in a real browser fill that gap.
 Rather than writing Playwright tests by hand (brittle, expensive to maintain),
 this project drives them from **YAML scenario files** that declare fixtures,
 user actions, and assertions in a small, interaction-oriented DSL. A thin
-interpreter translates each scenario into Playwright API calls at runtime.
-The same scenario can be replayed without changes if the underlying UI is
+interpreter translates each scenario into Playwright API calls at runtime. The
+same scenario can be replayed without changes if the underlying UI is
 rewritten, as long as ARIA roles and accessible names are preserved.
 
 ## Pipeline
@@ -70,13 +70,12 @@ rewritten, as long as ARIA roles and accessible names are preserved.
 ### Prerequisites
 
 > **Important:** The E2E test does **not** use Vite's dev server. The backend
-> binary (`picasu`) serves the production build of the frontend directly
-> from `frontend/dist/`. You must run `npm run build` before running
-> tests. See the pipeline diagram above.
+> binary (`picasu`) serves the production build of the frontend directly from
+> `frontend/dist/`. You must run `npm run build` before running tests. See the
+> pipeline diagram above.
 
-The backend must be built, and the frontend must be built to `dist/` — the
-e2e test does not use Vite's dev server. Playwright browsers must be
-installed:
+The backend must be built, and the frontend must be built to `dist/` — the e2e
+test does not use Vite's dev server. Playwright browsers must be installed:
 
 ```sh
 cd backend && cargo build
@@ -91,15 +90,16 @@ npx playwright test --grep "UI scenarios"
 ```
 
 Each scenario starts its own isolated Rocket backend on an ephemeral port
-(30000–59999) with its own data directory under `.testruns/playwright-RUN_ID/`,
-runs the YAML scenario against that backend, then shuts it down. Multiple
-scenarios run in parallel when Playwright has multiple workers available.
+(30000–59999) with its own data directory under
+`.testruns/playwright-RUN_ID/`, runs the YAML scenario against that backend,
+then shuts it down. Multiple scenarios run in parallel when Playwright has
+multiple workers available.
 
 ### Output layout
 
 Each scenario gets its own `playwright-<id>/` directory under `TEST_DIR`.
-Directories persist after the run for debugging. Artifacts and reports
-are consolidated to the shared run directory:
+Directories persist after the run for debugging. Artifacts and reports are
+consolidated to the shared run directory:
 
 ```
 .testruns/
@@ -123,17 +123,27 @@ are consolidated to the shared run directory:
 
 ### Timeouts and budgets
 
-- **Global cap:** `playwright.config.ts` sets a symmetric `globalTimeout` (20 min) as a hang-backstop only. Real enforcement is per-test: the 120s config default and tighter computed budgets for DSL scenarios. Timeout failures carry the guidance below.
-- **Per-scenario budget:** `interpreter.spec.ts` sets `testInfo.setTimeout(...)` per scenario using a formula scaled by login count (small allowance — the harness sets `PICASU_WEAK_PWHASH=1` so logins are fast) and step count, with a hard ceiling well below the global timeout. The formula and rationale are documented at the call site.
-- **Split, don't extend:** if a scenario times out, do **not** raise timeouts. Split into smaller per-user/per-area flows, shrink fixtures, or fix the stuck step. Local HTTP is fast — only KDF logins and small-fixture indexing are known-slow; a timeout indicates a stuck step or an oversized scenario. Timeout failures include guidance pointing to this rule.
+- **Global cap:** `playwright.config.ts` sets a symmetric `globalTimeout` (20
+  min) as a hang-backstop only. Real enforcement is per-test: the 120s config
+  default and tighter computed budgets for DSL scenarios. Timeout failures
+  carry the guidance below.
+- **Per-scenario budget:** `interpreter.spec.ts` sets
+  `testInfo.setTimeout(...)` per scenario using a formula scaled by login
+  count (small allowance — the harness sets `PICASU_WEAK_PWHASH=1` so logins
+  are fast) and step count, with a hard ceiling well below the global timeout.
+  The formula and rationale are documented at the call site.
+- **Split, don't extend:** if a scenario times out, do **not** raise timeouts.
+  Split into smaller per-user/per-area flows, shrink fixtures, or fix the
+  stuck step. Local HTTP is fast — only KDF logins and small-fixture indexing
+  are known-slow; a timeout indicates a stuck step or an oversized scenario.
+  Timeout failures include guidance pointing to this rule.
 
 ## Components
 
 ### Scenario DSL (`scenarios/*.yaml`)
 
-Each file declares one scenario with optional `covers:`, required
-`given:`, `when:`, and `assert:` blocks. Full verb reference in
-`docs/scenario-dsl.md`.
+Each file declares one scenario with optional `covers:`, required `given:`,
+`when:`, and `assert:` blocks. Full verb reference in `docs/scenario-dsl.md`.
 
 ```yaml
 name: Login via button click succeeds
@@ -163,14 +173,14 @@ Declares what the scenario intends to exercise:
 
 - `covers.api` — HTTP method + path pairs the given phase calls (seed
   operations). Each entry is a string like `"POST /post/users/authenticate"`.
-- `covers.ui` — assertion targets the assert phase uses. Format depends on
-  the verb: for role/label assertions the raw target (e.g. `main/`), for
-  others a prefixed string (`route:/home`, `toast:error:unauthorized`,
+- `covers.ui` — assertion targets the assert phase uses. Format depends on the
+  verb: for role/label assertions the raw target (e.g. `main/`), for others a
+  prefixed string (`route:/home`, `toast:error:unauthorized`,
   `snapshot:login-page`).
 
 After the scenario runs, the tracer compares expected vs actual and logs
-advisory warnings for any declared entry that was never exercised.
-Warnings do not fail the test.
+advisory warnings for any declared entry that was never exercised. Warnings do
+not fail the test.
 
 #### Sessions
 
@@ -189,14 +199,14 @@ validated against these schemas at load time (hard error on mismatch).
 
 ### Schema validation (`schema.json`)
 
-JSON Schema copy of the Zod rules, used by editors for inline validation
-of `.yaml` files. Generated manually — keep in sync with `types.ts`.
+JSON Schema copy of the Zod rules, used by editors for inline validation of
+`.yaml` files. Generated manually — keep in sync with `types.ts`.
 
 ### Scenario loader (`loadScenarios.ts`)
 
-Reads `scenarios/*.yaml`, parses each with `js-yaml`, validates with
-the Zod `UiScenario` schema, returns the array. Runs once at module load
-time in the Playwright worker process.
+Reads `scenarios/*.yaml`, parses each with `js-yaml`, validates with the Zod
+`UiScenario` schema, returns the array. Runs once at module load time in the
+Playwright worker process.
 
 ### Given executor (`executeGiven.ts`)
 
@@ -212,12 +222,12 @@ Maps `given:` entries to real backend calls:
 | `config: { ... }` | Sets `readOnlyMode` and/or `fsNotifyWatcher` and/or `authKey` and/or `allowRegistration` via PUT API                                                                              |
 | `index: <album>`  | After all seeding, runs `POST /post/index/album` for `<album>` and polls `GET /get/index/status` to idle/completed; absent = no index                                             |
 
-Variables bound by `id_as` are stored in `GivenContext.vars` and
-interpolated as `${name}` in when-step strings.
+Variables bound by `id_as` are stored in `GivenContext.vars` and interpolated
+as `${name}` in when-step strings.
 
-The function accepts an optional `CoverageTracer` — when provided, it
-wraps the `APIRequestContext` in a Proxy that records every HTTP call
-(method + path) made during seeding.
+The function accepts an optional `CoverageTracer` — when provided, it wraps
+the `APIRequestContext` in a Proxy that records every HTTP call (method +
+path) made during seeding.
 
 ### When interpreter (`interpreter.ts`, `executeWhen`)
 
@@ -234,8 +244,8 @@ Maps `when:` verbs to Playwright page actions:
 | `select`      | `page.getByRole(...).selectOption()`                                                              |
 | `submit`      | `page.keyboard.press('Enter')`                                                                    |
 
-Element references are ARIA role/accessible name pairs (`role/name`),
-never CSS selectors.
+Element references are ARIA role/accessible name pairs (`role/name`), never
+CSS selectors.
 
 ### Assert interpreter (`interpreter.ts`, `executeAssert`)
 
@@ -260,10 +270,12 @@ Maps `assert:` verbs to Playwright `expect` assertions:
 | `api.response: url, status[, method, body, header, json, json_absent]` | Fetch URL and assert status code(s)                                  |
 | `api.statuses`                                                         | Ordered browser-driven response statuses matching url                |
 
-`json: { "<dot.path>": <value> }` pins response-body fields (dot paths with `[n]` array indices; `${var}` interpolated); `json_absent: "<dot.path>"` pins a path is absent.
+`json: { "<dot.path>": <value> }` pins response-body fields (dot paths with
+`[n]` array indices; `${var}` interpolated); `json_absent: "<dot.path>"` pins
+a path is absent.
 
-The function accepts an optional `CoverageTracer` — when provided, it
-records the verb and target of every assertion.
+The function accepts an optional `CoverageTracer` — when provided, it records
+the verb and target of every assertion.
 
 ### Tracer (`tracer.ts`)
 
@@ -274,8 +286,8 @@ Passive instrument that records what actually happened during a scenario:
 - **UI assertions:** verb + target for every `executeAssert` assertion.
 
 After the scenario, `tracer.compare(covers)` returns a list of
-`CoverageWarning` entries for expected API/UI items that were never
-observed. Warnings are logged to stderr and written to
+`CoverageWarning` entries for expected API/UI items that were never observed.
+Warnings are logged to stderr and written to
 `.testruns/playwright-RUN_ID/coverage/<scenario-slug>.json`.
 
 ### Test harness (`interpreter.spec.ts`)
@@ -283,8 +295,8 @@ observed. Warnings are logged to stderr and written to
 No hand-written browser test files (`*.test.ts`) remain in
 `frontend/tests/playwright/`: every browser scenario is driven by
 `interpreter.spec.ts` over the YAML files in `scenarios/`. Any future
-hand-written browser file must be named `*.test.ts` (never `*.spec.ts`,
-which is reserved for the spec machinery).
+hand-written browser file must be named `*.test.ts` (never `*.spec.ts`, which
+is reserved for the spec machinery).
 
 The Playwright test file that ties everything together. For each scenario
 loaded by `loadScenarios`:
@@ -294,8 +306,8 @@ loaded by `loadScenarios`:
 3. Create a `GivenContext`.
 4. Execute given steps (seed state via `executeGiven`).
 5. Execute scenario steps:
-   - If the scenario uses `steps:`, iterate each when/assert pair
-     via `executeSteps`.
+   - If the scenario uses `steps:`, iterate each when/assert pair via
+     `executeSteps`.
    - Otherwise, run `executeWhen` then `executeAssert` for the flat
      when/assert block.
 6. Compare tracer records against `covers:` declarations.
@@ -303,19 +315,20 @@ loaded by `loadScenarios`:
 
 Each scenario starts its own backend instance in the test body via
 `backendLauncher.startBackend()` on the paths provided by
-`scenarioFixtures.ts`. The `page` fixture is overridden to set `baseURL`
-to the scenario's backend, so all `page.goto('/login')` calls resolve to
-the right instance.
+`scenarioFixtures.ts`. The `page` fixture is overridden to set `baseURL` to
+the scenario's backend, so all `page.goto('/login')` calls resolve to the
+right instance.
 
 ### Paths (`paths.ts`)
 
-- **`TEST_DIR`** — shared top-level directory for all test-run outputs.
-  Set via `TEST_DIR` env var; defaults to `.testruns/` under the repo
-  root. Used by `playwright.config.ts` for the report and artifact paths.
+- **`TEST_DIR`** — shared top-level directory for all test-run outputs. Set
+  via `TEST_DIR` env var; defaults to `.testruns/` under the repo root. Used
+  by `playwright.config.ts` for the report and artifact paths.
 - **`createPaths()` factory** — called per-scenario to generate fresh,
-  isolated paths for each backend instance. Uses `{TEST_DIR}/playwright-<id>/`.
-  When `WORKER_NUM` is set, `id` is the worker number for deterministic
-  paths and ports (`30000 + N*2`). Otherwise a random 6-char hex string.
+  isolated paths for each backend instance. Uses
+  `{TEST_DIR}/playwright-<id>/`. When `WORKER_NUM` is set, `id` is the worker
+  number for deterministic paths and ports (`30000 + N*2`). Otherwise a random
+  6-char hex string.
 
 | Export / Function | Source                                             |
 | ----------------- | -------------------------------------------------- |

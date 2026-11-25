@@ -14,7 +14,8 @@ Self-hosting / Federation Options
 - storage backends
   - local FS (filesystem, NAS, NFS,...)
   - remote bulk storage with server side buffer
-    - originals in bulk, configurable high-res buffer (x MB, 1080p, 1440p, 2160p,..)
+    - originals in bulk, configurable high-res buffer (x MB, 1080p, 1440p,
+      2160p,..)
   - remote p2p storage backend (share storage?)
   - per-photo, (per user?) file encryption with local validation
 

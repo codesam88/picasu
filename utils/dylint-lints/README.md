@@ -16,10 +16,10 @@ disposition per rule is recorded in `.plan/api-assurance.md`.
 | `CREDENTIALS_AGREEMENT` (Warn)   | [`credentials_agreement/`](credentials_agreement/)     | Each handler's `x-picasu-auth` `credentials` agrees with the claims types its guards decode (`admin`/`asset`/`snapshot`/`share`).                                                                                     |
 
 Each folder is a standalone lint crate (mirroring the upstream
-`examples/<category>/<lint-name>/` layout: one directory per lint, each
-with its own crate and README) and documents its lint fully: what it
-catches, why it matters, a violating/fixed example pair, and its known
-limits. Start from the folder README, not from here.
+`examples/<category>/<lint-name>/` layout: one directory per lint, each with
+its own crate and README) and documents its lint fully: what it catches, why
+it matters, a violating/fixed example pair, and its known limits. Start from
+the folder README, not from here.
 
 ## Running
 
@@ -35,14 +35,13 @@ Run the checks (not part of `just check`; gating in CI):
 just dylint-check
 ```
 
-Under the hood this is `cargo dylint --all -- -p picasu`: cargo-dylint
-finds the lint crates through the glob entry in
-`[workspace.metadata.dylint]` in the root `Cargo.toml`
-(`utils/dylint-lints/*`), builds each with the pinned nightly (see
-Toolchain below), then runs `cargo check -p picasu` under that same
-nightly with the lints registered. Build products land in the workspace
-`target/dylint/` (covered by the root `/target/` ignore), never in the
-lint crate directories.
+Under the hood this is `cargo dylint --all -- -p picasu`: cargo-dylint finds
+the lint crates through the glob entry in `[workspace.metadata.dylint]` in the
+root `Cargo.toml` (`utils/dylint-lints/*`), builds each with the pinned
+nightly (see Toolchain below), then runs `cargo check -p picasu` under that
+same nightly with the lints registered. Build products land in the workspace
+`target/dylint/` (covered by the root `/target/` ignore), never in the lint
+crate directories.
 
 ## Adding a lint
 
@@ -52,25 +51,25 @@ lint crate directories.
    `rustc_private` code), `src/lib.rs` (`dylint_linting::dylint_library!()`
    - `declare_lint!` + `declare_lint_pass!` + `register_lints`), and
      `README.md` following either existing folder. No change to the root
-     `Cargo.toml` is needed: the `utils/dylint-lints/*` glob discovers the
-     new crate automatically (each crate registers exactly one lint, so the
-     old multi-lint manual-registration workaround does not apply).
+     `Cargo.toml` is needed: the `utils/dylint-lints/*` glob discovers the new
+     crate automatically (each crate registers exactly one lint, so the old
+     multi-lint manual-registration workaround does not apply).
 2. Verify both directions through `just dylint-check`: clean tree first
    (expect zero findings), then apply a one-line violation, re-run (exactly
    that site must warn), then `git checkout --` the file and confirm
    `git status` is clean — never leave the violation in the tree.
-3. Pin the behavior with UI fixtures: add `ui/pass_*.rs` (silent,
-   empty `.stderr`) and `ui/fail_*.rs` (warns, blessed `.stderr`) beside
-   the crate — self-contained stubs mirroring the resolved-type shapes the
-   lint matches (see any existing `ui/` folder) — plus `dylint_testing`
-   as a dev-dependency and a `#[test] fn ui()` calling
+3. Pin the behavior with UI fixtures: add `ui/pass_*.rs` (silent, empty
+   `.stderr`) and `ui/fail_*.rs` (warns, blessed `.stderr`) beside the crate —
+   self-contained stubs mirroring the resolved-type shapes the lint matches
+   (see any existing `ui/` folder) — plus `dylint_testing` as a dev-dependency
+   and a `#[test] fn ui()` calling
    `dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui")`. Write the
-   `.stderr` from the `normalized stderr` in a failing `cargo test` run
-   (run under the pinned nightly); `cargo test` must be green.
-4. Document the lint in its folder README (what it flags, why it matters
-   with the AUTH property and failure mode, violating/fixed example pair,
-   known limits) and, if it moves a rule out of `openapi-sanity`, update
-   the disposition in `.plan/api-assurance.md`.
+   `.stderr` from the `normalized stderr` in a failing `cargo test` run (run
+   under the pinned nightly); `cargo test` must be green.
+4. Document the lint in its folder README (what it flags, why it matters with
+   the AUTH property and failure mode, violating/fixed example pair, known
+   limits) and, if it moves a rule out of `openapi-sanity`, update the
+   disposition in `.plan/api-assurance.md`.
 
 ## Known limits
 
@@ -78,16 +77,16 @@ Per-lint limits live with their lints: see
 [`auth2_guard_propagation/README.md`](auth2_guard_propagation/README.md#known-limits)
 and
 [`auth3_no_forward_denial/README.md`](auth3_no_forward_denial/README.md#known-limits).
-The lint is clean on the current tree (zero findings); the triage
-history of the three formerly-flagged sites is in the
-[AUTH-3 README](auth3_no_forward_denial/README.md#why-it-matters).
+The lint is clean on the current tree (zero findings); the triage history of
+the three formerly-flagged sites is in the [AUTH-3
+README](auth3_no_forward_denial/README.md#why-it-matters).
 
 ## Toolchain
 
-Pinned via `rust-toolchain.toml` (one file at this directory's top, shared
-by all lint crates below it) to `nightly-2026-08-01` **for these crates
-only**. The main build stays on stable; the lint crates are deliberately
-_not_ workspace members so stable `cargo check --workspace` never touches
+Pinned via `rust-toolchain.toml` (one file at this directory's top, shared by
+all lint crates below it) to `nightly-2026-08-01` **for these crates only**.
+The main build stays on stable; the lint crates are deliberately _not_
+workspace members so stable `cargo check --workspace` never touches
 `rustc_private` code. Requires the `rustc-dev` component:
 
 ```sh
@@ -98,8 +97,7 @@ Built against `dylint_linting 6.3.1`, driven by `cargo-dylint 6.3.1` (same
 version, installed via `just install dylint`). `DYLINT_VERSION` in
 `scripts/deps/versions.env` is the source of truth, consumed by
 `scripts/deps/dylint.sh` to install/check `cargo-dylint`; the
-`dylint_linting`/`dylint_testing` pins in each crate's `Cargo.toml`
-must match it. Re-pin quarterly, driven by `dylint_linting`
-releases: bump `DYLINT_VERSION` and the crate pins together, since
-the check toolchain must match the toolchain the lint libraries build
-with.
+`dylint_linting`/`dylint_testing` pins in each crate's `Cargo.toml` must match
+it. Re-pin quarterly, driven by `dylint_linting` releases: bump
+`DYLINT_VERSION` and the crate pins together, since the check toolchain must
+match the toolchain the lint libraries build with.

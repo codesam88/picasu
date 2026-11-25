@@ -7,11 +7,17 @@ area: testing
 
 ## Goal
 
-Implement a Playwright-based scenario interpreter for spec-driven frontend testing, mirroring the backend YAML scenario pattern. The interpreter reads UI YAML specs from `gallery-frontend/tests/playwright/scenarios/`, executes them against a real browser driving the full stack (backend + frontend), and produces structured JSON output for AI course-correction.
+Implement a Playwright-based scenario interpreter for spec-driven frontend
+testing, mirroring the backend YAML scenario pattern. The interpreter reads UI
+YAML specs from `gallery-frontend/tests/playwright/scenarios/`, executes them
+against a real browser driving the full stack (backend + frontend), and
+produces structured JSON output for AI course-correction.
 
 ## Vocabulary
 
-The UI DSL vocabulary is already designed in `docs/scenario-dsl.md` and encoded in `gallery-frontend/tests/playwright/schema.json` (`uiWhenItem`, `uiThenItem` definitions). This task implements the runner.
+The UI DSL vocabulary is already designed in `docs/scenario-dsl.md` and
+encoded in `gallery-frontend/tests/playwright/schema.json` (`uiWhenItem`,
+`uiThenItem` definitions). This task implements the runner.
 
 ## Architecture (no cargo xtask involvement)
 
@@ -43,9 +49,12 @@ tests/playwright/
 
 ### Phase 2 — Interpreter
 
-- `executeGiven.ts`: POST seed data to running backend (uses same API endpoints)
-- `executeWhen.ts`: navigate, click, fill, select, submit → Playwright locators
-- `executeThen.ts`: visible, hidden, text, toast, modal, route → Playwright assertions
+- `executeGiven.ts`: POST seed data to running backend (uses same API
+  endpoints)
+- `executeWhen.ts`: navigate, click, fill, select, submit → Playwright
+  locators
+- `executeThen.ts`: visible, hidden, text, toast, modal, route → Playwright
+  assertions
 - `interpreter.spec.ts`: orchestrates load → given → when → then per scenario
 
 ### Phase 3 — AI feedback format
@@ -89,6 +98,9 @@ cd gallery-frontend && npx playwright test --reporter=json  # AI-friendly JSON o
 
 ## AI feedback format
 
-Playwright's built-in JSON reporter outputs per-scenario results with test names, pass/fail status, durations, and error messages (with screenshots on failure via config). This is the structured feedback for the AI loop: write spec → implement → run tests → parse JSON → course-correct.
+Playwright's built-in JSON reporter outputs per-scenario results with test
+names, pass/fail status, durations, and error messages (with screenshots on
+failure via config). This is the structured feedback for the AI loop: write
+spec → implement → run tests → parse JSON → course-correct.
 
 2026-06-19: Marked done. User confirmed.

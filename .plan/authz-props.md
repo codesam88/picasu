@@ -29,12 +29,12 @@ code.
 
 ### Scope and exclusions
 
-Behavioral invariants owned here: AUTH-1, AUTH-4…AUTH-10, AUTH-13
-(header-only bearer). Static, source-shape invariants stay with the gate in
+Behavioral invariants owned here: AUTH-1, AUTH-4…AUTH-10, AUTH-13 (header-only
+bearer). Static, source-shape invariants stay with the gate in
 `.plan/authz-check.md` — except a minimal executable AUTH-2 prerequisite built
 in S0c, without which no world green below is trustworthy. Out of scope:
-non-authorization security surface (rate limiting, default bind, cookie
-flags, plaintext credentials, cache headers), `AUTH-14` (review), and full
+non-authorization security surface (rate limiting, default bind, cookie flags,
+plaintext credentials, cache headers), `AUTH-14` (review), and full
 concurrency (except the targeted probes in S5b).
 
 ### Single authority and ownership
@@ -53,11 +53,12 @@ rule lands.
 - Two levels:
   - **pure** — claims encode/decode, derivation/attenuation, renewal payload.
     Fast, stateless, no HTTP.
-  - **world** — one fixed world per test (albums, assets, shares with every flag
-    combination), then `TestRunner` generates requests against it. Built once per
-    test, not per case: `reset_backend_state` is far too slow per case.
-- Shared helpers move to `backend/src/tests/fixtures/authz.rs` so `authz.rs` and
-  `authz_props.rs` use one set.
+  - **world** — one fixed world per test (albums, assets, shares with every
+    flag combination), then `TestRunner` generates requests against it. Built
+    once per test, not per case: `reset_backend_state` is far too slow per
+    case.
+- Shared helpers move to `backend/src/tests/fixtures/authz.rs` so `authz.rs`
+  and `authz_props.rs` use one set.
 
 ### Property catalogue
 
@@ -80,9 +81,9 @@ rule lands.
 ### Expected findings
 
 Candidates already known to be open and expected to fail:
-`POST /post/config/import` under read-only (AUTH-12), `?token=` acceptance
-and the original-file `Forward` fall-through (AUTH-13, AUTH-3). Each failing
-case is recorded as a finding with its endpoint and the model invariant it
+`POST /post/config/import` under read-only (AUTH-12), `?token=` acceptance and
+the original-file `Forward` fall-through (AUTH-13, AUTH-3). Each failing case
+is recorded as a finding with its endpoint and the model invariant it
 violates.
 
 ### Acceptance
@@ -90,8 +91,8 @@ violates.
 - `cargo test --lib tests::authz_props` runs the suite; failing cases are real
   violations, reported not silenced.
 - Every invariant in the catalogue has a generator and an assertion; every
-  property ships with an executable falsification companion (§S0f) — a property
-  without one is not trusted.
+  property ships with an executable falsification companion (§S0f) — a
+  property without one is not trusted.
 - Route × invariant coverage matrix exists with no silent blanks (§S0e).
 - P-0 gates S3/S4: no world green is claimed while AUTH-2 is unchecked.
 - The suite is fast enough for pre-commit (world built once per test).
@@ -108,8 +109,8 @@ Each step is independently runnable and leaves the tree green.
   `album_title`) into `backend/src/tests/fixtures/authz.rs`; have
   `tests::authz` use them so both suites share one set.
 - Add `tests::authz_props` with one trivial pure property that runs green.
-- **Verify:** `cargo test --lib tests::authz` still passes; the trivial property
-  runs; no new warnings.
+- **Verify:** `cargo test --lib tests::authz` still passes; the trivial
+  property runs; no new warnings.
 
 ### S0b — Model-vs-assessment review (before S3)
 
@@ -155,8 +156,8 @@ open ones red and named.
 ### S0e — Route × invariant coverage matrix
 
 Generate the mounted-route list from code and cross it with P-0…P-12. Each
-cell: covered (property id), deferred (reason + owning plan/step), or N/A
-(why the invariant cannot apply). Store as `docs/authz-coverage.md`. No silent
+cell: covered (property id), deferred (reason + owning plan/step), or N/A (why
+the invariant cannot apply). Store as `docs/authz-coverage.md`. No silent
 blanks: an unmapped endpoint is an explicit gap, and a new route must update
 the matrix (review checklist). **Verify:** matrix committed; every blank has
 an owner.
@@ -185,8 +186,9 @@ companion red.
 
 ### S2 — World fixture and one passing behavioral property
 
-- A `World` built once per test: two albums with one asset each; shares on album
-  A for every `(M,D)` combination plus a share on album B. Extended only by S5b.
+- A `World` built once per test: two albums with one asset each; shares on
+  album A for every `(M,D)` combination plus a share on album B. Extended only
+  by S5b.
 - P-8 (AUTH-7) snapshot binding: a token for snapshot `t1` is refused for
   snapshot `t2`.
 - **Why first:** a property expected to hold. A red here means the harness is
@@ -205,8 +207,8 @@ Add, one at a time, and record each failure as a candidate finding:
   original bytes (and never a 200 fall-through).
 
 - **Verify:** run; for each red, confirm it is a real violation (not a test
-  bug) and capture the shrunk input. Deliverable: a findings list with endpoint,
-  invariant, and observed status.
+  bug) and capture the shrunk input. Deliverable: a findings list with
+  endpoint, invariant, and observed status.
 
 ### S4 — Behavioral invariants expected to hold
 
@@ -233,8 +235,8 @@ Regression pins for the behavior already fixed; each should be green.
 Small, explicit, not a general concurrency harness: revoke-vs-serve (disable a
 share while its outstanding token serves to `exp`, then assert no new identity
 and no renewal) and renew-vs-expire. Serial world setup, concurrent request
-phase only. **Verify:** probes green; a probe that cannot be made deterministic
-is recorded as a gap, not silenced.
+phase only. **Verify:** probes green; a probe that cannot be made
+deterministic is recorded as a gap, not silenced.
 
 ### S6 — Integration and traceability
 

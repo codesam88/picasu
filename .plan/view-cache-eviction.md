@@ -8,10 +8,10 @@ area: backend
 ## View cache eviction strategy
 
 **Status:** deferred pending the lazy-fetch option verdict (see
-`perf-investigation.md` item 9). The current hybrid — memory budget plus
-redb spill — stays as-is on this branch and is not to be merged until
-that verdict is recorded. The eviction code itself (`ebc51874`) exists only
-on its exploration branch; this record does not ship it.
+`perf-investigation.md` item 9). The current hybrid — memory budget plus redb
+spill — stays as-is on this branch and is not to be merged until that verdict
+is recorded. The eviction code itself (`ebc51874`) exists only on its
+exploration branch; this record does not ship it.
 
 ### Current state
 
@@ -26,9 +26,10 @@ The map is budget-bounded: the resident row buffers are capped by
 writing each to its own per-timestamp redb table before dropping the memory
 copy. Oldest-id order is creation order, i.e. the view least likely to be read
 again, not access order. `read_tree_snapshot` serves memory first and falls
-back to disk, so an evicted id still resolves. `remove_tree_snapshot::remove_task`
-drops the memory copy and then the table under one lock, so an in-flight
-eviction cannot resurrect a table the expire pass has already deleted.
+back to disk, so an evicted id still resolves.
+`remove_tree_snapshot::remove_task` drops the memory copy and then the table
+under one lock, so an in-flight eviction cannot resurrect a table the expire
+pass has already deleted.
 
 `ExpireCheckTask` (triggered by `update_expire_task` on data changes, plus a
 24h looper cycle) deletes stale tables from both `temp_db.redb` and
@@ -45,8 +46,8 @@ A distinct `locate` value keeps the tree version valid and forces the miss.
 | budget 512 MiB          | 0           | 0 MB           | 2.20 ms                | 69.1 ms      | 249 MB |
 
 - "Settled" = the read a client issues after the prefetch has settled; the
-  pre-budget build has already flushed and dropped the snapshot by then, so the
-  read decodes the whole table from redb.
+  pre-budget build has already flushed and dropped the snapshot by then, so
+  the read decodes the whole table from redb.
 - Immediate reads are unchanged: the pre-budget flush is detached and usually
   still pending when the first read lands.
 - Process peak does not drop with the default budget because redb's page cache
@@ -54,11 +55,12 @@ A distinct `locate` value keeps the tree version valid and forces the miss.
   snapshot store between RAM and disk one-to-one; it does not shrink the
   store, only bounds it.
 - Micro-measured (release, rows in parentheses): scroll bar read 0.105 ms
-  resident vs 1.744 ms from disk (5437), 6.67 vs 64.8 ms (200k); row batch
-  0.0021 vs 0.0123 ms (5437); eviction write 12.8 ms (5437), 497 ms (200k).
-- The evicted-id fallback is verified end-to-end: the first snapshot of the run
-  is far outside any budget by the last round, and its scroll bar read returns
-  200 from disk.
+  resident vs 1.744 ms from disk (5437), 6.67 vs 64.8 ms (200k); row
+  batch 0.0021 vs 0.0123 ms (5437); eviction write 12.8 ms (5437), 497 ms
+  (200k).
+- The evicted-id fallback is verified end-to-end: the first snapshot of the
+  run is far outside any budget by the last round, and its scroll bar read
+  returns 200 from disk.
 
 ### Proposed work
 

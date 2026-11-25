@@ -8,9 +8,10 @@ reflect a surveyed baseline.
 
 - Filesystem-first: if Picasu is removed, the photo set remains as directories
   of files with metadata in XMP sidecars.
-- Primary use cases: frictionless mobile backup followed by lazy curation through
-  the web UI. Inspired by Synology Photo Station; the backend runs on the main
-  photo storage/NAS, which carries its own redundancy and off-site backup.
+- Primary use cases: frictionless mobile backup followed by lazy curation
+  through the web UI. Inspired by Synology Photo Station; the backend runs on
+  the main photo storage/NAS, which carries its own redundancy and off-site
+  backup.
 - Current status: there is no built-in mobile auto-backup. Mobile backup is
   handled by pointing an external sync tool (Syncthing) at the photo storage;
   Picasu indexes the synced files in place. No Picasu-side integration is
@@ -67,18 +68,21 @@ Values: Present / Absent / Not stated in the surveyed baseline.
 
 **Picasu tends to fit when:**
 
-- The filesystem is the source of truth and files are managed with external tools; the gallery should adopt changes made outside it.
+- The filesystem is the source of truth and files are managed with external
+  tools; the gallery should adopt changes made outside it.
 - Metadata should live in interoperable XMP sidecars.
 - A single binary with a small footprint and an MIT license matters.
 - TLS is handled by a standard reverse proxy.
-- Mobile backup runs through external sync (e.g. Syncthing) onto the photo storage, and maps and ML-based search are not required.
+- Mobile backup runs through external sync (e.g. Syncthing) onto the photo
+  storage, and maps and ML-based search are not required.
 
 **Immich tends to fit when:**
 
 - Native mobile auto-backup and offline mobile use are required.
 - OIDC, maps, RAW/LivePhoto support, or face/CLIP search are required.
 - User-defined storage templates and managed database backups are required.
-- An AGPL-3.0 license and a four-container Postgres/Redis deployment are acceptable.
+- An AGPL-3.0 license and a four-container Postgres/Redis deployment are
+  acceptable.
 
 ## Picasu planned direction
 
@@ -86,9 +90,13 @@ Product intent, without dates:
 
 - Mobile backup/sync is handled outside Picasu with external sync tools
   (Syncthing): point sync at the photo storage and Picasu indexes the files in
-  place. A native mobile app is to be determined; priority is a good mobile web
-  app.
-- TLS and systemd deployment are handled via a standard reverse proxy (for example nginx), not built into Picasu.
-- Self-hosting comes first; hosting on AWS/Azure object storage is not a priority.
+  place. A native mobile app is to be determined; priority is a good mobile
+  web app.
+- TLS and systemd deployment are handled via a standard reverse proxy (for
+  example nginx), not built into Picasu.
+- Self-hosting comes first; hosting on AWS/Azure object storage is not a
+  priority.
 - Next auth/sharing priority: OTP, passkeys, and sharing improvements.
-- AI direction: an API for external services to generate image metadata (auto-tagging, grouping, duplicate-detection, and similar), with no built-in ML service.
+- AI direction: an API for external services to generate image metadata
+  (auto-tagging, grouping, duplicate-detection, and similar), with no built-in
+  ML service.

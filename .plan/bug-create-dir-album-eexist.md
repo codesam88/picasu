@@ -15,8 +15,8 @@ claims 400/401/405/500, so 500 is "documented" but wrong in spirit.
 
 ## Goal
 
-Name collision is rejected as 400/409 with a JSON body; 500 reserved
-for genuine storage failures.
+Name collision is rejected as 400/409 with a JSON body; 500 reserved for
+genuine storage failures.
 
 ## Steps
 
