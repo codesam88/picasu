@@ -395,6 +395,16 @@
         "merged.qnt:stepCompletion",
         "merged.qnt:sweepBatchAccumulationTest"
       ]
+    },
+    {
+      "id": "SCOPE-19",
+      "kind": "SCOPE",
+      "title": "Snapshot projection",
+      "refs": [
+        "merged.qnt:AspectAligned",
+        "merged.qnt:Converged",
+        "merged.qnt:NoPermanentStale"
+      ]
     }
   ]
 }
