@@ -20,11 +20,11 @@ inside a guard with no assigned target warns.
 
 ## Why it matters
 
-AUTH-1 (type soundness) / F1 (type-confusion class): a guard that decodes
-the wrong claims type accepts tokens minted for another purpose — e.g. a
-snapshot token satisfying an asset guard. The runtime `typ` check inside
-`decode_typed` is the backstop; this lint is the static ratchet that the
-guard → claims assignment never drifts.
+AUTH-1 (type soundness) / F1 (type-confusion class): a guard that decodes the
+wrong claims type accepts tokens minted for another purpose — e.g. a snapshot
+token satisfying an asset guard. The runtime `typ` check inside `decode_typed`
+is the backstop; this lint is the static ratchet that the guard → claims
+assignment never drifts.
 
 Expected table (established empirically from `backend/src/router/auth.rs` —
 every `decode_typed` call site per guard impl, verified before pinning):
@@ -75,19 +75,20 @@ Fixed code (silent):
 
 ## Known limits
 
-- Only direct `decode_typed` calls inside the `FromRequest` impl are
-  checked; the transitive decode inside `try_jwt_cookie_auth` (used by
-  `GuardAdmin`/`GuardPresenter`) is documented in the table, not
-  followed.
-- Handler-body decodes (the two `ALLOW_EXPIRED` renewal paths) are outside
-  the lint's scope; they are covered by review against the table above.
+- Only direct `decode_typed` calls inside the `FromRequest` impl are checked;
+  the transitive decode inside `try_jwt_cookie_auth` (used by
+  `GuardAdmin`/`GuardPresenter`) is documented in the table, not followed.
+- Handler-body decodes (the two `ALLOW_EXPIRED` renewal paths) are outside the
+  lint's scope; they are covered by review against the table above.
 - A `decode_typed` renamed on import still matches by resolution; only the
   resolved name `decode_typed` is recognized.
 - `#[allow(decode_agreement)]` / `#[deny(...)]` work as with any lint.
 
 ## Layout
 
-Standalone Dylint library crate: `src/lib.rs` holds the whole lint.
-It is deliberately _not_ a member of the main workspace and builds under
-the pinned nightly from the parent `utils/dylint-lints/rust-toolchain.toml`.
-Run via `just dylint-check` (see `utils/dylint-lints/README.md`). UI fixtures in `ui/` pin behavior (`cargo test` under the pinned nightly runs them via `dylint_testing`).
+Standalone Dylint library crate: `src/lib.rs` holds the whole lint. It is
+deliberately _not_ a member of the main workspace and builds under the pinned
+nightly from the parent `utils/dylint-lints/rust-toolchain.toml`. Run via
+`just dylint-check` (see `utils/dylint-lints/README.md`). UI fixtures in `ui/`
+pin behavior (`cargo test` under the pinned nightly runs them via
+`dylint_testing`).

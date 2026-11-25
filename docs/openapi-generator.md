@@ -4,29 +4,30 @@
 
 The backend exposes 61 documented operations across GET, POST, PUT, and DELETE
 modules, plus the test-only probes and the static file server. Keeping the API
-documentation in sync with the actual implementation is a constant drift problem
-in any live codebase.
+documentation in sync with the actual implementation is a constant drift
+problem in any live codebase.
 
 This project avoids that drift by making the code itself the sole authority:
-`#[utoipa::path]` annotations are the single source of truth for the documented
-operations, and `#[utoipauto]` discovers them. From that one input the pipeline
-generates the OpenAPI schema and a human-readable API reference — there is no
-list of modules and no generated Rust file that could fall out of sync.
+`#[utoipa::path]` annotations are the single source of truth for the
+documented operations, and `#[utoipauto]` discovers them. From that one input
+the pipeline generates the OpenAPI schema and a human-readable API reference —
+there is no list of modules and no generated Rust file that could fall out of
+sync.
 
-Neither input is the runtime route table, though, so one further check closes the
-loop: `picasu --check-openapi`, a mode on the binary that builds the real
+Neither input is the runtime route table, though, so one further check closes
+the loop: `picasu --check-openapi`, a mode on the binary that builds the real
 `build_rocket()` and compares its mount table with the committed document (see
 [Route-set parity](#route-set-parity---check-openapi)). It fails on an
-undocumented mounted route, and on a documented operation that no build mounts —
-except one gated behind a feature this build does not have. That is the half no
-external tool can do for us: a route mounted without documentation, or documented
-without a route, is a failure.
+undocumented mounted route, and on a documented operation that no build mounts
+— except one gated behind a feature this build does not have. That is the half
+no external tool can do for us: a route mounted without documentation, or
+documented without a route, is a failure.
 
-`backend/src/tests/openapi_contract.rs` runs the same comparisons over a _test_
-build's route table. They are the self-checks, not the gate: each comparison is a
-pure function exercised with deliberately drifted inputs, so a refactor that
-emptied one fails a named test instead of turning the gate into a no-op that
-still reports success.
+`backend/src/tests/openapi_contract.rs` runs the same comparisons over a
+_test_ build's route table. They are the self-checks, not the gate: each
+comparison is a pure function exercised with deliberately drifted inputs, so a
+refactor that emptied one fails a named test instead of turning the gate into
+a no-op that still reports success.
 
 The goal is an exact, auditable mapping between:
 
@@ -69,7 +70,6 @@ The goal is an exact, auditable mapping between:
 │ just openapi-check (part of just check, runs in CI)   │
 │                                                      │
 │ Phase 1  openapi-sanity: source annotations          │
-│ Phase 2  openapi-json-match: regenerate and diff     │
 │ Phase 3  openapi-lint: Spectral over the document    │
 │ Phase 4  openapi-routes-match: --check-openapi       │
 │          build_rocket().routes() vs the spec         │
@@ -98,18 +98,19 @@ The goal is an exact, auditable mapping between:
    schema are registered explicitly because they live in
    `backend/src/openapi_components.rs`, outside the scanned tree.
 
-   The directory is spelled relative to the **workspace root**, not the package,
-   because that is the working directory cargo runs rustc in.
+   The directory is spelled relative to the **workspace root**, not the
+   package, because that is the working directory cargo runs rustc in.
 
-   One derivation is imperfect, and it is in the document rather than the code:
-   the six SPA catch-all routes (`/albums/view/{path}` and its four siblings,
-   plus the `/<path..>` fallback) document their trailing segment as a **required**
-   path parameter, while `<path..>` matches zero or more segments — `/albums/view`
-   is routed too. utoipa derives `required` from the handler argument's type, and
-   a catch-all's argument is a `PathBuf` rather than an `Option`. Declaring the
-   parameter inline (`params(("path" = Option<String>, Path))`) makes its schema
-   nullable but leaves `required` at the derived value, so it is not a way out.
-   The parameter exists only to give the catch-all something to bind: the handlers
+   One derivation is imperfect, and it is in the document rather than the
+   code: the six SPA catch-all routes (`/albums/view/{path}` and its four
+   siblings, plus the `/<path..>` fallback) document their trailing segment as
+   a **required** path parameter, while `<path..>` matches zero or more
+   segments — `/albums/view` is routed too. utoipa derives `required` from the
+   handler argument's type, and a catch-all's argument is a `PathBuf` rather
+   than an `Option`. Declaring the parameter inline
+   (`params(("path" = Option<String>, Path))`) makes its schema nullable but
+   leaves `required` at the derived value, so it is not a way out. The
+   parameter exists only to give the catch-all something to bind: the handlers
    ignore it and serve `index.html`.
 
 2. **`build.rs`** — no longer discovers anything. It exists for
@@ -120,8 +121,8 @@ The goal is an exact, auditable mapping between:
    that matters — an annotation added or changed, a new module declared —
    changes a file the crate is being compiled from, so the crate is recompiled
    and the macro re-expands. A file added under `src/router` that no `mod`
-   declares is not compiled at all, and the macro reports it as a compile error
-   rather than ignoring it.
+   declares is not compiled at all, and the macro reports it as a compile
+   error rather than ignoring it.
 
 3. **`just openapi-gen`** — runs the `picasu` binary with `--dump-openapi`
    (`cargo run -- --dump-openapi > backend/openapi.json`), which serves
@@ -132,25 +133,26 @@ The goal is an exact, auditable mapping between:
    - `widdershins` to convert `openapi.json` → `docs/openapi-reference.md`
    - `prettier` for consistent markdown formatting
 
-5. **`just openapi-check`** — the API contract gate, in two phases (see
-   [The contract gate](#the-contract-gate)). It is part of `just check`, so it
-   runs in CI, and the pre-commit hook runs it for any commit that touches
+5. **`just openapi-check`** — the API contract gate, in two phases (see [The
+   contract gate](#the-contract-gate)). It is part of `just check`, so it runs
+   in CI, and the pre-commit hook runs it for any commit that touches
    `backend/`.
 
-6. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) — compare
-   the mounted Rocket routes with the public spec, check that `operationId`s are
-   unique, that the exclusion list matches the routes it actually excludes, and
-   that every documented `401` is a `$ref` to the shared `Unauthorized` component
-   rather than an inlined literal. Both sides of the route comparison are
-   normalized with `backend/src/spec_path.rs::to_spec_path`, the single path
-   translation the backend owns. They read the _test_ build's route table; the
-   route-set verdict belongs to `--check-openapi`, because a test build runs
-   without `embed-frontend` and serves a different table than the one that ships
-   (see [Route-set parity](#route-set-parity---check-openapi)).
+6. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) —
+   compare the mounted Rocket routes with the public spec, check that
+   `operationId`s are unique, that the exclusion list matches the routes it
+   actually excludes, and that every documented `401` is a `$ref` to the
+   shared `Unauthorized` component rather than an inlined literal. Both sides
+   of the route comparison are normalized with
+   `backend/src/spec_path.rs::to_spec_path`, the single path translation the
+   backend owns. They read the _test_ build's route table; the route-set
+   verdict belongs to `--check-openapi`, because a test build runs without
+   `embed-frontend` and serves a different table than the one that ships (see
+   [Route-set parity](#route-set-parity---check-openapi)).
 
 7. **`openapi_parity` tests** (`cargo test --lib openapi_parity`) — the
-   asymmetric parity rule over fixtures, since the feature-excuse branch has no
-   instance in the repository: a mounted route the document omits fails, an
+   asymmetric parity rule over fixtures, since the feature-excuse branch has
+   no instance in the repository: a mounted route the document omits fails, an
    ungated document-only operation fails, and a feature-gated operation absent
    from this build is excused — and is drift once the feature is on. The same
    file pins every `x-picasu-feature` value in the committed document to a
@@ -169,18 +171,14 @@ exit, so the failing phase's own diagnostics are what the run shows:
 1. **`openapi-sanity`** — the source phase. Runs
    [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) over
    `backend/src/router` and reports one `file:line: message` per problem in an
-   annotation or in the handler it sits on. It comes first because the other two
-   comparing phases compare a document that has to be regenerated before either
-   of them can say anything: a defect found after the diff is a confusing way to
-   be told about it. The rules are [annotation shape](#annotation-shape-what-the-source-gate-checks)
-   and the parameter-agreement and response-status rules; they read source only,
-   so the phase needs
-   no build and no frontend bundle.
-2. **`openapi-json-match`** — the generated-artifact phase. Regenerates the spec
-   with `cargo run --package picasu -- --dump-openapi` into a temporary file and
-   fails when it differs from the committed `backend/openapi.json`, printing the
-   diff and the fix.
-3. **`openapi-lint`** — the document phase. Runs Spectral
+   annotation or in the handler it sits on. It comes first because the other
+   two comparing phases compare a document that has to be regenerated before
+   either of them can say anything: a defect found after the diff is a
+   confusing way to be told about it. The rules are [annotation
+   shape](#annotation-shape-what-the-source-gate-checks) and the
+   parameter-agreement and response-status rules; they read source only, so
+   the phase needs no build and no frontend bundle.
+2. **`openapi-lint`** — the document phase. Runs Spectral
    (`@stoplight/spectral-cli`, a `frontend/` devDependency invoked with
    `npx --no-install` so CI needs no network beyond `npm ci`) over the
    committed document with the ruleset in `.spectral.yaml` (stock
@@ -190,33 +188,33 @@ exit, so the failing phase's own diagnostics are what the run shows:
    rank-disambiguated `/{dynamic_album_id}` vs `/{path}` SPA fallbacks) and
    `operation-success-response` (`GET /unauthorized` answers `401` by design).
    The 51 `operation-description` warnings that the phase opened with were
-   cleared by backfilling every handler's doc comment with a second paragraph —
-   the doc comment is where utoipa reads `description` from.
-4. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi` run
-   against a build configured like the shipped one. This is the only check that
-   can prove the route-set half of the invariant, and it is pinned to the release
-   feature set (`--features "embed-frontend auto-open-browser"`, the set
-   `.github/workflows/release.yml` builds) so the build doing the checking is the
-   build that ships: a feature-gated route only exists in the table of a build
-   that has the feature, so checking a build without it could not see the route
-   at all. The phase depends on the frontend bundle because `embed-frontend`
-   embeds it.
+   cleared by backfilling every handler's doc comment with a second paragraph
+   — the doc comment is where utoipa reads `description` from.
+3. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi`
+   run against a build configured like the shipped one. This is the only check
+   that can prove the route-set half of the invariant, and it is pinned to the
+   release feature set (`--features "embed-frontend auto-open-browser"`, the
+   set `.github/workflows/release.yml` builds) so the build doing the checking
+   is the build that ships: a feature-gated route only exists in the table of
+   a build that has the feature, so checking a build without it could not see
+   the route at all. The phase depends on the frontend bundle because
+   `embed-frontend` embeds it.
 
 The same flag runs on the binary the release job ships
 (`.github/workflows/release.yml`), so the shipped build is the one that was
 checked.
 
 The source phase runs with `--expect-at-least 60`, a floor on the annotated
-handlers the scan must see. A file walk that stopped descending produces exactly
-the report a clean tree produces, so a scan below the floor fails instead of
-reporting clean. 60 is headroom below the tree's 63 annotations: a new handler
-must not break the gate, a lost one should be noticed.
+handlers the scan must see. A file walk that stopped descending produces
+exactly the report a clean tree produces, so a scan below the floor fails
+instead of reporting clean. 60 is headroom below the tree's 63 annotations: a
+new handler must not break the gate, a lost one should be noticed.
 
 ### Annotation shape (what the source gate checks)
 
 Three of the four phases compare the document. The source phase checks the
-annotations themselves, because a handful of things about an annotation are wrong
-in a way the document cannot show:
+annotations themselves, because a handful of things about an annotation are
+wrong in a way the document cannot show:
 
 | Rule | Assertion                                                                           | Why the document cannot show it                                                                                                                     |
 | ---- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -241,121 +239,126 @@ in a way the document cannot show:
 `utils/openapi-sanity/tags.json` is where the tag vocabulary is written down —
 one entry per tag, name and description — and this document's Tag conventions
 table and the spec's global tags are its mirrors, checked against the file by
-tests; the three change together. Everything else in the table is a rule with no
-document-side equivalent, which is why they live in the tool and not in a linter
-for the document — the document is generated _from_ these annotations, so a
-linter would be checking the output against its own input.
+tests; the three change together. Everything else in the table is a rule with
+no document-side equivalent, which is why they live in the tool and not in a
+linter for the document — the document is generated _from_ these annotations,
+so a linter would be checking the output against its own input.
 
-Every rule reads source and nothing else: the annotation, the handler beside it,
-its route attribute, the `FromRequest` impls anywhere in the scanned tree, and —
-for P3 — the `error.rs` mapping the recipe passes with `--app-error-map`. None
-of them holds a route path, a config value, a feature name or a backend constant
-as a copy, and that is deliberate: a copied fact is a second place to forget,
-whereas reading the fact from source keeps it true for as long as the source is.
-B1–B5 read the route attribute on the handler they are already reading — the
-same attribute utoipa reads it from. P2 derives its guard table from the tree's
-own `FromRequest` impls at scan time, and P3 parses `backend/src/error.rs` at
-run time; the app-error map's variants and arms are read, never mirrored.
+Every rule reads source and nothing else: the annotation, the handler beside
+it, its route attribute, the `FromRequest` impls anywhere in the scanned tree,
+and — for P3 — the `error.rs` mapping the recipe passes with
+`--app-error-map`. None of them holds a route path, a config value, a feature
+name or a backend constant as a copy, and that is deliberate: a copied fact is
+a second place to forget, whereas reading the fact from source keeps it true
+for as long as the source is. B1–B5 read the route attribute on the handler
+they are already reading — the same attribute utoipa reads it from. P2 derives
+its guard table from the tree's own `FromRequest` impls at scan time, and P3
+parses `backend/src/error.rs` at run time; the app-error map's variants and
+arms are read, never mirrored.
 
-B1, B2 and B5 read a declared parameter's name, location, type and description,
-and they read the
-inline tuple form `("name" = Type, Location, …)` only. The struct form —
-`params(SomeQueryStruct)` — hides all of them behind a type, and **no type in this
-repository derives `IntoParams`**, so the tool counts those entries instead of
-reading them and pins the count at zero: the first one to appear fails a test
-rather than quietly narrowing the rules. B3 states two limits rather than
-exempting itself from them: `request_body = Value` declares no constraint, and a
-`Form<…>` payload has no schema type an annotation could name. An out-of-contract operation is
-therefore not an exception to A3 but an entry in its vocabulary — `internal`, for
-the test-only probes. Those operations are removed from the committed artifact by
+B1, B2 and B5 read a declared parameter's name, location, type and
+description, and they read the inline tuple form
+`("name" = Type, Location, …)` only. The struct form —
+`params(SomeQueryStruct)` — hides all of them behind a type, and **no type in
+this repository derives `IntoParams`**, so the tool counts those entries
+instead of reading them and pins the count at zero: the first one to appear
+fails a test rather than quietly narrowing the rules. B3 states two limits
+rather than exempting itself from them: `request_body = Value` declares no
+constraint, and a `Form<…>` payload has no schema type an annotation could
+name. An out-of-contract operation is therefore not an exception to A3 but an
+entry in its vocabulary — `internal`, for the test-only probes. Those
+operations are removed from the committed artifact by
 [`openapi_public`](../../backend/src/openapi_public.rs), which matches their
-`/get/test/` prefix rather than the tag; the tag labels them for readers. Every other rule applies to them too, because the source gate reads
-the annotations themselves in `backend/src/router` and never consults the
+`/get/test/` prefix rather than the tag; the tag labels them for readers.
+Every other rule applies to them too, because the source gate reads the
+annotations themselves in `backend/src/router` and never consults the
 document: their responses (A2) and their doc comments (A4) are still checked,
 while the document-level phases never see those operations.
 
-Three spellings utoipa also accepts are rejected by the source gate as forms it
-does not model — `method(GET)` is the parenthesised verb form of A1,
-`tags([…])` is a list form of A3, and `context_path` is a base-path form of A1.
-A9 fails closed on them: none of the reading rules would see them, so a clean
-report would claim a check that never ran. No backend annotation uses any of
-them.
+Three spellings utoipa also accepts are rejected by the source gate as forms
+it does not model — `method(GET)` is the parenthesised verb form of A1,
+`tags([…])` is a list form of A3, and `context_path` is a base-path form of
+A1. A9 fails closed on them: none of the reading rules would see them, so a
+clean report would claim a check that never ran. No backend annotation uses
+any of them.
 
 ### What the document does not say yet
 
 One gap in the published artifact, open work tracked as backlog:
 
-- **Security schemes.** The document registers no `securitySchemes`, and none of
-  the 73 operations declares `security`. A generated client cannot tell that an
-  operation requires authentication. The guards are visible in source — the
-  handler signatures are what P2 reads — but nothing yet states the policy in the
-  artifact.
+- **Security schemes.** The document registers no `securitySchemes`, and none
+  of the 73 operations declares `security`. A generated client cannot tell
+  that an operation requires authentication. The guards are visible in source
+  — the handler signatures are what P2 reads — but nothing yet states the
+  policy in the artifact.
 
-Parameter descriptions are no longer a gap: B5 requires every bound parameter to
-carry one, and all 22 published parameters now do. Operation `description` and
-parameter `description` are different fields — all 61 operations carry the
+Parameter descriptions are no longer a gap: B5 requires every bound parameter
+to carry one, and all 22 published parameters now do. Operation `description`
+and parameter `description` are different fields — all 61 operations carry the
 former from the handler's doc comment, and the latter comes only from
 `params(…)`.
 
 ## Route-set parity (`--check-openapi`)
 
-`--check-openapi` is the check that proves the route-set half of the invariant. It
-is a mode on the binary, a sibling of `--dump-openapi`:
+`--check-openapi` is the check that proves the route-set half of the
+invariant. It is a mode on the binary, a sibling of `--dump-openapi`:
 
 ```
 picasu --check-openapi [<path-to-spec>]   # default: backend/openapi.json
 ```
 
-It reads the **committed** spec (the published claim, not the compiled-in copy),
-builds the real `build_rocket()`, reads `.routes()`, normalizes both sides with
-the backend's `to_spec_path`, and compares them under an **asymmetric** rule:
+It reads the **committed** spec (the published claim, not the compiled-in
+copy), builds the real `build_rocket()`, reads `.routes()`, normalizes both
+sides with the backend's `to_spec_path`, and compares them under an
+**asymmetric** rule:
 
-- **Mounted ⊆ spec** — every route the running product registers must be in the
-  spec. A hard failure. This is the direction that cannot be argued with.
+- **Mounted ⊆ spec** — every route the running product registers must be in
+  the spec. A hard failure. This is the direction that cannot be argued with.
 - **Spec ⊆ mounted, feature-gated** — a spec operation that is not mounted in
   _this_ build is acceptable when, and only when, it is feature-gated and that
-  feature is disabled here. An ungated spec operation with no matching mount is
-  still drift.
+  feature is disabled here. An ungated spec operation with no matching mount
+  is still drift.
 
 Before the comparison both sides are normalized and then **dropped** under
-`openapi_public::CONTRACT_EXCLUSION_PREFIXES` — `/get/test/` and `/assets` — the
-one backend-owned list of surfaces outside the published contract. The same const
-is what `contract_exclusions_match_mounted_routes` holds to the routes it
-actually matches, so a prefix cannot be added to one consumer alone.
+`openapi_public::CONTRACT_EXCLUSION_PREFIXES` — `/get/test/` and `/assets` —
+the one backend-owned list of surfaces outside the published contract. The
+same const is what `contract_exclusions_match_mounted_routes` holds to the
+routes it actually matches, so a prefix cannot be added to one consumer alone.
 
 Nothing under the exclusions is excused because of a feature: a mount with no
 operation is a failure whatever the reason it is mounted. The asymmetry only
 applies in the other direction, to operations the document carries.
 
-The asymmetry is what feature-gating requires. The build's enabled features are
-read with `cfg!` (`openapi_parity::enabled_features`), so the check runs
-correctly in any configuration. It exits `0` when the two views agree, `1` with a
-per-route report when they do not, and `2` when the document cannot be read or
-parsed — a missing file names `just openapi-gen` rather than reporting a clean run.
+The asymmetry is what feature-gating requires. The build's enabled features
+are read with `cfg!` (`openapi_parity::enabled_features`), so the check runs
+correctly in any configuration. It exits `0` when the two views agree, `1`
+with a per-route report when they do not, and `2` when the document cannot be
+read or parsed — a missing file names `just openapi-gen` rather than reporting
+a clean run.
 
 The comparison is a pure function over three inputs — the mounted routes, the
 document's operations, and this build's enabled features
 (`openapi_parity::compare_route_set`) — so the rule is tested without a server
-and without a product build, and the flag and the backend's parity self-checks run
-the same code rather than two comparisons that can drift apart.
+and without a product build, and the flag and the backend's parity self-checks
+run the same code rather than two comparisons that can drift apart.
 
 The `/get/test/` probes are registered only in test builds (a `#[cfg(test)]`
-extension of `generate_get_routes()`), which is what the route-set rule requires:
-the public document never carried them, so a shipped build that mounted them
-would fail the gate. The handlers and their annotations stay compiled in every
-build, because `#[utoipauto(paths = …)]` names every `__path_*` item it finds and
-that item has to exist outside `cfg(test)` too; the probe paths reach the generated
-document and are removed from the published one by
-`openapi_public::strip_test_only_endpoints`. `backend/tests/probe_registration.rs`
-observes that from an integration test, which is the only vantage point outside
-`cfg(test)`.
+extension of `generate_get_routes()`), which is what the route-set rule
+requires: the public document never carried them, so a shipped build that
+mounted them would fail the gate. The handlers and their annotations stay
+compiled in every build, because `#[utoipauto(paths = …)]` names every
+`__path_*` item it finds and that item has to exist outside `cfg(test)` too;
+the probe paths reach the generated document and are removed from the
+published one by `openapi_public::strip_test_only_endpoints`.
+`backend/tests/probe_registration.rs` observes that from an integration test,
+which is the only vantage point outside `cfg(test)`.
 
 ### Feature-dependent routes
 
-A single canonical `openapi.json` describes every route _any_ build can expose —
-the union across features, not one build's slice. An operation that exists only
-under a feature carries that feature as a vendor extension, set with utoipa's
-`extensions(...)` on `#[utoipa::path]`:
+A single canonical `openapi.json` describes every route _any_ build can expose
+— the union across features, not one build's slice. An operation that exists
+only under a feature carries that feature as a vendor extension, set with
+utoipa's `extensions(...)` on `#[utoipa::path]`:
 
 ```rust
 #[utoipa::path(
@@ -365,28 +368,29 @@ under a feature carries that feature as a vendor extension, set with utoipa's
 ```
 
 The key has to be spelled whole: utoipa prefixes a bare key with `x-` and
-otherwise leaves the rest as written, so `("picasu_feature" = …)` would serialize
-as `x-picasu_feature` and the check would not see it. The marker is written by
-the annotation author — `build.rs` cannot evaluate a `cfg` at a mount site.
+otherwise leaves the rest as written, so `("picasu_feature" = …)` would
+serialize as `x-picasu_feature` and the check would not see it. The marker is
+written by the annotation author — `build.rs` cannot evaluate a `cfg` at a
+mount site.
 
-`--check-openapi` reads that marker, so in a build without `embed-frontend` the
-operation's absence from the mount table is expected rather than drift. This is
-what lets a feature-gated API be documented without a hand-written exclusion —
-exclusions remain only for genuinely non-API surfaces (static file mounts,
-test-only probes).
+`--check-openapi` reads that marker, so in a build without `embed-frontend`
+the operation's absence from the mount table is expected rather than drift.
+This is what lets a feature-gated API be documented without a hand-written
+exclusion — exclusions remain only for genuinely non-API surfaces (static file
+mounts, test-only probes).
 
 A marker naming a feature `backend/Cargo.toml` does not declare would make the
 `cfg!` read permanently false and excuse the operation in every build, so
 `every_feature_marker_in_the_committed_spec_is_a_declared_feature` holds the
 committed document to the manifest's `[features]`, and
-`every_declared_feature_is_readable_by_the_enabled_feature_list` holds the list
-the check asks `cfg!` about to the same set. No operation carries a marker today,
-so both are fixture-backed rather than repository-backed.
+`every_declared_feature_is_readable_by_the_enabled_feature_list` holds the
+list the check asks `cfg!` about to the same set. No operation carries a
+marker today, so both are fixture-backed rather than repository-backed.
 
-The spec dependency of this check is deliberately confined to the repo, the commit
-hook, CI and the release gate. `openapi.json` is a review artifact, not a
-deployment dependency, so the server's boot does not depend on it and a missing
-file cannot stop the server from starting.
+The spec dependency of this check is deliberately confined to the repo, the
+commit hook, CI and the release gate. `openapi.json` is a review artifact, not
+a deployment dependency, so the server's boot does not depend on it and a
+missing file cannot stop the server from starting.
 
 ## Tag conventions
 
@@ -407,27 +411,27 @@ operations by, so the vocabulary stays small and subject-oriented.
 | `pages`    | SPA HTML page routes served from `router/get/get_page.rs`                           | `GET /login`                       |
 | `internal` | Operations outside the published API (stripped from this document)                  | `GET /get/test/record/{asset_id}`  |
 
-`pages` is reserved for the SPA page routes in `router/get/get_page.rs`; the data
-API lives under `/delete/`, `/get/`, `/object/`, `/post/` and `/put/`
-and takes a subject from the table.
+`pages` is reserved for the SPA page routes in `router/get/get_page.rs`; the
+data API lives under `/delete/`, `/get/`, `/object/`, `/post/` and `/put/` and
+takes a subject from the table.
 
-This table **is** a checked rule: A3 of the source gate holds every annotation to
-exactly one tag from it, and the gate fails the build on a tag that is not in the
-list. The list the tool checks lives in `utils/openapi-sanity/tags.json`, which
-also carries each tag's description; this table and the spec's global tags are
-its mirrors, and a test holds each mirror to the file. The file, not a published
-artifact, is the source: the spec is generated from these annotations, so reading
-the vocabulary back out of it would check the output against its own input.
-**Adding a subject means changing `tags.json` and both mirrors in the same
-change.**
+This table **is** a checked rule: A3 of the source gate holds every annotation
+to exactly one tag from it, and the gate fails the build on a tag that is not
+in the list. The list the tool checks lives in
+`utils/openapi-sanity/tags.json`, which also carries each tag's description;
+this table and the spec's global tags are its mirrors, and a test holds each
+mirror to the file. The file, not a published artifact, is the source: the
+spec is generated from these annotations, so reading the vocabulary back out
+of it would check the output against its own input. **Adding a subject means
+changing `tags.json` and both mirrors in the same change.**
 
 `internal` names the operations **outside the published API**, which today are
-the test-only probes under `/get/test/`. `openapi_public` strips those from the
-committed artifact, along with the routes under the contract's exclusion
-prefixes, so the generated reference never renders this group — the tag says "not
-part of the published surface" rather than naming a section a reader can open.
-Every operation is tagged, and `internal` is how an out-of-contract one says so;
-nothing is exempt from the rule.
+the test-only probes under `/get/test/`. `openapi_public` strips those from
+the committed artifact, along with the routes under the contract's exclusion
+prefixes, so the generated reference never renders this group — the tag says
+"not part of the published surface" rather than naming a section a reader can
+open. Every operation is tagged, and `internal` is how an out-of-contract one
+says so; nothing is exempt from the rule.
 
 ## Workflow
 
@@ -436,37 +440,39 @@ nothing is exempt from the rule.
 1. Add the handler function to a `routes![]` block, in a module under
    `backend/src/router` (declared from `router/mod.rs`). Every module in that
    tree is scanned, so nothing has to be registered anywhere else — but an
-   annotated `.rs` file that no `mod` statement declares is a build error, since
-   its `__path_*` item has no module to live in.
-2. Add `#[utoipa::path(...)]` with the operation's responses, its `tag = "..."`
-   from the table above, and `params(...)` for any parameter that needs a
-   description or a schema the handler signature cannot carry. Leave the HTTP
-   method and the path out: with `rocket_extras` enabled, utoipa reads both from
-   the route attribute itself, so the document cannot name a path the route does
-   not serve — and A1 fails the build if the annotation restates either, because
-   a second copy of a route fact is a copy that can rot. Do not set
-   `operation_id` (A6), and do not set `summary` or `description` (A7): utoipa
-   derives all three, and a hand-set one is the same text written twice beside
-   itself, with nothing comparing the copies. Declare at least one
-   `responses(…)` entry (A2) — utoipa invents none. If the route is
-   feature-gated, add
-   `extensions(("x-picasu-feature" = json!("<feature>")))` so `--check-openapi`
-   knows a spec operation may legitimately be absent from a build without it.
+   annotated `.rs` file that no `mod` statement declares is a build error,
+   since its `__path_*` item has no module to live in.
+2. Add `#[utoipa::path(...)]` with the operation's responses, its
+   `tag = "..."` from the table above, and `params(...)` for any parameter
+   that needs a description or a schema the handler signature cannot carry.
+   Leave the HTTP method and the path out: with `rocket_extras` enabled,
+   utoipa reads both from the route attribute itself, so the document cannot
+   name a path the route does not serve — and A1 fails the build if the
+   annotation restates either, because a second copy of a route fact is a copy
+   that can rot. Do not set `operation_id` (A6), and do not set `summary` or
+   `description` (A7): utoipa derives all three, and a hand-set one is the
+   same text written twice beside itself, with nothing comparing the copies.
+   Declare at least one `responses(…)` entry (A2) — utoipa invents none. If
+   the route is feature-gated, add
+   `extensions(("x-picasu-feature" = json!("<feature>")))` so
+   `--check-openapi` knows a spec operation may legitimately be absent from a
+   build without it.
 3. Write a doc comment on the handler (A4), and make its **first paragraph a
    single line** (A5). utoipa derives `summary` from that paragraph and
-   `description` from the rest, and the generated reference renders the `summary`
-   as a heading — a paragraph wrapped over two lines puts a newline inside a
-   markdown heading and splits it. Everything the operation needs to say belongs
-   in the doc comment, which is the only place the gate reads it from.
+   `description` from the rest, and the generated reference renders the
+   `summary` as a heading — a paragraph wrapped over two lines puts a newline
+   inside a markdown heading and splits it. Everything the operation needs to
+   say belongs in the doc comment, which is the only place the gate reads it
+   from.
 4. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
    artifact and the reference.
 5. Run `just openapi-check`. Commit the handler, its annotation, and the
    regenerated spec together.
 
 CI enforces steps 4 and 5: `just check` runs the source phase over the
-annotations, diffs the spec artifact against a fresh generation, and fails on a
-route the document does not carry, a documented operation no build mounts, or a
-duplicate `operationId`.
+annotations, diffs the spec artifact against a fresh generation, and fails on
+a route the document does not carry, a documented operation no build mounts,
+or a duplicate `operationId`.
 
 ### Removing a route
 
@@ -490,38 +496,38 @@ regenerated, so the change cannot be merged undocumented.
 
 `#[derive(OpenApi)]` references `__path_*` items generated by
 `#[utoipa::path(...)]` proc-macros in the same crate. Cross-crate access would
-require re-exporting every `__path_*` symbol from `backend`'s public API — more
-boilerplate, not less. `#[utoipauto]` keeps that in one attribute on one struct
-inside the crate, so `backend/src/openapi.rs` is an ordinary hand-written source
-file: 22 lines, committed, and `#[derive(OpenApi)]` reads the same either way.
-The serialized spec is committed for a different reason: it is the reviewed
-artifact the CI gate diffs against.
+require re-exporting every `__path_*` symbol from `backend`'s public API —
+more boilerplate, not less. `#[utoipauto]` keeps that in one attribute on one
+struct inside the crate, so `backend/src/openapi.rs` is an ordinary
+hand-written source file: 22 lines, committed, and `#[derive(OpenApi)]` reads
+the same either way. The serialized spec is committed for a different reason:
+it is the reviewed artifact the CI gate diffs against.
 
 ### Why a proc macro rather than a `syn` scanner in `build.rs`?
 
-The retired scanner was five source files plus three test files whose whole job
-was to turn a directory of handlers into a list. `#[utoipauto]` is that list,
-already written and tested upstream, and it removes a moving part rather than
-adding one: no module list to forget an entry in, and no generated file a fresh
-clone has to build before it can compile. What is given up is stated in
+The retired scanner was five source files plus three test files whose whole
+job was to turn a directory of handlers into a list. `#[utoipauto]` is that
+list, already written and tested upstream, and it removes a moving part rather
+than adding one: no module list to forget an entry in, and no generated file a
+fresh clone has to build before it can compile. What is given up is stated in
 [the coverage section](#coverage-check).
 
 ### Why is the route-set check on the binary rather than an analyzer?
 
-A route table assembled under a `cfg` feature exists only in a real build, so the
-question "what does this product mount?" cannot be answered by reading source.
-Reading the `routes![]` macros answers a different question — what the source
-declares — and a declaration can disagree with what Rocket actually mounts. The
-binary builds the real `build_rocket()`, so the check sees the same table the
-server serves, from the same artifact a release ships.
+A route table assembled under a `cfg` feature exists only in a real build, so
+the question "what does this product mount?" cannot be answered by reading
+source. Reading the `routes![]` macros answers a different question — what the
+source declares — and a declaration can disagree with what Rocket actually
+mounts. The binary builds the real `build_rocket()`, so the check sees the
+same table the server serves, from the same artifact a release ships.
 
 ### Why not gate utoipa behind a feature flag?
 
-The `#[utoipa::path]` annotations are part of the route handler definitions and
-don't affect runtime behavior when the OpenAPI spec isn't generated. The
-original feature-gated approach added 53 `#[cfg_attr]` wrappers across 23 files
-for negligible binary-size benefit. Making utoipa a standard dependency removed
-all of them, simplifying the code and the build.
+The `#[utoipa::path]` annotations are part of the route handler definitions
+and don't affect runtime behavior when the OpenAPI spec isn't generated. The
+original feature-gated approach added 53 `#[cfg_attr]` wrappers across 23
+files for negligible binary-size benefit. Making utoipa a standard dependency
+removed all of them, simplifying the code and the build.
 
 ### Why the stack size override?
 
@@ -534,69 +540,70 @@ unaffected.
 
 ### Why no explicit `components(schemas(...))`?
 
-utoipa automatically registers any type referenced as a request or response body
-in a `#[utoipa::path]` annotation, including all transitively reachable types.
-The explicit schema list was redundant and has been removed.
+utoipa automatically registers any type referenced as a request or response
+body in a `#[utoipa::path]` annotation, including all transitively reachable
+types. The explicit schema list was redundant and has been removed.
 
 ### Why does the backend still run parity tests if the binary has the gate?
 
-Because the gate is the expensive one. `openapi-routes-match` compiles a release-shaped
-build with the frontend embedded; the tests run in `cargo test` against a test
-build and are exercised with deliberately drifted inputs, which is how a
-comparison that has stopped comparing is detected at all. The tests are the
-self-checks; the flag is the gate. The asymmetry of the rule means the test build
-cannot be the gate — it serves a different table than the shipped one.
+Because the gate is the expensive one. `openapi-routes-match` compiles a
+release-shaped build with the frontend embedded; the tests run in `cargo test`
+against a test build and are exercised with deliberately drifted inputs, which
+is how a comparison that has stopped comparing is detected at all. The tests
+are the self-checks; the flag is the gate. The asymmetry of the rule means the
+test build cannot be the gate — it serves a different table than the shipped
+one.
 
 ### Why `disable-read-only` is the only `GuardMutate` exception
 
-Every mutating route carries `GuardMutate`, so the kill-switch refuses
-writes while it is on. The lift operation
+Every mutating route carries `GuardMutate`, so the kill-switch refuses writes
+while it is on. The lift operation
 (`POST /post/admin/config/disable-read-only`) is the sole exception: it must
 stay callable while the mode is on, and it is gated by `GuardAdmin` plus
 `GuardReauth` (the `X-Picasu-Password` header) instead.
 
 ## Testing the gate
 
-Each comparison is a pure function exercised with drifted inputs, so a refactor
-that empties a check fails a named test instead of quietly passing:
+Each comparison is a pure function exercised with drifted inputs, so a
+refactor that empties a check fails a named test instead of quietly passing:
 
 - `openapi_parity.rs` drives the asymmetric rule over fixtures in both
   directions, plus the `x-picasu-feature` pins.
 - `openapi_contract.rs` drives the mounted-route comparison, the `operationId`
-  uniqueness check, the exclusion list, and the shared `401` response component
-  over both the real document and deliberately mutated copies of it. It also
-  asserts the generator's derivations against the committed artifact: every
-  `operationId` equals its handler name, each published parameter's `required`
-  agrees with the handler argument's optionality, the `Redirect::to` route
-  publishes `303`, and the document's global tags are the `tags.json`
-  vocabulary.
+  uniqueness check, the exclusion list, and the shared `401` response
+  component over both the real document and deliberately mutated copies of it.
+  It also asserts the generator's derivations against the committed artifact:
+  every `operationId` equals its handler name, each published parameter's
+  `required` agrees with the handler argument's optionality, the
+  `Redirect::to` route publishes `303`, and the document's global tags are the
+  `tags.json` vocabulary.
 - `backend/tests/probe_registration.rs` observes the `cfg(test)`-gated probe
   registration from outside `cfg(test)`.
 - [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) drives every
   source rule over a fixture that must produce its finding, a conforming
-  counterpart that must produce none, and the real router tree, which has to stay
-  silent. Each fixture is pulled in with `include_str!`, so a deleted fixture
-  breaks the build instead of skipping its test.
+  counterpart that must produce none, and the real router tree, which has to
+  stay silent. Each fixture is pulled in with `include_str!`, so a deleted
+  fixture breaks the build instead of skipping its test.
 
 The markdown reference is generated but not drift-checked: `widdershins` is
-fetched with `npx --yes` at generation time, which needs network access that CI
-gates should not depend on. Regenerate it with `just docs-openapi` when the spec
-changes; it therefore lags `backend/openapi.json` until someone does.
+fetched with `npx --yes` at generation time, which needs network access that
+CI gates should not depend on. Regenerate it with `just docs-openapi` when the
+spec changes; it therefore lags `backend/openapi.json` until someone does.
 
 ### Coverage check
 
 The retired scanner cross-referenced `routes![]` against `#[utoipa::path]` and
-printed a `cargo:warning=` per unannotated handler, plus an annotation-coverage
-percentage. `#[utoipauto]` only sees annotations, so both diagnostics are gone —
-and with them the check they provided: **a `routes![]` entry whose handler has no
-`#[utoipa::path]` is now silent at build time.** It still fails
-`--check-openapi`, because the route is mounted and the document omits it, but
-only once someone runs the gate rather than on every build.
+printed a `cargo:warning=` per unannotated handler, plus an
+annotation-coverage percentage. `#[utoipauto]` only sees annotations, so both
+diagnostics are gone — and with them the check they provided: **a `routes![]`
+entry whose handler has no `#[utoipa::path]` is now silent at build time.** It
+still fails `--check-openapi`, because the route is mounted and the document
+omits it, but only once someone runs the gate rather than on every build.
 
-The half that is not lost is the one nothing else covered: `#[utoipauto]` cannot
-silently skip a module, because there is no list to leave an entry out of. The
-inverse direction — an annotation with no `routes![]` entry — is likewise
-uncaught. Both were diagnostics, never failures.
+The half that is not lost is the one nothing else covered: `#[utoipauto]`
+cannot silently skip a module, because there is no list to leave an entry out
+of. The inverse direction — an annotation with no `routes![]` entry — is
+likewise uncaught. Both were diagnostics, never failures.
 
 ## Files
 

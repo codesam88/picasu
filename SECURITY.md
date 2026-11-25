@@ -13,7 +13,8 @@ commit on `main` only; older checkouts receive no backports.
 ## Reporting a Vulnerability
 
 Please report vulnerabilities through
-[GitHub private vulnerability reporting](https://github.com/codesam88/picasu/security/advisories/new).
+[GitHub private vulnerability
+reporting](https://github.com/codesam88/picasu/security/advisories/new).
 Reports sent there are visible only to the maintainer — not to the public issue
 tracker. There is no email channel and no bounty.
 

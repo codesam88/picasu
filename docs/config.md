@@ -2,7 +2,8 @@
 
 Picasu uses `config.toml` for application configuration. The config file
 location is determined at startup by the `PICASU_CONFIG_HOME` environment
-variable or the platform default (see [Storage locations](#storage-locations)).
+variable or the platform default (see [Storage
+locations](#storage-locations)).
 
 If `config.toml` does not exist, it is automatically created with defaults
 when the application starts for the first time.
@@ -52,11 +53,11 @@ Server-level settings including web server and upload limits.
 
 `POST /post/users/authenticate` checks three buckets before verifying the
 password (throttled requests skip the KDF and answer `429` with a
-`Retry-After` header: the max remaining ban across all three). Two
-evaluated over-threshold failures share each ban generation (both ban),
-with `ban(n) = min(base · 2^n, cap)`; a successful login drops the
-username entry and clears the IP burst bucket, while the IP-long history
-is kept so one login cannot wipe a shared address's daily budget. The per-user throttling is
+`Retry-After` header: the max remaining ban across all three). Two evaluated
+over-threshold failures share each ban generation (both ban), with
+`ban(n) = min(base · 2^n, cap)`; a successful login drops the username entry
+and clears the IP burst bucket, while the IP-long history is kept so one login
+cannot wipe a shared address's daily budget. The per-user throttling is
 implemented on claimed usernames, regardless whether or not the account
 exists. This prevents information leakage and further helps to slow down
 blind/spraying attacks.
@@ -69,23 +70,23 @@ Default throttling configuration:
 
 Effect and purpose:
 
-- IP-short causes initial small delays: seconds-long bans that graduate
-  before the 30-minute hammer, softening the blow for legitimate owners
-  (a 4th mistype costs 10s, not 30min)
+- IP-short causes initial small delays: seconds-long bans that graduate before
+  the 30-minute hammer, softening the blow for legitimate owners (a 4th
+  mistype costs 10s, not 30min)
 - IP-long puts a strong throttle on longer-term campaigns based out of few IP
   addresses. 8h maximum ban time, maximum 16 attempts/day for paced attack
 - User-long is last resort against longer-term botnet attacks. A distributed
   attack using many IPs will bypass the IP thresholds and run into this limit
-  for individual probed accounts. The policy has slightly higher initial trigger
-  so that any IP-based filter will trigger first. Additionally, the maximum ban
-  time has a lower cap so that legitimate users will be able to login again
-  soon after a sustained attack (2h max ban time).
-- Entries are evicted once past both the ban snapshot and last-seen +
-  longest window (24h); reaped opportunistically during login (at most
-  once per 60s), with per-map caps as backstop.
-- Behind a reverse proxy, enable `trust_proxy_forwarded_for`: otherwise
-  every client shares the proxy's socket address in a single IP bucket,
-  and a few failures can throttle all users at once.
+  for individual probed accounts. The policy has slightly higher initial
+  trigger so that any IP-based filter will trigger first. Additionally, the
+  maximum ban time has a lower cap so that legitimate users will be able to
+  login again soon after a sustained attack (2h max ban time).
+- Entries are evicted once past both the ban snapshot and last-seen + longest
+  window (24h); reaped opportunistically during login (at most once per 60s),
+  with per-map caps as backstop.
+- Behind a reverse proxy, enable `trust_proxy_forwarded_for`: otherwise every
+  client shares the proxy's socket address in a single IP bucket, and a few
+  failures can throttle all users at once.
 
 ### `[gallery]` section
 
@@ -103,8 +104,8 @@ Gallery application settings.
 ### `[secrets]` section
 
 Holds no live keys: the signing key moved to the owner-only secrets file
-below. A legacy `auth_key` left in an old file is ignored, never read back;
-a legacy `password` is ignored (the boot path warns).
+below. A legacy `auth_key` left in an old file is ignored, never read back; a
+legacy `password` is ignored (the boot path warns).
 
 > `[secrets] password` was removed: there is no password field anymore,
 > nothing reads it, and it is never written back. Old files containing it
@@ -115,43 +116,43 @@ newPassword}` for an admin reset of another user).
 
 > **`data_home`** and **`image_home`** are resolved on first launch from
 > environment variables or defaults and written to `config.toml`. On
-> subsequent launches, `PICASU_DATA_HOME` and `PICASU_IMAGE_HOME` env
-> vars still override the stored value (they are checked every startup).
+> subsequent launches, `PICASU_DATA_HOME` and `PICASU_IMAGE_HOME` env vars
+> still override the stored value (they are checked every startup).
 
 ### Backfilling pre-existing files
 
-The filesystem watcher only reacts to _future_ create/modify events — it
-does not scan files already sitting under `image_home` when the app starts.
-After setting `image_home`, use **Scan Now** in the web UI to index what's
-already there. Scan Now re-walks the tree and indexes every media file it
-finds — identity is by path, and a content hash is computed per file only
-for duplicate grouping. Safe to re-run routinely.
+The filesystem watcher only reacts to _future_ create/modify events — it does
+not scan files already sitting under `image_home` when the app starts. After
+setting `image_home`, use **Scan Now** in the web UI to index what's already
+there. Scan Now re-walks the tree and indexes every media file it finds —
+identity is by path, and a content hash is computed per file only for
+duplicate grouping. Safe to re-run routinely.
 
 ### Personal areas (`users_home`)
 
-Fresh installs resolve `users_home` to `<data_home>/users` on first
-launch; existing configs without it are backfilled once at startup and
-persisted. Personal areas are therefore on unless the key was explicitly
-emptied (rejected at boot) or the install predates the default. To use a
-custom directory:
+Fresh installs resolve `users_home` to `<data_home>/users` on first launch;
+existing configs without it are backfilled once at startup and persisted.
+Personal areas are therefore on unless the key was explicitly emptied
+(rejected at boot) or the install predates the default. To use a custom
+directory:
 
 - Nothing under the existing `image_home` moves; public albums, assets, and
   shares stay exactly as they are.
-- Set the env var (or `gallery.users_home` in `config.toml`) and restart.
-  The two roots must not equal or nest in either direction; boot rejects a
-  bad combination with an error.
-- Pre-existing users created while `users_home` was unset (and users
-  created via the offline CLI) have no personal home yet. The next admin
-  **Scan Now** walks the global root plus all personal subtrees and creates
-  dir-album records for empty directories, so personal trees appear
-  automatically. `ensure_personal_home` also runs on future user creation.
-- Empty personal directories gain album records via the directory-first
-  pass of Scan Now; files already present under the new root are indexed
-  in the same pass.
-- Permission/backup: place `users_home` on a separate volume if possible;
-  back it up independently of `image_home`. Personal trees are **not**
-  inside the image share, so Samba/NFS exposure of `image_home` does not
-  expose personal data — review share exports to confirm no path overlaps.
+- Set the env var (or `gallery.users_home` in `config.toml`) and restart. The
+  two roots must not equal or nest in either direction; boot rejects a bad
+  combination with an error.
+- Pre-existing users created while `users_home` was unset (and users created
+  via the offline CLI) have no personal home yet. The next admin **Scan Now**
+  walks the global root plus all personal subtrees and creates dir-album
+  records for empty directories, so personal trees appear automatically.
+  `ensure_personal_home` also runs on future user creation.
+- Empty personal directories gain album records via the directory-first pass
+  of Scan Now; files already present under the new root are indexed in the
+  same pass.
+- Permission/backup: place `users_home` on a separate volume if possible; back
+  it up independently of `image_home`. Personal trees are **not** inside the
+  image share, so Samba/NFS exposure of `image_home` does not expose personal
+  data — review share exports to confirm no path overlaps.
 - The `users_home` root itself is never listed, addressable, movable,
   shareable, or scannable; only its per-user subtrees are.
 
@@ -168,23 +169,23 @@ directory > working directory (last resort)**.
 | Image  | `PICASU_IMAGE_HOME`  | base for `image_home` if unset    | `<data dir>/images`                                       |
 | Users  | `PICASU_USERS_HOME`  | base for `users_home` if unset    | `<data dir>/users`                                        |
 
-The platform config/data dirs come from the `directories` crate, which
-already honors `$XDG_CONFIG_HOME`/`$XDG_DATA_HOME` on Linux and the platform
+The platform config/data dirs come from the `directories` crate, which already
+honors `$XDG_CONFIG_HOME`/`$XDG_DATA_HOME` on Linux and the platform
 equivalents on Windows/macOS.
 
 ```sh
 PICASU_CONFIG_HOME=/etc/picasu PICASU_DATA_HOME=/var/lib/picasu PICASU_IMAGE_HOME=/mnt/photos ./picasu
 ```
 
-**Legacy single-folder layout:** if `./config.toml`
-already exists in the working directory, both the config and data roots fall
-back to the working directory, so existing installs keep working unchanged.
+**Legacy single-folder layout:** if `./config.toml` already exists in the
+working directory, both the config and data roots fall back to the working
+directory, so existing installs keep working unchanged.
 
 **The offline admin CLI** resolves the user store the same way, with one
-addition: `--userdb <PATH>` names the store file directly. It has no
-fallback — with neither `--userdb` nor `PICASU_DATA_HOME` set and no
-`config.toml` to read, it refuses to run instead of guessing a location.
-See [Admin CLI](admin-cli.md).
+addition: `--userdb <PATH>` names the store file directly. It has no fallback
+— with neither `--userdb` nor `PICASU_DATA_HOME` set and no `config.toml` to
+read, it refuses to run instead of guessing a location. See [Admin
+CLI](admin-cli.md).
 
 ## Tiers
 
@@ -200,7 +201,8 @@ changed. The tier table is the single source of truth in
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
-restart while the env var is pinned (intended host override). `GET /get/admin/config` reports `source: file | env` per field.
+restart while the env var is pinned (intended host override).
+`GET /get/admin/config` reports `source: file | env` per field.
 
 ### Overlap (runtime knobs with env pins)
 
@@ -253,8 +255,8 @@ The following env vars override the config file on every launch:
 ## Runtime changes via the API
 
 `PUT /put/admin/config` accepts only runtime-safe knobs. Host-only knobs are
-rejected with 400 when present in the body — set them via the flag, env
-var, or `config.toml` key listed, then restart:
+rejected with 400 when present in the body — set them via the flag, env var,
+or `config.toml` key listed, then restart:
 
 | Knob                                | Set via                                                                              |
 | ----------------------------------- | ------------------------------------------------------------------------------------ |
@@ -270,15 +272,15 @@ var, or `config.toml` key listed, then restart:
 | `auth_key` (managed)                | `PICASU_AUTH_KEY` or the secrets file; rotate via `POST /post/config/auth-key/reset` |
 
 The JWT signing key is managed, never set: it lives in
-`<DATA_HOME>/auth/secrets.json` (owner-only file permissions), `PICASU_AUTH_KEY`
-overrides it in memory without persisting, and the API offers only
-`POST /post/config/auth-key/reset`, which generates a new strong random key
-(invalidating every outstanding token). `GET /get/config/export` redacts it.
+`<DATA_HOME>/auth/secrets.json` (owner-only file permissions),
+`PICASU_AUTH_KEY` overrides it in memory without persisting, and the API
+offers only `POST /post/config/auth-key/reset`, which generates a new strong
+random key (invalidating every outstanding token). `GET /get/config/export`
+redacts it.
 
 API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
-`fs_notify_watcher`, `normalize_upload_filenames`,
-`validate_upload_content`, `use_client_timestamp_info`, and
-`allow_registration`.
+`fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`,
+`use_client_timestamp_info`, and `allow_registration`.
 
 Read-only mode can be lifted while it is on via
 `POST /post/admin/config/disable-read-only` (admin-only; not gated by the
@@ -287,20 +289,21 @@ envelope via `GET /get/admin/config/export` (`version: 1`,
 `scope: "server-runtime"`).
 
 Four settings are environment-only by construction: `PICASU_CONFIG_HOME`
-(selects where `config.toml` itself lives, so it cannot come from the
-file or the API), `PICASU_WEAK_PWHASH` (test-only: `=1` runs argon2id at
-trivial cost — never set in production, accepted from neither the file
-nor the API), `PICASU_RATE_LIMITS` (exact `false` bypasses all login
-throttling for schemathesis fuzzing; failure logging stays on), and
-`PICASU_OBSERVER_STATS` (exact `1` opts into the per-scan drain table and
-wrap volume lines; breach warnings stay on regardless; build opt-out via
-`--no-default-features` / disabling `task-observer`).
+(selects where `config.toml` itself lives, so it cannot come from the file or
+the API), `PICASU_WEAK_PWHASH` (test-only: `=1` runs argon2id at trivial cost
+— never set in production, accepted from neither the file nor the API),
+`PICASU_RATE_LIMITS` (exact `false` bypasses all login throttling for
+schemathesis fuzzing; failure logging stays on), and `PICASU_OBSERVER_STATS`
+(exact `1` opts into the per-scan drain table and wrap volume lines; breach
+warnings stay on regardless; build opt-out via `--no-default-features` /
+disabling `task-observer`).
 
 ## Advanced: Rocket configuration
 
 Rocket has additional options not exposed in this config — TLS, worker count,
 keep-alive, reverse-proxy headers. Set these via `Rocket.toml` or `ROCKET_*`
-env vars. See the [Rocket configuration guide](https://rocket.rs/guide/configuration/).
+env vars. See the [Rocket configuration
+guide](https://rocket.rs/guide/configuration/).
 
 ```toml
 # Rocket.toml (searched from cwd upward; or use ROCKET_CONFIG env var)
@@ -309,14 +312,13 @@ workers = 8
 keep_alive = 30
 ```
 
-> HTTPS is best handled at a reverse proxy (nginx, Caddy) rather than
-> through Rocket's built-in TLS.
+> HTTPS is best handled at a reverse proxy (nginx, Caddy) rather than through
+> Rocket's built-in TLS.
 >
-> Deploy HTTPS for anything beyond a trusted LAN: the backend itself
-> serves plain HTTP and the login stores the 14-day session JWT in a
-> cookie whose `Secure` flag engages only when the proxy forwards
-> `X-Forwarded-Proto: https` — over plain HTTP, every bearer of the
-> token can replay the session until it expires. A TLS-terminating proxy
-> must forward that header (and set `X-Forwarded-For`, with
-> `trust_proxy_forwarded_for` enabled, for login throttling to key by
-> client IP).
+> Deploy HTTPS for anything beyond a trusted LAN: the backend itself serves
+> plain HTTP and the login stores the 14-day session JWT in a cookie whose
+> `Secure` flag engages only when the proxy forwards
+> `X-Forwarded-Proto: https` — over plain HTTP, every bearer of the token can
+> replay the session until it expires. A TLS-terminating proxy must forward
+> that header (and set `X-Forwarded-For`, with `trust_proxy_forwarded_for`
+> enabled, for login throttling to key by client IP).

@@ -7,15 +7,15 @@ area: tooling
 
 ## Problem
 
-Probe and storm cells share the request client and, after the sampler
-change, the same per-request timing, but not the orchestration. Two
-paths encode the same concepts differently:
+Probe and storm cells share the request client and, after the sampler change,
+the same per-request timing, but not the orchestration. Two paths encode the
+same concepts differently:
 
-- `probe_phase` / `run_post_scan`: periodic rounds, a bundle of four
-  accesses, one guard per round, sequential;
+- `probe_phase` / `run_post_scan`: periodic rounds, a bundle of four accesses,
+  one guard per round, sequential;
 - `run_storm`: N worker threads, one access, one guard per run, coverage;
-- `run_scans` branches on profile name to choose between them, forces
-  scan counts, and special-cases idle storms;
+- `run_scans` branches on profile name to choose between them, forces scan
+  counts, and special-cases idle storms;
 - `control` names the probe cell but reads as an idle baseline;
 - upload is a profile that runs before the scan, so it cannot be measured
   under a scan background.
@@ -34,19 +34,18 @@ scan. A phase is the tuple the model already uses:
 
 - `background`: `idle` (no scan during measurement) or `scan`.
 - `foregrounds`: one access or a bundle; a foreground is an object with
-  `issue(client) -> samples`. Single-request accesses (read, edit, thumb)
-  are one timed call; scroll issues its batch; upload issues a file plus a
+  `issue(client) -> samples`. Single-request accesses (read, edit, thumb) are
+  one timed call; scroll issues its batch; upload issues a file plus a
   visibility wait and returns submit/visible samples.
 - `clients`: 1 (sequential rounds) or N (worker threads).
-- `issue`: `rounds` (periodic bundle, sequential, guard per round) or
-  `stream` (continuous, N workers, guard per run) or `files` (serial upload
-  loop).
+- `issue`: `rounds` (periodic bundle, sequential, guard per round) or `stream`
+  (continuous, N workers, guard per run) or `files` (serial upload loop).
 - `stop`: `scan` terminal, `samples` per access, `ops` per client, `files`.
 - `setup_scan`: populate the tree before measuring at rest (idle storm).
 
 One `Executor` runs phases; one `ScanSession` starts a scan, polls to a
-terminal state, records wall/status and owns the phase guard. Repeating
-scans until a probe-round target becomes a property of the cell spec
+terminal state, records wall/status and owns the phase guard. Repeating scans
+until a probe-round target becomes a property of the cell spec
 (`probe_rounds`), not a profile-name branch.
 
 ## Specs (data, not branches)
@@ -64,11 +63,10 @@ Upload sources: a fixed deterministic set (`manifests/upload-20.json`,
 
 ## Caller
 
-`run_workload` keeps only: prepare images, resolve the spec from the
-profile, run the executor, write the summary. Profile branches disappear
-into the spec table; `run_scans`, `probe_phase`, `run_post_scan` and
-`run_storm` are replaced by the executor, the scan session and the
-foreground objects.
+`run_workload` keeps only: prepare images, resolve the spec from the profile,
+run the executor, write the summary. Profile branches disappear into the spec
+table; `run_scans`, `probe_phase`, `run_post_scan` and `run_storm` are
+replaced by the executor, the scan session and the foreground objects.
 
 ## Validity
 
@@ -94,24 +92,23 @@ foreground objects.
 - Upload submits serially. At rest each file waits for its row before the
   next; under a scan the visibility wait is batched after the submissions so
   the whole set overlaps indexing (coverage 100%).
-- The at-rest upload waits for the library snapshot to reach the image
-  count before starting; `/get/index/status` reports `Idle` before the
-  watcher starts, so a settle check alone let the initial index overlap the
+- The at-rest upload waits for the library snapshot to reach the image count
+  before starting; `/get/index/status` reports `Idle` before the watcher
+  starts, so a settle check alone let the initial index overlap the
   measurement.
 - Storm samples now carry their actual background, so the `idle` and `scan`
   rows of one kind are directly comparable.
 
 ## Verification
 
-- 50, 100 and 200 images on `8cd567b6`: 15 cells each (probe, six scan
-  storms, six idle storms, idle upload, scan upload).
+- 50, 100 and 200 images on `8cd567b6`: 15 cells each (probe, six scan storms,
+  six idle storms, idle upload, scan upload).
 - 45 cells and 1989 baseline rows; each report self-compares with 663 rows
   compared, 0 moved, 0 identity refusals.
 - Probe load coverage 100% on all counts; storm coverage 91-93%; upload
   coverage 100% on both backgrounds.
-- Idle upload `visible` p50 2.4-2.6 s at every count; scan upload
-  `visible` p50 18.2 / 22.1 / 49.8 s at 50/100/200, the burst under the
-  initial index.
+- Idle upload `visible` p50 2.4-2.6 s at every count; scan upload `visible`
+  p50 18.2 / 22.1 / 49.8 s at 50/100/200, the burst under the initial index.
 - 268 tests, ruff and Prettier green.
 
 ## Acceptance

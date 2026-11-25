@@ -1,11 +1,11 @@
 # Authentication and Authorization
 
-This document describes Picasu's authentication system: its goals, the paradigm
-it follows, and the detailed mechanism as implemented in
+This document describes Picasu's authentication system: its goals, the
+paradigm it follows, and the detailed mechanism as implemented in
 `backend/src/router/auth.rs` and the route modules. The desired properties —
 the model from which enforcement rules and tests are derived — live in
-[`authz-model.md`](authz-model.md). This document keeps the mechanism,
-its reasoning, and its known limitations.
+[`authz-model.md`](authz-model.md). This document keeps the mechanism, its
+reasoning, and its known limitations.
 
 ## Goals
 
@@ -22,15 +22,16 @@ design goals, in priority order:
    session state.
 3. **No server-side session store.** The server must remain restartable and
    stateless with respect to authentication: nothing about "who is logged in"
-   lives in memory or in the database. This keeps the backend self-contained and
-   makes horizontal or crash-restart behavior trivial.
-4. **Media access is capability-based, not just identity-based.** Knowing a URL
-   must not be enough to read a file. Even a fully authenticated session must
-   present a short-lived, per-asset token to fetch an image or an original.
-5. **Self-hosted threat model.** The perimeter is the deployer's own network or
-   reverse proxy. The system optimizes for "trusted family and friends" (see
-   [Design Goals](design.md)), not for hostile multi-tenant internet exposure —
-   this shapes several trade-offs called out in the assessment.
+   lives in memory or in the database. This keeps the backend self-contained
+   and makes horizontal or crash-restart behavior trivial.
+4. **Media access is capability-based, not just identity-based.** Knowing a
+   URL must not be enough to read a file. Even a fully authenticated session
+   must present a short-lived, per-asset token to fetch an image or an
+   original.
+5. **Self-hosted threat model.** The perimeter is the deployer's own network
+   or reverse proxy. The system optimizes for "trusted family and friends"
+   (see [Design Goals](design.md)), not for hostile multi-tenant internet
+   exposure — this shapes several trade-offs called out in the assessment.
 
 ## Paradigm
 
@@ -42,19 +43,20 @@ patterns:
   configuration secret (`auth_key`) signs every token type.
 - **Tiered, short-lived capability tokens.** Tokens form a delegation chain: a
   long-lived _identity_ token (admin session or resolved share) mints a
-  short-lived _snapshot_ token, which in turn mints per-asset _serving_ tokens.
-  Each tier is scoped to one artifact (a query snapshot, a single file) and
-  expires in minutes, so a leaked token has a small blast radius.
+  short-lived _snapshot_ token, which in turn mints per-asset _serving_
+  tokens. Each tier is scoped to one artifact (a query snapshot, a single
+  file) and expires in minutes, so a leaked token has a small blast radius.
 - **Request guards as the enforcement points.** Authorization is declared as
   Rocket request guards (`FromRequest` impls) on each route. Every guarded
-  handler takes its guard wrapped in `GuardResult<T>` (`= Result<T, AppError>`),
-  so a failed guard is caught and the handler propagates it with `?`; the guard
-  list plus that propagation is the auditable authorization manifest of the
-  API. A `GuardResult` binding whose rejection is not propagated leaves the
-  route enforcing nothing, which is why the propagation is machine-checked. Guards that carry a resolved share (`GuardPresenter`,
-  `GuardSnapshot`) are consumed as the witness: handlers derive the operation's
-  target from the guard's claims rather than from the request body, so a share
-  cannot act on another album.
+  handler takes its guard wrapped in `GuardResult<T>`
+  (`= Result<T, AppError>`), so a failed guard is caught and the handler
+  propagates it with `?`; the guard list plus that propagation is the
+  auditable authorization manifest of the API. A `GuardResult` binding whose
+  rejection is not propagated leaves the route enforcing nothing, which is why
+  the propagation is machine-checked. Guards that carry a resolved share
+  (`GuardPresenter`, `GuardSnapshot`) are consumed as the witness: handlers
+  derive the operation's target from the guard's claims rather than from the
+  request body, so a share cannot act on another album.
 
 Guests authenticate as **capability URLs**: the share's `albumId` + `shareId`
 (traveling in headers or query parameters, plus an optional password header)
@@ -69,25 +71,26 @@ resolve server-side, per request, against the stored share record.
 | `auth_key`   | `<DATA_HOME>/auth/secrets.json` (owner-only file), or env `PICASU_AUTH_KEY` (in-memory override, never persisted) | HS256 key for **all** JWT types                                                   |
 | fallback key | 32 random bytes, generated once per process                                                                       | used only when `auth_key` is unset; a restart invalidates every outstanding token |
 
-The legacy `[secrets] password` and `[secrets] auth_key` config keys are
-gone: an old `config.toml` still parses, but the values are ignored (a
-legacy `password` triggers a boot warning). Passwords live per-user in the
-password store; the signing key lives in the secrets file.
+The legacy `[secrets] password` and `[secrets] auth_key` config keys are gone:
+an old `config.toml` still parses, but the values are ignored (a legacy
+`password` triggers a boot warning). Passwords live per-user in the password
+store; the signing key lives in the secrets file.
 
-`AppConfig::get_jwt_secret_key` (`model/config.rs`) selects the key. All tokens
-are HS256-encoded with it; validation pins the algorithm list to `[HS256]`
-(`VALIDATION` in `router/auth.rs`, enforced by unit tests) so algorithm-confusion
-attacks are excluded by construction.
+`AppConfig::get_jwt_secret_key` (`model/config.rs`) selects the key. All
+tokens are HS256-encoded with it; validation pins the algorithm list to
+`[HS256]` (`VALIDATION` in `router/auth.rs`, enforced by unit tests) so
+algorithm-confusion attacks are excluded by construction.
 
 ### Sign-in
 
-1. `POST /post/users/authenticate` takes `{ userId, password }`, trims the password,
-   and verifies it against the user store (`<DATA_HOME>/auth/users.redb`) for
-   that user id. A match mints a random `jti` (UUID v4) and sets a 14-day
-   `ClaimsSession { role: User { id, admin }, exp, jti, ver }` JWT in an HttpOnly
-   session cookie, returning the session profile `{ userId, admin }` in the
-   body. **Nothing is written server-side**: the token is the session, and
-   `ver` is the user's token version at mint time. Unknown users and wrong
+1. `POST /post/users/authenticate` takes `{ userId, password }`, trims the
+   password, and verifies it against the user store
+   (`<DATA_HOME>/auth/users.redb`) for that user id. A match mints a random
+   `jti` (UUID v4) and sets a 14-day
+   `ClaimsSession { role: User { id, admin }, exp, jti, ver }` JWT in an
+   HttpOnly session cookie, returning the session profile `{ userId, admin }`
+   in the body. **Nothing is written server-side**: the token is the session,
+   and `ver` is the user's token version at mint time. Unknown users and wrong
    passwords both answer 401 with no distinguishing detail; the unknown-user
    path still pays one KDF round so timing leaks nothing.
 2. The **server** issues the session cookie via `Set-Cookie`
@@ -99,127 +102,126 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    client keeps only the `{ userId, admin }` profile from the login body in
    its session store for display.
 3. `GuardAdmin` (and `GuardUser`) read the cookie, decode it with `VALIDATION`
-   (expiry enforced) and check it against the state the server keeps:
-   the identity record (existence, role, token version) and the revocation
-   list. A token whose `ver` is not the user's current version was
-   invalidated by a password change, a role change or an explicit
-   invalidation; a token whose `jti` is in the revocation list was logged
-   out. Both checks read the store on every request, so a revocation takes
-   effect before token expiry. The admin role comes from the record, so a
-   demotion takes effect at once. Tokens without a `jti` are rejected (hard
-   cut — pre-`jti` tokens do not decode).
+   (expiry enforced) and check it against the state the server keeps: the
+   identity record (existence, role, token version) and the revocation list. A
+   token whose `ver` is not the user's current version was invalidated by a
+   password change, a role change or an explicit invalidation; a token whose
+   `jti` is in the revocation list was logged out. Both checks read the store
+   on every request, so a revocation takes effect before token expiry. The
+   admin role comes from the record, so a demotion takes effect at once.
+   Tokens without a `jti` are rejected (hard cut — pre-`jti` tokens do not
+   decode).
 4. Logout is `POST /post/logout`, which decodes the presented `jwt` cookie
    with the same validation the guards use; on success it files that `jti` in
    the revocation list (until the token's expiry), then clears the cookie
-   server-side (HttpOnly cookies cannot be removed by page JS) and answers 204. Missing, undecodable, or expired tokens skip the revocation but
-   still clear the cookie and still answer 204 — idempotent with or without
-   a live session. Only the presented device is logged out; other sessions
-   survive. The client also clears its session profile and capability tokens
-   unconditionally, so logout sticks even when the round trip fails.
+   server-side (HttpOnly cookies cannot be removed by page JS) and
+   answers 204. Missing, undecodable, or expired tokens skip the revocation
+   but still clear the cookie and still answer 204 — idempotent with or
+   without a live session. Only the presented device is logged out; other
+   sessions survive. The client also clears its session profile and capability
+   tokens unconditionally, so logout sticks even when the round trip fails.
    Password change (`PUT /put/users/password`, self-change and admin reset
-   alike) writes the new hash **and bumps the user's token version in the
-   same transaction**, so every outstanding token of that user dies with the
-   old password and logs every device out. The same bump happens on a role
-   change (`PUT /put/users/admin`): the role travels in the token, so the
-   new role appears at the next sign-in.
-5. Users are managed through `GET /get/users`,
-   `POST /post/users/register`, `PUT /put/users/password`,
-   `PUT /put/users/admin`, `PUT /put/users/disabled`,
-   `PUT /put/users/sharing`, and `DELETE /delete/users/{user_id}`
-   (admin-only). The first administrator is enrolled only by
-   `POST /post/users/bootstrap` (`--bootstrap-admin` ∧ empty store, forced
-   admin); `register` always creates non-admin accounts — elevation is
-   `PUT /put/users/admin` alone.
+   alike) writes the new hash **and bumps the user's token version in the same
+   transaction**, so every outstanding token of that user dies with the old
+   password and logs every device out. The same bump happens on a role change
+   (`PUT /put/users/admin`): the role travels in the token, so the new role
+   appears at the next sign-in.
+5. Users are managed through `GET /get/users`, `POST /post/users/register`,
+   `PUT /put/users/password`, `PUT /put/users/admin`,
+   `PUT /put/users/disabled`, `PUT /put/users/sharing`, and
+   `DELETE /delete/users/{user_id}` (admin-only). The first administrator is
+   enrolled only by `POST /post/users/bootstrap` (`--bootstrap-admin` ∧ empty
+   store, forced admin); `register` always creates non-admin accounts —
+   elevation is `PUT /put/users/admin` alone.
 
-**Credential-guess throttling (brute-force resistance):** two endpoints
-verify passwords, each with its own throttle instance so guesses on one
-never move the other's budgets. Both check before running the password
-KDF, so a throttled request stays cheap, and both count evaluated guesses
-only — malformed bodies, permission refusals and unknown users record
-nothing. The env-only switch `PICASU_RATE_LIMITS=false` bypasses both
-(e.g. for schema fuzzing).
+**Credential-guess throttling (brute-force resistance):** two endpoints verify
+passwords, each with its own throttle instance so guesses on one never move
+the other's budgets. Both check before running the password KDF, so a
+throttled request stays cheap, and both count evaluated guesses only —
+malformed bodies, permission refusals and unknown users record nothing. The
+env-only switch `PICASU_RATE_LIMITS=false` bypasses both (e.g. for schema
+fuzzing).
 
-Honest limits: the `register` path is not throttled; a pre-epoch system clock fails open (with a warning) instead of locking everyone out; bans are time-boxed in process memory (a restart clears them) and there is no permanent lockout; that switch disables both throttles entirely.
+Honest limits: the `register` path is not throttled; a pre-epoch system clock
+fails open (with a warning) instead of locking everyone out; bans are
+time-boxed in process memory (a restart clears them) and there is no permanent
+lockout; that switch disables both throttles entirely.
 
-- _Login_ (`POST /post/users/authenticate`) keys three sliding-window
-  buckets on `(client-ip, claimed-username)`: an IP-short burst bucket
-  (3 failures per 10 min, first ban 10 s), an IP-long bucket
-  per client address (16 failures per 24 h, first ban 30 min), and a
-  user-long bucket per claimed username (18 failures per 24 h, first ban
-  30 min, capped at 2 h). Past each threshold, bans land on every second
-  over-threshold failure — the single failure between two bans is
-  recorded but free, so two attempts after a served ban run with no ban
-  time between them — and each ban doubles the previous one. The
-  evaluated failure that opens a ban answers 429 itself (with
+- _Login_ (`POST /post/users/authenticate`) keys three sliding-window buckets
+  on `(client-ip, claimed-username)`: an IP-short burst bucket (3 failures per
+  10 min, first ban 10 s), an IP-long bucket per client address (16 failures
+  per 24 h, first ban 30 min), and a user-long bucket per claimed username (18
+  failures per 24 h, first ban 30 min, capped at 2 h). Past each threshold,
+  bans land on every second over-threshold failure — the single failure
+  between two bans is recorded but free, so two attempts after a served ban
+  run with no ban time between them — and each ban doubles the previous one.
+  The evaluated failure that opens a ban answers 429 itself (with
   `Retry-After` carrying the full rung delay); only non-tripping failures
-  answer 401. A request whose ban is still active is likewise rejected
-  with 429 and a `Retry-After` header (seconds; the max remaining ban
-  across all three buckets).
-  Buckets are keyed on claimed usernames whether or not the account
-  exists, so throttling behaves identically for unknown names and reveals
-  nothing about which users are real. A successful login drops the
-  username entry and clears the IP burst bucket (the IP-long history is
-  kept). All thresholds are knobs under `[server]` (see
-  [Configuration](config.md) for the full table) and the client address
-  honors `trust_proxy_forwarded_for`. The login page renders the 429 as a
-  countdown banner and re-enables submission when the ban expires.
+  answer 401. A request whose ban is still active is likewise rejected with
+  429 and a `Retry-After` header (seconds; the max remaining ban across all
+  three buckets). Buckets are keyed on claimed usernames whether or not the
+  account exists, so throttling behaves identically for unknown names and
+  reveals nothing about which users are real. A successful login drops the
+  username entry and clears the IP burst bucket (the IP-long history is kept).
+  All thresholds are knobs under `[server]` (see [Configuration](config.md)
+  for the full table) and the client address honors
+  `trust_proxy_forwarded_for`. The login page renders the 429 as a countdown
+  banner and re-enables submission when the ban expires.
 - _Password change_ (`PUT /put/users/password`, self-change branch only —
   admin resets verify no credential and are unthrottled) keys a dedicated
-  instance on `(client-ip, session-jti)`: a lenient IP-short burst bucket
-  plus an IP-long and a jti-long bucket of 3 wrong old-passwords per 24 h
-  each. The first overstep revokes the attempting session (its `jti` joins
-  the revocation list until the token's expiry) and answers 401, so the
-  SPA logs out on that response; the cookie is dead on every route
-  afterwards. Outside the kill-switch / clock-error bypass, each 400
-  wrong-old-password carries the server-computed attempts left (`min`
-  over the three buckets), so the UI counts down from that number instead
-  of hardcoding the policy. A correct old password clears the session
-  entry and the IP burst (the IP-long history is kept, as on login); the
-  schedules are hardcoded beside the login constants, not operator knobs.
+  instance on `(client-ip, session-jti)`: a lenient IP-short burst bucket plus
+  an IP-long and a jti-long bucket of 3 wrong old-passwords per 24 h each. The
+  first overstep revokes the attempting session (its `jti` joins the
+  revocation list until the token's expiry) and answers 401, so the SPA logs
+  out on that response; the cookie is dead on every route afterwards. Outside
+  the kill-switch / clock-error bypass, each 400 wrong-old-password carries
+  the server-computed attempts left (`min` over the three buckets), so the UI
+  counts down from that number instead of hardcoding the policy. A correct old
+  password clears the session entry and the IP burst (the IP-long history is
+  kept, as on login); the schedules are hardcoded beside the login constants,
+  not operator knobs.
 
 **What the two throttles buy:** the login buckets cap online guessing per
-attacking host and per claimed account (including nonexistent ones, hence
-no user-enumeration oracle) while the pre-KDF check keeps throttled
-requests cheap and escalating bans slow persistent sprayers. The
-password-change buckets bound old-password oracle queries per stolen
-session (jti slot: a botnet rotating IPs against one session still shares
-one budget) and per attacking host (ip slot: one host cycling stolen
-sessions still shares one budget); revocation converts a spent budget
-into session death, killing the stolen session itself. The instances are
-separate so a login brute-force can neither lock the victim out of
-changing their password nor be extended by password guesses — the
-remediation action (change password, which bumps the token version and
-kills all sessions) stays available mid-attack — while a legit user sees
-the countdown and can stop before the session drops.
+attacking host and per claimed account (including nonexistent ones, hence no
+user-enumeration oracle) while the pre-KDF check keeps throttled requests
+cheap and escalating bans slow persistent sprayers. The password-change
+buckets bound old-password oracle queries per stolen session (jti slot: a
+botnet rotating IPs against one session still shares one budget) and per
+attacking host (ip slot: one host cycling stolen sessions still shares one
+budget); revocation converts a spent budget into session death, killing the
+stolen session itself. The instances are separate so a login brute-force can
+neither lock the victim out of changing their password nor be extended by
+password guesses — the remediation action (change password, which bumps the
+token version and kills all sessions) stays available mid-attack — while a
+legit user sees the countdown and can stop before the session drops.
 
-**Session-denial UX (frontend):** an unauthorized response outside the
-share flow makes the axios interceptor clear the session profile and
-navigate to the login page once; no snackbar is raised for it. The
-login page carries a static, non-dismissing information banner (Vuetify
-`v-alert`, the inline colored banner component — the auto-dismissing
-queue widget is `v-snackbar-queue`) reading "Please log in to
-continue". The wording is deliberately innocuous: the visitor may have
-arrived without any session (deep link, bookmark), so the banner asserts
-nothing about expiry. Repetition is safe by construction — the
-navigation call is a no-op once the router is on the login route.
+**Session-denial UX (frontend):** an unauthorized response outside the share
+flow makes the axios interceptor clear the session profile and navigate to the
+login page once; no snackbar is raised for it. The login page carries a
+static, non-dismissing information banner (Vuetify `v-alert`, the inline
+colored banner component — the auto-dismissing queue widget is
+`v-snackbar-queue`) reading "Please log in to continue". The wording is
+deliberately innocuous: the visitor may have arrived without any session (deep
+link, bookmark), so the banner asserts nothing about expiry. Repetition is
+safe by construction — the navigation call is a no-op once the router is on
+the login route.
 
-**Serving-token lifecycle (frontend):** the gallery's serving tokens
-(snapshot and per-asset, 300 s TTL) are renewed on the main thread only —
-`tokenStore` renews whenever a token is within a 120 s margin of its
-expiry at hand-off time, so workers should never process a request with
-a barely-valid token. A worker whose request is answered 401 reports
-that once over its `tokenExpired` message channel (data worker: timestamp
-token rejected; image worker: the rejected asset's id); the main-thread
-handler force-renews server-authoritatively — the renewal endpoints
-accept signature-valid tokens regardless of expiry — and recovery is
-ambient (unfetched batches refill on the next scroll trigger, re-queued
-images read the renewed token). No worker retries, and the worker realms
-hold no escalation policy: if the session itself is dead, the force-renew
-call 401s on the main axios instance and flows into the same
-session-denial contract above. Share contexts are exempt from that
-escalation by construction — the interceptor routes every status inside
-the share flow to the share handlers (password modal / expired-link
-state), never to the login redirect.
+**Serving-token lifecycle (frontend):** the gallery's serving tokens (snapshot
+and per-asset, 300 s TTL) are renewed on the main thread only — `tokenStore`
+renews whenever a token is within a 120 s margin of its expiry at hand-off
+time, so workers should never process a request with a barely-valid token. A
+worker whose request is answered 401 reports that once over its `tokenExpired`
+message channel (data worker: timestamp token rejected; image worker: the
+rejected asset's id); the main-thread handler force-renews
+server-authoritatively — the renewal endpoints accept signature-valid tokens
+regardless of expiry — and recovery is ambient (unfetched batches refill on
+the next scroll trigger, re-queued images read the renewed token). No worker
+retries, and the worker realms hold no escalation policy: if the session
+itself is dead, the force-renew call 401s on the main axios instance and flows
+into the same session-denial contract above. Share contexts are exempt from
+that escalation by construction — the interceptor routes every status inside
+the share flow to the share handlers (password modal / expired-link state),
+never to the login redirect.
 
 **Enrollment signal (frontend boot):** anonymous `GET /get/server-info`
 answers 200 in every install state with exactly `{ enrolled,
@@ -236,27 +238,25 @@ empty store — it never serves enrollment state.
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
 empty user store, `POST /post/users/authenticate` takes the unknown-user path
 (401) and guarded routes reject callers: `GuardAdmin` routes answer 401 and
-`GuardUser` routes answer 403 (a privilege condition, not a session
-failure — the SPA keeps its display state). No session exists
-pre-enrollment. Online enrollment of the first administrator opens only
-while the `--bootstrap-admin` flag (or `PICASU_BOOTSTRAP_ADMIN`, or the
-`bootstrap_admin` config key) is set **and** the store is empty, and only
-via `POST /post/users/bootstrap` (forced `admin: true`). The refusal
-message names that endpoint while the window is open; with the flag off it
-names the flag/CLI remedies instead. The flag is WARN-logged at
-boot, the server refuses to start when the flag is set against an existing
-`<DATA_HOME>/auth/users.redb` (bootstrap already happened, or the store
-needs repair — provision via the CLI instead). Installs are closed by default;
-a network-exposed install is only ever open if the operator opted in.
+`GuardUser` routes answer 403 (a privilege condition, not a session failure —
+the SPA keeps its display state). No session exists pre-enrollment. Online
+enrollment of the first administrator opens only while the `--bootstrap-admin`
+flag (or `PICASU_BOOTSTRAP_ADMIN`, or the `bootstrap_admin` config key) is set
+**and** the store is empty, and only via `POST /post/users/bootstrap` (forced
+`admin: true`). The refusal message names that endpoint while the window is
+open; with the flag off it names the flag/CLI remedies instead. The flag is
+WARN-logged at boot, the server refuses to start when the flag is set against
+an existing `<DATA_HOME>/auth/users.redb` (bootstrap already happened, or the
+store needs repair — provision via the CLI instead). Installs are closed by
+default; a network-exposed install is only ever open if the operator opted in.
 
-**No legacy sign-in path:** the legacy single-password world is gone. A
-bare JSON string body to `authenticate` answers 422 (well-formed JSON of
-the wrong shape — Rocket's `Json` guard), never migration: no user is
-created, nothing is enrolled. A legacy `password` key in an old
-`config.toml` is ignored with a boot warning; empty installs enroll only
-via the bootstrap route on an empty store or the `picasu-cmd` CLI.
-Tokens predating the `jti` claim or the `Role::User { id, admin }` shape
-do not decode.
+**No legacy sign-in path:** the legacy single-password world is gone. A bare
+JSON string body to `authenticate` answers 422 (well-formed JSON of the wrong
+shape — Rocket's `Json` guard), never migration: no user is created, nothing
+is enrolled. A legacy `password` key in an old `config.toml` is ignored with a
+boot warning; empty installs enroll only via the bootstrap route on an empty
+store or the `picasu-cmd` CLI. Tokens predating the `jti` claim or the
+`Role::User { id, admin }` shape do not decode.
 
 ### Account states and deletion
 
@@ -272,45 +272,45 @@ tolerated by the lenient deserializer).
 | disabled, sharing-disabled | refused exactly like a wrong password                                         | die on disable                                                               | shown with both flags off   | refused with 403                                                                                                   | denied like a dead share (401)                                                                                                                  |
 
 Toggles are independent: disabling the account does not change
-`shares_enabled`, and toggling sharing does not change `disabled`.
-Re-enabling clears `disabled` without touching the token version;
-re-enabling sharing restores access instantly to existing share rows.
+`shares_enabled`, and toggling sharing does not change `disabled`. Re-enabling
+clears `disabled` without touching the token version; re-enabling sharing
+restores access instantly to existing share rows.
 
 Admin endpoints (GuardAdmin, GuardMutate): `PUT /put/users/disabled`
 (`{userId, disabled}`) and `PUT /put/users/sharing` (`{userId, enabled}`).
 Disabling the last enabled admin is refused with 409. Sharing has no
-last-admin rule. Both require an admin session; audit logging follows the
-same shape as the admin-role endpoint.
+last-admin rule. Both require an admin session; audit logging follows the same
+shape as the admin-role endpoint.
 
 #### Deletion runbook (admin remediation)
 
-`DELETE /delete/users/{user_id}` is admin-only and requires
-re-authentication via the `X-Picasu-Password` header (GuardReauth: 401 if no
-session or bad session, 403 if missing or wrong password). Read-only mode
-returns 405. The operation refuses to leave zero admins (409), mirroring
-the zero-admin invariant.
+`DELETE /delete/users/{user_id}` is admin-only and requires re-authentication
+via the `X-Picasu-Password` header (GuardReauth: 401 if no session or bad
+session, 403 if missing or wrong password). Read-only mode returns 405. The
+operation refuses to leave zero admins (409), mirroring the zero-admin
+invariant.
 
 Preconditions and behavior:
 
 - Refuses with 409 if the user still has any personal media files under the
   user's personal home (trashed files included; any indexable media file
   counts). Global uploads are not attributable to a user and do not block.
-- The 409 response for remaining photos names the remedy in its message:
-  _lock the account and remove/revoke the shares; to delete manually, remove
-  the files from the host filesystem under `USERS_HOME/<username>`, then
-  retry the delete_. This is operator procedure, not API behavior.
+- The 409 response for remaining photos names the remedy in its message: _lock
+  the account and remove/revoke the shares; to delete manually, remove the
+  files from the host filesystem under `USERS_HOME/<username>`, then retry the
+  delete_. This is operator procedure, not API behavior.
 - Owned shares are cascade-deleted first (all albums' `share_list` entries
-  with `created_by` equal to the target across every album). Deletion order
-  is shares first, then the identity record, so a crash between the two
-  leaves no orphaned bearer behind and the operation is retryable.
-- On successful delete with no photos, the now-empty personal album record
-  is pruned if present.
-- A disabled user with photos still cannot be deleted (disable is not a
-  purge shortcut).
+  with `created_by` equal to the target across every album). Deletion order is
+  shares first, then the identity record, so a crash between the two leaves no
+  orphaned bearer behind and the operation is retryable.
+- On successful delete with no photos, the now-empty personal album record is
+  pruned if present.
+- A disabled user with photos still cannot be deleted (disable is not a purge
+  shortcut).
 
-If photos remain and cannot be removed via the API, remove the files from
-the host filesystem under `USERS_HOME/<username>` (manual host-FS fallback),
-then retry the delete.
+If photos remain and cannot be removed via the API, remove the files from the
+host filesystem under `USERS_HOME/<username>` (manual host-FS fallback), then
+retry the delete.
 
 ### The three token types
 
@@ -325,31 +325,32 @@ claim and is decoded through a typed entry point that rejects a mismatched
 `typ`; the claims structs also set `deny_unknown_fields`, so the three
 cross-type decode paths fail closed.
 
-What the server remembers about each of them — and why — is in
-[Auth state model](#auth-state-model).
+What the server remembers about each of them — and why — is in [Auth state
+model](#auth-state-model).
 
 ### Share resolution
 
 `GuardPresenter` tries three sources in order:
 
-1. **Headers** `x-album-id` + `x-share-id` (both or neither; half-supplied is a
-   400), plus `x-share-password` when the share has one.
+1. **Headers** `x-album-id` + `x-share-id` (both or neither; half-supplied is
+   a 400), plus `x-share-password` when the share has one.
 2. **Query parameters** `albumId` + `shareId`.
 3. **Session cookie fallback** — a logged-in user, admin or not, passes any
    share-guarded route.
 
-`resolve_share_internal` looks up the album in `METADATA_TABLE`, pulls the share
-out of `shareList`, and calls `validate_share_access`: expiry (`exp > 0`) and
-password equality. On success it builds `ClaimsSession::new_share(resolved_share)` —
-the share record, including its policy flags, is **embedded in the token** for
-the rest of the request chain. The share record is re-read from the database on
-every request, so disabling a share takes effect immediately.
+`resolve_share_internal` looks up the album in `METADATA_TABLE`, pulls the
+share out of `shareList`, and calls `validate_share_access`: expiry
+(`exp > 0`) and password equality. On success it builds
+`ClaimsSession::new_share(resolved_share)` — the share record, including its
+policy flags, is **embedded in the token** for the rest of the request chain.
+The share record is re-read from the database on every request, so disabling a
+share takes effect immediately.
 
 Policy flags are applied in two places: `resolve_show_download_and_metadata`
-(`process/mod.rs`) turns `resolvedShareOpt` into `(showDownload, showMetadata)`
-for data and metadata routes, and `prefetch` rewrites the query expression to
-the share's album (`Expression::Album`) so a share can only ever snapshot its
-own album.
+(`process/mod.rs`) turns `resolvedShareOpt` into
+`(showDownload, showMetadata)` for data and metadata routes, and `prefetch`
+rewrites the query expression to the share's album (`Expression::Album`) so a
+share can only ever snapshot its own album.
 
 **Share-password exposure.** The stored secret leaves the backend in exactly
 two shapes: never through an album read (`GET /get/get-albums` reports
@@ -361,14 +362,13 @@ the submitted `password` is absent or `null`, clears it on the empty string,
 and sets it on any other string, so an edit that does not mention the secret
 cannot destroy it.
 
-**Share-bearer exposure.** The bearer token leaves the backend in exactly
-two places: the `POST /post/create_share` response (once, to the creator)
-and the logged, creator-only `GET /get/share/token` (which returns 404 to
-anyone who did not create the share, including admins). Album reads, the
-admin share listing, and `GET /get/get-export` carry only the
-`keyFingerprint`; management addresses a share by that fingerprint, with
-edit restricted to the creator and delete open to the creator or an admin
-(revoke).
+**Share-bearer exposure.** The bearer token leaves the backend in exactly two
+places: the `POST /post/create_share` response (once, to the creator) and the
+logged, creator-only `GET /get/share/token` (which returns 404 to anyone who
+did not create the share, including admins). Album reads, the admin share
+listing, and `GET /get/get-export` carry only the `keyFingerprint`; management
+addresses a share by that fingerprint, with edit restricted to the creator and
+delete open to the creator or an admin (revoke).
 
 ### The media-serving chain
 
@@ -410,31 +410,31 @@ expiry.
 
 The OpenAPI contract now declares its four security schemes — `cookie_jwt`,
 `bearer_token`, `album_id` and `share_id` — in `backend/openapi.json`,
-registered through `SecurityAddon` (`backend/src/openapi_components.rs`);
-they match the mechanisms described above.
+registered through `SecurityAddon` (`backend/src/openapi_components.rs`); they
+match the mechanisms described above.
 
 ### Admin-only route inventory (2026-10-27)
 
 The authority split for the API: manage acts stay admin-only, content and
-gallery reads/writes accept any live authenticated user. The guard table
-above is the authoritative mechanism; this section names the boundary and
-why each row sits where it does.
+gallery reads/writes accept any live authenticated user. The guard table above
+is the authoritative mechanism; this section names the boundary and why each
+row sits where it does.
 
 **Principle.** Separate resources by authority: every endpoint handles one
-resource, and admin resources are separate endpoints — never one endpoint
-with per-role branches inside it. `GuardAdmin` stays admin-only and keeps
-its shape; the split happens by routing each resource to the guard that
-matches its authority (`GuardUser` for own-identity and user-level reads,
+resource, and admin resources are separate endpoints — never one endpoint with
+per-role branches inside it. `GuardAdmin` stays admin-only and keeps its
+shape; the split happens by routing each resource to the guard that matches
+its authority (`GuardUser` for own-identity and user-level reads,
 extended-`GuardPresenter` for share-scoped reads, `GuardAdmin` for manage
 acts), never by weakening a guard (AUTH-11). Manage acts are identity
 administration, global config and secrets, repository-wide jobs, public
 exposure (shares), and host-path disclosure. **Content CRUD is a user act:**
-any authenticated user may upload, move, trash, delete, and describe
-photos and albums — the design already grants users file moves, album
-moves, pretty names, album images, and confirmation-gated deletes; the
-guards below catch the code up with it. The `/users/` hierarchy is a
-resource grouping (user identity as a resource), not an authority split,
-and stays as is — no user/self rework.
+any authenticated user may upload, move, trash, delete, and describe photos
+and albums — the design already grants users file moves, album moves, pretty
+names, album images, and confirmation-gated deletes; the guards below catch
+the code up with it. The `/users/` hierarchy is a resource grouping (user
+identity as a resource), not an authority split, and stays as is — no
+user/self rework.
 
 **Stays admin-only (21 routes).** Each row names the reason.
 
@@ -464,17 +464,23 @@ prerequisite that makes the demotion safe.
 | `PUT /put/rotate-image`, `PUT /put/regenerate-thumbnail-with-frame`       | `GuardUser`                                                                                                    | Content manipulation (rotation) and derived-cache rebuild; both read-only-gated. Rotation rewrites original bytes — user-gated, same durability class as delete.                                                                                                                                                                                                                                                     |
 | `POST /post/create_share`, `PUT /put/edit_share`, `PUT /put/delete_share` | `GuardUser` + ownership (`visible_to`)                                                                         | Delegation authority; share management moved from admin-only to any live user with album visibility. Edit stays creator-only; delete is creator-or-admin (admin revoke); listings and export carry fingerprints only.                                                                                                                                                                                                |
 
-**Explicitly unchanged.** `register`/`bootstrap`/`authenticate`/`logout`/`server-info`/`self/profile`/`users/password` are already correctly tiered. Viewer reads and writes are gallery-scoped by identity; shares are read-only and album-scoped, and the two never mix (AUTH-6). Disk-fill/deletion by any authenticated user is accepted under the self-hosted trusted-family threat model (design); the UI keeps confirmation gates and the trash-first flow.
+**Explicitly unchanged.**
+`register`/`bootstrap`/`authenticate`/`logout`/`server-info`/`self/profile`/`users/password`
+are already correctly tiered. Viewer reads and writes are gallery-scoped by
+identity; shares are read-only and album-scoped, and the two never mix
+(AUTH-6). Disk-fill/deletion by any authenticated user is accepted under the
+self-hosted trusted-family threat model (design); the UI keeps confirmation
+gates and the trash-first flow.
 
 **Status.** Landed: viewer reads (cookie fallback accepts any live user,
 `GuardUser` on tags/albums, `GuardPresenter`-gated reads with zero admin-only
 payload), the content-write demotions (`upload`, `assign`, `delete-data`,
 `edit_flags`, `create_dir_album`, `set_album_cover`, `rotate-image`,
 `regenerate-thumbnail`, `edit_tag`, `edit_rating`), share passwords leaving
-the backend only as presence (see [Share resolution](#share-resolution)),
-and removal of the frontend viewer-skip workarounds in favor of the open
-routes. The model denotations in `authz-model.md` §4/§7 carry the same
-boundary; nothing else is outstanding.
+the backend only as presence (see [Share resolution](#share-resolution)), and
+removal of the frontend viewer-skip workarounds in favor of the open routes.
+The model denotations in `authz-model.md` §4/§7 carry the same boundary;
+nothing else is outstanding.
 
 ### Configuration surface
 
@@ -484,30 +490,30 @@ boundary; nothing else is outstanding.
   all three types at once.
 - **User store** — `<DATA_HOME>/auth/users.redb` is the userdb of record:
   `username ⇒ {hash?, admin, home, ver}` (argon2id hash optional — a hash-less
-  entry cannot log in). Every read-modify-write is one redb write
-  transaction, so mutations are atomic and serial; the engine's file lock
-  excludes other processes while the server holds the store open. The
-  server opens the store with the first authentication, so the offline CLI
-  must run while the server is stopped — a conflicting write fails loudly
-  instead of corrupting the store. Identity reads, the user list and the
-  enrollment emptiness all derive from this one store. The offline
+  entry cannot log in). Every read-modify-write is one redb write transaction,
+  so mutations are atomic and serial; the engine's file lock excludes other
+  processes while the server holds the store open. The server opens the store
+  with the first authentication, so the offline CLI must run while the server
+  is stopped — a conflicting write fails loudly instead of corrupting the
+  store. Identity reads, the user list and the enrollment emptiness all derive
+  from this one store. The offline
   `picasu-cmd user list|add|mod|del|passwd|invalidate` administers it (see
-  [Admin CLI](admin-cli.md)); hashes are never exported. Existence, role
-  and token version are re-checked per request for
+  [Admin CLI](admin-cli.md)); hashes are never exported. Existence, role and
+  token version are re-checked per request for
   `GuardAdmin`/`GuardPresenter`/`GuardUser`, so a removal, a demotion or an
   invalidated token takes effect before token expiry.
 - **Export** — `GET /get/config/export` returns the full serialized
   configuration to an admin, and `GET /get/admin/config/export` returns the
-  runtime-tier subset as a versioned envelope (`version`, `scope`,
-  `config`). The signing key is redacted (`authKey` is removed, never
-  exported); no plaintext secret leaves via the API.
+  runtime-tier subset as a versioned envelope (`version`, `scope`, `config`).
+  The signing key is redacted (`authKey` is removed, never exported); no
+  plaintext secret leaves via the API.
 
 ### Auth state model
 
 The rule: **a token is a capability, and the server remembers only what it
-must.** A credential that the server keeps no state for can be checked on
-its own; a credential whose server-side record exists can be listed and
-revoked by id.
+must.** A credential that the server keeps no state for can be checked on its
+own; a credential whose server-side record exists can be listed and revoked by
+id.
 
 | Credential                                               | Carries                                                                     | Server state about it                            |
 | -------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -517,42 +523,43 @@ revoked by id.
 | serving token (`ClaimsAsset`, 300 s)                     | the hash, the asset id, `allowOriginal`, the caller, the share scope, `exp` | none                                             |
 | invite token (128-bit bearer, 7 d by default)            | nothing — it _is_ the credential                                            | the invite record (hash-keyed, until it expires) |
 
-**The identity token is stateless.** The server keeps no session list: a
-token is accepted because it carries the role, the expiry and the user's
-token version, not because the server remembers that the session exists.
-The list it would replace bought nothing. An unused device is covered by
-the token expiry; a suspected compromise is covered by a password change or
-an explicit "revoke all sessions", both of which bump the user's version.
-And a positive allowlist makes a token insufficient on its own — the `jti`
-is not a secret, so anyone able to sign a token can mint one, and the
-allowlist added bookkeeping rather than security.
+**The identity token is stateless.** The server keeps no session list: a token
+is accepted because it carries the role, the expiry and the user's token
+version, not because the server remembers that the session exists. The list it
+would replace bought nothing. An unused device is covered by the token expiry;
+a suspected compromise is covered by a password change or an explicit "revoke
+all sessions", both of which bump the user's version. And a positive allowlist
+makes a token insufficient on its own — the `jti` is not a secret, so anyone
+able to sign a token can mint one, and the allowlist added bookkeeping rather
+than security.
 
-What is left has to stay revocable, so the server keeps the _negative_ of
-what the allowlist held: a revocation list, each entry carrying the expiry
-of the thing it revokes.
+What is left has to stay revocable, so the server keeps the _negative_ of what
+the allowlist held: a revocation list, each entry carrying the expiry of the
+thing it revokes.
 
 **The snapshot and serving tokens are stateless.** They live for minutes and
 are scoped to one artifact. The share policy they carry is re-read from the
-album record on every request (`revalidate_share_record`), so a share that
-was disabled stops yielding refreshed capabilities.
+album record on every request (`revalidate_share_record`), so a share that was
+disabled stops yielding refreshed capabilities.
 
 **The invite token is memorized.** An invite is a random 128-bit bearer shown
-to its bearer exactly once; only its blake3 hash is stored, keyed by the
-hash hex, so a leaked database row cannot be replayed as a token. Invites
-are few and spend most of their life in the "used or revoked" state, so a
-list of them has to be maintained either way — a revocation entry would
-hold the same ids and nothing more. The record carries what the revocation
-entry cannot: who created the invite, and which user redeemed it. An invite may optionally be bound to a user id at creation; redemption then requires that same id, and a mismatch is rejected without consuming the invite.
+to its bearer exactly once; only its blake3 hash is stored, keyed by the hash
+hex, so a leaked database row cannot be replayed as a token. Invites are few
+and spend most of their life in the "used or revoked" state, so a list of them
+has to be maintained either way — a revocation entry would hold the same ids
+and nothing more. The record carries what the revocation entry cannot: who
+created the invite, and which user redeemed it. An invite may optionally be
+bound to a user id at creation; redemption then requires that same id, and a
+mismatch is rejected without consuming the invite.
 
 **The share token is memorized.** A share binds an album to a policy
-(password, expiry, flags). Listings carry only the non-secret
-`keyFingerprint` (blake3 of the bearer, first 16 hex chars) — never the
-bearer itself; the admin page lists every share censored to fingerprints
-and may revoke by fingerprint, while edit and bearer reveal stay
-creator-only. The bearer leaves the backend in exactly two places: the
-create response and the logged, creator-only `GET /get/share/token`. The
-share record is the thing managed; a revocation entry would only say that
-one is dead.
+(password, expiry, flags). Listings carry only the non-secret `keyFingerprint`
+(blake3 of the bearer, first 16 hex chars) — never the bearer itself; the
+admin page lists every share censored to fingerprints and may revoke by
+fingerprint, while edit and bearer reveal stay creator-only. The bearer leaves
+the backend in exactly two places: the create response and the logged,
+creator-only `GET /get/share/token`. The share record is the thing managed; a
+revocation entry would only say that one is dead.
 
 Two files hold this state, and they have different lifetimes:
 
@@ -582,92 +589,93 @@ logs in, and it appears in the admin listing.
 
 ### User store consistency model
 
-The user store is a file with compare-and-swap semantics, not a database
-with interactive transactions. Four rules describe what it guarantees:
+The user store is a file with compare-and-swap semantics, not a database with
+interactive transactions. Four rules describe what it guarantees:
 
-- **M1 — single writer, single critical section.** Every mutation runs
-  inside one store read-modify-write (one redb write transaction). The
-  mutation reads the state it needs inside that section; no operation
-  spans two. Concurrent cooperating writers serialize.
-- **M2 — last-writer-wins per field, deterministic.** Serialization
-  makes concurrent same-field edits deterministic, not merged: whichever
-  commits last is retained. Non-overlapping field edits converge (both
-  apply). Like unix `vipw`, the store warns, it does not merge — intent
-  conflicts are the operators' problem.
-- **M3 — one authoritative store per fact.** Identity, hash, `admin`,
-  `home` and the token version live only in the user store; revocations
-  live only in the gallery index redb. An operation touching both
-  (deletion: entry + revocations; invited registration: invite consumption
-  - entry) executes in a fixed, crash-safe order and accepts the
-    documented intermediate state.
-- **M4 — durable, atomic publication.** A reader never observes a torn
-  store; a crash leaves the pre- or post-state, never a partial one.
-  The engine guarantees this, not application code.
+- **M1 — single writer, single critical section.** Every mutation runs inside
+  one store read-modify-write (one redb write transaction). The mutation reads
+  the state it needs inside that section; no operation spans two. Concurrent
+  cooperating writers serialize.
+- **M2 — last-writer-wins per field, deterministic.** Serialization makes
+  concurrent same-field edits deterministic, not merged: whichever commits
+  last is retained. Non-overlapping field edits converge (both apply). Like
+  unix `vipw`, the store warns, it does not merge — intent conflicts are the
+  operators' problem.
+- **M3 — one authoritative store per fact.** Identity, hash, `admin`, `home`
+  and the token version live only in the user store; revocations live only in
+  the gallery index redb. An operation touching both (deletion: entry +
+  revocations; invited registration: invite consumption
+  - entry) executes in a fixed, crash-safe order and accepts the documented
+    intermediate state.
+- **M4 — durable, atomic publication.** A reader never observes a torn store;
+  a crash leaves the pre- or post-state, never a partial one. The engine
+  guarantees this, not application code.
 
 Explicit **non-promises** — stated so no caller relies on them:
 
-- No lost-update protection for two clients editing the same field from
-  stale reads (that needs a version/`updated_at` pre-image; not
-  implemented). Two admins editing one user: last writer wins (M2).
-- No bounded staleness bound for a running server's view of the store;
-  readers go through the store, but no reload signal exists to bound how
-  stale a cached view may be.
+- No lost-update protection for two clients editing the same field from stale
+  reads (that needs a version/`updated_at` pre-image; not implemented). Two
+  admins editing one user: last writer wins (M2).
+- No bounded staleness bound for a running server's view of the store; readers
+  go through the store, but no reload signal exists to bound how stale a
+  cached view may be.
 
-The invariants derived from this model are pinned as tests where a test
-can force the condition: zero-admin guard, fail-closed verification
-(`hash: None`, corrupt store), concurrent-write convergence, the token
-version bumps, and kill-during-write durability (a SIGKILLed writer leaves
-the store at the committed state) in `backend/src/auth/user_store.rs`;
-invite-redeem atomicity and the register-then-login end state in
-`backend/src/auth/invites.rs` and `backend/src/tests/register.rs`. The
-state-model invariants — a stale version is refused, a revoked `jti` is
-refused, a password change kills every token of that user, a user
-provisioned offline can log in — are pinned in
-`backend/src/router/auth.rs`, `backend/src/tests/r6_session_revocation.rs`
-and `backend/src/tests/auth_users.rs`.
+The invariants derived from this model are pinned as tests where a test can
+force the condition: zero-admin guard, fail-closed verification (`hash: None`,
+corrupt store), concurrent-write convergence, the token version bumps, and
+kill-during-write durability (a SIGKILLed writer leaves the store at the
+committed state) in `backend/src/auth/user_store.rs`; invite-redeem atomicity
+and the register-then-login end state in `backend/src/auth/invites.rs` and
+`backend/src/tests/register.rs`. The state-model invariants — a stale version
+is refused, a revoked `jti` is refused, a password change kills every token of
+that user, a user provisioned offline can log in — are pinned in
+`backend/src/router/auth.rs`, `backend/src/tests/r6_session_revocation.rs` and
+`backend/src/tests/auth_users.rs`.
 
 ---
 
 ## Known limitations
 
-Present-tense gaps against current state of the art, with the reasoning
-behind each:
+Present-tense gaps against current state of the art, with the reasoning behind
+each:
 
-- **Legacy share passwords may remain plaintext.** Share passwords set
-  through the API are stored as argon2id hashes (m=19456 KiB, t=2, p=1)
-  and verified through argon2id; rows written before this change keep
-  their plaintext value until the share is recreated or its password
-  changed, and those are still compared verbatim. User passwords are
-  argon2id hashes (m=19456 KiB, t=2, p=1) and never exported; rows
-  written before this change as PBKDF2 hashes verify until the user's
-  next successful login, which rehashes them in place to argon2id.
-- **Login throttling is time-boxed, not a lockout.** Bans decay and a
-  restart clears them; there is no permanent account/IP lockout. The
-  `register` path is not throttled (it creates accounts; credential
-  guessing happens at login), and `PICASU_RATE_LIMITS=false` bypasses
-  throttling entirely for fuzzing.
-- **The signing key is necessarily readable** by the server process. It
-  lives owner-only (`0600`) in the secrets file, is never exported,
-  and rotation (`POST /post/config/auth-key/reset`) invalidates every
-  outstanding token.
-- **The bind address defaults to `0.0.0.0` and is operator-configurable.**
-  A fresh install is closed regardless: with an empty user store every
-  guarded route refuses, and the first administrator enrolls via
-  `--bootstrap-admin` trust-on-first-use or the offline CLI.
+- **Legacy share passwords may remain plaintext.** Share passwords set through
+  the API are stored as argon2id hashes (m=19456 KiB, t=2, p=1) and verified
+  through argon2id; rows written before this change keep their plaintext value
+  until the share is recreated or its password changed, and those are still
+  compared verbatim. User passwords are argon2id hashes (m=19456 KiB, t=2,
+  p=1) and never exported; rows written before this change as PBKDF2 hashes
+  verify until the user's next successful login, which rehashes them in place
+  to argon2id.
+- **Login throttling is time-boxed, not a lockout.** Bans decay and a restart
+  clears them; there is no permanent account/IP lockout. The `register` path
+  is not throttled (it creates accounts; credential guessing happens at
+  login), and `PICASU_RATE_LIMITS=false` bypasses throttling entirely for
+  fuzzing.
+- **The signing key is necessarily readable** by the server process. It lives
+  owner-only (`0600`) in the secrets file, is never exported, and rotation
+  (`POST /post/config/auth-key/reset`) invalidates every outstanding token.
+- **The bind address defaults to `0.0.0.0` and is operator-configurable.** A
+  fresh install is closed regardless: with an empty user store every guarded
+  route refuses, and the first administrator enrolls via `--bootstrap-admin`
+  trust-on-first-use or the offline CLI.
 
 ### What holds up
 
 The architecture's core decisions verify well under attack:
 
 - **Algorithm pinning** — HS256-only validation with tests guarding it; no
-  algorithm-confusion path (token types are distinguished by claim, not algorithm).
+  algorithm-confusion path (token types are distinguished by claim, not
+  algorithm).
 - **Snapshot binding** — `GuardSnapshot` requires the query `timestamp` to
   equal the signed claim, so a token for one snapshot cannot read another;
   cross-snapshot access did not succeed in testing.
-- **Per-asset binding** — `GuardHash` compares the URL path segment against the
-  signed `hash` claim; a token minted for one asset does not serve another.
-- **Share state is re-read every request** — disabling or expiring a share takes
-  effect immediately for identity checks (though not for already-minted capabilities).
+- **Per-asset binding** — `GuardHash` compares the URL path segment against
+  the signed `hash` claim; a token minted for one asset does not serve
+  another.
+- **Share state is re-read every request** — disabling or expiring a share
+  takes effect immediately for identity checks (though not for already-minted
+  capabilities).
 - **Share IDs are 64-char CSPRNG values** (~330 bits) and album filtering
   happens server-side in the query expression — a share cannot widen its
   snapshot by supplying its own filter.

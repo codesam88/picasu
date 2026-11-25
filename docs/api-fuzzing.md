@@ -2,8 +2,8 @@
 
 Strategy home for API fuzzing and authorization assurance. Operational
 commands, environment variables, debugging, and hook details live in
-`utils/fuzz/README.md`; this document covers the strategy, oracles,
-gates, and known limits. The contract that feeds the harness is described in
+`utils/fuzz/README.md`; this document covers the strategy, oracles, gates, and
+known limits. The contract that feeds the harness is described in
 `docs/api-assurance.md`.
 
 ## Purpose and scope
@@ -80,8 +80,8 @@ order-independent record comparison is used instead.
 
 A dedicated anonymous pass sends no credentials, plus an invalid-credential
 variant, against every declared-auth operation. Refusal is required; a 2xx is
-a finding. Multi-scheme (OR) operations are explicit matrix rows rather than
-a global "non-admin must 4xx" rule.
+a finding. Multi-scheme (OR) operations are explicit matrix rows rather than a
+global "non-admin must 4xx" rule.
 
 ### Body and side-effect markers
 
@@ -102,51 +102,48 @@ Principles:
   persisted to files the hooks read.
 - One object per scope before the run, so object and asset endpoints have
   valid targets.
-- Tokens are obtained via the declared login flow with extraction from
-  cookie or body and `expectCookies` where applicable, not copied as static
-  headers.
+- Tokens are obtained via the declared login flow with extraction from cookie
+  or body and `expectCookies` where applicable, not copied as static headers.
 - Reseed by deleting the state directory; the next run recreates it.
 
-Current target inventory (high level, exact counts may change with
-`seed.sh`): admin0/admin1, memberA/memberB, sharing-disabled, and disabled
-accounts; global alpha/beta/gamma, nested alpha/sub, and personal home
-albums; open, nodownload, upload, password-protected, expired, member,
-dead, and nested shares; valid, bound, and used invites.
+Current target inventory (high level, exact counts may change with `seed.sh`):
+admin0/admin1, memberA/memberB, sharing-disabled, and disabled accounts;
+global alpha/beta/gamma, nested alpha/sub, and personal home albums; open,
+nodownload, upload, password-protected, expired, member, dead, and nested
+shares; valid, bound, and used invites.
 
-The `seed.env` contract exposes the seeded state to other tools:
-`PICASU_JWT`, `PICASU_BASE_URL`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`,
-`FUZZ_ALBUM_B`, `FUZZ_SHARE_B`, and `FUZZ_PASSWORD`. Fail-closed seeding
-asserts non-empty snapshot rows before completing.
+The `seed.env` contract exposes the seeded state to other tools: `PICASU_JWT`,
+`PICASU_BASE_URL`, `FUZZ_ALBUM_A`, `FUZZ_SHARE_A`, `FUZZ_ALBUM_B`,
+`FUZZ_SHARE_B`, and `FUZZ_PASSWORD`. Fail-closed seeding asserts non-empty
+snapshot rows before completing.
 
 ## Seed assumptions
 
 Mechanics confirmed against backend (read-only, 2026-11-17):
 
 - Expired invites: `POST /post/invites` accepts only `expiresInHours` `0`
-  (never expires) or `1`–`8760`; negative and over-limit values are
-  rejected. No API path yields a past deadline, so the expired-invite
-  target is dropped (would require a direct redb insert).
+  (never expires) or `1`–`8760`; negative and over-limit values are rejected.
+  No API path yields a past deadline, so the expired-invite target is dropped
+  (would require a direct redb insert).
 - Personal homes: `PICASU_USERS_HOME` defaults to `<data>/users`;
   `ensure_personal_home` creates the directory plus its dir-album on user
-  creation; indexing with `root: "personal"` (or the default `"auto"`)
-  walks the users root and personal albums surface as `root: "personal"`
-  filtered by owner.
+  creation; indexing with `root: "personal"` (or the default `"auto"`) walks
+  the users root and personal albums surface as `root: "personal"` filtered by
+  owner.
 - Nested albums: a global index creates dir-album records for every
   subdirectory, so `IMAGE_HOME/alpha/sub` gains its own `albumId` with
   `parentAlbumId` set to the parent album.
 - Trash/rating: `PUT /put/edit_flags` body
   `{indexArray, timestamp, isTrashed?}`; `PUT /put/edit_rating` body
-  `{indexArray, timestamp, rating}` (`0`–`5` or `null`). `timestamp`
-  must be a snapshot id from `POST /get/prefetch`
-  (`prefetch.timestamp`).
+  `{indexArray, timestamp, rating}` (`0`–`5` or `null`). `timestamp` must be a
+  snapshot id from `POST /get/prefetch` (`prefetch.timestamp`).
 - PNG metadata: EXIF is read from the embedded eXIf chunk and XMP from
   embedded iTXt plus sidecar; PNG is not XMP-only.
-- Share expiry: `exp: 0` never expires; `POST /post/create_share` stores
-  `exp` verbatim with no bounds, so past values create already-expired
-  shares.
-- Disabled sharing: `PUT /put/users/sharing` toggles `shares_enabled`;
-  shares whose creator is later disabled fail revalidation ("Share no
-  longer exists"), i.e. dead shares. Seed by creating then disabling.
+- Share expiry: `exp: 0` never expires; `POST /post/create_share` stores `exp`
+  verbatim with no bounds, so past values create already-expired shares.
+- Disabled sharing: `PUT /put/users/sharing` toggles `shares_enabled`; shares
+  whose creator is later disabled fail revalidation ("Share no longer
+  exists"), i.e. dead shares. Seed by creating then disabling.
 - Second admin: `POST /post/users/register` always creates a non-admin;
   elevate with `PUT /put/users/admin` `{userId, admin: true}` plus the
   `X-Picasu-Password` re-auth header.
@@ -155,16 +152,16 @@ Mechanics confirmed against backend (read-only, 2026-11-17):
 
 One deterministic pass per role with a fixed seed, not one run with random
 identity rotation. Admin, member, guest, snapshot, and anonymous passes get
-equal run time and effort. Per-role runs are reproducible
-and attribute findings to the identity that produced them; random rotation is
-neither reproducible nor attributable.
+equal run time and effort. Per-role runs are reproducible and attribute
+findings to the identity that produced them; random rotation is neither
+reproducible nor attributable.
 
 WFC escalation (ordered try-first-user, then anonymous, then remaining users
 until a 2xx/3xx, then locking that identity) is useful for mapping which
 identity can call an operation, but it locks on first success and offers no
-traffic-share knob, so equal per-role splits are built by separate
-per-role runs. Peer-replay covers read-only cross-tenant BOLA on GETs with
-two real accounts but is read-only by design and cannot replay writes.
+traffic-share knob, so equal per-role splits are built by separate per-role
+runs. Peer-replay covers read-only cross-tenant BOLA on GETs with two real
+accounts but is read-only by design and cannot replay writes.
 
 ## Gates
 
@@ -189,10 +186,10 @@ Auth knowledge is derived, not hand-maintained:
 `backend/auth-matrix.json` (committed machine contract of per-operation
 `x-picasu-auth`) -> `utils/fuzz/auth_rules.py` -> campaign hooks.
 
-The derivation covers share-header injection, check assignment, wrong-credential
-token selection, read-only exemptions, and seeded scope pairs. It is pure and
-unit-tested (`just utils-test`). A matrix change that alters a probe fails
-the tests instead of drifting silently.
+The derivation covers share-header injection, check assignment,
+wrong-credential token selection, read-only exemptions, and seeded scope
+pairs. It is pure and unit-tested (`just utils-test`). A matrix change that
+alters a probe fails the tests instead of drifting silently.
 
 Destructive operations (logout, password and admin mutations, key rotation,
 index rebuild, read-only toggle) stay disabled in `campaign.toml` and
@@ -201,22 +198,22 @@ hooks null config fields, protect the admin account, and redirect share and
 delete operations to nonexistent fixtures so generative traffic cannot destroy
 the session under test.
 
-Regeneration is enforced: `auth-matrix-check` diffs the matrix in CI as part
-of `openapi-check`, and a missing or malformed matrix file fails the run.
+Regeneration is enforced: `just docs-regen` regenerates the matrix and CI
+fails on a tracked diff, and a missing or malformed matrix file fails the run.
 
 ## Refresh and reauthentication
 
 The provider is not a static header. Short-lived tokens go stale mid-run, so
 the supported pattern is a token-fetching provider with proactive refresh
 (default interval 300 s) and reactive refresh on unauthenticated statuses
-(`retry_on`, single refetch plus replay). Design hooks must surface
-"refresh failed" loudly rather than continuing unauthenticated.
+(`retry_on`, single refetch plus replay). Design hooks must surface "refresh
+failed" loudly rather than continuing unauthenticated.
 
 Constraints that shape the implementation:
 
 - `retry_on` codes are pooled across all configured schemes, not per scheme.
-- Only `call_and_validate`, the state machine, `run`, and `fuzz` replay;
-  raw `call()` does not.
+- Only `call_and_validate`, the state machine, `run`, and `fuzz` replay; raw
+  `call()` does not.
 - Three consecutive fetch failures disable refresh for the run with a 30 s
   cooldown.
 - If replay still returns a `retry_on` status, Schemathesis stops refreshing
@@ -225,8 +222,8 @@ Constraints that shape the implementation:
   operation's `security` stanza, so a member token cannot overwrite the admin
   entry.
 
-Principal identity is tracked in scenario state, not in payloads: `setup`
-logs in per scenario, `before_call` attaches headers from scenario state, and
+Principal identity is tracked in scenario state, not in payloads: `setup` logs
+in per scenario, `before_call` attaches headers from scenario state, and
 `teardown` cleans up with the owner's credential. Payload-derived ids get
 mutated by the fuzzer; scenario state does not.
 
@@ -239,7 +236,8 @@ invalidates the session under test.
 
 - The built-in oracle ends at 5xx and schema conformance. Absence of effect,
   cross-operation isolation, token lifecycles, and races are custom checks or
-  handwritten tests; the token choreography is not inferable from schema alone.
+  handwritten tests; the token choreography is not inferable from schema
+  alone.
 - Stateful campaigns are not byte-reproducible; they are time-budgeted and
   triaged, never gating.
 - Admin false positives: a global "users must not touch each other's
@@ -262,14 +260,13 @@ invalidates the session under test.
 - Token-independent operations defeat re-auth loops; track and report.
 - Cookie-session logins defeat auto-detection entirely and need hand-written
   hooks.
-- Stateful runs need budgets an order of magnitude past what reaches a
-  handful of operations.
+- Stateful runs need budgets an order of magnitude past what reaches a handful
+  of operations.
 - Accepted findings need a baseline file before any gate can fail a build.
 
 ## See also
 
-- `utils/fuzz/README.md` — operational commands, environment, and
-  debugging.
+- `utils/fuzz/README.md` — operational commands, environment, and debugging.
 - `docs/api-assurance.md` — contract basis and consumers.
 - `docs/auth-matrix.md` — human-readable authorization matrix.
 - `docs/test-strategy.md` — overall test layers.

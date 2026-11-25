@@ -11,27 +11,30 @@ area: full-stack
 
 ### Backend: Optional asset_id fields that should be required — RESOLVED
 
-All fields below are now required (no `Option`, no `None` default). Resolved in commits `39cc2987`, `7ef17352`.
+All fields below are now required (no `Option`, no `None` default). Resolved
+in commits `39cc2987`, `7ef17352`.
 
 ### Backend: Hash-based lookup functions — RESOLVED
 
-All hash-based lookup functions below have been removed or converted to asset-ID lookups. Resolved in commits
-`2ef81723`, `7ef17352`.
+All hash-based lookup functions below have been removed or converted to
+asset-ID lookups. Resolved in commits `2ef81723`, `7ef17352`.
 
 ### Backend: Legacy API fields — RESOLVED
 
-`rotate-image` and `regenerate-thumbnail` now use `asset_id`. `get/test/record` uses asset_id path. Resolved in
-commit `2ef81723`.
+`rotate-image` and `regenerate-thumbnail` now use `asset_id`.
+`get/test/record` uses asset_id path. Resolved in commit `2ef81723`.
 
 ### Backend: Backward-compat code paths — RESOLVED
 
-All fallback paths removed. `asset_id_to_abstract_data` reads from `DATA_TABLE` only. `ReducedData.asset_id` is
-required. `DeleteList` uses `asset_ids`. Resolved in commits `39cc2987`, `7ef17352`, `1e8f55f1`.
+All fallback paths removed. `asset_id_to_abstract_data` reads from
+`DATA_TABLE` only. `ReducedData.asset_id` is required. `DeleteList` uses
+`asset_ids`. Resolved in commits `39cc2987`, `7ef17352`, `1e8f55f1`.
 
 ### Frontend: Dual maps and hash-based identity — RESOLVED
 
-`hashMapData` removed; `assetIdMapData` is the sole identity map. `getAssetIndexDataFromRoute` uses `assetIdMapData`.
-View page uses `route.params.assetId`. Resolved in commits `69511da2`, `bd5b6454`.
+`hashMapData` removed; `assetIdMapData` is the sole identity map.
+`getAssetIndexDataFromRoute` uses `assetIdMapData`. View page uses
+`route.params.assetId`. Resolved in commits `69511da2`, `bd5b6454`.
 
 ## Completed Work
 
@@ -68,13 +71,13 @@ View page uses `route.params.assetId`. Resolved in commits `69511da2`, `bd5b6454
   paths), asset_id for albums
 - Update all test scenarios to use `asset_id` for `assign_album` calls
 - Add `asset_id_as` to test scenarios that need asset_id discovery
-- `discover_photo_hash` returns content hash for backward compatibility
-  with test assertions that check `abstractData.id`
+- `discover_photo_hash` returns content hash for backward compatibility with
+  test assertions that check `abstractData.id`
 
 ## Remaining Work
 
-All items from the original findings have been resolved. `get_test_probe.rs` was updated to use asset_id only
-(commit `6746adc3`).
+All items from the original findings have been resolved. `get_test_probe.rs`
+was updated to use asset_id only (commit `6746adc3`).
 
 ### Completed in this audit
 
@@ -92,7 +95,8 @@ All items from the original findings have been resolved. `get_test_probe.rs` was
 
 - Remove `hashMapData` from `dataStore.ts`, use `assetIdMapData` exclusively
 - `fromDataWorker`: store by `assetId` only, not content hash
-- `getHashIndexDataFromRoute` → `getAssetIndexDataFromRoute`, use `assetIdMapData`
+- `getHashIndexDataFromRoute` → `getAssetIndexDataFromRoute`, use
+  `assetIdMapData`
 - `ViewPage`: use `assetIdMapData` for index lookup, `assetId` for navigation
 - `refreshAlbumMetadata`, `createAlbums`: use `assetIdMapData`
 - `ItemRegenerateThumbnailByFrame`: use `assetId` directly from route
@@ -108,8 +112,10 @@ All items from the original findings have been resolved. `get_test_probe.rs` was
 #### Commit: Frontend Slice 3 — rename hash props to assetId
 
 - `SingleMenu`, `ShareMenu`, `AlbumMenu`: rename `hash` prop to `assetId`
-- `ItemFindInTimeline`, `ItemViewOriginalFile`: rename `hash` prop to `assetId`
-- `Display`, `DisplayDesktop`, `DisplayMobile`: rename `hash` prop to `assetId`
+- `ItemFindInTimeline`, `ItemViewOriginalFile`: rename `hash` prop to
+  `assetId`
+- `Display`, `DisplayDesktop`, `DisplayMobile`: rename `hash` prop to
+  `assetId`
 - `MetadataContent`, `ViewPageMetadata`: rename `hash` prop to `assetId`
 - Compressed thumbnail URLs still use content hash (`abstractData.id`)
 
@@ -124,7 +130,8 @@ All items from the original findings have been resolved. `get_test_probe.rs` was
 - `schemas.ts`: `assetId` required in `databaseTimestampSchema` (was optional)
 - `types.ts`: `assetId` required in `EnrichedUnifiedData` and `SlicedData`
 - `getter.ts`: `getSrc` throws when `assetId` missing for original URLs
-- `workerApi.ts`: `assetId` required in `ProcessSmallImagePayload`/`ProcessImagePayload`
+- `workerApi.ts`: `assetId` required in
+  `ProcessSmallImagePayload`/`ProcessImagePayload`
 - `toImgWorker.ts`: remove `assetId ?? hash` fallback, use `assetId` directly
 - `fromDataWorker.ts`: remove `if (assetId !== undefined)` guards
 - `toDataWorker.ts`: use `EnrichedUnifiedData` type, import it

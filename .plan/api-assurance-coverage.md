@@ -17,9 +17,9 @@ checker actually covers, or how strong that checker is. Two symptoms:
   handler signature, never the array), `admin` exists only as a behavioural
   expectation, `shareScope` is advisory, and `effects`/`invariants` have no
   checker at all.
-- Counting rules or tests measures volume, not coverage. A rule can be
-  vacuous when its expectation is derived from the same artifact it checks,
-  and an advisory check does not gate. Neither is visible today.
+- Counting rules or tests measures volume, not coverage. A rule can be vacuous
+  when its expectation is derived from the same artifact it checks, and an
+  advisory check does not gate. Neither is visible today.
 
 This applies beyond `x-picasu-auth`: large parts of `backend/openapi.json`
 (route set, statuses, parameters, bodies, schemes, schemas) are covered by
@@ -51,15 +51,15 @@ Two dimensions; coverage alone misleads.
 - **Exactness**: `none` < `shape` (presence/format) < `static-exact`
   (agreement with an independent source) < `behavioral-gating` <
   `behavioral-advisory`.
-- **Independence**: whether the expectation comes from different data than
-  the artifact under test. A rule whose expectation is derived from the same
+- **Independence**: whether the expectation comes from different data than the
+  artifact under test. A rule whose expectation is derived from the same
   annotation is vacuous for that annotation and is recorded as `derived`, not
   counted at full strength.
 
 ## Preliminary findings (verified against the tree, 2026-10-29)
 
-The table below is the survey that opened this task. Rows for `guards`
-(S8), publicness (now derived from the guards under S7), `effects` (S10) and
+The table below is the survey that opened this task. Rows for `guards` (S8),
+publicness (now derived from the guards under S7), `effects` (S10) and
 `invariants` (existence test plus S11) have since gained checkers; refresh
 those rows as step 1 rather than reading them as current gaps.
 
@@ -91,9 +91,9 @@ those rows as step 1 rather than reading them as current gaps.
 ## Steps
 
 1. **Registry**: add `utils/api-assurance/contract-checks.json` with the rows
-   above; each entry names concrete rule ids (e.g. `openapi-sanity:S2`),
-   check ids (`matrix_negatives:viewer-on-admin`), strength, independence,
-   gate and optional waiver with a reason.
+   above; each entry names concrete rule ids (e.g. `openapi-sanity:S2`), check
+   ids (`matrix_negatives:viewer-on-admin`), strength, independence, gate and
+   optional waiver with a reason.
 2. **Existence test**: `utils/api-assurance/test_contract_checks.mjs` verifies
    every referenced rule appears in `openapi-sanity`'s rule table, every check
    id in the named test/hook, and every waiver carries a reason; wire into

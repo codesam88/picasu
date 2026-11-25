@@ -9,7 +9,8 @@ area: frontend
 
 ### Context
 
-The current frontend stacks up to 4 full-screen `v-overlay` components via nested Vue Router child routes:
+The current frontend stacks up to 4 full-screen `v-overlay` components via
+nested Vue Router child routes:
 
 | Level | Path                                  | Component                                               |
 | ----- | ------------------------------------- | ------------------------------------------------------- |
@@ -18,17 +19,27 @@ The current frontend stacks up to 4 full-screen `v-overlay` components via neste
 | 3     | `/home/view/:hash/read`               | HomeIsolated — v-overlay stacked on top of level 2      |
 | 4     | `/home/view/:hash/read/view/:subhash` | ViewPage — v-overlay stacked on top of level 3          |
 
-`v-overlay` suits dialogs and transient effects, not full-screen page navigation. The overlays hide the nav bar, require a `'subId'` isolation context for stores so simultaneously-mounted components don't clobber each other, and produce fragile level-counting logic throughout the codebase.
+`v-overlay` suits dialogs and transient effects, not full-screen page
+navigation. The overlays hide the nav bar, require a `'subId'` isolation
+context for stores so simultaneously-mounted components don't clobber each
+other, and produce fragile level-counting logic throughout the codebase.
 
-**Goal:** Collapse the 4-level stack to 2. One component fills the content area at a time. Nav bar always visible. `router.back()` for back navigation. Level 3 (HomeIsolated) eliminated — "Enter Album" navigates to `/album/:albumHash` instead.
+**Goal:** Collapse the 4-level stack to 2. One component fills the content
+area at a time. Nav bar always visible. `router.back()` for back navigation.
+Level 3 (HomeIsolated) eliminated — "Enter Album" navigates to
+`/album/:albumHash` instead.
 
 ---
 
 ### Phase 0 — Route and file renaming
 
-`/home` is not a distinct view — it's the default landing page. The concept of "home" belongs to the nav item and the `/` redirect. The underlying view is a chronological photo grid → `/timeline`. `/all` (near-duplicate filter) is deleted; "Find in Timeline" points to `/timeline`.
+`/home` is not a distinct view — it's the default landing page. The concept of
+"home" belongs to the nav item and the `/` redirect. The underlying view is a
+chronological photo grid → `/timeline`. `/all` (near-duplicate filter) is
+deleted; "Find in Timeline" points to `/timeline`.
 
-`components/Home/` and `HomeBars/` contain shared gallery infrastructure used by every content page — not home-specific. Renamed to `Gallery`.
+`components/Home/` and `HomeBars/` contain shared gallery infrastructure used
+by every content page — not home-specific. Renamed to `Gallery`.
 
 **Route-level renaming:**
 
@@ -43,11 +54,13 @@ The current frontend stacks up to 4 full-screen `v-overlay` components via neste
 | `albumContentRoute` `getParentPage` → `name: 'home'`                                          | `name: 'timeline'`                     |
 | `{ path: '/', redirect: '/home' }`                                                            | `{ path: '/', redirect: '/timeline' }` |
 
-Nav drawer (`Drawer.vue`): keep "Home" label, change `to="/home"` → `to="/"`. "Home" means "go to start page" (`/` redirects to `/timeline`).
+Nav drawer (`Drawer.vue`): keep "Home" label, change `to="/home"` → `to="/"`.
+"Home" means "go to start page" (`/` redirects to `/timeline`).
 
 `ItemFindInTimeline.vue`: `/all?locate=…` → `/timeline?locate=…`.
 
-`AllPage.vue` deleted. `HomePage.vue` → `TimelinePage.vue` (same filter: `and(not(type:"album"), archived:false, trashed:false)`).
+`AllPage.vue` deleted. `HomePage.vue` → `TimelinePage.vue` (same filter:
+`and(not(type:"album"), archived:false, trashed:false)`).
 
 **File/folder renaming (shared gallery infrastructure):**
 
@@ -72,16 +85,23 @@ Nav drawer (`Drawer.vue`): keep "Home" label, change `to="/home"` → `to="/"`. 
 
 ### Phase 1 — Flatten routes to 2 levels
 
-**`src/route/createRoute.ts`**: import `ViewPage` directly; drop level-3 (`read`) and level-4 (`view/:subhash`) children; level-2 uses `ViewPage` with `isolation-id="mainId"` hard-coded.
+**`src/route/createRoute.ts`**: import `ViewPage` directly; drop level-3
+(`read`) and level-4 (`view/:subhash`) children; level-2 uses `ViewPage` with
+`isolation-id="mainId"` hard-coded.
 
-**`src/route/routes.ts`**: remove `ViewPageMain`, `HomeIsolated`, `ViewPageIsolated` imports; drop `albumReadPage` and `albumReadViewPage` from `albumContentRoute`; remove `ReadPage`/`ReadViewPage` branches from history-chain builders.
+**`src/route/routes.ts`**: remove `ViewPageMain`, `HomeIsolated`,
+`ViewPageIsolated` imports; drop `albumReadPage` and `albumReadViewPage` from
+`albumContentRoute`; remove `ReadPage`/`ReadViewPage` branches from
+history-chain builders.
 
 ### Phase 2 — ViewPage: remove v-overlay
 
 **`src/components/View/ViewPage.vue`**:
 
-- Replace `<v-overlay>` root with `<div class="h-100 w-100 d-flex position-relative bg-background">`
-- Delete `overlayVisible` computed; add `keydown` listener for Escape → `router.back()`
+- Replace `<v-overlay>` root with
+  `<div class="h-100 w-100 d-flex position-relative bg-background">`
+- Delete `overlayVisible` computed; add `keydown` listener for Escape →
+  `router.back()`
 - `hash` computed: always `route.params.hash` (drop `subhash` branch)
 - Remove `albumFallback` computed and its `v-else-if` block
 - Remove `isolationId` prop; hard-code `'mainId'`
@@ -90,7 +110,8 @@ Nav drawer (`Drawer.vue`): keep "Home" label, change `to="/home"` → `to="/"`. 
 
 **`src/components/Gallery/Gallery.vue`** (was `Home.vue`):
 
-- `route.meta.level >= 2`: render only `<Transition name="fade"><router-view/></Transition>` filling full height
+- `route.meta.level >= 2`: render only
+  `<Transition name="fade"><router-view/></Transition>` filling full height
 - `route.meta.level === 1`: render normal toolbar slot + photo grid
 - Add fade CSS (opacity 0→1, 150 ms)
 
@@ -99,7 +120,8 @@ Nav drawer (`Drawer.vue`): keep "Home" label, change `to="/home"` → `to="/"`. 
 **`src/components/View/Display/DisplayAlbum.vue`**:
 
 - Remove `<router-view>` that rendered HomeIsolated
-- "Enter Album" → `{ name: 'album', params: { albumHash: props.album.id }, query: route.query }`
+- "Enter Album" →
+  `{ name: 'album', params: { albumHash: props.album.id }, query: route.query }`
 - Keep `albumStore.leaveAlbumPath = route.fullPath`
 
 ### Phase 5 — Remove level-3/4 conditional logic
@@ -118,20 +140,27 @@ Nav drawer (`Drawer.vue`): keep "Home" label, change `to="/home"` → `to="/"`. 
 
 ### Phase 6 — Migrate HomeIsolatedBar features into GalleryBar
 
-**`src/components/NavBar/GalleryBars/GalleryBar.vue`** (was `HomeMainBar.vue`):
+**`src/components/NavBar/GalleryBars/GalleryBar.vue`** (was
+`HomeMainBar.vue`):
 
-- Add "Add photos to album" button (`mdi-image-plus`) gated by `baseName === 'album'`
-- Replace `rerenderStore.homeIsolatedKey` increments with `rerenderStore.galleryKey`
+- Add "Add photos to album" button (`mdi-image-plus`) gated by
+  `baseName === 'album'`
+- Replace `rerenderStore.homeIsolatedKey` increments with
+  `rerenderStore.galleryKey`
 
 ### Phase 7 — Delete obsolete files
 
 - `src/components/View/ViewPageMain.vue`
 - `src/components/View/ViewPageIsolated.vue`
-- `src/components/Gallery/HomeIsolated.vue` (moved during rename, then deleted)
-- `src/components/NavBar/GalleryBars/HomeIsolatedBar.vue` (moved during rename, then deleted)
+- `src/components/Gallery/HomeIsolated.vue` (moved during rename, then
+  deleted)
+- `src/components/NavBar/GalleryBars/HomeIsolatedBar.vue` (moved during
+  rename, then deleted)
 - `src/components/Page/AllPage.vue`
 
-Leave `'subId'` in `IsolationId` union type — remove as a follow-up once runtime usage confirmed gone. `GalleryTemp` (`isolation-id="tempId"`) and genuine modal dialogs are unaffected.
+Leave `'subId'` in `IsolationId` union type — remove as a follow-up once
+runtime usage confirmed gone. `GalleryTemp` (`isolation-id="tempId"`) and
+genuine modal dialogs are unaffected.
 
 ---
 
@@ -139,31 +168,38 @@ Leave `'subId'` in `IsolationId` union type — remove as a follow-up once runti
 
 1. `just frontend-playwright` — all 14 scenarios green
 2. Manual: `/` redirects to `/timeline`; nav "Home" item goes to `/`
-3. Manual: click a photo → viewer fills content area, nav bar visible, Escape goes back
-4. Manual: click album-type photo → "Enter Album" → `/album/:albumHash`, back returns to viewer
+3. Manual: click a photo → viewer fills content area, nav bar visible, Escape
+   goes back
+4. Manual: click album-type photo → "Enter Album" → `/album/:albumHash`, back
+   returns to viewer
 5. Manual: add photos via GalleryTempModal in album view → grid refreshes
 6. `npx vue-tsc --noEmit` — no type errors
 
 ## Progress
 
-- Implemented on `feat/ui-overlays` (worktree `.worktrees/ui-overlays`), two commits:
-  - Phase 0 (route/file renaming: home/all → timeline, Home\* → Gallery\*) — required a
-    matching backend route rename (`get_page.rs`: `/home` → `/timeline`, `/all` removed)
-    since the SPA fallback's single-segment catch-all otherwise 404s any unregistered
-    top-level path. Not called out in the original plan; discovered via a failing
-    Playwright scenario.
-  - Phases 1-7 (route flattening, v-overlay removal, Gallery.vue viewer/grid swap,
-    DisplayAlbum Enter Album fix, dead level-3/4 cleanup, HomeIsolatedBar migration,
-    obsolete file deletion) landed together — they're mutually dependent at runtime
-    (e.g. routes pointing at ViewPage while it still required the isolationId prop
-    being removed in the same change would have been broken independently).
+- Implemented on `feat/ui-overlays` (worktree `.worktrees/ui-overlays`), two
+  commits:
+  - Phase 0 (route/file renaming: home/all → timeline, Home\* → Gallery\*) —
+    required a matching backend route rename (`get_page.rs`: `/home` →
+    `/timeline`, `/all` removed) since the SPA fallback's single-segment
+    catch-all otherwise 404s any unregistered top-level path. Not called out
+    in the original plan; discovered via a failing Playwright scenario.
+  - Phases 1-7 (route flattening, v-overlay removal, Gallery.vue viewer/grid
+    swap, DisplayAlbum Enter Album fix, dead level-3/4 cleanup,
+    HomeIsolatedBar migration, obsolete file deletion) landed together —
+    they're mutually dependent at runtime (e.g. routes pointing at ViewPage
+    while it still required the isolationId prop being removed in the same
+    change would have been broken independently).
 - `just check` and `just test` (106 backend, 35 vitest, 16 Playwright) pass.
-- Manually verified via an ad hoc Playwright scenario (not committed): `/` → `/timeline`
-  redirect works, clicking a photo shows the nav bar and persistent toolbar alongside the
-  image (no full-screen overlay), Escape/back-arrow returns to the grid, and the
-  "Add photos to album" button appears on the persistent bar for album routes.
-- Not exercised live: the "Enter Album" flow (DisplayAlbum → `/album/:albumHash`). Building
-  a fixture with a genuinely nested sub-album (as opposed to a dir-album's own child
-  directory, which only contributes photos via `parent_album` matching, not a browsable
-  album-type grid item) proved nontrivial within session time; no existing scenario covers
-  this either. The code path itself (named-route `:to` binding) was reviewed by hand.
+- Manually verified via an ad hoc Playwright scenario (not committed): `/` →
+  `/timeline` redirect works, clicking a photo shows the nav bar and
+  persistent toolbar alongside the image (no full-screen overlay),
+  Escape/back-arrow returns to the grid, and the "Add photos to album" button
+  appears on the persistent bar for album routes.
+- Not exercised live: the "Enter Album" flow (DisplayAlbum →
+  `/album/:albumHash`). Building a fixture with a genuinely nested sub-album
+  (as opposed to a dir-album's own child directory, which only contributes
+  photos via `parent_album` matching, not a browsable album-type grid item)
+  proved nontrivial within session time; no existing scenario covers this
+  either. The code path itself (named-route `:to` binding) was reviewed by
+  hand.

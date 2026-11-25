@@ -2,15 +2,22 @@
 
 ## Communication Style
 
-- Stick to facts and established best practice. Do not editorialize or try to be persuasive.
-- In assessments and commit messages, reflect uncertainty where it exists. Avoid asserting things as definitive when the evidence is incomplete.
-- Skip superlatives and filler ("Clean.", "Perfect.", "This is the right call."). State what happened or what is true and move on.
-- Answer questions precisely and avoid jargon. Explain identified problems and conclusions clearly, without extensive prose. Base recommendations on facts and arguments, not convincing language.
-- Do not start building from exploratory questions. Present findings and options, then wait for review before implementing.
+- Stick to facts and established best practice. Do not editorialize or try to be
+  persuasive.
+- In assessments and commit messages, reflect uncertainty where it exists. Avoid
+  asserting things as definitive when the evidence is incomplete.
+- Skip superlatives and filler ("Clean.", "Perfect.", "This is the right
+  call."). State what happened or what is true and move on.
+- Answer questions precisely and avoid jargon. Explain identified problems and
+  conclusions clearly, without extensive prose. Base recommendations on facts
+  and arguments, not convincing language.
+- Do not start building from exploratory questions. Present findings and
+  options, then wait for review before implementing.
 
 ## Project Orientation
 
-Picasu is a self-hosted photo gallery for millions of images. The repo has two independent frontends and one backend:
+Picasu is a self-hosted photo gallery for millions of images. The repo has two
+independent frontends and one backend:
 
 | Directory   | Stack                                | Role                                                     |
 | ----------- | ------------------------------------ | -------------------------------------------------------- |
@@ -19,18 +26,32 @@ Picasu is a self-hosted photo gallery for millions of images. The repo has two i
 
 **Entry points for a new agent:**
 
-1. **Architecture overview** — start with `docs/frontend.md` (frontend) and `docs/design.md` (backend). They cover routing, state, component tree, filter system, and design decisions.
-2. **Dev commands** — read `justfile` at the repo root. Key recipes: `just check` (lint), `just test` (nextest backend, utils, frontend, fuzz), `just frontend-check`, `just frontend-test`, `just format` (auto-format)
-3. **Backend sources** — `backend/src/main.rs` (server bootstrap), `backend/src/router/` (API routes), `backend/src/operations/` (domain logic), `backend/src/process/` (background tasks).
-4. **Frontend sources** — `frontend/src/main.ts` (app bootstrap), `frontend/src/route/routes.ts` (URL structure), `frontend/src/store/` (Pinia stores), `frontend/src/components/` (Vue components) — see `docs/frontend.md` for the component tree.
-5. **Testing** — Review `docs/test-strategy.md` and `docs/playwright_generator.md` before extending or modifying test scenarios or test infratructure.
+1. **Architecture overview** — start with `docs/frontend.md` (frontend) and
+   `docs/design.md` (backend). They cover routing, state, component tree, filter
+   system, and design decisions.
+2. **Dev commands** — read `justfile` at the repo root. Key recipes:
+   `just check` (lint), `just test` (nextest backend, utils, frontend, fuzz),
+   `just frontend-check`, `just frontend-test`, `just format` (auto-format)
+3. **Backend sources** — `backend/src/main.rs` (server bootstrap),
+   `backend/src/router/` (API routes), `backend/src/operations/` (domain logic),
+   `backend/src/process/` (background tasks).
+4. **Frontend sources** — `frontend/src/main.ts` (app bootstrap),
+   `frontend/src/route/routes.ts` (URL structure), `frontend/src/store/` (Pinia
+   stores), `frontend/src/components/` (Vue components) — see `docs/frontend.md`
+   for the component tree.
+5. **Testing** — Review `docs/test-strategy.md` and
+   `docs/playwright_generator.md` before extending or modifying test scenarios
+   or test infratructure.
 
-The `.plan/` directory tracks pending and completed work. Run `plan list` to view the list of issues (the board tool is an opt-in install: `just install-plan`).
+The `.plan/` directory tracks pending and completed work. Run `plan list` to
+view the list of issues (the board tool is an opt-in install:
+`just install plan`).
 
 ## Project Development Workflow
 
 - Before diving into solutions, take a step back and consider best-practice,
-  pros and cons of available options. Clarify ambiguous requirements and trade-offs
+  pros and cons of available options. Clarify ambiguous requirements and
+  trade-offs
   with the user. Verify claims and assumptions based on actual code and tests.
 - For non-trivial work, establish a bounded change before editing: the intended
   outcome, the files or subsystem in scope, and the checks that will establish
@@ -79,7 +100,8 @@ The `.plan/` directory tracks pending and completed work. Run `plan list` to vie
 
 ## Task Management (.plan)
 
-Every task lives as a markdown file in `.plan/<slug>.md` with YAML frontmatter. The filename (without `.md`) is the unique key — no numeric ID needed.
+Every task lives as a markdown file in `.plan/<slug>.md` with YAML frontmatter.
+The filename (without `.md`) is the unique key — no numeric ID needed.
 Trivial single-fix tasks skip the plan file; say so in one line and do the work.
 
 ### Status lifecycle
@@ -95,13 +117,20 @@ Trivial single-fix tasks skip the plan file; say so in one line and do the work.
 
 ### Task Management Workflow
 
-- **Discover work:** Use `plan list` lists all tasks and prefer items with priority => high and status => in-progress or open
-- **Step back / plan:** Consider items with status => `backlog` or `idea` when considering next big steps
-- **Create:** use `.plan/.TEMPLATE.md` and contained instructions for new task `.plan/<slug>.md`
-- **Update:** set `status` to match reality, and append refinements and decisions while keeping the task concise — focused on the problem, the goal, and the implementation steps. Treat a task file as WIP spec, folding updates into those sections or extending as appropriate.
+- **Discover work:** Use `plan list` lists all tasks and prefer items with
+  priority => high and status => in-progress or open
+- **Step back / plan:** Consider items with status => `backlog` or `idea` when
+  considering next big steps
+- **Create:** use `.plan/.TEMPLATE.md` and contained instructions for new task
+  `.plan/<slug>.md`
+- **Update:** set `status` to match reality, and append refinements and
+  decisions while keeping the task concise — focused on the problem, the goal,
+  and the implementation steps. Treat a task file as WIP spec, folding updates
+  into those sections or extending as appropriate.
   **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
-- **Validate:** run `just plan-lint` to check; `just plan-format` to auto-format.
+- **Validate:** run `just docs-check` to check; `just docs-regen` to
+  regenerate. The precommit helper is `scripts/precommit-md.sh`.
 
 ## Code comments and documentation
 

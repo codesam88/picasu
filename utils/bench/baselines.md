@@ -2,12 +2,17 @@
 
 ## Run environment
 
-Host and build of the recorded runs, printed once from the earliest run after checking every run agrees on host, CPU, memory and git identity; clock frequency and load are not compared. `16n` client counts are resolved from the recorded CPU count.
+Host and build of the recorded runs, printed once from the earliest run after
+checking every run agrees on host, CPU, memory and git identity; clock
+frequency and load are not compared. `16n` client counts are resolved from the
+recorded CPU count.
 
 - **host**: codex (7.0.0-38-generic)
-- **CPU**: Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz, 8 cores, 1800/2400 MHz, governor powersave, turbo disabled
+- **CPU**: Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz, 8 cores, 1800/2400 MHz,
+  governor powersave, turbo disabled
 - **memory**: 63 GiB
-- **load average (1/5/15 min)**: 0.61/0.81/1.61 at start, 4.98/4.29/2.99 at end
+- **load average (1/5/15 min)**: 0.61/0.81/1.61 at start, 4.98/4.29/2.99 at
+  end
 - **git**: fix/album-concurrency-baseline2 @ b30fcaf0f7e6
 - **captured**: 2026-11-23T10:05:01+00:00 to 2026-11-23T10:09:07+00:00
 
@@ -16,15 +21,33 @@ Host and build of the recorded runs, printed once from the earliest run after ch
 - **p50**: median of the pooled samples for that condition.
 - **p95**: 95th percentile of the same pooled samples.
 - **max**: largest observed sample.
-- **± CI**: half the width of the seeded 95% bootstrap interval, shown next to p50 only; `±n/a` means fewer than two samples.
-- **background**: `idle` (no scan, server settled) or `scan` (an album scan is running).
-- **foreground**: the access being timed (read, edit, thumbnail, scroll, upload, storm).
-- **profile**: the execution cell that produces the foreground samples; storm profiles also name the kind and client count.
-- **peak VMM**: process memory high-water mark, shown in MB like the store sizes.
+- **± CI**: half the width of the seeded 95% bootstrap interval, shown next to
+  p50 only; `±n/a` means fewer than two samples.
+- **background**: `idle` (no scan, server settled) or `scan` (an album scan is
+  running).
+- **foreground**: the access being timed (read, edit, thumbnail, scroll,
+  upload, storm).
+- **profile**: the execution cell that produces the foreground samples; storm
+  profiles also name the kind and client count.
+- **peak VMM**: process memory high-water mark, shown in MB like the store
+  sizes.
 
 ## Measurement validity
 
-One row per load profile with the at-rest and scanning measurements side by side. `accesses` is the number of timed foreground operations pooled for that background — every probe request, every storm op, or every uploaded file — and is the sample count the percentiles rest on. `invalid` counts measurement phases that their guard rejected — a probe round, warmup or storm run whose server state at start or end was not the one the cell claims (the scan finished early, or was still running in an idle cell), or whose status counters could not be read — and those phases are not pooled; the recorded reasons are the cell's `phase_invalid_reasons` field in `baselines.tsv`. `failed` counts operations that did not return 200. A cell whose rejections exceed 10% of its measured probe rounds — the only phase a guard can reject without failing the cell at runtime — or that recorded any failed operation is suspect: the renderer prints a WARNING to stderr, and the validity table reports the cell either way.
+One row per load profile with the at-rest and scanning measurements side by
+side. `accesses` is the number of timed foreground operations pooled for that
+background — every probe request, every storm op, or every uploaded file — and
+is the sample count the percentiles rest on. `invalid` counts measurement
+phases that their guard rejected — a probe round, warmup or storm run whose
+server state at start or end was not the one the cell claims (the scan
+finished early, or was still running in an idle cell), or whose status
+counters could not be read — and those phases are not pooled; the recorded
+reasons are the cell's `phase_invalid_reasons` field in `baselines.tsv`.
+`failed` counts operations that did not return 200. A cell whose rejections
+exceed 10% of its measured probe rounds — the only phase a guard can reject
+without failing the cell at runtime — or that recorded any failed operation is
+suspect: the renderer prints a WARNING to stderr, and the validity table
+reports the cell either way.
 
 ### 100 images
 
@@ -54,7 +77,9 @@ One row per load profile with the at-rest and scanning measurements side by side
 
 ## Foreground latency
 
-One row per load profile: the access, its probe or storm client count, and its upload phase. The at-rest (`idle`) and during-scan (`scan`) measurements sit side by side; the difference between them is the indexing-contention cost.
+One row per load profile: the access, its probe or storm client count, and its
+upload phase. The at-rest (`idle`) and during-scan (`scan`) measurements sit
+side by side; the difference between them is the indexing-contention cost.
 
 ### 100 images
 
@@ -96,7 +121,12 @@ One row per load profile: the access, its probe or storm client count, and its u
 
 ## Scan time
 
-Wall clock of the populate scan and the resulting ingest rate for a few load profiles, one column per image count. The no-load row is the median populate scan of the idle-storm cells, which scan with no foreground traffic; the storm rows add the named client load; the upload row adds a serial upload loop (submit, then poll visibility). Each cell contributes one scan wall, so treat small differences between rows as noise.
+Wall clock of the populate scan and the resulting ingest rate for a few load
+profiles, one column per image count. The no-load row is the median populate
+scan of the idle-storm cells, which scan with no foreground traffic; the storm
+rows add the named client load; the upload row adds a serial upload loop
+(submit, then poll visibility). Each cell contributes one scan wall, so treat
+small differences between rows as noise.
 
 | load profile    |         100 images |          200 images |
 | :-------------- | -----------------: | ------------------: |
@@ -111,7 +141,12 @@ Wall clock of the populate scan and the resulting ingest rate for a few load pro
 
 ## Memory and storage footprint
 
-Peak process memory and store sizes at the end of each cell, one table per metric with profile rows and image-count columns, rows in a fixed profile order. All values are in MB. Footprint is expected to be broadly consistent across access types at the same image count; a large outlier marks a possible bottleneck or an optimization target, and growth with image count that outpaces the library size is likewise worth investigating.
+Peak process memory and store sizes at the end of each cell, one table per
+metric with profile rows and image-count columns, rows in a fixed profile
+order. All values are in MB. Footprint is expected to be broadly consistent
+across access types at the same image count; a large outlier marks a possible
+bottleneck or an optimization target, and growth with image count that
+outpaces the library size is likewise worth investigating.
 
 | profile              | peak VMM (100) | peak VMM (200) |
 | :------------------- | -------------: | -------------: |

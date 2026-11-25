@@ -66,17 +66,18 @@ where `assign_album.rs` currently bumps `VERSION_COUNT_TIMESTAMP`):
 
 - `edit_tag` → `TAG_VERSION.fetch_add(1)`
 - `edit_flags` → `FLAG_VERSION.fetch_add(1)`
-- `assign_album`, `set_album_cover`, `set_album_title` → `ALBUM_VERSION.fetch_add(1)`
-- `edit_rating`, `edit_description`, `edit_share`, `rotate_image`, `regenerate_thumbnail` → no bump (don't affect any filter)
+- `assign_album`, `set_album_cover`, `set_album_title` →
+  `ALBUM_VERSION.fetch_add(1)`
+- `edit_rating`, `edit_description`, `edit_share`, `rotate_image`,
+  `regenerate_thumbnail` → no bump (don't affect any filter)
 
 ### Scan, upload, and watcher — the common code path
 
 "Manual scan" (user-initiated re-index), "upload image" (new file via HTTP),
-and "watcher create/modify" all converge into
-`crate::workflow::index_image()` (or more precisely, the same re-indexing
-pipeline: `index_image` → `FlushTreeTask` → `UpdateTreeTask` →
-`UpdateExpireTask`). Watcher removals go through
-`submit_removal_to_watcher` → `FlushTreeTask` → `UpdateTreeTask`.
+and "watcher create/modify" all converge into `crate::workflow::index_image()`
+(or more precisely, the same re-indexing pipeline: `index_image` →
+`FlushTreeTask` → `UpdateTreeTask` → `UpdateExpireTask`). Watcher removals go
+through `submit_removal_to_watcher` → `FlushTreeTask` → `UpdateTreeTask`.
 
 The current system leaves a stale-window race: after the tree rebuild but
 before the async `VERSION_COUNT_TIMESTAMP` swap, a prefetch returns cached
@@ -89,13 +90,14 @@ sync bump too.
 
 The challenge is finding the right single point to bump. For watcher removals,
 `submit_removal_to_watcher` already awaits `UpdateTreeTask`. For
-scan/upload/watcher creates/modifies, the pipeline is spawned as fire-and-forget.
+scan/upload/watcher creates/modifies, the pipeline is spawned as
+fire-and-forget.
 
 **Two options:**
 
-1. **Bump at the caller** — in `start_watcher.rs`, `scan.rs`, `upload.rs`, bump
-   all four counters at the point where we know the change is committed. For
-   watcher removals this is straightforward (after the awaits). For
+1. **Bump at the caller** — in `start_watcher.rs`, `scan.rs`, `upload.rs`,
+   bump all four counters at the point where we know the change is committed.
+   For watcher removals this is straightforward (after the awaits). For
    creates/modifies it requires either blocking on the pipeline or bumping
    eagerly (over-invalidation when nothing changed, but acceptable for
    infrequent events).
@@ -139,8 +141,9 @@ key. New tests needed:
 
 1. **Scan/upload bump point**: caller-side or pipeline-side? See above.
 2. **`Any(..)` searches album path**: When a file changes albums, the file's
-   asset path changes. `Any` searches asset paths. Does `edit_album` + `Any(..)`
-   need both `ALBUM_VERSION` and `CONTENT_VERSION`, or just `ALBUM_VERSION`?
-   Currently `Any` depends on `TAG_VERSION + ALBUM_VERSION + CONTENT_VERSION` in
-   this proposal — `CONTENT_VERSION` covers content identity changes (new hash),
-   but album moves don't change content identity. This is a refinement for later.
+   asset path changes. `Any` searches asset paths. Does `edit_album` +
+   `Any(..)` need both `ALBUM_VERSION` and `CONTENT_VERSION`, or just
+   `ALBUM_VERSION`? Currently `Any` depends on
+   `TAG_VERSION + ALBUM_VERSION + CONTENT_VERSION` in this proposal —
+   `CONTENT_VERSION` covers content identity changes (new hash), but album
+   moves don't change content identity. This is a refinement for later.

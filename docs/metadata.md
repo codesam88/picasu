@@ -2,7 +2,9 @@
 
 ## Overview
 
-Photo metadata is stored in four distinct systems, often embedded together in the same file. This document describes each system, their common fields, how they interrelate, and parsing guidance for the backend.
+Photo metadata is stored in four distinct systems, often embedded together in
+the same file. This document describes each system, their common fields, how
+they interrelate, and parsing guidance for the backend.
 
 | System       | Format          | Storage                                            | Typical location      |
 | ------------ | --------------- | -------------------------------------------------- | --------------------- |
@@ -17,7 +19,8 @@ Photo metadata is stored in four distinct systems, often embedded together in th
 
 ### Storage
 
-- **JPEG**: APP1 marker (`0xFF 0xE1`) with `Exif\0\0` identifier, containing TIFF IFD structure
+- **JPEG**: APP1 marker (`0xFF 0xE1`) with `Exif\0\0` identifier, containing
+  TIFF IFD structure
 - **PNG**: eXIf chunk (Exif 2.32+)
 - **TIFF**: IFD0 (main Image File Directory)
 - **HEIF/AVIF**: Embedded per the standard
@@ -26,8 +29,10 @@ Photo metadata is stored in four distinct systems, often embedded together in th
 
 EXIF uses TIFF IFD chains. Each IFD contains tagged entries:
 
-- **IFD0**: Main image metadata (Make, Model, ImageDescription, Software, Artist, Copyright)
-- **ExifIFD** (Sub-IFD, tag `0x8769`): Camera parameters (ISO, FNumber, ExposureTime, DateTimeOriginal, Flash, FocalLength, GPSInfo)
+- **IFD0**: Main image metadata (Make, Model, ImageDescription, Software,
+  Artist, Copyright)
+- **ExifIFD** (Sub-IFD, tag `0x8769`): Camera parameters (ISO, FNumber,
+  ExposureTime, DateTimeOriginal, Flash, FocalLength, GPSInfo)
 - **GPS IFD** (Sub-IFD, tag `0x8825`): GPS coordinates
 
 ### Common EXIF tags
@@ -80,7 +85,8 @@ EXIF uses TIFF IFD chains. Each IFD contains tagged entries:
 
 ### Storage
 
-- **JPEG**: APP13 marker (`0xFF 0xED`) containing Photoshop 3.0 Image Resource Block (IRB) with resource ID `0x0404`
+- **JPEG**: APP13 marker (`0xFF 0xED`) containing Photoshop 3.0 Image Resource
+  Block (IRB) with resource ID `0x0404`
 - **TIFF**: Tag `0x83BB` (IPTC/NAA)
 - Not supported in PNG
 
@@ -132,7 +138,8 @@ Most fields are in **Application Record 2** (record number `0x02`).
 
 ### Storage
 
-- **JPEG**: APP1 marker (`0xFF 0xE1`) with `http://ns.adobe.com/xap/1.0/\0` identifier
+- **JPEG**: APP1 marker (`0xFF 0xE1`) with `http://ns.adobe.com/xap/1.0/\0`
+  identifier
 - **PNG**: iTXt chunk with `XML:com.adobe.xmp` keyword
 - **TIFF/RAW**: Embedded in a dedicated IFD entry
 - **Sidecar**: Standalone `.xmp` file containing the XMP packet
@@ -201,7 +208,8 @@ XMP uses RDF/XML. Multiple schemas coexist in a single packet:
 - File extension `.xmp`
 - Contains a standard XMP packet (same RDF/XML as embedded XMP)
 - Named alongside the image: `photo.cr2` → `photo.xmp`
-- Used primarily with RAW files (CR2, NEF, ARW, DNG, RAF, etc.) where rewriting the original file is undesirable
+- Used primarily with RAW files (CR2, NEF, ARW, DNG, RAF, etc.) where
+  rewriting the original file is undesirable
 
 ### Sidecar vs embedded
 
@@ -325,9 +333,9 @@ rating, title) and EXIF (`exifVec` display values), and never reads IPTC.
 
 ### Reading priority
 
-For any given file the backend reads two systems. EXIF is read in-process
-with `kamadak-exif` (PRIMARY IFD, display-value strings) and surfaced as the
-API's `exifVec`. XMP is read with `xmpkit`: the sidecar (`photo.xmp`) when one
+For any given file the backend reads two systems. EXIF is read in-process with
+`kamadak-exif` (PRIMARY IFD, display-value strings) and surfaced as the API's
+`exifVec`. XMP is read with `xmpkit`: the sidecar (`photo.xmp`) when one
 exists, else the packet embedded in the file — and when a sidecar exists it is
 authoritative, suppressing the file's own XMP even if the sidecar turns out to
 be unreadable. Tags, description and rating come from XMP only, and `dc:title`
@@ -340,20 +348,26 @@ Video metadata is probed with `ffprobe`
 compression use `ffmpeg` — external binaries that are runtime prerequisites
 (see `docs/linux.md`).
 
-Whenever metadata is changed via the API/frontend, the backend
-creates or updates the corresponding sidecar XMP file — an atomic temp file +
-rename through `xmpkit`'s serializer, preserving any properties it does not
-manage. Media files themselves are never rewritten: sidecars are the only
-metadata this backend writes.
+Whenever metadata is changed via the API/frontend, the backend creates or
+updates the corresponding sidecar XMP file — an atomic temp file + rename
+through `xmpkit`'s serializer, preserving any properties it does not manage.
+Media files themselves are never rewritten: sidecars are the only metadata
+this backend writes.
 
 ### Implementation notes
 
-- **EXIF dates** use format `YYYY:MM:DD HH:MM:SS` (with colons in the date portion).
-- **XMP dates** use ISO 8601 (`YYYY-MM-DDTHH:MM:SS[±HH:MM]`). Normalise to a common internal representation.
-- **IPTC IIM** max lengths are historic; XMP has no such limit for the same semantic field.
-- **Keywords**: deduplicate within the XMP source in use. Case-insensitive deduplication is recommended.
-- **LangAlt** fields (XMP `dc:title`, `dc:description`): prefer `x-default` variant, fall back to first available language.
-- **Sidecar discovery**: for file `path/to/photo.ext`, check for `path/to/photo.xmp`. This follows Adobe/Lightroom convention.
+- **EXIF dates** use format `YYYY:MM:DD HH:MM:SS` (with colons in the date
+  portion).
+- **XMP dates** use ISO 8601 (`YYYY-MM-DDTHH:MM:SS[±HH:MM]`). Normalise to a
+  common internal representation.
+- **IPTC IIM** max lengths are historic; XMP has no such limit for the same
+  semantic field.
+- **Keywords**: deduplicate within the XMP source in use. Case-insensitive
+  deduplication is recommended.
+- **LangAlt** fields (XMP `dc:title`, `dc:description`): prefer `x-default`
+  variant, fall back to first available language.
+- **Sidecar discovery**: for file `path/to/photo.ext`, check for
+  `path/to/photo.xmp`. This follows Adobe/Lightroom convention.
 
 ### Rust crate references
 

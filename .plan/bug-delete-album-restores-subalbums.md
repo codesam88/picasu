@@ -10,9 +10,9 @@ area: backend
 Deleting an album should recursively remove sub-albums and files. Instead,
 sub-albums get restored to the main directory.
 
-This suggests the delete operation removes the directory's DB record but
-not the physical directory, so the next index sweep re-discovers the
-sub-albums and re-creates their DB records under the root.
+This suggests the delete operation removes the directory's DB record but not
+the physical directory, so the next index sweep re-discovers the sub-albums
+and re-creates their DB records under the root.
 
 ### Verification (2026-10-09)
 
@@ -22,17 +22,19 @@ Not reproducible on the current tree; closing. Evidence:
   `cleanup_album_descendants` before dropping rows: it deletes descendant
   files/sidecars, removes descendant asset rows (album records carry their
   directory path, so sub-albums match `get_assets_under_path`), and calls
-  `remove_dir_all` on the album directory. With the directory gone, the
-  sweep has nothing to re-discover. Added by 43365fc4
-  ("path-primary: recursive album deletion + descendant cleanup", 2026-09-25).
+  `remove_dir_all` on the album directory. With the directory gone, the sweep
+  has nothing to re-discover. Added by 43365fc4 ("path-primary: recursive
+  album deletion + descendant cleanup", 2026-09-25).
 - Only the Trash "Permanently Delete" action reaches `/delete/delete-data`;
   the regular Delete action is a soft delete (trash flag) by design.
-- Regression guarded by e2e scenarios (`frontend/tests/playwright/scenarios/`):
+- Regression guarded by e2e scenarios
+  (`frontend/tests/playwright/scenarios/`):
   `delete-parent-album-does-not-restore-child.yaml`,
-  `album_delete_recursive.yaml`, `album_delete_parent_and_child_together.yaml`,
-  plus three more corner cases. These run in CI via `just test`
-  (`frontend-playwright` → `interpreter.spec.ts`); main is green as of
-  2026-10-08 (job `checks-n-tests`).
+  `album_delete_recursive.yaml`,
+  `album_delete_parent_and_child_together.yaml`, plus three more corner cases.
+  These run in CI via `just test` (`frontend-playwright` →
+  `interpreter.spec.ts`); main is green as of 2026-10-08 (job
+  `checks-n-tests`).
 
 Residual gap, not the reported bug: `remove_dir_all` failures are swallowed
 (`let _ =`) and descendant file deletions only warn. If fs removal fails

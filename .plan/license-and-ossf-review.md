@@ -32,8 +32,8 @@ main); no scorecard score is chased.
   Dependabot already gate on, weekly cadence, no PR gating, and a second
   waiver syntax to maintain. Workflow (`.github/workflows/scorecard.yml`) and
   both `osv-scanner.toml` waivers deleted 2026-10-23.
-- `Code-Review`, `Contributors`, `Fuzzing` — structural to a
-  single-maintainer repo without fuzz targets.
+- `Code-Review`, `Contributors`, `Fuzzing` — structural to a single-maintainer
+  repo without fuzz targets.
 
 ## Decisions
 

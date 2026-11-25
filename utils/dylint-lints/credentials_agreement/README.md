@@ -19,9 +19,9 @@ expected typ set from the guards:
 | `GuardMutate`, `GuardReauth`      | (none)             |
 
 The two sets must be equal in both directions: every guard-derived typ must
-appear in `credentials`, and every `credentials` entry must be backed by a guard.
-No guards requires an empty `credentials` (public ops). Unknown guard types fail
-closed (warn).
+appear in `credentials`, and every `credentials` entry must be backed by a
+guard. No guards requires an empty `credentials` (public ops). Unknown guard
+types fail closed (warn).
 
 ## Why it matters
 
@@ -66,13 +66,15 @@ pub async fn handler(auth: GuardResult<GuardUser>) {}
   silently skips the handler instead of warning.
 - Guard types are taken from the handler's parameter list (unwrapping
   `GuardResult<T>`); guards obtained indirectly are not detected.
-- `credentials` and guard sets are compared as sets (order-insensitive); duplicates
-  are ignored.
+- `credentials` and guard sets are compared as sets (order-insensitive);
+  duplicates are ignored.
 - Unknown guard types fail closed (warn) rather than being silently ignored.
 
 ## Layout
 
-Standalone Dylint library crate: `src/lib.rs` holds the whole lint.
-It is deliberately _not_ a member of the main workspace and builds under
-the pinned nightly from the parent `utils/dylint-lints/rust-toolchain.toml`.
-Run via `just dylint-check` (see `utils/dylint-lints/README.md`). UI fixtures in `ui/` pin behavior (`cargo test` under the pinned nightly runs them via `dylint_testing`).
+Standalone Dylint library crate: `src/lib.rs` holds the whole lint. It is
+deliberately _not_ a member of the main workspace and builds under the pinned
+nightly from the parent `utils/dylint-lints/rust-toolchain.toml`. Run via
+`just dylint-check` (see `utils/dylint-lints/README.md`). UI fixtures in `ui/`
+pin behavior (`cargo test` under the pinned nightly runs them via
+`dylint_testing`).

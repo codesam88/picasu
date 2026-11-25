@@ -10,28 +10,29 @@ Tracked in `pre01.md` (meta) as 1c.
 ## Feature status
 
 The `assign_album` conflict feature has passing scenario coverage for the
-path-primary asset model. Each physical file is an independent asset identified
-by `asset_id`; same-content files remain independent and are grouped through
-`DUPE_INDEX`.
+path-primary asset model. Each physical file is an independent asset
+identified by `asset_id`; same-content files remain independent and are
+grouped through `DUPE_INDEX`.
 
 **Target state:** `OnConflict` = `skip` / `rename` on both assign and upload.
-`replace` is dropped (data-loss hazard). Identity-based merge is not supported.
+`replace` is dropped (data-loss hazard). Identity-based merge is not
+supported.
 
 ## Conflict model
 
-Two modes. The caller chooses per-operation. Backend default for missing field:
-`rename` (upload) or 400 (assign).
+Two modes. The caller chooses per-operation. Backend default for missing
+field: `rename` (upload) or 400 (assign).
 
 ### Item move (`move_item_into_album`)
 
 - `skip` — if `dest_path` already exists, do nothing. Return 200 with outcome
   `skipped`. The source file and sidecar stay untouched.
 - `rename` — move unconditionally. On filename collision pick a unique name
-  (`photo-001.jpg`, `photo-002.jpg`, …). Return 200 with outcome `renamedFrom`.
-  Never overwrites different bytes.
+  (`photo-001.jpg`, `photo-002.jpg`, …). Return 200 with outcome
+  `renamedFrom`. Never overwrites different bytes.
 
-Sidecars move with the physical file identified by `asset_id`. Other assets with
-the same content hash are left untouched.
+Sidecars move with the physical file identified by `asset_id`. Other assets
+with the same content hash are left untouched.
 
 ### Sub-album dir move (`move_album_into_album`)
 
@@ -42,9 +43,9 @@ Whole-dir `fs::rename`. On collision with an existing target directory:
 
 No recursive directory merge. The source directory is moved as one unit.
 
-Guarded against moving an album into itself or its own subtree (400).
-Rewrites every DB record under the old dir, updates the dir-album cache
-prefix, and marks old/new parent albums for stats refresh.
+Guarded against moving an album into itself or its own subtree (400). Rewrites
+every DB record under the old dir, updates the dir-album cache prefix, and
+marks old/new parent albums for stats refresh.
 
 ### Upload (`POST /post/upload`)
 
@@ -64,10 +65,10 @@ Upload has its own `save_file` conflict handling:
 
 ## Routes & interaction vectors
 
-- `PUT /put/assign_album` — accepts image, video, or dir-album asset IDs. Reached
-  from `ItemAlbum.vue` (metadata panel), `ItemEditAlbums.vue` (single menu),
-  `ItemBatchEditAlbums.vue` + `AssignAlbumModal.vue` (batch = sequential loop
-  of independent calls).
+- `PUT /put/assign_album` — accepts image, video, or dir-album asset IDs.
+  Reached from `ItemAlbum.vue` (metadata panel), `ItemEditAlbums.vue` (single
+  menu), `ItemBatchEditAlbums.vue` + `AssignAlbumModal.vue` (batch =
+  sequential loop of independent calls).
 - `POST /post/upload` — direct upload into an album directory, sharing the
   conflict strategies.
 - Frontend sequences without a server-side transaction:
@@ -85,8 +86,8 @@ Upload has its own `save_file` conflict handling:
 
 - **G3 — frontend pass-through.** `assignAlbum()` sends `assetId` and
   `onConflict`. `AssignAlbumModal` gains a Skip / Rename radio (Rename
-  default). Outcome maps to toast/chip: moved / renamedFrom / skipped.
-  Batch flow surfaces per-file results.
+  default). Outcome maps to toast/chip: moved / renamedFrom / skipped. Batch
+  flow surfaces per-file results.
 
 ## Test coverage
 
@@ -104,8 +105,9 @@ Upload has its own `save_file` conflict handling:
 
 ### Delete (replace scenarios removed)
 
-- `assign_conflict_replace_z6`, `assign_album_dir_conflict_replace_rejected_zza`,
-  `upload_conflict_replace` — replace is gone
+- `assign_conflict_replace_z6`,
+  `assign_album_dir_conflict_replace_rejected_zza`, `upload_conflict_replace`
+  — replace is gone
 
 ### Update (default changes from skip to 400)
 
@@ -124,8 +126,8 @@ Upload has its own `save_file` conflict handling:
 
 ## Race conditions
 
-- Same item assigned twice concurrently (redb write txn serializes; second call
-  errors "not found at recorded path").
+- Same item assigned twice concurrently (redb write txn serializes; second
+  call errors "not found at recorded path").
 - Assign vs delete of the same file.
 - Assign while upload into the same target directory.
 - TOCTOU between `get_dir_path_for_album` cache resolution and `fs::rename`.
@@ -133,8 +135,8 @@ Upload has its own `save_file` conflict handling:
 
 ## Security notes
 
-- Request inputs are opaque (`asset_id`, `album_id`) and resolved server-side —
-  no path traversal from request bodies.
+- Request inputs are opaque (`asset_id`, `album_id`) and resolved server-side
+  — no path traversal from request bodies.
 - Unknown `album_id` / missing `asset_id` → 400 (covered).
 - No code path writes different bytes over an existing indexed path.
 
@@ -157,9 +159,9 @@ renamedFrom | skipped }`. Update the utoipa schema.
 ### Phase 3 — Frontend
 
 - **C3 — frontend.** `assignAlbum()` sends `assetId` + `onConflict`. Modal:
-  Skip / Rename radio (Rename default). Outcome → toast (moved /
-  renamedFrom / skipped). Batch per-file results. Upload: `on_conflict`
-  stays absent (defaults to `rename`).
+  Skip / Rename radio (Rename default). Outcome → toast (moved / renamedFrom /
+  skipped). Batch per-file results. Upload: `on_conflict` stays absent
+  (defaults to `rename`).
 
 ### Phase 4 — Tests
 
@@ -171,17 +173,18 @@ renamedFrom | skipped }`. Update the utoipa schema.
 ### Phase 5 — Cleanup
 
 - **C5 — probe + dead code.** Keep only path-primary duplicate-group and
-  asset-record probes needed by tests. ~~Remove obsolete identity-merge references
-  from plans and generated references.~~ Done — the 2026-09-23 merge/duplicate
-  audit rewrote the remaining identity-merge wording in the plans.
+  asset-record probes needed by tests. ~~Remove obsolete identity-merge
+  references from plans and generated references.~~ Done — the 2026-09-23
+  merge/duplicate audit rewrote the remaining identity-merge wording in the
+  plans.
 
 ## Progress
 
-- 2026-09-16–18: Conflict handling settled on `skip` / `rename`; identity-based
-  merge and overwrite behavior are not supported.
+- 2026-09-16–18: Conflict handling settled on `skip` / `rename`;
+  identity-based merge and overwrite behavior are not supported.
 - 2026-09-23: Plan aligned with path-primary asset identity. The move contract
   uses `asset_id`; duplicate behavior is covered independently through
   `DUPE_INDEX` scenarios.
-- 2026-09-24: Closed. skip/rename contract shipped with the alias field removed,
-  `deny_unknown_fields` rejection of legacy bodies, contract unit tests, and
-  passing scenario coverage; no merge or replace paths remain.
+- 2026-09-24: Closed. skip/rename contract shipped with the alias field
+  removed, `deny_unknown_fields` rejection of legacy bodies, contract unit
+  tests, and passing scenario coverage; no merge or replace paths remain.

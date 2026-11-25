@@ -8,11 +8,11 @@ area: testing
 ## Problem
 
 AI-assisted development is producing locally plausible changes that pass
-focused TDD and DSL-driven end-to-end scenarios while still introducing
-churn, migration artifacts, API drift, identifier confusion, spaghetti code,
-and code smells. The existing tests demonstrate selected user workflows, but
-they do not adequately test the complete external contract, architectural
-boundaries, semantic invariants, or maintainability of the implementation.
+focused TDD and DSL-driven end-to-end scenarios while still introducing churn,
+migration artifacts, API drift, identifier confusion, spaghetti code, and code
+smells. The existing tests demonstrate selected user workflows, but they do
+not adequately test the complete external contract, architectural boundaries,
+semantic invariants, or maintainability of the implementation.
 
 The recent path-primary rework is a concrete example: the intended behavior
 remained superficially functional, while stale API terminology, incorrect
@@ -61,15 +61,16 @@ interface, not only a rendered reference document.
 - Scan for forbidden legacy names, compatibility aliases, stale routes, and
   migration artifacts after renames or model changes.
 - Track complexity, file size, duplication, dependency fan-in/fan-out,
-  nesting, unchecked errors, broad types, and ignored tests as quality budgets.
+  nesting, unchecked errors, broad types, and ignored tests as quality
+  budgets.
 - Fail or require an explicit exception when a change exceeds a budget.
 - Generate a dependency and change-impact report so broad churn is visible to
   the quality gate rather than hidden inside a passing feature test.
 
 ### Invariant and AI-change controls
 
-- Maintain a machine-readable registry of important invariants, such as
-  `hash` meaning content hash and `assetId` meaning storage identity.
+- Maintain a machine-readable registry of important invariants, such as `hash`
+  meaning content hash and `assetId` meaning storage identity.
 - Associate each invariant with static checks, runtime/property tests, and the
   affected subsystem.
 - Require changes to identify affected contracts and invariants.
@@ -100,11 +101,12 @@ degradation while keeping intentional exceptions reviewable and finite.
 
 ## Progress
 
-- 2026-09-25: Expanded the cheap static gate to typecheck and lint frontend test
-  and Playwright tooling, pinned Prettier through the lockfile, included the
-  `paste-shim` utility in Rust format/Clippy checks, and added Rust to CodeQL.
-  An all-target Rust Clippy trial found substantial existing test debt, so that
-  broader scope remains follow-up work rather than an immediately blocking gate.
+- 2026-09-25: Expanded the cheap static gate to typecheck and lint frontend
+  test and Playwright tooling, pinned Prettier through the lockfile, included
+  the `paste-shim` utility in Rust format/Clippy checks, and added Rust to
+  CodeQL. An all-target Rust Clippy trial found substantial existing test
+  debt, so that broader scope remains follow-up work rather than an
+  immediately blocking gate.
 - 2026-10-10: Closed as consolidated. Contract direction is owned by the
   `openapi-check` phases plus `.plan/api-assurance.md` (oasdiff gate,
   Dylint/custom-lint analysis, Schemathesis generation); auth invariants by

@@ -1,23 +1,24 @@
 # Authentication Model
 
-This is the formal model of Picasu's authentication and authorization. It is the
-source from which the enforcement rules and the security tests are derived:
-`docs/auth.md` describes the mechanism, this document defines what must be true
-of it.
+This is the formal model of Picasu's authentication and authorization. It is
+the source from which the enforcement rules and the security tests are
+derived: `docs/auth.md` describes the mechanism, this document defines what
+must be true of it.
 
-The model is bounded to **authority, guards, routes, token derivation, and share
-state**. Routing, storage, and image processing are out of scope.
+The model is bounded to **authority, guards, routes, token derivation, and
+share state**. Routing, storage, and image processing are out of scope.
 
 ## 1. Trust assumptions
 
-- **Unforgeable tokens.** A token cannot be minted without `auth_key`; validation
-  pins HS256. Tokens are therefore treated as authentic capability assertions.
+- **Unforgeable tokens.** A token cannot be minted without `auth_key`;
+  validation pins HS256. Tokens are therefore treated as authentic capability
+  assertions.
 - **Trusted perimeter.** The deployer's network or reverse proxy is the trust
   boundary (self-hosted threat model).
 - **DB is the only mutable state.** There is no session store; every request's
   authority comes from its token and the DB.
-- **A guard is a total decision.** It either establishes a capability or rejects;
-  there is no "partial" acceptance.
+- **A guard is a total decision.** It either establishes a capability or
+  rejects; there is no "partial" acceptance.
 
 ## 2. Domains and notation
 
@@ -31,8 +32,8 @@ state**. Routing, storage, and image processing are out of scope.
 | `F ⊆ {M,D,U}` | a share's flags: `M` metadata, `D` download, `U` upload (recorded but not enforced — shares are read-only regardless of flags) |
 | `sh`          | a share record `⟨a, F, e, w⟩`: album, flags, expiry `e`, password `w`                                                          |
 
-A share is **live** iff it exists in the DB and `e = ⊥ ∨ now ≤ e` and (if `w ≠ ⊥`)
-the presented password equals `w`.
+A share is **live** iff it exists in the DB and `e = ⊥ ∨ now ≤ e` and (if
+`w ≠ ⊥`) the presented password equals `w`.
 
 ## 3. Authority
 
@@ -93,12 +94,13 @@ B(r,req)        =  ∩ { bound(⟦g⟧(req)) | g ∈ G(r) }      -- resource sco
 
 `A` is the union because any accepting guard may authorize the action; `B` is
 the intersection because the target must lie in every guard's scope. For
-`GET /object/imported/<x>`, `B = bound(GuardPresenter) ∩ bound(GuardHashOriginal)`,
-which requires `x` to be in the share's album _and_ equal the token's asset.
+`GET /object/imported/<x>`,
+`B = bound(GuardPresenter) ∩ bound(GuardHashOriginal)`, which requires `x` to
+be in the share's album _and_ equal the token's asset.
 
 A guard denoted `⊤`-with-proof (such as `GuardReauth`) is a proof-carrying
-gate, not an authority source: it contributes `⊤` to `A` and `Res` to `B`,
-so it neither widens the permission set beyond what the route's other guards
+gate, not an authority source: it contributes `⊤` to `A` and `Res` to `B`, so
+it neither widens the permission set beyond what the route's other guards
 establish nor narrows the resource scope; its only effect is on `accepts`,
 which requires the proof to pass. No route carries it alone.
 
@@ -120,10 +122,11 @@ accepts(r,req)
   ∧  target(r,req) ∈ B(r,req)
 ```
 
-C1 is the central condition. Its three clauses are, respectively: the guards are
-strong enough (AUTH-11, AUTH-12), the specific action on the target is permitted
-(AUTH-5), and the target lies in every guard's scope (AUTH-4, AUTH-6, AUTH-7,
-AUTH-8). When `accepts` is false the request must be denied (AUTH-2, AUTH-3).
+C1 is the central condition. Its three clauses are, respectively: the guards
+are strong enough (AUTH-11, AUTH-12), the specific action on the target is
+permitted (AUTH-5), and the target lies in every guard's scope (AUTH-4,
+AUTH-6, AUTH-7, AUTH-8). When `accepts` is false the request must be denied
+(AUTH-2, AUTH-3).
 
 ## 6. Token derivation
 
@@ -135,63 +138,61 @@ get-data:   Snap(c,a,F,t)       ⊢  Asset(x, o := D∈F, c, sh)   (x∈a)
 renew(t):   cap(t)              ⊢  t'                   (payload(t')=payload(t); caller equality per AUTH-10)
 ```
 
-**Attenuation (A1).** For every derivation `c ⊢ c'`:
-`holds(c') ⊆ holds(c)` and `bound(c') ⊆ bound(c)`.
+**Attenuation (A1).** For every derivation `c ⊢ c'`: `holds(c') ⊆ holds(c)`
+and `bound(c') ⊆ bound(c)`.
 
 For the chain this yields
-`holds(Asset(x,o)) ⊆ holds(Snap(a,F,t)) ⊆ holds(Share(a,F))`, so an asset token
-can never read an original the share hides and never leaves its album.
+`holds(Asset(x,o)) ⊆ holds(Snap(a,F,t)) ⊆ holds(Share(a,F))`, so an asset
+token can never read an original the share hides and never leaves its album.
 
 ## 6.5 Personal areas (ownership)
 
 Personal areas are not a new capability in the lattice above: a session
-identity still denotes `⊤` for its holder. Ownership is a path-level
-predicate applied in addition to capability checks, derived from the
-filesystem on every request.
+identity still denotes `⊤` for its holder. Ownership is a path-level predicate
+applied in addition to capability checks, derived from the filesystem on every
+request.
 
-**Principals.** For data access an admin is a regular user: no
-cross-user album, photo, or share visibility. The relevant principals are
-`owner(u)` (the user whose personal subtree a path lies under), `non-owner`
-(any authenticated user with `u ≠ owner`), and `admin-as-user` (an admin
-acting on data, identical to a non-admin user of the same id). Anonymous
-share holders and snapshot bearers have no personal area and no ownership
-(`caller = ""`).
+**Principals.** For data access an admin is a regular user: no cross-user
+album, photo, or share visibility. The relevant principals are `owner(u)` (the
+user whose personal subtree a path lies under), `non-owner` (any authenticated
+user with `u ≠ owner`), and `admin-as-user` (an admin acting on data,
+identical to a non-admin user of the same id). Anonymous share holders and
+snapshot bearers have no personal area and no ownership (`caller = ""`).
 
 **Ownership derivation.** Configured roots: `image_home` (public) and
 `users_home` (personal). Personal areas are on by default: fresh installs
 resolve `users_home` to `<data_home>/users` on first launch and existing
-configs without it are backfilled once at startup and persisted (an
-explicit empty value or equal/nested roots still fail boot). `users_home`
-is unset only in tests and offline CLI flows. `classify_path(canonical)` returns
-`Public`, `Personal { owner }`, `UsersRoot`, or `Outside`. `owner` is the
-first path segment directly under `users_home` after canonicalization;
-the path is otherwise uninterpreted. The filesystem is the source of truth:
-no stored owner column exists, and moving or renaming directories changes
-ownership accordingly, so a rebuild from disk preserves it. When
-`users_home` is unset, every path classifies as `Public` or `Outside` and
-the personal gates pass through. `users_home` must not equal or
-nest `image_home` in either direction (rejected at boot). The root itself
-is never an album, addressable, movable, shareable, or scannable.
+configs without it are backfilled once at startup and persisted (an explicit
+empty value or equal/nested roots still fail boot). `users_home` is unset only
+in tests and offline CLI flows. `classify_path(canonical)` returns `Public`,
+`Personal { owner }`, `UsersRoot`, or `Outside`. `owner` is the first path
+segment directly under `users_home` after canonicalization; the path is
+otherwise uninterpreted. The filesystem is the source of truth: no stored
+owner column exists, and moving or renaming directories changes ownership
+accordingly, so a rebuild from disk preserves it. When `users_home` is unset,
+every path classifies as `Public` or `Outside` and the personal gates pass
+through. `users_home` must not equal or nest `image_home` in either direction
+(rejected at boot). The root itself is never an album, addressable, movable,
+shareable, or scannable.
 
 **Per-operation scoping.**
 
 - _Reads_ (`get-albums`, prefetch/get-data, fs completion, tags/counts):
-  public paths are visible to every caller; a personal path is visible
-  only to its owner; `UsersRoot` is never exposed. A non-owner does not
-  receive a 403 — the album is absent from `get-albums` and yields no
-  rows.
+  public paths are visible to every caller; a personal path is visible only to
+  its owner; `UsersRoot` is never exposed. A non-owner does not receive a 403
+  — the album is absent from `get-albums` and yields no rows.
 - _Timeline opt-in:_ personal rows (media and albums) appear in the
   prefetch/timeline only when `include_personal = true` **and** the caller
-  owns them; other users' rows are already excluded by visibility. The
-  flag defaults to `false` and is enforced server-side regardless of any
-  client-supplied filter or `basicString`; the cache key includes the
-  caller and the flag. The only UI for the flag is the "Include personal
-  items in timeline" switch in Settings → Display (`FrontendConfig`,
-  off by default and persisted per browser in localStorage); the timeline
-  route sends whatever the switch holds while every other view sends an
-  explicit value. When the flag is on and the query selects root albums
-  (the MyAlbums view), only the caller's own personal roots are returned —
-  global roots are dropped. Pinned by `prefetch_include_personal_toggle_is_server_enforced`,
+  owns them; other users' rows are already excluded by visibility. The flag
+  defaults to `false` and is enforced server-side regardless of any
+  client-supplied filter or `basicString`; the cache key includes the caller
+  and the flag. The only UI for the flag is the "Include personal items in
+  timeline" switch in Settings → Display (`FrontendConfig`, off by default and
+  persisted per browser in localStorage); the timeline route sends whatever
+  the switch holds while every other view sends an explicit value. When the
+  flag is on and the query selects root albums (the MyAlbums view), only the
+  caller's own personal roots are returned — global roots are dropped. Pinned
+  by `prefetch_include_personal_toggle_is_server_enforced`,
   `prefetch_root_albums_respect_include_personal_flag`, and
   `prefetch_my_albums_personal_only_excludes_global_root` in
   `backend/src/tests/personal_reads.rs`, plus the toggle on/off steps in
@@ -200,92 +201,92 @@ is never an album, addressable, movable, shareable, or scannable.
 source, dest)` refuses `UsersRoot`, foreign personal paths, and
   cross-owner pairs, with no partial effect (refusal happens before the
   first rename). Admins receive no exception.
-- _Shares:_ create/edit/delete requires `visible_to(caller, album path)`;
-  a personal album is shareable only by its owner. Share listings are
-  filtered to `created_by == caller`. Resolving a share on a personal
-  album works for anonymous holders exactly as for public albums (the
-  share is album-scoped).
-- _Scan:_ admin Scan Now walks the global root plus all personal subtrees
-  per the `root` selector (`"global"`, `"personal"`, `"auto"`); the
-  `users_home` root itself never gains an album record and is pruned if
-  one exists. An unknown selector is a 400; requesting `"personal"` while
-  `users_home` is unset is a 400. Known limitation: moving files while a
-  scan is running can race the background indexer, leaving error noise
-  and grey placeholder rows; moving after the scan finishes is fine.
+- _Shares:_ create/edit/delete requires `visible_to(caller, album path)`; a
+  personal album is shareable only by its owner. Share listings are filtered
+  to `created_by == caller`. Resolving a share on a personal album works for
+  anonymous holders exactly as for public albums (the share is album-scoped).
+- _Scan:_ admin Scan Now walks the global root plus all personal subtrees per
+  the `root` selector (`"global"`, `"personal"`, `"auto"`); the `users_home`
+  root itself never gains an album record and is pruned if one exists. An
+  unknown selector is a 400; requesting `"personal"` while `users_home` is
+  unset is a 400. Known limitation: moving files while a scan is running can
+  race the background indexer, leaving error noise and grey placeholder rows;
+  moving after the scan finishes is fine.
 
-**404-vs-403 (no oracle).** Management of a foreign personal album's
-shares and any operation naming an invisible personal album returns 404
-("Album not found"), not 403, so existence is not leaked. Listing and
-read paths simply omit the row.
+**404-vs-403 (no oracle).** Management of a foreign personal album's shares
+and any operation naming an invisible personal album returns 404 ("Album not
+found"), not 403, so existence is not leaked. Listing and read paths simply
+omit the row.
 
-**Home provisioning.** `ensure_personal_home(id)` creates
-`<users_home>/<id>` and its dir-album record when `users_home` is set;
-it is a best-effort no-op when unset. It runs on the two user-creation paths (`create_user` and
-`provision_user_with_home`); admin role changes do not re-provision.
-Users created before `users_home` was set (or via the offline CLI) are
-covered by the next admin Scan Now, which also indexes empty directories.
+**Home provisioning.** `ensure_personal_home(id)` creates `<users_home>/<id>`
+and its dir-album record when `users_home` is set; it is a best-effort no-op
+when unset. It runs on the two user-creation paths (`create_user` and
+`provision_user_with_home`); admin role changes do not re-provision. Users
+created before `users_home` was set (or via the offline CLI) are covered by
+the next admin Scan Now, which also indexes empty directories.
 
 ## 7. Invariants
 
 Each is a named formula over the model. `AUTH-n` are the identifiers the rules
 and tests cite.
 
-**AUTH-1 — Type soundness.** `decode_g(tok) ≠ ⊥ ⟹ typ(tok) = expected(g)`, where
-`expected` maps `GuardAdmin` → `session` (identity token, admin role required),
-`GuardPresenter`/`GuardUser` → identity token of any role,
+**AUTH-1 — Type soundness.** `decode_g(tok) ≠ ⊥ ⟹ typ(tok) = expected(g)`,
+where `expected` maps `GuardAdmin` → `session` (identity token, admin role
+required), `GuardPresenter`/`GuardUser` → identity token of any role,
 `GuardSnapshot` → `snapshot`, `GuardHash`/`GuardHashOriginal` → `asset`.
 Decoding a token as a type it does not declare fails.
 
-**AUTH-2 — Rejection is propagated.** For every route, `¬accepts(r,req)` implies
-the request is denied. (The `GuardResult` wrapper catches a guard error, so the
-implementation must re-establish this by propagating with `?`.)
+**AUTH-2 — Rejection is propagated.** For every route, `¬accepts(r,req)`
+implies the request is denied. (The `GuardResult` wrapper catches a guard
+error, so the implementation must re-establish this by propagating with `?`.)
 
 **AUTH-3 — Denial is an error, not a fall-through.** A guard that rejects
-establishes no capability (`⟦g⟧` undefined) and returns an `Outcome::Error` with
-the declared status. `Outcome::Forward` is used only to select the next ranked
-route, never to deny — a denial must not be re-enterable as a different route
-with a weaker `needs`.
+establishes no capability (`⟦g⟧` undefined) and returns an `Outcome::Error`
+with the declared status. `Outcome::Forward` is used only to select the next
+ranked route, never to deny — a denial must not be re-enterable as a different
+route with a weaker `needs`.
 
-**AUTH-4 — Witness binding.** In C1's third clause, `target(r,req)` is computed
-from `⟦G(r)⟧(req)`'s claims; equivalently, `target(r,req) ∈ bound(cap)` for the
-established `cap`. A target read from the body or query is a violation.
+**AUTH-4 — Witness binding.** In C1's third clause, `target(r,req)` is
+computed from `⟦G(r)⟧(req)`'s claims; equivalently,
+`target(r,req) ∈ bound(cap)` for the established `cap`. A target read from the
+body or query is a violation.
 
 **AUTH-5 — Flag soundness.** `(read_meta(x), x) ∈ needs(r)` via a share cap
-requires `M ∈ F`; `(read_orig(x), x)` requires `D ∈ F`. Uploads require a
-user session (`GuardUser`) — the share `U` flag is recorded but confers
-nothing. Follows from §3; the implementation must realize it.
+requires `M ∈ F`; `(read_orig(x), x)` requires `D ∈ F`. Uploads require a user
+session (`GuardUser`) — the share `U` flag is recorded but confers nothing.
+Follows from §3; the implementation must realize it.
 
-**AUTH-6 — Album scoping.** For any `(act, x)` with `act ∈ {read_*}` established
-by a share cap, `album(x) = a`. Share caps establish no writes, so there is
-no share-established `write_album` to scope.
+**AUTH-6 — Album scoping.** For any `(act, x)` with `act ∈ {read_*}`
+established by a share cap, `album(x) = a`. Share caps establish no writes, so
+there is no share-established `write_album` to scope.
 
 **AUTH-7 — Snapshot binding.** `⟦GuardSnapshot⟧(req) = Snap(a,F,t) ⟹ t =`
 `query_timestamp(req)`; a token for one snapshot cannot read another.
 
-**AUTH-8 — Asset binding.** `⟦GuardHash⟧`/`⟦GuardHashOriginal⟧` accept only when
-the URL path resource equals the token's `hash`/`assetId`; an asset token
+**AUTH-8 — Asset binding.** `⟦GuardHash⟧`/`⟦GuardHashOriginal⟧` accept only
+when the URL path resource equals the token's `hash`/`assetId`; an asset token
 authorizes exactly one asset.
 
-**AUTH-9 — Live identity, immutable capabilities.** Identity resolution re-reads
-the DB (`GuardPresenter` requires a live share). Minted capabilities are immutable
-and remain valid until `exp`; revoking a share prevents new identity and renewal
-but does not retract outstanding tokens. A renewal re-validates the embedded
-share before re-issue. For users the role is re-read per request: demotion,
-disable, or removal takes effect before expiry (disable bumps the token
-version so outstanding sessions die at once; login of a disabled user is
-rejected exactly like a wrong password). Promotion requires re-login (the
-token-embedded flag gates first). Sharing is an independent per-user flag:
-disabling sharing prevents new share creation and denies resolution of that
-user's shares like a dead share (401, indistinguishable from removed) while
-existing share rows remain.
+**AUTH-9 — Live identity, immutable capabilities.** Identity resolution
+re-reads the DB (`GuardPresenter` requires a live share). Minted capabilities
+are immutable and remain valid until `exp`; revoking a share prevents new
+identity and renewal but does not retract outstanding tokens. A renewal
+re-validates the embedded share before re-issue. For users the role is re-read
+per request: demotion, disable, or removal takes effect before expiry (disable
+bumps the token version so outstanding sessions die at once; login of a
+disabled user is rejected exactly like a wrong password). Promotion requires
+re-login (the token-embedded flag gates first). Sharing is an independent
+per-user flag: disabling sharing prevents new share creation and denies
+resolution of that user's shares like a dead share (401, indistinguishable
+from removed) while existing share rows remain.
 
 **AUTH-10 — Renewal preserves authority.** `renew(t) = t'` requires
 `payload(t') = payload(t)`, `bound(t') = bound(t)`, and a presenter capability
-`c ⊒ cap(t)` whose identity equals the token's caller (a user presenter
-renews only snapshots whose `caller` is their user id; a share presenter
-renews only its own share's snapshot; admins are not exempt); the embedded
-share is live. Renewal can neither widen scope nor outlive the share's
-validity for new tokens.
+`c ⊒ cap(t)` whose identity equals the token's caller (a user presenter renews
+only snapshots whose `caller` is their user id; a share presenter renews only
+its own share's snapshot; admins are not exempt); the embedded share is live.
+Renewal can neither widen scope nor outlive the share's validity for new
+tokens.
 
 **AUTH-11 — Admin isolation.** If `manage ∈ needs(r)`, then `G(r)` establishes
 `⊤` and admits no share capability: the caller must be a user with the admin
@@ -296,77 +297,78 @@ role (`GuardAdmin`), not merely a share holder.
 `POST /post/admin/config/disable-read-only`, which lifts the kill-switch and
 is gated by `GuardAdmin` ∩ `GuardReauth` (the admin's password proof).
 
-**AUTH-13 — Credential isolation.** `(manage, config-secrets) ∉ holds(Share(a,F))`
-for every share; bearer tokens are extracted from the `Authorization` header
-only. Share bearers never appear in album listings or export; the only paths
-that return a bearer are the create response and the creator-only, logged
-`GET /get/share/token`.
+**AUTH-13 — Credential isolation.**
+`(manage, config-secrets) ∉ holds(Share(a,F))` for every share; bearer tokens
+are extracted from the `Authorization` header only. Share bearers never appear
+in album listings or export; the only paths that return a bearer are the
+create response and the creator-only, logged `GET /get/share/token`.
 
 **AUTH-14 — Statelessness.** The authority of a request is a function of its
-token and the DB alone; no component's decision depends on a server-side session.
+token and the DB alone; no component's decision depends on a server-side
+session.
 
 **AUTH-15 — Privileged re-authentication.** For any route with
 `GuardReauth ∈ G(r)`, `accepts(r, req)` requires the password proof in
-`X-Picasu-Password` verified against the caller's stored hash; a valid
-session token alone is insufficient. Applies to
+`X-Picasu-Password` verified against the caller's stored hash; a valid session
+token alone is insufficient. Applies to
 `POST /post/admin/config/disable-read-only` (lift) and
-`PUT /put/users/password` (self-change and admin reset). Pinned by the
-re-auth cases in `backend/src/router/put/users_password.rs` and
+`PUT /put/users/password` (self-change and admin reset). Pinned by the re-auth
+cases in `backend/src/router/put/users_password.rs` and
 `backend/src/router/post/admin_config.rs`.
 
 **AUTH-16 — Zero-admin invariant.** Deletion and demotion cannot leave zero
-admins: `user_store::delete` and `set_admin_role` share the `Conflict`
-path, and the check and the write are one atomic transaction (single redb
-writer), so concurrent operations cannot strand zero admins. Pinned by
-the delete matrix in `backend/src/router/delete.rs` and the demotion cases
-in `backend/src/router/put/users_admin.rs`.
+admins: `user_store::delete` and `set_admin_role` share the `Conflict` path,
+and the check and the write are one atomic transaction (single redb writer),
+so concurrent operations cannot strand zero admins. Pinned by the delete
+matrix in `backend/src/router/delete.rs` and the demotion cases in
+`backend/src/router/put/users_admin.rs`.
 
 **AUTH-17 — Personal read isolation.** For any read on a path, album, or
 asset, if `classify_path(path) = Personal { owner }` then the caller must
 equal `owner`; a path classified `UsersRoot` is never returned, read, or
-counted. A non-owner observes absence (omitted row / empty result), never
-a 403, so existence is not leaked. Pinned by the `get-albums` filtering
-in `backend/src/router/get/get_list.rs` and `row_visible` in
+counted. A non-owner observes absence (omitted row / empty result), never a
+403, so existence is not leaked. Pinned by the `get-albums` filtering in
+`backend/src/router/get/get_list.rs` and `row_visible` in
 `backend/src/router/get/get_prefetch.rs`, witnessed by
 `get_albums_omits_other_users_personal_album`,
 `b3_bob_snapshot_cannot_read_alice_personal_metadata`, and
 `b3_alice_reads_own_personal_metadata_ok` in
-`backend/src/tests/personal_reads.rs` and the B4/B5 renewal/serving cases
-in `backend/src/tests/authz.rs`.
+`backend/src/tests/personal_reads.rs` and the B4/B5 renewal/serving cases in
+`backend/src/tests/authz.rs`.
 
-**AUTH-18 — Personal write isolation.** For any mutation with source
-`s` and/or destination `d`, `write_gate(caller, s, d)` must accept;
-otherwise the request is refused before any filesystem or DB effect, and
-the affected target is left unchanged. Refused cases: either path is
-`UsersRoot`; either personal path's owner differs from `caller`; or both
-are personal with differing owners. Admins receive no exception. Pinned
-by `write_gate` in `backend/src/storage/files.rs` and the per-op tests,
-including `cross_user_personal_writes_refused_and_target_unchanged` in
+**AUTH-18 — Personal write isolation.** For any mutation with source `s`
+and/or destination `d`, `write_gate(caller, s, d)` must accept; otherwise the
+request is refused before any filesystem or DB effect, and the affected target
+is left unchanged. Refused cases: either path is `UsersRoot`; either personal
+path's owner differs from `caller`; or both are personal with differing
+owners. Admins receive no exception. Pinned by `write_gate` in
+`backend/src/storage/files.rs` and the per-op tests, including
+`cross_user_personal_writes_refused_and_target_unchanged` in
 `backend/src/tests/user_writes.rs`.
 
 **AUTH-19 — Share creator-ownership.** A share may be created, edited, or
-deleted on an album only when `visible_to(caller, album path)` holds; for
-a personal album this means `caller` is its owner. Share listings expose
-entries by non-secret `keyFingerprint` only: creators see their own entries,
-admins see every entry, and no listing or export carries a bearer. Edit
-stays creator-only; delete is creator-or-admin (admin revoke). The bearer is
+deleted on an album only when `visible_to(caller, album path)` holds; for a
+personal album this means `caller` is its owner. Share listings expose entries
+by non-secret `keyFingerprint` only: creators see their own entries, admins
+see every entry, and no listing or export carries a bearer. Edit stays
+creator-only; delete is creator-or-admin (admin revoke). The bearer is
 revealable only by the creator through `GET /get/share/token`, which answers
-404 to everyone else, including admins. Management addresses the entry by
-its fingerprint; an invisible album returns 404, not 403. Pinned by
+404 to everyone else, including admins. Management addresses the entry by its
+fingerprint; an invisible album returns 404, not 403. Pinned by
 `create_share`, `edit_share`, `delete_share`, `get_share_token`, and
 `share_visible_to`, witnessed by the creator-scoping and refusal cases in
-`backend/src/tests/share_ownership.rs` (`listings_scope_shares_to_their_creator`,
-the `s2_`/`s3_`/`s4_` cases, and the foreign-share move refusals
+`backend/src/tests/share_ownership.rs`
+(`listings_scope_shares_to_their_creator`, the `s2_`/`s3_`/`s4_` cases, and
+the foreign-share move refusals
 `move_album_with_foreign_share_refused_and_tree_unchanged` and
 `admin_moving_album_with_another_users_share_refused`).
 
 **AUTH-20 — Timeline personal opt-in.** Personal rows (media and albums)
-appear in prefetch/timeline results only when `include_personal = true`
-and the caller owns them. The flag defaults to `false` and is enforced
-server-side independent of any client filter; the cache key includes the
-caller and the flag. Pinned by `row_visible` in
-`backend/src/router/get/get_prefetch.rs`, witnessed by
-`prefetch_include_personal_toggle_is_server_enforced` and
+appear in prefetch/timeline results only when `include_personal = true` and
+the caller owns them. The flag defaults to `false` and is enforced server-side
+independent of any client filter; the cache key includes the caller and the
+flag. Pinned by `row_visible` in `backend/src/router/get/get_prefetch.rs`,
+witnessed by `prefetch_include_personal_toggle_is_server_enforced` and
 `prefetch_my_albums_personal_only_excludes_global_root` in
 `backend/src/tests/personal_reads.rs` and the toggle on/off steps in
 `frontend/tests/playwright/scenarios/personal-user-albums-isolation-flow.yaml`.
@@ -374,8 +376,8 @@ caller and the flag. Pinned by `row_visible` in
 ## 8. From the model to executable checks
 
 The model is not executable as written; each invariant is discharged by one of
-three means. The static rules are decision procedures for a syntactic fragment;
-the tests are witnesses.
+three means. The static rules are decision procedures for a syntactic
+fragment; the tests are witnesses.
 
 | Invariant | Means       | Derived artifact                                                                                                                                              |
 | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -407,38 +409,38 @@ runs.
 
 `docs/authz-coverage.md` is not present in this tree; the full route ×
 invariant matrix is owned by `.plan/authz-check.md` (§4) and
-`.plan/authz-props.md` (S0e), which are read-only here. This appendix
-records only the personal-area additions so those plans can absorb them
-without contradiction, and does not duplicate their matrices.
+`.plan/authz-props.md` (S0e), which are read-only here. This appendix records
+only the personal-area additions so those plans can absorb them without
+contradiction, and does not duplicate their matrices.
 
 New query flag: `include_personal` on `POST /get/prefetch`
 (`backend/src/router/get/get_prefetch.rs`) — default `false`, cache key
 includes caller + flag (AUTH-20).
 
-Root selector: `root` on `POST /post/index/album` (`"global"`,
-`"personal"`, `"auto"`; unknown value → 400) (AUTH-11, AUTH-18).
+Root selector: `root` on `POST /post/index/album` (`"global"`, `"personal"`,
+`"auto"`; unknown value → 400) (AUTH-11, AUTH-18).
 
-`AlbumInfo` markers: `root` (`"global"`/`"personal"`/`null`) and `owner`
-(user id or `null`) on `GET /get/get-albums`
-(`backend/src/router/get/get_list.rs`) (AUTH-17).
+`AlbumInfo` markers: `root` (`"global"`/`"personal"`/`null`) and `owner` (user
+id or `null`) on `GET /get/get-albums` (`backend/src/router/get/get_list.rs`)
+(AUTH-17).
 
 Guard on shares: relaxed from `GuardAdmin` to `GuardUser` + ownership via
 `visible_to` (AUTH-11, AUTH-19).
 
 Hardening dispositions (assessed, not implemented in S6):
 
-- CLI user provisioning: accepted gap. `picasu-cmd user add` writes the
-  user store directly and does not call `ensure_personal_home`; users
-  created this way are covered by the next admin Scan Now (which indexes
-  empty directories), and `users_home` is typically unset in
-  CLI-only/offline flows. No change.
+- CLI user provisioning: accepted gap. `picasu-cmd user add` writes the user
+  store directly and does not call `ensure_personal_home`; users created this
+  way are covered by the next admin Scan Now (which indexes empty
+  directories), and `users_home` is typically unset in CLI-only/offline flows.
+  No change.
 - `users_dir_for` disabled/invalid distinction: verified present (distinct
   `UsersDirError::Disabled` vs `InvalidUser`); not reworked.
 
 ## 9. Encoding
 
-The domains, `Cap`, `holds`, the guard denotations, and the invariant ids are the
-machine-readable surface. The intended encoding is one data file under
-`backend/` (a `tags.json`-style manifest) that the static gate and the tests both
-read, so the model has a single authority and the code is checked against it in
-both directions. Encoding it is not yet implemented.
+The domains, `Cap`, `holds`, the guard denotations, and the invariant ids are
+the machine-readable surface. The intended encoding is one data file under
+`backend/` (a `tags.json`-style manifest) that the static gate and the tests
+both read, so the model has a single authority and the code is checked against
+it in both directions. Encoding it is not yet implemented.

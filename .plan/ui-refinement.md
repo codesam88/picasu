@@ -11,26 +11,34 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 
 ### Navigation
 
-- [ ] **Auto-hide nav behavior**: only collapse on very slim screens; otherwise keep fixed with a toggle button to switch modes.
-- [ ] **Breadcrumbs**: show current album/image path in the top bar or a nav directory tree.
+- [ ] **Auto-hide nav behavior**: only collapse on very slim screens;
+      otherwise keep fixed with a toggle button to switch modes.
+- [ ] **Breadcrumbs**: show current album/image path in the top bar or a nav
+      directory tree.
 
 ### Search / Filter bar
 
-- [ ] On click, show a dropdown to help build filters (tag picker, album picker, property toggles).
-- [ ] Unify global photo properties (trashed) as the same filter type, selectable via the search bar dropdown.
+- [ ] On click, show a dropdown to help build filters (tag picker, album
+      picker, property toggles).
+- [ ] Unify global photo properties (trashed) as the same filter type,
+      selectable via the search bar dropdown.
 
 ### Album view
 
-- [ ] Album properties in grid view: allow setting a fancy name and custom cover image.
+- [ ] Album properties in grid view: allow setting a fancy name and custom
+      cover image.
 
 ### Config / Settings
 
 - Rework "Image Path" and "Album Index":
   - [x] On first start (empty DB), set up a watcher on `IMAGE_HOME`.
   - [x] Offer to index `IMAGE_HOME` from the main page.
-  - [ ] Detect whether FS notify is available; fall back to manual indexing on networked filesystems.
-- [x] Delete flow: mark as trashed (visible in trash bin), require confirmation on final delete.
-- [ ] Smart move: discard if identical target file exists, auto-rename otherwise.
+  - [ ] Detect whether FS notify is available; fall back to manual indexing on
+        networked filesystems.
+- [x] Delete flow: mark as trashed (visible in trash bin), require
+      confirmation on final delete.
+- [ ] Smart move: discard if identical target file exists, auto-rename
+      otherwise.
 
 ### Misc
 
@@ -46,11 +54,18 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 - [ ] Back/Escape from Album should go to parent Album
 
 - [ ] image lightbox, when opening the info pane, the lightbox
-      close/properties/info buttons should stay in their location at top-right corner
+      close/properties/info buttons should stay in their location at top-right
+      corner
 
-- [ ] move light/dark theme to user/settings and fix various hardcoded black shades
+- [ ] move light/dark theme to user/settings and fix various hardcoded black
+      shades
 
-- [ ] image lightbox/info pane, ordering of displayed details: - image file name, location (relative to image_home) - dimensions and size - Date, but make it human readable. not "in the afternoon" but give normal 12 or 24h time with timezone. - Location info, if any - Model/Make/exposure - make this a smaller technical detail field. name the fields, .e.g "Model: Canon EOS" - Description, if any - Rating - Tags
+- [ ] image lightbox/info pane, ordering of displayed details: - image file
+      name, location (relative to image_home) - dimensions and size - Date,
+      but make it human readable. not "in the afternoon" but give normal 12 or
+      24h time with timezone. - Location info, if any - Model/Make/exposure -
+      make this a smaller technical detail field. name the fields, .e.g
+      "Model: Canon EOS" - Description, if any - Rating - Tags
 
 ## UI definition
 
@@ -72,7 +87,8 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 
 - UploadImage
   - From HOME or any Album, select multiple sources, upload to here
-  - Don't actually need to define an upload folder...its for the backup app or watcher disabled case
+  - Don't actually need to define an upload folder...its for the backup app or
+    watcher disabled case
 
 - ViewAlbum
   - select preview image

@@ -5,37 +5,48 @@ regenerate: just quint docs-->
 
 # Eventual consistency: goals, assumptions, scope, requirements, implementation, events
 
-The catalogs answer different questions and depend on each other.
-Assumptions state what the world gives the model. Goals are the
-outcomes humans commit to. Scope entries delimit what the proof covers.
-Requirements are concrete obligations derived from committed goals and
-imposed on the implementation through gate tests. Implementation
-records how each obligation was satisfied and which test gates it.
-Events are the filesystem and API boundary inputs and recovery cases.
-Formal grounding lives in `utils/quint/pipeline/*.qnt`; the closed-world audit is
-`just spec-check`.
+The catalogs answer different questions and depend on each other. Assumptions
+state what the world gives the model. Goals are the outcomes humans commit to.
+Scope entries delimit what the proof covers. Requirements are concrete
+obligations derived from committed goals and imposed on the implementation
+through gate tests. Implementation records how each obligation was satisfied
+and which test gates it. Events are the filesystem and API boundary inputs and
+recovery cases. Formal grounding lives in `utils/quint/pipeline/*.qnt`; the
+closed-world audit is `just spec-check`.
 
 ## Status
 
-Computed from the catalog statuses and `utils/quint/pipeline/eventual-consistency.qnt`;
-the modeled-scope line comes from `utils/quint/pipeline/scope.json`.
+Computed from the catalog statuses and
+`utils/quint/pipeline/eventual-consistency.qnt`; the modeled-scope line comes
+from `utils/quint/pipeline/scope.json`.
 
-- Proof: 33 convergence runs + 31 asset-aspect runs (64 executed including imported runs; `just quint-check`); simulator traces are advisory.
+- Proof: 33 convergence runs + 31 asset-aspect runs (64 executed including
+  imported runs; `just quint-check`); simulator traces are advisory.
 - Goals: 4 committed, 1 queued, 1 dropped.
 - Requirements: 15 verified, 2 open (REQ-1, REQ-8).
 - Assumptions: 4 held, 2 unverified, 1 open.
 - Events: 21 established, 2 proposed.
-- Current modeled scope: Five paths in two roots, three content hashes, and small mtime/len values; intake lanes are collapsed onto one set; each worker step is atomic; direct API writes that bypass the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) are synchronous, while ApiUpload stores the file and fire-and-forget enqueues intake; crashes occur between completed durable writes; directory paths are flat fixed pairs. Not modeled: watcher delivery, general liveness, partial durable writes, and hierarchical directory paths. Sweep is split into enumerate + per-candidate re-check/apply; move lease window is visible.
+- Current modeled scope: Five paths in two roots, three content hashes, and
+  small mtime/len values; intake lanes are collapsed onto one set; each worker
+  step is atomic; direct API writes that bypass the intake (ApiRemove,
+  ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir)
+  are synchronous, while ApiUpload stores the file and fire-and-forget
+  enqueues intake; crashes occur between completed durable writes; directory
+  paths are flat fixed pairs. Not modeled: watcher delivery, general liveness,
+  partial durable writes, and hierarchical directory paths. Sweep is split
+  into enumerate + per-candidate re-check/apply; move lease window is visible.
 
 ## Goals
 
-Goals for the index pipeline: outcome claims with a decision (committed, queued, dropped), model or code anchors, and the assumptions they rely on.
+Goals for the index pipeline: outcome claims with a decision (committed,
+queued, dropped), model or code anchors, and the assumptions they rely on.
 
 Source: `utils/quint/pipeline/goals.json`.
 
 ### G0: Safety floor (decision: committed)
 
-The index removes or relocates an asset only in response to an explicit user action; auxiliary and derived writes are atomic.
+The index removes or relocates an asset only in response to an explicit user
+action; auxiliary and derived writes are atomic.
 
 Anchors:
 
@@ -43,11 +54,15 @@ Anchors:
 - code: `backend/src/process/sidecar_edit.rs:write_bytes_atomically`
 - code: `backend/src/process/xmp_write.rs:write_sidecar_content`
 
-Notes: Non-goal for this model: torn-byte reads are not modeled (the read path is an observer; API_READ_* faults track serving behavior). Byte integrity rests on the fs-first/DB-last crash survey plus atomic writes; transcode atomicity unverified.
+Notes: Non-goal for this model: torn-byte reads are not modeled (the read path
+is an observer; API_READ_* faults track serving behavior). Byte integrity
+rests on the fs-first/DB-last crash survey plus atomic writes; transcode
+atomicity unverified.
 
 ### G1: Quiescent convergence (decision: committed)
 
-After changes stop and a full scan completes, every asset path has exactly one correct row, no ghosts persist, and nothing stays queued.
+After changes stop and a full scan completes, every asset path has exactly one
+correct row, no ghosts persist, and nothing stays queued.
 
 Anchors:
 
@@ -55,11 +70,17 @@ Anchors:
 
 Holds under: ASS-3, ASS-6.
 
-Notes: Asserted per diverged shape on finite bounds; holds only under quiescence plus a completed scan. Fairness owner: a rescan on the watcher's Flag::Rescan signal while the watcher is enabled, plus a per-root periodic backstop that the user enables at regular intervals (ASS-7). With the watcher off the backstop is the sole trigger.
+Notes: Asserted per diverged shape on finite bounds; holds only under
+quiescence plus a completed scan. Fairness owner: a rescan on the watcher's
+Flag::Rescan signal while the watcher is enabled, plus a per-root periodic
+backstop that the user enables at regular intervals (ASS-7). With the watcher
+off the backstop is the sole trigger.
 
 ### G2: Bounded convergence (decision: committed)
 
-After changes stop, convergence by the end of the first backstop scan cycle that starts (one backstop interval; at most two scan cycles counting a scan already in flight).
+After changes stop, convergence by the end of the first backstop scan cycle
+that starts (one backstop interval; at most two scan cycles counting a scan
+already in flight).
 
 Anchors:
 
@@ -67,7 +88,9 @@ Anchors:
 
 Holds under: ASS-3, ASS-6, ASS-7.
 
-Notes: N is one backstop interval after quiescence; the two-cycle count includes a scan whose snapshot predates the change. Holds while the user enables the backstop (ASS-7); with it disabled there is no periodic bound.
+Notes: N is one backstop interval after quiescence; the two-cycle count
+includes a scan whose snapshot predates the change. Holds while the user
+enables the backstop (ASS-7); with it disabled there is no periodic bound.
 
 ### G3: Read-after-write (decision: queued)
 
@@ -75,31 +98,54 @@ A 200 response implies subsequent reads observe the mutation.
 
 Anchors: none — unanchored.
 
-Notes: Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route barrier gate exists. For upload, a 200 implies stored, not visible: visibility follows background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs). Read-model freshness after writer batches is bounded by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation. Assign and delete have no verified equivalent barrier.
+Notes: Queued until an inbox-lag model (SCOPE-5 lifting) or a per-route
+barrier gate exists. For upload, a 200 implies stored, not visible: visibility
+follows background indexing via the watcher intake lane (submit_uploaded_path
+-> submit_watcher_index in backend/src/router/post/post_upload.rs). Read-model
+freshness after writer batches is bounded by mark_tree_dirty_background
+(backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle
+(backend/src/storage/tree_view.rs); a contract test covers background flushes
+advancing request invalidation. Assign and delete have no verified equivalent
+barrier.
 
 ### G4: Graceful-degradation contract (decision: dropped)
 
-What readers see for missing or in-flight assets: today compressed/original serving returns 500 where the OpenAPI contract lists 404.
+What readers see for missing or in-flight assets: today compressed/original
+serving returns 500 where the OpenAPI contract lists 404.
 
 Anchors: none — unanchored.
 
-Notes: Dropped as a goal: it is a product contract, not a provable property. The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and is recorded in the plan's open backlog as a contract decision.
+Notes: Dropped as a goal: it is a product contract, not a provable property.
+The 500-vs-404 finding stays open in API_READ_MISSING/API_READ_COMPRESSED and
+is recorded in the plan's open backlog as a contract decision.
 
 ### G5: FS-primary / derived-secondary convergence roles (decision: committed)
 
-The system converges based on the filesystem as the primary truth — asset media bytes, the asset's stored path and its sidecar carry user-authored metadata. The redb tables and the thumbnail store are secondary and exist for speed and caching only: loss, orphaning or tearing of derived state is not a goal violation because convergence rebuilds it from the primary state. User-authored metadata lives in sidecars and survives any pipeline interruption window: a sidecar that exists is preserved and moved together with the asset file. DB-only non-derived state (share_list) is the enumerated exception and must be individually guarded.
+The system converges based on the filesystem as the primary truth — asset
+media bytes, the asset's stored path and its sidecar carry user-authored
+metadata. The redb tables and the thumbnail store are secondary and exist for
+speed and caching only: loss, orphaning or tearing of derived state is not a
+goal violation because convergence rebuilds it from the primary state.
+User-authored metadata lives in sidecars and survives any pipeline
+interruption window: a sidecar that exists is preserved and moved together
+with the asset file. DB-only non-derived state (share_list) is the enumerated
+exception and must be individually guarded.
 
 Anchors:
 
-- code: `backend/src/router/put/assign_album.rs::move_asset_into_album (sidecar copy-before-rename)`
+- code:
+  `backend/src/router/put/assign_album.rs::move_asset_into_album (sidecar copy-before-rename)`
 
 Holds under: ASS-3.
 
-Notes: Goal-level statement of the primary/secondary roles; the underlying fs-first adoption axiom is ASS-3. N10 (share edit racing scan flush) is the first designated DB-only exception to guard.
+Notes: Goal-level statement of the primary/secondary roles; the underlying
+fs-first adoption axiom is ASS-3. N10 (share edit racing scan flush) is the
+first designated DB-only exception to guard.
 
 ## Assumptions
 
-World-given premises the model relies on, with owner, status, and a status note. They are not implementation obligations.
+World-given premises the model relies on, with owner, status, and a status
+note. They are not implementation obligations.
 
 Source: `utils/quint/pipeline/assumptions.json`.
 
@@ -113,19 +159,28 @@ Status note: Upheld by construction; no dedicated falsification test.
 
 Owner: hash function plus skip comparison.
 
-Status note: Imposed and tested; finite model bounds allow collisions the real hash function must not produce.
+Status note: Imposed and tested; finite model bounds allow collisions the real
+hash function must not produce.
 
 ### ASS-3: filesystem first: external FS modifications are authoritative and adopted by convergence (status: held)
 
-Owner: operationalized by watcher events (tasks/batcher/start_watcher.rs), rescan on the watcher flag, snapshot comparison and the sweep (process_file, album_index.rs); model encodes adoption via External* actions and fs-wins convergence.
+Owner: operationalized by watcher events (tasks/batcher/start_watcher.rs),
+rescan on the watcher flag, snapshot comparison and the sweep (process_file,
+album_index.rs); model encodes adoption via External* actions and fs-wins
+convergence.
 
-Status note: Design axiom, not falsifiable by a test: any external or user FS modification — edits, renames, deletions, restores from backup, crash residue — is considered authoritative over DB state and is adopted as part of convergence. The system converges based on the filesystem as the primary truth; see goal G5 for the primary/secondary contract this grounds.
+Status note: Design axiom, not falsifiable by a test: any external or user FS
+modification — edits, renames, deletions, restores from backup, crash residue
+— is considered authoritative over DB state and is adopted as part of
+convergence. The system converges based on the filesystem as the primary
+truth; see goal G5 for the primary/secondary contract this grounds.
 
 ### ASS-4: derived store is pipeline-private (walk roots disjoint) (status: unverified)
 
 Owner: deployment layout (walk roots disjoint from derived store).
 
-Status note: Assumed true; no check that walk roots never cover the derived store.
+Status note: Assumed true; no check that walk roots never cover the derived
+store.
 
 ### ASS-5: hash is the authority (snapshot comparison) (status: held)
 
@@ -137,49 +192,68 @@ Status note: Imposed and tested.
 
 Owner: n/a (methodology).
 
-Status note: Safety invariants are asserted at settled states; scheduling fairness is delegated to ASS-7.
+Status note: Safety invariants are asserted at settled states; scheduling
+fairness is delegated to ASS-7.
 
 ### ASS-7: user enables backstop scans at regular intervals (status: unverified)
 
 Owner: operator (user configuration).
 
-Status note: Assumed operating condition: the user enables the periodic backstop and it runs at regular intervals. Nothing verifies the setting or the interval. The watcher's Flag::Rescan trigger exists only while the watcher is enabled; with the watcher off, the backstop is the sole trigger.
+Status note: Assumed operating condition: the user enables the periodic
+backstop and it runs at regular intervals. Nothing verifies the setting or the
+interval. The watcher's Flag::Rescan trigger exists only while the watcher is
+enabled; with the watcher off, the backstop is the sole trigger.
 
 ## Scope
 
-Modeling bounds and abstractions: each states its bound, why the bounded property is safe, and how to lift it.
+Modeling bounds and abstractions: each states its bound, why the bounded
+property is safe, and how to lift it.
 
 Source: `utils/quint/pipeline/scope.json`.
 
 ### SCOPE-1: Initial converged state
 
-Bound: Every run starts from fully matching files and rows (initialFile, initialRow, init in utils/quint/pipeline/eventual-consistency-state.qnt).
+Bound: Every run starts from fully matching files and rows (initialFile,
+initialRow, init in utils/quint/pipeline/eventual-consistency-state.qnt).
 
-Why safe: Convergence is about healing divergence, so runs introduce divergence explicitly before asserting the heal.
+Why safe: Convergence is about healing divergence, so runs introduce
+divergence explicitly before asserting the heal.
 
 Lifting: Start runs from arbitrary states (not yet modeled).
 
 ### SCOPE-2: Finite bounds
 
-Bound: Five paths, three content hashes, three small mtime/len values (PATHS, HASHES, SMALL in utils/quint/pipeline/eventual-consistency-state.qnt).
+Bound: Five paths, three content hashes, three small mtime/len values (PATHS,
+HASHES, SMALL in utils/quint/pipeline/eventual-consistency-state.qnt).
 
-Why safe: The properties checked (identity match, no lost intake, no permanent staleness) are per-path and pairwise; bounds are sized to exhibit every guard outcome (match, mismatch, superseded, stale, missing) and to hold one two-asset subtree move plus a second sweep root.
+Why safe: The properties checked (identity match, no lost intake, no permanent
+staleness) are per-path and pairwise; bounds are sized to exhibit every guard
+outcome (match, mismatch, superseded, stale, missing) and to hold one
+two-asset subtree move plus a second sweep root.
 
 Lifting: Bound-escalation runs at larger sizes (not yet modeled).
 
 ### SCOPE-3: Collapsed intake lanes
 
-Bound: The five intake lanes ride one intake set; priority scheduling is not modeled (see the intake comment in utils/quint/pipeline/eventual-consistency.qnt).
+Bound: The five intake lanes ride one intake set; priority scheduling is not
+modeled (see the intake comment in
+utils/quint/pipeline/eventual-consistency.qnt).
 
-Why safe: No checked property depends on lane order — guards are per-item (generation, snapshot), never positional.
+Why safe: No checked property depends on lane order — guards are per-item
+(generation, snapshot), never positional.
 
-Lifting: Lane-aware scheduling with fairness properties (explicitly out of scope; Apalache/TLC stay out as well).
+Lifting: Lane-aware scheduling with fairness properties (explicitly out of
+scope; Apalache/TLC stay out as well).
 
 ### SCOPE-4: Atomic worker step
 
-Bound: Each worker action (WorkerApply*, skips, removes) applies in one step; there are no open/hash/apply micro-stages, so no modify-during-pipeline interleaving exists in the model.
+Bound: Each worker action (WorkerApply*, skips, removes) applies in one step;
+there are no open/hash/apply micro-stages, so no modify-during-pipeline
+interleaving exists in the model.
 
-Why safe: The hash-to-skip re-stat window is the only guarded window in code; the open-to-hash window is unguarded there too — the model matches the implementation's actual guarantee, not a stronger one.
+Why safe: The hash-to-skip re-stat window is the only guarded window in code;
+the open-to-hash window is unguarded there too — the model matches the
+implementation's actual guarantee, not a stronger one.
 
 Lifting: Worker micro-stages plus FS_MODIFY_INFLIGHT (model v2).
 
@@ -187,9 +261,20 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-5: Synchronous direct writes
 
-Bound: Actions that write the projection without the intake (ApiRemove, ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir) apply in the same step as their filesystem effect, with no serial write queue (tasks/queue/writer.rs) inbox (see the direct-write comment in utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it stores the file and fire-and-forget enqueues intake (submit_uploaded_path -> submit_watcher_index), so the projection write happens later in tasks/queue/worker.rs intake application.
+Bound: Actions that write the projection without the intake (ApiRemove,
+ApiMove, ApiAssignDirMove, AppSidecarEdit, RotateImage, ExternalRenameDir)
+apply in the same step as their filesystem effect, with no serial write queue
+(tasks/queue/writer.rs) inbox (see the direct-write comment in
+utils/quint/pipeline/eventual-consistency.qnt). ApiUpload is excluded: it
+stores the file and fire-and-forget enqueues intake (submit_uploaded_path ->
+submit_watcher_index), so the projection write happens later in
+tasks/queue/worker.rs intake application.
 
-Why safe: The model proves convergence given synchronous writes; the lag between acknowledgment and visibility is a known divergence, tracked as an open fault rather than assumed away. ApiUpload no longer writes the projection synchronously, so its visibility lag is the by-design unindexed window (N8) rather than a barrier fault.
+Why safe: The model proves convergence given synchronous writes; the lag
+between acknowledgment and visibility is a known divergence, tracked as an
+open fault rather than assumed away. ApiUpload no longer writes the projection
+synchronously, so its visibility lag is the by-design unindexed window (N8)
+rather than a barrier fault.
 
 Lifting: A writerInbox pending state mirroring the serial writer.
 
@@ -197,9 +282,15 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-6: Completed-write crash abstraction
 
-Bound: Crash and DB-loss actions occur between completed durable writes: the model never represents a partially written row or sidecar (PROCESS_CRASH drops volatile intake; DB_LOSS clears the row map; DERIVED_STORE_LOSS clears thumbnail flags).
+Bound: Crash and DB-loss actions occur between completed durable writes: the
+model never represents a partially written row or sidecar (PROCESS_CRASH drops
+volatile intake; DB_LOSS clears the row map; DERIVED_STORE_LOSS clears
+thumbnail flags).
 
-Why safe: The recovery runs assert convergence from every interrupted state the model represents (queue lost, rows cleared, thumbnails lost, sidecar ahead of row), so the proof does not lean on partial-write behaviour; store transaction durability is a property of redb, outside this model.
+Why safe: The recovery runs assert convergence from every interrupted state
+the model represents (queue lost, rows cleared, thumbnails lost, sidecar ahead
+of row), so the proof does not lean on partial-write behaviour; store
+transaction durability is a property of redb, outside this model.
 
 Lifting: Model partial durable writes and store transactions explicitly.
 
@@ -207,222 +298,344 @@ Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-7: Flat directory paths
 
-Bound: Path IDs carry no directory hierarchy. A directory rename is a fixed finite set of path pairs (SUBTREE_PAIRS in utils/quint/pipeline/eventual-consistency.qnt) moved atomically; arbitrary subtrees are not modeled.
+Bound: Path IDs carry no directory hierarchy. A directory rename is a fixed
+finite set of path pairs (SUBTREE_PAIRS in
+utils/quint/pipeline/eventual-consistency.qnt) moved atomically; arbitrary
+subtrees are not modeled.
 
-Why safe: The property under proof is per-descendant row/path consistency plus all-or-nothing row updates, which a fixed two-asset pair set exhibits at the model's bounds.
+Why safe: The property under proof is per-descendant row/path consistency plus
+all-or-nothing row updates, which a fixed two-asset pair set exhibits at the
+model's bounds.
 
 Lifting: Hierarchical path IDs with arbitrary subtree enumeration.
 
 ### SCOPE-8: Sweep enumeration micro-stage
 
-Bound: SweepEnumerate(root) collects candidates = rows under root whose file is missing, snapshotting current generation per candidate, in one step; chunking/cancel are abstracted.
+Bound: SweepEnumerate(root) collects candidates = rows under root whose file
+is missing, snapshotting current generation per candidate, in one step;
+chunking/cancel are abstracted.
 
-Why safe: Enumeration only reads; the per-candidate re-check happens in SweepRecheck, so an interleaving between enumerate and re-check is modeled rather than hidden.
+Why safe: Enumeration only reads; the per-candidate re-check happens in
+SweepRecheck, so an interleaving between enumerate and re-check is modeled
+rather than hidden.
 
-Lifting: Chunked cancel/shutdown and per-chunk candidate re-check (sweep_stale_asset_paths chunks).
+Lifting: Chunked cancel/shutdown and per-chunk candidate re-check
+(sweep_stale_asset_paths chunks).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-9: Sweep re-check micro-stage
 
-Bound: SweepRecheck drains one enumerated batch, dropping candidates whose generation moved, whose path is now leased, or whose file reappeared; survivors stay in sweepBatch.
+Bound: SweepRecheck drains one enumerated batch, dropping candidates whose
+generation moved, whose path is now leased, or whose file reappeared;
+survivors stay in sweepBatch.
 
-Why safe: Matches sweep_stale_asset_paths inline re-checks (generation, is_busy, path.exists) performed in the sweep actor before submit; sweep_remove_batch checks only path.exists skip + asset-id/record resolution (no generation/lease re-check).
+Why safe: Matches sweep_stale_asset_paths inline re-checks (generation,
+is_busy, path.exists) performed in the sweep actor before submit;
+sweep_remove_batch checks only path.exists skip + asset-id/record resolution
+(no generation/lease re-check).
 
-Lifting: Per-chunk cancel/shutdown and interleaving between re-check and sweep_remove_batch apply (absorbed window).
+Lifting: Per-chunk cancel/shutdown and interleaving between re-check and
+sweep_remove_batch apply (absorbed window).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-10: Move lease window micro-stage
 
-Bound: ApiMoveFsOnly acquires a path lease (bumping generation) and holds it until MoveRowRewrite rewrites the row and releases it; the FS-moved/row-stale window is now visible.
+Bound: ApiMoveFsOnly acquires a path lease (bumping generation) and holds it
+until MoveRowRewrite rewrites the row and releases it; the FS-moved/row-stale
+window is now visible.
 
-Why safe: Matches lease_paths/release_generation across the FS rename to DB rewrite; generation bumps guard concurrent scans/sweeps.
+Why safe: Matches lease_paths/release_generation across the FS rename to DB
+rewrite; generation bumps guard concurrent scans/sweeps.
 
-Lifting: Crash between FS move and row rewrite heals via sweep/backstop (SCOPE-6).
+Lifting: Crash between FS move and row rewrite heals via sweep/backstop
+(SCOPE-6).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-11: sweep_remove_batch micro-stage
 
-Bound: SweepRemoveBatchApply drains one re-checked batch, pruning a candidate only if its file is still absent (exists-skip) and its row still resolves (row exists); no generation or lease check.
+Bound: SweepRemoveBatchApply drains one re-checked batch, pruning a candidate
+only if its file is still absent (exists-skip) and its row still resolves (row
+exists); no generation or lease check.
 
-Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution (path.exists skip + asset id/record resolve); prune-only.
+Why safe: Matches flush_tree.rs::sweep_remove_batch exact-path resolution
+(path.exists skip + asset id/record resolve); prune-only.
 
-Lifting: Two-stage chain: sweep_stale_asset_paths (enumerate + inline re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) -> flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).
+Lifting: Two-stage chain: sweep_stale_asset_paths (enumerate + inline
+re-checks) -> writer::submit(WriteOp::SweepRemoveBatch) ->
+flush_tree.rs::sweep_remove_batch (exists-skip + resolve + prune).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-12: Album stats cascade micro-stage
 
-Bound: AlbumTaskApply(albumId) is a single step: member snapshot, stats write and albumPending drain happen together; album liveness re-check and re-mark are abstracted into the guard (album record must exist/live) plus MemberWrite's mark_album_for_update effect.
+Bound: AlbumTaskApply(albumId) is a single step: member snapshot, stats write
+and albumPending drain happen together; album liveness re-check and re-mark
+are abstracted into the guard (album record must exist/live) plus
+MemberWrite's mark_album_for_update effect.
 
-Why safe: Matches album_task: stats are computed outside the write txn from a ref_data snapshot, the write txn re-checks album liveness and re-marks pending when an album appears between txns, and member writes re-mark pending via mark_album_for_update so concurrent writes surface as bounded staleness rather than silent loss.
+Why safe: Matches album_task: stats are computed outside the write txn from a
+ref_data snapshot, the write txn re-checks album liveness and re-marks pending
+when an album appears between txns, and member writes re-mark pending via
+mark_album_for_update so concurrent writes surface as bounded staleness rather
+than silent loss.
 
-Lifting: Split into read-album txn + outside-txn compute + write-txn liveness re-check + re-mark; model the ref_data snapshot as a separate action (deferred).
+Lifting: Split into read-album txn + outside-txn compute + write-txn liveness
+re-check + re-mark; model the ref_data snapshot as a separate action
+(deferred).
 
 Provisional: the safety argument is weaker than the implementation guarantee.
 
 ### SCOPE-13: Nondeterministic scheduling
 
-Bound: Within a phase, any action classified for that phase may fire per tick: FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering constraints inside a phase. The completion phases are the only sequencing: free (every action, untracked scans included), draining (work-consuming branches, crashes, untracked scans, then BeginScan at quiescence), scanning (one tracked CompleteScan per root, then work-consuming branches) — see stepCompletion in utils/quint/pipeline/asset-aspects-step.qnt. The phases encode the G1/G2 observation premise (changes stopped and a tracked scan completed), not pipeline inter-locking.
+Bound: Within a phase, any action classified for that phase may fire per tick:
+FS event, API call, fault, pipeline step, or Skip; no fairness and no ordering
+constraints inside a phase. The completion phases are the only sequencing:
+free (every action, untracked scans included), draining (work-consuming
+branches, crashes, untracked scans, then BeginScan at quiescence), scanning
+(one tracked CompleteScan per root, then work-consuming branches) — see
+stepCompletion in utils/quint/pipeline/asset-aspects-step.qnt. The phases
+encode the G1/G2 observation premise (changes stopped and a tracked scan
+completed), not pipeline inter-locking.
 
-Why safe: The checked properties are settled-state safety properties, so scheduling nondeterminism only widens the reachable set. The phase machine narrows the observation window deliberately: the invariant is claimed only at phase-2 quiescence, after the tracked scan of each root has drained. API calls are environment events like FS events, and the model's inter-locking is exactly the code's (generations, path leases, same-txn writes): each action models the atomicity the code provides, adds no coordination, and strips no existing lock.
+Why safe: The checked properties are settled-state safety properties, so
+scheduling nondeterminism only widens the reachable set. The phase machine
+narrows the observation window deliberately: the invariant is claimed only at
+phase-2 quiescence, after the tracked scan of each root has drained. API calls
+are environment events like FS events, and the model's inter-locking is
+exactly the code's (generations, path leases, same-txn writes): each action
+models the atomicity the code provides, adds no coordination, and strips no
+existing lock.
 
-Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness properties.
+Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness
+properties.
 
 ## Requirements
 
-Implementation obligations derived from committed goals: each entry carries the contract, a concise implementation summary, its gate tests, and known limits.
+Implementation obligations derived from committed goals: each entry carries
+the contract, a concise implementation summary, its gate tests, and known
+limits.
 
 Requirements are derived from committed goals and imposed on the
-implementation through gate tests. Source: `utils/quint/pipeline/requirements.json`.
+implementation through gate tests. Source:
+`utils/quint/pipeline/requirements.json`.
 
 ### REQ-1: Sidecar identity for the hash short-circuit (status: open)
 
-If the hash short-circuit is enabled, the submit snapshot or the stored row carries sidecar identity, so deleting or changing a sidecar changes the identity and forces reprocessing rather than a skip.
+If the hash short-circuit is enabled, the submit snapshot or the stored row
+carries sidecar identity, so deleting or changing a sidecar changes the
+identity and forces reprocessing rather than a skip.
 
 Derived from: G1. Owner: index pipeline skip predicate (when re-enabled).
 
-Gate: Backend test with the hash short-circuit enabled: index an asset whose sidecar was present, delete the sidecar, resubmit/scan; the row's sidecar identity changes and sidecar-derived state is cleared.
+Gate: Backend test with the hash short-circuit enabled: index an asset whose
+sidecar was present, delete the sidecar, resubmit/scan; the row's sidecar
+identity changes and sidecar-derived state is cleared.
 
 ### REQ-2: File rename submits old-path remove plus new-path create (status: verified)
 
-A rename delivered by the watcher submits a remove for the old path and an index for the new path, so the row follows without waiting for a sweep.
+A rename delivered by the watcher submits a remove for the old path and an
+index for the new path, so the row follows without waiting for a sweep.
 
 Derived from: G1. Owner: watcher submit (tasks/batcher/start_watcher.rs).
 
-Gate: Backend test: rename a watched file; the row disappears at the old path and appears at the new one without a sweep.
+Gate: Backend test: rename a watched file; the row disappears at the old path
+and appears at the new one without a sweep.
 
 ### REQ-3: Directory rename follows descendants atomically (status: verified)
 
-A watched directory rename updates every contained asset's row to the renamed path in one step, preserving assetId and sidecar association, with no ghosts and no re-decode.
+A watched directory rename updates every contained asset's row to the renamed
+path in one step, preserving assetId and sidecar association, with no ghosts
+and no re-decode.
 
-Derived from: G1. Owner: watcher and index (tasks/batcher/start_watcher.rs, tasks/actor/album_index.rs).
+Derived from: G1. Owner: watcher and index (tasks/batcher/start_watcher.rs,
+tasks/actor/album_index.rs).
 
-Gate: Backend test: rename a watched directory; every descendant row follows to the new path with assetId preserved.
+Gate: Backend test: rename a watched directory; every descendant row follows
+to the new path with assetId preserved.
 
 ### REQ-4: Per-root sweep isolation is verified (status: verified)
 
-A scan of one root reaps only rows under that root; rows outside the scanned root survive even when their files are absent.
+A scan of one root reaps only rows under that root; rows outside the scanned
+root survive even when their files are absent.
 
 Derived from: G1. Owner: album index sweep (tasks/actor/album_index.rs).
 
-Gate: Backend test: scan one sub-root with a ghost row outside it; the outside row survives the sweep.
+Gate: Backend test: scan one sub-root with a ghost row outside it; the outside
+row survives the sweep.
 
 ### REQ-5: Rescan on the watcher's Flag::Rescan signal (status: verified)
 
-An inotify overflow or rescan flag triggers a full rescan of the affected root instead of being ignored.
+An inotify overflow or rescan flag triggers a full rescan of the affected root
+instead of being ignored.
 
 Derived from: G1, G2. Owner: watcher (tasks/batcher/start_watcher.rs).
 
-Gate: Backend test with a forced overflow or synthetic Flag::Rescan event: the affected root is rescanned.
+Gate: Backend test with a forced overflow or synthetic Flag::Rescan event: the
+affected root is rescanned.
 
 ### REQ-6: Configurable per-root periodic backstop scan (status: verified)
 
-The server can run a per-root full scan on a configurable interval; when enabled, a change missed by the watcher converges within one backstop cycle.
+The server can run a per-root full scan on a configurable interval; when
+enabled, a change missed by the watcher converges within one backstop cycle.
 
-Derived from: G1, G2. Owner: scheduler, lifecycle and config (model/config.rs, lib.rs startup, tasks/lifecycle.rs).
+Derived from: G1, G2. Owner: scheduler, lifecycle and config (model/config.rs,
+lib.rs startup, tasks/lifecycle.rs).
 
-Gate: Integration test: with the backstop enabled and the watcher disabled, a missed change converges within one backstop interval; config test covers interval and root scope.
+Gate: Integration test: with the backstop enabled and the watcher disabled, a
+missed change converges within one backstop interval; config test covers
+interval and root scope.
 
 ### REQ-7: Scans coordinate with in-flight mutating API work (status: verified)
 
-A scan or sweep running concurrently with an in-flight assign (or other multi-file mutation) neither prunes the moved row nor separates the asset from its sidecar; coordination is by exclusion or in-flight detection.
+A scan or sweep running concurrently with an in-flight assign (or other
+multi-file mutation) neither prunes the moved row nor separates the asset from
+its sidecar; coordination is by exclusion or in-flight detection.
 
-Derived from: G1. Owner: album index, queue and mutating API (tasks/actor/album_index.rs, tasks/path_epoch.rs, tasks/queue, router/put/assign_album.rs, router/delete.rs).
+Derived from: G1. Owner: album index, queue and mutating API
+(tasks/actor/album_index.rs, tasks/path_epoch.rs, tasks/queue,
+router/put/assign_album.rs, router/delete.rs).
 
-Gate: Concurrency test: an assign overlapping a scan/sweep keeps the moved row and its sidecar intact.
+Gate: Concurrency test: an assign overlapping a scan/sweep keeps the moved row
+and its sidecar intact.
 
 ### REQ-8: Per-row thumbnail checksum with scan regeneration (status: open)
 
-Rows carry a thumbnail checksum; a scan regenerates the artifact when the bytes do not match, and a missing artifact still forces reprocessing.
+Rows carry a thumbnail checksum; a scan regenerates the artifact when the
+bytes do not match, and a missing artifact still forces reprocessing.
 
-Derived from: G1. Owner: asset model and scan (model/asset.rs, workflow/mod.rs).
+Derived from: G1. Owner: asset model and scan (model/asset.rs,
+workflow/mod.rs).
 
-Gate: Backend test: corrupt a thumbnail's bytes; the next scan detects the mismatch and regenerates it.
+Gate: Backend test: corrupt a thumbnail's bytes; the next scan detects the
+mismatch and regenerates it.
 
 ### REQ-9: Orphan .xmp detection is logged only (status: verified)
 
-A restart or scan reports sidecars without a media file in the log and never deletes them; the detection must not act concurrently with an in-flight mutation.
+A restart or scan reports sidecars without a media file in the log and never
+deletes them; the detection must not act concurrently with an in-flight
+mutation.
 
 Derived from: G1. Owner: startup and scan.
 
-Gate: Backend test: leave an .xmp with no media; scan/restart logs it and does not delete it.
+Gate: Backend test: leave an .xmp with no media; scan/restart logs it and does
+not delete it.
 
 ### REQ-10: Stale upload temp files are swept (status: verified)
 
-Upload crash residue (.upload-{filename}.{pid}.{seq}.tmp) is removed at startup or scan and is never indexed.
+Upload crash residue (.upload-{filename}.{pid}.{seq}.tmp) is removed at
+startup or scan and is never indexed.
 
-Derived from: G1. Owner: startup and scan (router/post/post_upload.rs, init.rs).
+Derived from: G1. Owner: startup and scan (router/post/post_upload.rs,
+init.rs).
 
-Gate: Backend test: leave a tmp file; startup/scan removes it and no row is created for it.
+Gate: Backend test: leave a tmp file; startup/scan removes it and no row is
+created for it.
 
 ### REQ-11: Rotate writes the sidecar before the thumbnail and DB (status: verified)
 
-A rotate writes the sidecar rotation first, then the thumbnail, then the DB records, so any interruption leaves a present sidecar that forces reprocess.
+A rotate writes the sidecar rotation first, then the thumbnail, then the DB
+records, so any interruption leaves a present sidecar that forces reprocess.
 
 Derived from: G1. Owner: rotate_image (router/put/rotate_image.rs).
 
-Gate: Backend test: fail the sidecar write and assert thumbnail and DB are unchanged; crash after the sidecar write and assert a rescan restores the rotation.
+Gate: Backend test: fail the sidecar write and assert thumbnail and DB are
+unchanged; crash after the sidecar write and assert a rescan restores the
+rotation.
 
 ### REQ-12: Assign copies the sidecar before moving the asset (status: verified)
 
-A multi-file assign copies the destination sidecar first, moves the asset, then removes the old sidecar; an interruption leaves at most an orphan copy, never an asset without its metadata.
+A multi-file assign copies the destination sidecar first, moves the asset,
+then removes the old sidecar; an interruption leaves at most an orphan copy,
+never an asset without its metadata.
 
 Derived from: G1. Owner: assign_album (router/put/assign_album.rs).
 
-Gate: Backend test: interrupt after the sidecar copy and before the asset move; metadata is not separated.
+Gate: Backend test: interrupt after the sidecar copy and before the asset
+move; metadata is not separated.
 
 ### REQ-13: Sidecar and albuminfo writes are atomic under partial-write failure (status: verified)
 
-A sidecar or albuminfo write either replaces the target completely or leaves the previous bytes untouched; no partial content is ever visible.
+A sidecar or albuminfo write either replaces the target completely or leaves
+the previous bytes untouched; no partial content is ever visible.
 
-Derived from: G0. Owner: sidecar edit and xmp write (process/sidecar_edit.rs, process/xmp_write.rs).
+Derived from: G0. Owner: sidecar edit and xmp write (process/sidecar_edit.rs,
+process/xmp_write.rs).
 
-Gate: Backend test: inject a failure inside the atomic helper after the temp file is partially written; the target keeps its previous bytes.
+Gate: Backend test: inject a failure inside the atomic helper after the temp
+file is partially written; the target keeps its previous bytes.
 
 ### REQ-14: Backstop cycles are non-overlapping and drain-complete (status: verified)
 
-Each per-root backstop cycle runs to completion before another cycle for that root may start: the scan enqueues every difference observed at scan time and the worker queue drains. A tick that arrives while a cycle runs coalesces into at most one follow-up cycle.
+Each per-root backstop cycle runs to completion before another cycle for that
+root may start: the scan enqueues every difference observed at scan time and
+the worker queue drains. A tick that arrives while a cycle runs coalesces into
+at most one follow-up cycle.
 
-Derived from: G2. Owner: scheduler and lifecycle (tasks/looper/backstop.rs, tasks/lifecycle.rs).
+Derived from: G2. Owner: scheduler and lifecycle (tasks/looper/backstop.rs,
+tasks/lifecycle.rs).
 
-Gate: Scheduler test: a cycle slower than the interval does not overlap itself and leaves exactly one coalesced follow-up; cycle completion is defined by the queue draining.
+Gate: Scheduler test: a cycle slower than the interval does not overlap itself
+and leaves exactly one coalesced follow-up; cycle completion is defined by the
+queue draining.
 
 ### REQ-15: FS-first sidecar preservation across moves (status: verified)
 
-A sidecar that exists is preserved and moved together with the asset file on every move path: copy-before-rename for asset moves, atomic tree rename for dir moves. A crash in the move window never leaves user-authored metadata unreachable: the destination sidecar is present before the file rename, and the crash-heal re-index rebuilds the metadata payload from the destination sidecar. The three move DB writes are additionally performed in one transaction to avoid stale-mapping residue and dupe-group churn (secondary; hygiene).
+A sidecar that exists is preserved and moved together with the asset file on
+every move path: copy-before-rename for asset moves, atomic tree rename for
+dir moves. A crash in the move window never leaves user-authored metadata
+unreachable: the destination sidecar is present before the file rename, and
+the crash-heal re-index rebuilds the metadata payload from the destination
+sidecar. The three move DB writes are additionally performed in one
+transaction to avoid stale-mapping residue and dupe-group churn (secondary;
+hygiene).
 
-Derived from: G5. Owner: assign_album.rs::move_asset_into_album / move_album_into_album; asset_store move helper.
+Derived from: G5. Owner: assign_album.rs::move_asset_into_album /
+move_album_into_album; asset_store move helper.
 
-Gate: Backend test: destination sidecar exists after a move (old sidecar removed) and the crash-window heal re-indexes from the destination sidecar; model run aspectsMoveCrashHealsFromSidecarTest asserts the heal rebuilds a non-empty metadata payload from the sidecar. Single-txn move write test.
+Gate: Backend test: destination sidecar exists after a move (old sidecar
+removed) and the crash-window heal re-indexes from the destination sidecar;
+model run aspectsMoveCrashHealsFromSidecarTest asserts the heal rebuilds a
+non-empty metadata payload from the sidecar. Single-txn move write test.
 
 ### REQ-16: Delta-maintained album aggregates (status: verified)
 
-Album aggregates (item_count, item_size, last_modified_time, start/end time, cover) are maintained by field-level deltas applied in the same transaction as each membership-mutating write, rather than recomputed by a deferred cascade. Membership truth is ASSET_BY_ALBUM, keyed by album_id.
+Album aggregates (item_count, item_size, last_modified_time, start/end time,
+cover) are maintained by field-level deltas applied in the same transaction as
+each membership-mutating write, rather than recomputed by a deferred cascade.
+Membership truth is ASSET_BY_ALBUM, keyed by album_id.
 
-Derived from: G5. Owner: storage/asset_store.rs::apply_album_delta; flush_tables; assign_album; delete.
+Derived from: G5. Owner: storage/asset_store.rs::apply_album_delta;
+flush_tables; assign_album; delete.
 
 Gate: Backend tests per delta site; OP-8 marker on apply_album_delta.
 
 ### REQ-17: Lock-order convention for cache mutex and tree transaction (status: verified)
 
-Lock acquisition follows the registered order: the DIR_ALBUM_CACHE mutex is acquired before any TREE.in_disk transaction, and no higher-ordered resource may be held when acquiring a lower-ordered one. Inversions panic under the runtime checker.
+Lock acquisition follows the registered order: the DIR_ALBUM_CACHE mutex is
+acquired before any TREE.in_disk transaction, and no higher-ordered resource
+may be held when acquiring a lower-ordered one. Inversions panic under the
+runtime checker.
 
-Derived from: G0. Owner: lock_order checker (backend/src/lock_order.rs) and tests/architecture.rs guards.
+Derived from: G0. Owner: lock_order checker (backend/src/lock_order.rs) and
+tests/architecture.rs guards.
 
-Gate: Cargo test: source-level guards in tests/architecture.rs plus the cfg(test) runtime checker in lock_order.rs panic on any inversion.
+Gate: Cargo test: source-level guards in tests/architecture.rs plus the
+cfg(test) runtime checker in lock_order.rs panic on any inversion.
 
 ## Implementation
 
-How each requirement was satisfied, its gate tests, and known limits.
-Source: `utils/quint/pipeline/requirements.json` (`implementation`, `tests`,
+How each requirement was satisfied, its gate tests, and known limits. Source:
+`utils/quint/pipeline/requirements.json` (`implementation`, `tests`,
 `limits`). Use `git log --grep REQ-N` to review one requirement.
 
 ### REQ-1: Sidecar identity for the hash short-circuit (status: open)
 
-Implementation: Deferred with the hash short-circuit. Rescans currently reprocess and clear sidecar-derived state; the identity is required only when the skip is re-enabled.
+Implementation: Deferred with the hash short-circuit. Rescans currently
+reprocess and clear sidecar-derived state; the identity is required only when
+the skip is re-enabled.
 
 Tests: none yet.
 
@@ -430,43 +643,52 @@ Limits: IntakeItem carries mtime/len only; AssetRecord has no sidecar field.
 
 ### REQ-2: File rename submits old-path remove plus new-path create (status: verified)
 
-Implementation: Watcher `Name(Both/From/To)` events submit old-path removal and new-path indexing before the generic modify arm; `Any/Other` keeps generic indexing.
+Implementation: Watcher `Name(Both/From/To)` events submit old-path removal
+and new-path indexing before the generic modify arm; `Any/Other` keeps generic
+indexing.
 
 Tests:
-
 - `tasks::batcher::start_watcher::tests::rename_paths_both_returns_old_and_new`
 - `tasks::batcher::start_watcher::tests::rename_paths_from_returns_old_only`
 - `tasks::batcher::start_watcher::tests::rename_paths_to_returns_new_only`
 - `tasks::batcher::start_watcher::tests::rename_paths_other_returns_none`
 - `api_watcher::watcher_disabled_and_album_index_targeting (rename phase)`
 
-Limits: A split `From`/`To` pair without a destination is left to the sweep/backstop.
+Limits: A split `From`/`To` pair without a destination is left to the
+sweep/backstop.
 
 ### REQ-3: Directory rename follows descendants atomically (status: verified)
 
-Implementation: A directory rename is detected when the new path is a directory; watcher and API album moves lease the old and new subtrees and bump those paths while descendant rows are rewritten in place (assetId and sidecar association preserved) and the view epoch advances, without decoding. A dir-album verify re-resolves the album id to its current directory before pruning.
+Implementation: A directory rename is detected when the new path is a
+directory; watcher and API album moves lease the old and new subtrees and bump
+those paths while descendant rows are rewritten in place (assetId and sidecar
+association preserved) and the view epoch advances, without decoding. A
+dir-album verify re-resolves the album id to its current directory before
+pruning.
 
 Tests:
-
 - `router::put::assign_album::tests::update_asset_tables_after_dir_move_preserves_asset_id`
 - `api_watcher::watcher_disabled_and_album_index_targeting (directory-rename phase)`
 
-Limits: Only `RenameMode::Both` carries the old path; split From/To falls back to sweep/backstop. The filesystem move happens before the row rewrite, so a crash between them needs a rescan.
+Limits: Only `RenameMode::Both` carries the old path; split From/To falls back
+to sweep/backstop. The filesystem move happens before the row rewrite, so a
+crash between them needs a rescan.
 
 ### REQ-4: Per-root sweep isolation is verified (status: verified)
 
-Implementation: Sweep already filters rows by `starts_with(root)`; added the isolation gate test.
+Implementation: Sweep already filters rows by `starts_with(root)`; added the
+isolation gate test.
 
 Tests:
-
 - `tasks::actor::album_index::tests::index_album_sweep_is_scoped_to_scanned_root`
 
 ### REQ-5: Rescan on the watcher's Flag::Rescan signal (status: verified)
 
-Implementation: Watcher checks `Event::need_rescan()` before dispatch and submits a full scan of the image, users, or both roots based on event paths; a running job is a debug skip.
+Implementation: Watcher checks `Event::need_rescan()` before dispatch and
+submits a full scan of the image, users, or both roots based on event paths; a
+running job is a debug skip.
 
 Tests:
-
 - `tasks::batcher::start_watcher::tests::rescan_mode_image_path_is_global`
 - `tasks::batcher::start_watcher::tests::rescan_mode_users_path_is_personal`
 - `tasks::batcher::start_watcher::tests::rescan_mode_mixed_or_unknown_is_auto`
@@ -474,10 +696,12 @@ Tests:
 
 ### REQ-6: Configurable per-root periodic backstop scan (status: verified)
 
-Implementation: New `index_backstop_interval_secs` (gallery, default 0, env override). A lifecycle-owned backstop starts a scan job and awaits that job's completion on each interval; shutdown aborts the loop, rejects intake, cancels and awaits the active scan, then drains the writer.
+Implementation: New `index_backstop_interval_secs` (gallery, default 0, env
+override). A lifecycle-owned backstop starts a scan job and awaits that job's
+completion on each interval; shutdown aborts the loop, rejects intake, cancels
+and awaits the active scan, then drains the writer.
 
 Tests:
-
 - `model::config::tests::index_backstop_interval_defaults_to_zero`
 - `model::config::tests::index_backstop_interval_env_override_wins`
 - `model::config::tests::index_backstop_interval_preserved_across_toml_round_trip`
@@ -485,25 +709,38 @@ Tests:
 - `tests::backstop::backstop_loop_disabled_returns_none`
 - `shutdown::sigterm_exits_while_backstop_scan_is_running`
 
-Limits: One loop scans both roots (`auto`); separate per-root loops are out of scope. Shutdown waits up to 10s for an in-flight scan before draining the writer.
+Limits: One loop scans both roots (`auto`); separate per-root loops are out of
+scope. Shutdown waits up to 10s for an in-flight scan before draining the
+writer.
 
 ### REQ-7: Scans coordinate with in-flight mutating API work (status: verified)
 
-Implementation: Per-path generations plus short exact/subtree leases replace the process-wide gate. Assign/delete/directory moves lease the paths or subtrees they mutate; delete holds its leases across the row flush. The sweep re-checks each candidate inline (path generation, any active lease, filesystem) before submitting exact-path batches to the serial writer; no Verify lane or per-record worker hop remains. Thumbnail deletion happens in the confirmed writer removal, not in the sweep. Scan and watcher indexing skip a path under a lease.
+Implementation: Per-path generations plus short exact/subtree leases replace
+the process-wide gate. Assign/delete/directory moves lease the paths or
+subtrees they mutate; delete holds its leases across the row flush. The sweep
+re-checks each candidate inline (path generation, any active lease,
+filesystem) before submitting exact-path batches to the serial writer; no
+Verify lane or per-record worker hop remains. Thumbnail deletion happens in
+the confirmed writer removal, not in the sweep. Scan and watcher indexing skip
+a path under a lease.
 
 Tests:
-
 - `tasks::path_epoch::tests::newer_generation_supersedes_older`
 - `tasks::path_epoch::tests::lease_makes_exact_path_busy_until_dropped`
 - `tasks::path_epoch::tests::subtree_lease_covers_descendants`
 - `tasks::path_epoch::tests::overlapping_leases_release_independently`
 - `tasks::actor::album_index::tests::index_scan_respects_path_lease_before_pruning`
 
-Limits: Leases are in-process and best-effort; no cross-process coordination. A verify that wins before a mutation acquires its lease relies on the serial writer re-resolving the record by path. A full lazy view rebuild remains a request-thread cost on very large libraries (scoped views are an open optimisation).
+Limits: Leases are in-process and best-effort; no cross-process coordination.
+A verify that wins before a mutation acquires its lease relies on the serial
+writer re-resolving the record by path. A full lazy view rebuild remains a
+request-thread cost on very large libraries (scoped views are an open
+optimisation).
 
 ### REQ-8: Per-row thumbnail checksum with scan regeneration (status: open)
 
-Implementation: Deferred with the hash short-circuit. Full rescans regenerate thumbnails, but no row checksum exists and corrupt bytes are not detected.
+Implementation: Deferred with the hash short-circuit. Full rescans regenerate
+thumbnails, but no row checksum exists and corrupt bytes are not detected.
 
 Tests: none yet.
 
@@ -511,69 +748,85 @@ Limits: Needs a skip consumer; returns with REQ-1.
 
 ### REQ-9: Orphan .xmp detection is logged only (status: verified)
 
-Implementation: The scan walk collects only `.xmp` paths; after drain/sweep it warns for sidecars whose directory holds no file with the same stem and a supported media extension. Sibling media is checked on demand, so the walk holds no per-media path list. Log only, never deletes.
+Implementation: The scan walk collects only `.xmp` paths; after drain/sweep it
+warns for sidecars whose directory holds no file with the same stem and a
+supported media extension. Sibling media is checked on demand, so the walk
+holds no per-media path list. Log only, never deletes.
 
 Tests:
-
 - `tasks::actor::album_index::tests::orphan_sidecars_returns_sidecar_without_media`
 - `tasks::actor::album_index::tests::orphan_sidecars_ignores_sidecar_with_sibling_media`
 - `tasks::actor::album_index::tests::orphan_sidecars_ignores_album_sidecar`
 - `tasks::actor::album_index::tests::index_album_orphan_sidecar_survives_scan`
 
-Limits: On-demand sibling checks cost one directory read per sidecar; false positives are log noise only.
+Limits: On-demand sibling checks cost one directory read per sidecar; false
+positives are log noise only.
 
 ### REQ-10: Stale upload temp files are swept (status: verified)
 
-Implementation: Uploads stage as `.upload-{filename}.{pid}.{seq}.tmp`; startup walks image/users roots and removes owned temp names (`.upload-*`, `.sidecar-*`) whose pid is dead or whose mtime is older than an hour. Scans reject `.tmp` by extension.
+Implementation: Uploads stage as `.upload-{filename}.{pid}.{seq}.tmp`; startup
+walks image/users roots and removes owned temp names (`.upload-*`,
+`.sidecar-*`) whose pid is dead or whose mtime is older than an hour. Scans
+reject `.tmp` by extension.
 
 Tests:
-
 - `init::tests::sweep_removes_dead_pid_temp`
 - `init::tests::sweep_keeps_live_pid_fresh_temp`
 - `init::tests::sweep_removes_live_pid_old_temp`
 - `init::tests::sweep_keeps_unrelated_and_malformed`
 - `tasks::actor::album_index::tests::index_album_upload_tmp_not_indexed_and_swept`
 
-Limits: Startup-only by design; a long-running server keeps residue until restart. A live pid with a fresh mtime is kept, so a still-running abandoned temp survives that run.
+Limits: Startup-only by design; a long-running server keeps residue until
+restart. A live pid with a fresh mtime is kept, so a still-running abandoned
+temp survives that run.
 
 ### REQ-11: Rotate writes the sidecar before the thumbnail and DB (status: verified)
 
-Implementation: The route loads/applies rotation read-only, writes the sidecar rotation, then regenerates the thumbnail/metadata and flushes the DB; a sidecar failure leaves thumbnail and rows unchanged.
+Implementation: The route loads/applies rotation read-only, writes the sidecar
+rotation, then regenerates the thumbnail/metadata and flushes the DB; a
+sidecar failure leaves thumbnail and rows unchanged.
 
 Tests:
-
 - `tests::rotation::rotate_sidecar_write_failure_leaves_thumbnail_and_db_unchanged`
 - `tests::rotation::rotate_persists_to_xmp_and_reindex_preserves_display`
 
 ### REQ-12: Assign copies the sidecar before moving the asset (status: verified)
 
-Implementation: Assign reads the source sidecar and writes it atomically beside the destination before moving the asset; the old sidecar is removed afterwards, best effort. A failed copy aborts; a failed move leaves only an orphan copy.
+Implementation: Assign reads the source sidecar and writes it atomically
+beside the destination before moving the asset; the old sidecar is removed
+afterwards, best effort. A failed copy aborts; a failed move leaves only an
+orphan copy.
 
 Tests:
-
 - `tests::user_writes::assign_copies_sidecar_before_asset_move`
 
-Limits: DB updates remain after the move; they are not part of the sidecar-first guarantee.
+Limits: DB updates remain after the move; they are not part of the
+sidecar-first guarantee.
 
 ### REQ-13: Sidecar and albuminfo writes are atomic under partial-write failure (status: verified)
 
-Implementation: Both sidecar writers delegate to `write_via_temp`, which stages through `tempfile::NamedTempFile::persist` under `.{event}-{filename}.{pid}.{seq}.tmp`; a failed write or persist leaves the target untouched and removes the temp.
+Implementation: Both sidecar writers delegate to `write_via_temp`, which
+stages through `tempfile::NamedTempFile::persist` under
+`.{event}-{filename}.{pid}.{seq}.tmp`; a failed write or persist leaves the
+target untouched and removes the temp.
 
 Tests:
-
 - `process::atomic_write::tests::temp_file_name_format`
 - `process::atomic_write::tests::a_failed_temp_write_leaves_the_existing_target_unchanged`
 - `process::atomic_write::tests::a_failed_temp_write_leaves_an_absent_target_absent`
 - `process::atomic_write::tests::a_successful_write_replaces_the_target`
 
-Limits: No fsync policy; concurrent read-modify-write on one sidecar is still last-writer-wins.
+Limits: No fsync policy; concurrent read-modify-write on one sidecar is still
+last-writer-wins.
 
 ### REQ-14: Backstop cycles are non-overlapping and drain-complete (status: verified)
 
-Implementation: The backstop starts a scan job and awaits the job handle; ticks during the wait set one pending follow-up. Shutdown aborts the loop, rejects new intake, cancels and awaits the active job, then drains the writer; queued intake work is discarded.
+Implementation: The backstop starts a scan job and awaits the job handle;
+ticks during the wait set one pending follow-up. Shutdown aborts the loop,
+rejects new intake, cancels and awaits the active job, then drains the writer;
+queued intake work is discarded.
 
 Tests:
-
 - `tasks::looper::backstop::tests::started_consumes_pending`
 - `tasks::looper::backstop::tests::repeated_running_ticks_coalesce`
 - `tasks::looper::backstop::tests::finish_without_pending_does_not_start_follow_up`
@@ -582,24 +835,30 @@ Tests:
 - `tests::backstop::backstop_loop_indexes_missed_file`
 - `shutdown::sigterm_exits_while_backstop_scan_is_running`
 
-Limits: No slow-cycle gate-hold test; completion is observed through the job's terminal state rather than a queue-depth probe.
+Limits: No slow-cycle gate-hold test; completion is observed through the job's
+terminal state rather than a queue-depth probe.
 
 ### REQ-15: FS-first sidecar preservation across moves (status: verified)
 
-Implementation: assign_album.rs::move_asset_into_album copies the destination sidecar (atomic temp-write) before the file rename and removes the old sidecar after; dir moves ride the atomic tree rename. The three move DB writes (ASSET_BY_ID + ASSET_BY_PATH remove/insert) now run in one transaction via asset_store::move_asset_mapping (mirroring apply_dir_move_plans), avoiding stale-mapping residue. Crash-heal rebuilds metadata from the destination sidecar.
+Implementation: assign_album.rs::move_asset_into_album copies the destination
+sidecar (atomic temp-write) before the file rename and removes the old sidecar
+after; dir moves ride the atomic tree rename. The three move DB writes
+(ASSET_BY_ID + ASSET_BY_PATH remove/insert) now run in one transaction via
+asset_store::move_asset_mapping (mirroring apply_dir_move_plans), avoiding
+stale-mapping residue. Crash-heal rebuilds metadata from the destination
+sidecar.
 
 Tests:
-
 - `router::put::assign_album::tests::move_preserves_destination_sidecar_and_removes_source_sidecar`
 - `router::put::assign_album::tests::move_crash_heal_reindexes_from_destination_sidecar`
 - `storage::asset_store::tests::move_asset_mapping_rewrites_all_tables_in_one_txn`
 
 ### REQ-16: Delta-maintained album aggregates (status: verified)
 
-Implementation: ASSET_BY_ALBUM member index plus apply_album_delta patching aggregates in-txn at flush, move, trash, and deletion sites.
+Implementation: ASSET_BY_ALBUM member index plus apply_album_delta patching
+aggregates in-txn at flush, move, trash, and deletion sites.
 
 Tests:
-
 - `storage::asset_store::tests::album_member_rows_roundtrip_and_prefix_isolation`
 - `storage::asset_store::tests::apply_album_delta_add_updates_count_size_range_and_cover`
 - `storage::asset_store::tests::apply_album_delta_remove_recomputes_boundary_holders`
@@ -621,27 +880,35 @@ Tests:
 
 ### REQ-17: Lock-order convention for cache mutex and tree transaction (status: verified)
 
-Implementation: Thread-local acquisition-order registry (lock_order::acquire/release) registers DIR_ALBUM_CACHE, TREE and REBUILD_LOCK; architecture.rs scans the three known call sites. No model changes.
+Implementation: Thread-local acquisition-order registry
+(lock_order::acquire/release) registers DIR_ALBUM_CACHE, TREE and
+REBUILD_LOCK; architecture.rs scans the three known call sites. No model
+changes.
 
 Tests:
-
 - `tests::architecture::transitor_does_not_lock_dir_album_cache_inside_write_txn`
 - `tests::architecture::assign_album_does_not_lock_dir_album_cache_inside_write_txn`
 - `tests::architecture::delete_does_not_call_evict_dir_album_inside_tree_txn`
 
-Limits: Textual approximation for helper call sites; the runtime checker covers only instrumented acquisition points.
+Limits: Textual approximation for helper call sites; the runtime checker
+covers only instrumented acquisition points.
 
 ## Events
 
-Filesystem and API boundary events plus recovery cases: each carries effects (settled state) and known faults.
+Filesystem and API boundary events plus recovery cases: each carries effects
+(settled state) and known faults.
 
 Source: `utils/quint/pipeline/events.json`.
 
 ### FS_CREATE (established, actor: watcher)
 
-A new file appears in the watched tree. This is how new media enters the index: the watcher debounces the notification and the file is submitted for indexing. Also fires for just a sidecar (.xmp) landing next to an existing asset.
+A new file appears in the watched tree. This is how new media enters the
+index: the watcher debounces the notification and the file is submitted for
+indexing. Also fires for just a sidecar (.xmp) landing next to an existing
+asset.
 
-Target: file path. Code anchor: `backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool`.
+Target: file path. Code anchor:
+`backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool`.
 
 Preconditions: file newly present on disk.
 
@@ -649,22 +916,36 @@ Touches: files.
 
 Effects (settled state assuming quiescence after the event):
 
-- Row exists matching the file (path, decoded metadata), or the file is rejected with a logged skip reason and no row (undecodable/unsupported).
-- A create for just the .xmp of an existing asset results in the row augmented with sidecar metadata (resubmit sibling media path; mapping specified, not yet implemented).
+- Row exists matching the file (path, decoded metadata), or the file is
+  rejected with a logged skip reason and no row (undecodable/unsupported).
+- A create for just the .xmp of an existing asset results in the row augmented
+  with sidecar metadata (resubmit sibling media path; mapping specified, not
+  yet implemented).
 
 Faults:
 
 - event missed (open): file undiscovered until the next scan
-- decode/scan failure (covered): event logged, no row added (unprocessable paths are never indexed)
-- create+delete race (covered): generation order decides; modeled in eventual-consistency.qnt
+- decode/scan failure (covered): event logged, no row added (unprocessable
+  paths are never indexed)
+- create+delete race (covered): generation order decides; modeled in
+  eventual-consistency.qnt
 
-Notes: Watcher-debounced create; the submit step is tracked separately as SUBMIT. Decode/scan failure: event logged, no row added (unprocessable paths are never indexed). A create for just the .xmp of an existing asset resubmits the sibling media path (never the xmp path itself, which fails the media-extension gate) so the row is augmented with sidecar metadata; covers delayed sidecar arrival via background transfer. The xmp-to-media mapping is specified, not yet implemented.
+Notes: Watcher-debounced create; the submit step is tracked separately as
+SUBMIT. Decode/scan failure: event logged, no row added (unprocessable paths
+are never indexed). A create for just the .xmp of an existing asset resubmits
+the sibling media path (never the xmp path itself, which fails the
+media-extension gate) so the row is augmented with sidecar metadata; covers
+delayed sidecar arrival via background transfer. The xmp-to-media mapping is
+specified, not yet implemented.
 
 ### FS_MODIFY (established, actor: watcher)
 
-An existing file's contents change on disk (same path, new bytes). The watcher debounces and resubmits the path; a snapshot mismatch (mtime+len) forces a full reprocess.
+An existing file's contents change on disk (same path, new bytes). The watcher
+debounces and resubmits the path; a snapshot mismatch (mtime+len) forces a
+full reprocess.
 
-Target: file path. Code anchor: `backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool`.
+Target: file path. Code anchor:
+`backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool`.
 
 Preconditions: file present on disk.
 
@@ -677,37 +958,51 @@ Effects (settled state assuming quiescence after the event):
 Faults:
 
 - event missed (open): row stays stale until the next scan
-- modify arrives while the same path is mid-processing (open): in-flight item dropped; nothing resubmits it until the next watcher event or scan (healing owner open, S6)
+- modify arrives while the same path is mid-processing (open): in-flight item
+  dropped; nothing resubmits it until the next watcher event or scan (healing
+  owner open, S6)
 - identical bytes (touch) (covered): settled state unchanged
 - decode failure (covered): event logged, prior row unchanged
 
-Notes: Watcher-debounced modify; the submit step is tracked separately as SUBMIT. See ASS-5. Same as create: decode failure is logged with no row added; an xmp-only modify resubmits the sibling media path for augmentation (specified, same mapping as create).
+Notes: Watcher-debounced modify; the submit step is tracked separately as
+SUBMIT. See ASS-5. Same as create: decode failure is logged with no row added;
+an xmp-only modify resubmits the sibling media path for augmentation
+(specified, same mapping as create).
 
 ### FS_MODIFY_INFLIGHT (established, actor: watcher)
 
-Timing case, not a distinct external shape: the file changes while the pipeline is already processing that same path. Named separately because the outcome differs from a plain modify.
+Timing case, not a distinct external shape: the file changes while the
+pipeline is already processing that same path. Named separately because the
+outcome differs from a plain modify.
 
-Target: file path. Code anchor: `backend/src/tasks/queue/worker.rs:process_watcher_index`.
+Target: file path. Code anchor:
+`backend/src/tasks/queue/worker.rs:process_watcher_index`.
 
-Preconditions: file present on disk; row exists; item for same path being processed.
+Preconditions: file present on disk; row exists; item for same path being
+processed.
 
 Touches: files.
 
 Effects (settled state assuming quiescence after the event):
 
-- The in-flight item is dropped, never applied over newer state; the newer content is (re)processed.
+- The in-flight item is dropped, never applied over newer state; the newer
+  content is (re)processed.
 
 Faults:
 
-- no resubmit after the in-flight item is dropped (open): path unchanged until the next watcher event or scan (healing owner open, S6)
+- no resubmit after the in-flight item is dropped (open): path unchanged until
+  the next watcher event or scan (healing owner open, S6)
 
-Notes: No dedicated in-flight modify hook verified; ForceModify models a concurrent edit during processing.
+Notes: No dedicated in-flight modify hook verified; ForceModify models a
+concurrent edit during processing.
 
 ### FS_DELETE (established, actor: watcher)
 
-A watched file is removed from disk. Handled directly via the remove lane, not deferred to the sweep; ghosts cover missed events only.
+A watched file is removed from disk. Handled directly via the remove lane, not
+deferred to the sweep; ghosts cover missed events only.
 
-Target: file path. Code anchor: `backend/src/tasks/batcher/start_watcher.rs:handle_removed_file`.
+Target: file path. Code anchor:
+`backend/src/tasks/batcher/start_watcher.rs:handle_removed_file`.
 
 Preconditions: file removed on disk.
 
@@ -721,15 +1016,22 @@ Effects (settled state assuming quiescence after the event):
 Faults:
 
 - event missed (covered): ghost row until sweep marks sweepPending
-- delete+recreate race (covered): generation order decides; stale remove superseded (modeled)
+- delete+recreate race (covered): generation order decides; stale remove
+  superseded (modeled)
 
-Notes: Watcher-observed deletion prunes the row directly via the remove lane (record kept only if other paths remain, else the row is removed); ghosts and sweepPending cover missed events only. See ASS-3.
+Notes: Watcher-observed deletion prunes the row directly via the remove lane
+(record kept only if other paths remain, else the row is removed); ghosts and
+sweepPending cover missed events only. See ASS-3.
 
 ### FS_RENAME_FILE (established, actor: watcher)
 
-A single file is renamed or moved within the tree: same content, new path. Watchers report renames differently per platform, so the safe handling is specified as old-path remove plus new-path create, including a separately renamed sidecar.
+A single file is renamed or moved within the tree: same content, new path.
+Watchers report renames differently per platform, so the safe handling is
+specified as old-path remove plus new-path create, including a separately
+renamed sidecar.
 
-Target: file path pair. Code anchor: `backend/src/tasks/batcher/start_watcher.rs:handle_paired_rename`.
+Target: file path pair. Code anchor:
+`backend/src/tasks/batcher/start_watcher.rs:handle_paired_rename`.
 
 Preconditions: source present; destination absent.
 
@@ -737,20 +1039,29 @@ Touches: files, generations, intake, sweepPending.
 
 Effects (settled state assuming quiescence after the event):
 
-- Row follows to the new path with no ghost window and no re-decode (specified: remove + create).
+- Row follows to the new path with no ghost window and no re-decode
+  (specified: remove + create).
 
 Faults:
 
-- old path ghosts until sweep under current handling (open): stale row visible briefly; converges at sweep
-- in-flight items for the old path (open): superseded or fail-open; walkthrough not done
+- old path ghosts until sweep under current handling (open): stale row visible
+  briefly; converges at sweep
+- in-flight items for the old path (open): superseded or fail-open;
+  walkthrough not done
 
-Notes: Specified and modeled: treat as old-path remove plus new-path create, including a separately renamed sidecar (which resubmits its media path); converges with no ghost window. The model performs the explicit old-remove submit (ExternalRenameFile); the code still ghosts the old path until sweep - the gap is implementation-side.
+Notes: Specified and modeled: treat as old-path remove plus new-path create,
+including a separately renamed sidecar (which resubmits its media path);
+converges with no ghost window. The model performs the explicit old-remove
+submit (ExternalRenameFile); the code still ghosts the old path until sweep -
+the gap is implementation-side.
 
 ### FS_RENAME_DIR (established, actor: watcher)
 
-A directory is renamed or moved: all contained assets move atomically with it, sidecar association follows by name.
+A directory is renamed or moved: all contained assets move atomically with it,
+sidecar association follows by name.
 
-Target: directory. Code anchor: `backend/src/router/put/assign_album.rs:update_asset_tables_after_dir_move`.
+Target: directory. Code anchor:
+`backend/src/router/put/assign_album.rs:update_asset_tables_after_dir_move`.
 
 Preconditions: source directory present; destination absent.
 
@@ -758,20 +1069,34 @@ Touches: files, rows, generations, sweepPending.
 
 Effects (settled state assuming quiescence after the event):
 
-- Every contained asset's row updated to the renamed path in one step, assetId preserved (ApiMove semantics, no intake); content-keyed derived artifacts untouched.
+- Every contained asset's row updated to the renamed path in one step, assetId
+  preserved (ApiMove semantics, no intake); content-keyed derived artifacts
+  untouched.
 
 Faults:
 
-- no watcher or code path exists (Modify arm drops non-file paths) (open): contained files get neither remove nor index submits; rows under old path ghost, new paths undiscovered until scan/sweep
-- in-flight intake for old paths (open): no generation bump on move (verified); absorbed by open-fail/skip - unproven
+- no watcher or code path exists (Modify arm drops non-file paths) (open):
+  contained files get neither remove nor index submits; rows under old path
+  ghost, new paths undiscovered until scan/sweep
+- in-flight intake for old paths (open): no generation bump on move
+  (verified); absorbed by open-fail/skip - unproven
 
-Notes: Specified and modeled: a directory rename atomically renames all contained assets - direct row update preserving assetId and path per descendant (ExternalRenameDir / ApiAssignDirMove, SUBTREE_PAIRS at the finite bounds); sidecar association follows the renamed path by name; content-keyed derived artifacts require no moves. No verified watcher or code path (the Modify arm drops non-file paths, so contained files currently get neither remove nor index submits).
+Notes: Specified and modeled: a directory rename atomically renames all
+contained assets - direct row update preserving assetId and path per
+descendant (ExternalRenameDir / ApiAssignDirMove, SUBTREE_PAIRS at the finite
+bounds); sidecar association follows the renamed path by name; content-keyed
+derived artifacts require no moves. No verified watcher or code path (the
+Modify arm drops non-file paths, so contained files currently get neither
+remove nor index submits).
 
 ### FS_ATOMIC_REPLACE (established, actor: filesystem)
 
-A file (main or sidecar) is replaced wholesale by an atomically written new file at the same path - editors and sync tools do this via temp-file plus rename.
+A file (main or sidecar) is replaced wholesale by an atomically written new
+file at the same path - editors and sync tools do this via temp-file plus
+rename.
 
-Target: file path. Code anchor: `backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool`.
+Target: file path. Code anchor:
+`backend/src/tasks/batcher/start_watcher.rs:submit_to_debounce_pool`.
 
 Preconditions: replacement file written atomically.
 
@@ -779,20 +1104,29 @@ Touches: files.
 
 Effects (settled state assuming quiescence after the event):
 
-- Handled as modify: media path resubmitted, snapshot mismatch forces full reprocess.
-- If the replace surfaces as rename events, rename handling applies; same-path collapse (remove then create) still converges.
+- Handled as modify: media path resubmitted, snapshot mismatch forces full
+  reprocess.
+- If the replace surfaces as rename events, rename handling applies; same-path
+  collapse (remove then create) still converges.
 
 Faults:
 
-- replace surfaces as remove+create on one path (covered): delete first, then index fresh; converges
+- replace surfaces as remove+create on one path (covered): delete first, then
+  index fresh; converges
 
-Notes: Handled as modify in both cases (main file and sidecar): resubmit the media path; snapshot mismatch forces full reprocess (see ASS-5). If the replace surfaces as rename events rather than modify events, the rename handling applies instead; same-path rename-collapse (remove then create on one path) still converges: delete first, then index fresh.
+Notes: Handled as modify in both cases (main file and sidecar): resubmit the
+media path; snapshot mismatch forces full reprocess (see ASS-5). If the
+replace surfaces as rename events rather than modify events, the rename
+handling applies instead; same-path rename-collapse (remove then create on one
+path) still converges: delete first, then index fresh.
 
 ### FS_SIDECAR_CREATE (established, actor: watcher)
 
-A sidecar (.xmp) newly appears next to an existing asset - for example a background transfer delivers it after the media file.
+A sidecar (.xmp) newly appears next to an existing asset - for example a
+background transfer delivers it after the media file.
 
-Target: sidecar path. Code anchor: `backend/src/model/media.rs:classify_media_file`.
+Target: sidecar path. Code anchor:
+`backend/src/model/media.rs:classify_media_file`.
 
 Preconditions: sidecar newly present on disk.
 
@@ -800,20 +1134,35 @@ Touches: files.
 
 Effects (settled state assuming quiescence after the event):
 
-- Row augmented with sidecar metadata (sibling media path resubmitted; a present sidecar forces reprocess).
+- Row augmented with sidecar metadata (sibling media path resubmitted; a
+  present sidecar forces reprocess).
 
 Faults:
 
-- media file not present yet (covered): resubmit open-fails; the media's own create event indexes it when it lands
-- xmp-to-media mapping unimplemented (watcher gate drops xmp events) (open): xmp-only events dropped today; augmentation does not happen until a code change
+- media file not present yet (covered): resubmit open-fails; the media's own
+  create event indexes it when it lands
+- xmp-to-media mapping unimplemented (watcher gate drops xmp events) (open):
+  xmp-only events dropped today; augmentation does not happen until a code
+  change
 
-Notes: A create for just the .xmp of an existing asset resubmits the sibling media path (never the xmp path itself: sidecars fail the media-extension gate); reprocessing augments the row with sidecar metadata, since a present sidecar forces reprocess. Covers delayed sidecar arrival via background transfer; if the media file itself is not yet present, its own create event indexes it when it lands. Ordering: independent of the media event's arrival - generations supersede stale items and reprocessing is idempotent, so no cross-path coalescing is required for convergence (the 1s debounce stays per-path efficiency only). Specified; xmp-to-media mapping not yet implemented.
+Notes: A create for just the .xmp of an existing asset resubmits the sibling
+media path (never the xmp path itself: sidecars fail the media-extension
+gate); reprocessing augments the row with sidecar metadata, since a present
+sidecar forces reprocess. Covers delayed sidecar arrival via background
+transfer; if the media file itself is not yet present, its own create event
+indexes it when it lands. Ordering: independent of the media event's arrival -
+generations supersede stale items and reprocessing is idempotent, so no
+cross-path coalescing is required for convergence (the 1s debounce stays
+per-path efficiency only). Specified; xmp-to-media mapping not yet
+implemented.
 
 ### FS_SIDECAR_MODIFY (established, actor: watcher)
 
-An existing sidecar's contents change on disk, for example when a metadata editor rewrites it.
+An existing sidecar's contents change on disk, for example when a metadata
+editor rewrites it.
 
-Target: sidecar path. Code anchor: `backend/src/model/media.rs:classify_media_file`.
+Target: sidecar path. Code anchor:
+`backend/src/model/media.rs:classify_media_file`.
 
 Preconditions: sidecar present on disk.
 
@@ -821,19 +1170,26 @@ Touches: files.
 
 Effects (settled state assuming quiescence after the event):
 
-- Row's sidecar-derived metadata refreshed via full reprocess (sibling media path resubmitted).
+- Row's sidecar-derived metadata refreshed via full reprocess (sibling media
+  path resubmitted).
 
 Faults:
 
 - xmp-to-media mapping unimplemented (open): same gap as FS_SIDECAR_CREATE
 
-Notes: Same handling as create: resubmit the sibling media path; full reprocess refreshes sidecar-derived metadata (including a separately renamed sidecar, handled as delete plus create converging to the same state). Ordering: as FS_SIDECAR_CREATE - independent resubmits converge regardless of order. Specified; same mapping as create.
+Notes: Same handling as create: resubmit the sibling media path; full
+reprocess refreshes sidecar-derived metadata (including a separately renamed
+sidecar, handled as delete plus create converging to the same state).
+Ordering: as FS_SIDECAR_CREATE - independent resubmits converge regardless of
+order. Specified; same mapping as create.
 
 ### FS_SIDECAR_DELETE (established, actor: watcher)
 
-A sidecar (.xmp) next to an existing asset is removed; the row must drop the metadata derived from it.
+A sidecar (.xmp) next to an existing asset is removed; the row must drop the
+metadata derived from it.
 
-Target: sidecar path. Code anchor: `backend/src/model/media.rs:classify_media_file`.
+Target: sidecar path. Code anchor:
+`backend/src/model/media.rs:classify_media_file`.
 
 Preconditions: sidecar removed on disk.
 
@@ -841,19 +1197,34 @@ Touches: files.
 
 Effects (settled state assuming quiescence after the event):
 
-- Row drops sidecar-derived state (sibling media path resubmitted; reprocess must drop it).
+- Row drops sidecar-derived state (sibling media path resubmitted; reprocess
+  must drop it).
 
 Faults:
 
-- hash short-circuit (when enabled) cannot distinguish 'never had a sidecar' from 'sidecar deleted' (REQ-1) (open): a bare resubmit would still skip; stale tags/descriptions/trashed flags persist indefinitely
+- hash short-circuit (when enabled) cannot distinguish 'never had a sidecar'
+  from 'sidecar deleted' (REQ-1) (open): a bare resubmit would still skip;
+  stale tags/descriptions/trashed flags persist indefinitely
 
-Notes: Resubmit the sibling media path; reprocessing must drop the sidecar-derived state. The model carries sidecar identity in the row and the submit snapshot (ExternalSidecarDelete), which forces reprocess and converges; the current code reprocesses and drops the stale state. The deferred hash short-circuit would need sidecar identity either in the submit snapshot (no schema change) or stored on the row (schema change), so a bare resubmit does not skip (REQ-1). See ASS-3.
+Notes: Resubmit the sibling media path; reprocessing must drop the
+sidecar-derived state. The model carries sidecar identity in the row and the
+submit snapshot (ExternalSidecarDelete), which forces reprocess and converges;
+the current code reprocesses and drops the stale state. The deferred hash
+short-circuit would need sidecar identity either in the submit snapshot (no
+schema change) or stored on the row (schema change), so a bare resubmit does
+not skip (REQ-1). See ASS-3.
 
 ### API_UPLOAD (established, actor: api)
 
-A client uploads a new asset over HTTP. The file is placed atomically (tmp written into the target dir, mtime set, then atomic rename to the final name) and then enqueued for background indexing via the watcher intake lane (submit_uploaded_path -> submit_watcher_index in backend/src/router/post/post_upload.rs); the request returns 200 on storage, not on indexing.
+A client uploads a new asset over HTTP. The file is placed atomically (tmp
+written into the target dir, mtime set, then atomic rename to the final name)
+and then enqueued for background indexing via the watcher intake lane
+(submit_uploaded_path -> submit_watcher_index in
+backend/src/router/post/post_upload.rs); the request returns 200 on storage,
+not on indexing.
 
-Target: file path. Code anchor: `backend/src/router/post/post_upload.rs:upload`.
+Target: file path. Code anchor:
+`backend/src/router/post/post_upload.rs:upload`.
 
 Preconditions: file present on disk.
 
@@ -861,19 +1232,43 @@ Touches: files, generations, intake.
 
 Effects (settled state assuming quiescence after the event):
 
-- File stored at its final path; an intake item is queued via submit_uploaded_path -> submit_watcher_index (backend/src/router/post/post_upload.rs:286-294, 534-538) for background indexing.
-- Row becomes visible only after background indexing completes; a 200 implies stored, not visible (read-after-write is not implied for upload).
-- Read-model freshness after writer batches is governed by mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s leading-edge throttle (backend/src/storage/tree_view.rs); a contract test covers background flushes advancing request invalidation.
-- Validation failure (name, extension, content) rejects with 400 before anything is written and no enqueue.
+- File stored at its final path; an intake item is queued via
+  submit_uploaded_path -> submit_watcher_index
+  (backend/src/router/post/post_upload.rs:286-294, 534-538) for background
+  indexing.
+- Row becomes visible only after background indexing completes; a 200 implies
+  stored, not visible (read-after-write is not implied for upload).
+- Read-model freshness after writer batches is governed by
+  mark_tree_dirty_background (backend/src/tasks/queue/writer.rs) with its ~1 s
+  leading-edge throttle (backend/src/storage/tree_view.rs); a contract test
+  covers background flushes advancing request invalidation.
+- Validation failure (name, extension, content) rejects with 400 before
+  anything is written and no enqueue.
 
 Faults:
 
-- read before indexing completes (open): by design the row may not be visible until background intake processes the file; the unindexed window is the N8 hazard, bounded by the intake queue and the mark_tree_dirty_background freshness contract
+- read before indexing completes (open): by design the row may not be visible
+  until background intake processes the file; the unindexed window is the N8
+  hazard, bounded by the intake queue and the mark_tree_dirty_background
+  freshness contract
 - validation failure behavior (tbd): rejection path unverified
-- pre-rename crash residue: tmp file stays in the target dir (open): inert for indexing (the .tmp extension fails the media-extension gate, so no partial file is ever indexed; watcher picks the file only after the rename) but never cleaned - no cleanup path exists (verified). REQ-10: sweep stale tmp files at startup/scan so the upload either lands or not, with no residue
-- crash between placement and intake pickup (covered): converges: the file is indexed by the next rescan (fs-wins); submit is fire-and-forget, so a missed enqueue heals via rescan
+- pre-rename crash residue: tmp file stays in the target dir (open): inert for
+  indexing (the .tmp extension fails the media-extension gate, so no partial
+  file is ever indexed; watcher picks the file only after the rename) but
+  never cleaned - no cleanup path exists (verified). REQ-10: sweep stale tmp
+  files at startup/scan so the upload either lands or not, with no residue
+- crash between placement and intake pickup (covered): converges: the file is
+  indexed by the next rescan (fs-wins); submit is fire-and-forget, so a missed
+  enqueue heals via rescan
 
-Notes: Store-and-return: the file is placed with tmp named {filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the snapshot identity), then atomic rename (post_upload.rs save_file); indexing is enqueued fire-and-forget via submit_uploaded_path -> submit_watcher_index (post_upload.rs). No synchronous row write and no FlushTreeTask::insert barrier on this route (the barrier survives only on edit/regenerate/rotate routes). See G3 in utils/quint/pipeline/goals.json for the read-after-write framing and N8 for the unindexed window.
+Notes: Store-and-return: the file is placed with tmp named
+{filename}-{uuid}.tmp inside the target dir, mtime set pre-rename (feeds the
+snapshot identity), then atomic rename (post_upload.rs save_file); indexing is
+enqueued fire-and-forget via submit_uploaded_path -> submit_watcher_index
+(post_upload.rs). No synchronous row write and no FlushTreeTask::insert
+barrier on this route (the barrier survives only on edit/regenerate/rotate
+routes). See G3 in utils/quint/pipeline/goals.json for the read-after-write
+framing and N8 for the unindexed window.
 
 ### API_DELETE (established, actor: api)
 
@@ -887,21 +1282,33 @@ Touches: files, rows.
 
 Effects (settled state assuming quiescence after the event):
 
-- File removed, then sidecar, then thumbnail only when no other asset shares the content hash, then rows deleted; delete of an already-gone asset is idempotent.
+- File removed, then sidecar, then thumbnail only when no other asset shares
+  the content hash, then rows deleted; delete of an already-gone asset is
+  idempotent.
 
 Faults:
 
-- crash between per-asset steps (file deleted, sidecar not; or rows still present) (covered): converges under FS-as-truth: file deletion precedes sidecar deletion, so the REQ-1 skip hole is not triggered; missing thumb heals via forced reprocess
-- orphaned sidecar after interrupted delete (open): sidecar alone is never indexed; residue is inert bytes. REQ-9: restart/scan logs orphan .xmp and never deletes it; logging must not act concurrently with in-flight mutations - see API_ASSIGN_ALBUM_DIR_MOVE for the cleanup-vs-assign overlap hazard
-- album-delete cascade interrupted mid-descendants (tbd): same per-asset windows repeat; dir-level cleanup (empty dir removal) unverified
+- crash between per-asset steps (file deleted, sidecar not; or rows still
+  present) (covered): converges under FS-as-truth: file deletion precedes
+  sidecar deletion, so the REQ-1 skip hole is not triggered; missing thumb
+  heals via forced reprocess
+- orphaned sidecar after interrupted delete (open): sidecar alone is never
+  indexed; residue is inert bytes. REQ-9: restart/scan logs orphan .xmp and
+  never deletes it; logging must not act concurrently with in-flight
+  mutations - see API_ASSIGN_ALBUM_DIR_MOVE for the cleanup-vs-assign overlap
+  hazard
+- album-delete cascade interrupted mid-descendants (tbd): same per-asset
+  windows repeat; dir-level cleanup (empty dir removal) unverified
 
 Notes: Watcher Remove echo afterwards is a no-op.
 
 ### API_ASSIGN_ALBUM_DIR_MOVE (established, actor: api)
 
-A client moves an album directory over HTTP: files on disk move and rows are updated in place, preserving asset identity.
+A client moves an album directory over HTTP: files on disk move and rows are
+updated in place, preserving asset identity.
 
-Target: album directory. Code anchor: `backend/src/router/put/assign_album.rs:assign_album`.
+Target: album directory. Code anchor:
+`backend/src/router/put/assign_album.rs:assign_album`.
 
 Preconditions: source present; destination absent; row exists.
 
@@ -909,21 +1316,31 @@ Touches: files, rows.
 
 Effects (settled state assuming quiescence after the event):
 
-- Files moved and rows updated in place, assetId preserved; a watcher echo is idempotent (ASS-1).
+- Files moved and rows updated in place, assetId preserved; a watcher echo is
+  idempotent (ASS-1).
 
 Faults:
 
-- in-flight intake for old paths (open): no generation bump (verified); absorbed by open-fail/skip - unproven
+- in-flight intake for old paths (open): no generation bump (verified);
+  absorbed by open-fail/skip - unproven
 - sweep races the move (open): transient at most, unproven
-- orphan-sidecar cleanup overlaps a copy-sidecar-first assign in flight (open): cleanup deletes the destination sidecar copy between the copy and the media move; the media then lands without its sidecar - permanent metadata divergence. REQ-9 is log-only: orphan detection must not act concurrently with an in-flight assign; observation of the transient is safe and expected
+- orphan-sidecar cleanup overlaps a copy-sidecar-first assign in flight
+  (open): cleanup deletes the destination sidecar copy between the copy and
+  the media move; the media then lands without its sidecar - permanent
+  metadata divergence. REQ-9 is log-only: orphan detection must not act
+  concurrently with an in-flight assign; observation of the transient is safe
+  and expected
 
-Notes: Subtree equals one ApiMove per descendant; a watcher echo is idempotent. See ASS-1.
+Notes: Subtree equals one ApiMove per descendant; a watcher echo is
+idempotent. See ASS-1.
 
 ### API_READ_COMPRESSED (established, actor: api)
 
-A client requests the compressed (thumbnail-sized) rendition of an asset over HTTP. Read-only; recorded to pin the observable serving guarantees.
+A client requests the compressed (thumbnail-sized) rendition of an asset over
+HTTP. Read-only; recorded to pin the observable serving guarantees.
 
-Target: asset bytes. Code anchor: `backend/src/router/get/get_img.rs:compressed_file`.
+Target: asset bytes. Code anchor:
+`backend/src/router/get/get_img.rs:compressed_file`.
 
 Preconditions: row exists.
 
@@ -933,16 +1350,20 @@ Effects (settled state assuming quiescence after the event):
 
 Faults:
 
-- thumbnail bytes missing though row exists (open): currently served as 500, not 404 (verified); contract gap needs a home
-- partially written artifact (covered): prevented by atomic thumbnail write (REQ-13)
+- thumbnail bytes missing though row exists (open): currently served as 500,
+  not 404 (verified); contract gap needs a home
+- partially written artifact (covered): prevented by atomic thumbnail write
+  (REQ-13)
 
 Notes: Compressed read; read-only, no state change. See REQ-13.
 
 ### API_READ_ORIGINAL (established, actor: api)
 
-A client requests the original image bytes of an asset over HTTP. Read-only; recorded to pin the observable serving guarantees.
+A client requests the original image bytes of an asset over HTTP. Read-only;
+recorded to pin the observable serving guarantees.
 
-Target: asset bytes. Code anchor: `backend/src/router/get/get_img.rs:imported_file`.
+Target: asset bytes. Code anchor:
+`backend/src/router/get/get_img.rs:imported_file`.
 
 Preconditions: row exists.
 
@@ -952,51 +1373,69 @@ Effects (settled state assuming quiescence after the event):
 
 Faults:
 
-- row exists but original file gone (open): same missing-path handling as API_READ_MISSING (handlers unverified)
+- row exists but original file gone (open): same missing-path handling as
+  API_READ_MISSING (handlers unverified)
 
 Notes: Original read; read-only, no state change.
 
 ### API_READ_MISSING (established, actor: api)
 
-A client requests bytes for an asset whose file on disk is gone (or whose row is absent). Reads queue no watcher remove; nothing is healed by the read itself.
+A client requests bytes for an asset whose file on disk is gone (or whose row
+is absent). Reads queue no watcher remove; nothing is healed by the read
+itself.
 
-Target: asset bytes. Code anchor: `backend/src/router/get/get_img.rs:compressed_file`.
+Target: asset bytes. Code anchor:
+`backend/src/router/get/get_img.rs:compressed_file`.
 
 Preconditions: row exists, file absent (or row absent).
 
 Effects (settled state assuming quiescence after the event):
 
-- Graceful outcome (not-found or placeholder), no state change, no 500, no torn bytes.
+- Graceful outcome (not-found or placeholder), no state change, no 500, no
+  torn bytes.
 
 Faults:
 
-- serving handlers unverified for the missing path (open): current behavior unconfirmed; 500-vs-404 contract gap open
+- serving handlers unverified for the missing path (open): current behavior
+  unconfirmed; 500-vs-404 contract gap open
 
-Notes: Row exists but file gone (or row absent); no watcher remove queued. Serving handler must degrade gracefully (not-found/placeholder), no state change, no 500, no torn bytes. Serving handlers unverified for the missing path.
+Notes: Row exists but file gone (or row absent); no watcher remove queued.
+Serving handler must degrade gracefully (not-found/placeholder), no state
+change, no 500, no torn bytes. Serving handlers unverified for the missing
+path.
 
 ### API_READ_MOVED (established, actor: api)
 
-A client requests bytes via the old path after the file was moved underneath (pre-subtree-model state, e.g. an out-of-band rename).
+A client requests bytes via the old path after the file was moved underneath
+(pre-subtree-model state, e.g. an out-of-band rename).
 
-Target: asset bytes. Code anchor: `backend/src/router/get/get_img.rs:imported_file`.
+Target: asset bytes. Code anchor:
+`backend/src/router/get/get_img.rs:imported_file`.
 
 Preconditions: row under old path; file under new path.
 
 Effects (settled state assuming quiescence after the event):
 
-- Read via the old path behaves as missing; healed by scan; no state change on read.
+- Read via the old path behaves as missing; healed by scan; no state change on
+  read.
 
 Faults:
 
-- heals only via the next scan (open): same missing-path serving question as API_READ_MISSING
+- heals only via the next scan (open): same missing-path serving question as
+  API_READ_MISSING
 
-Notes: Row under old path, file under new path (pre-subtree-model): observed via old path as missing; healed by scan. No state change on read.
+Notes: Row under old path, file under new path (pre-subtree-model): observed
+via old path as missing; healed by scan. No state change on read.
 
 ### WATCHER_GAP (established, actor: environment)
 
-Filesystem notifications stop arriving for a stretch - queue overflow, unsupported platform, watcher starting late, watcher disabled. Not tied to a single file; affects a set of paths at once. This is the event the rescan backstop exists for; naming it makes 'who notices' a first-class question.
+Filesystem notifications stop arriving for a stretch - queue overflow,
+unsupported platform, watcher starting late, watcher disabled. Not tied to a
+single file; affects a set of paths at once. This is the event the rescan
+backstop exists for; naming it makes 'who notices' a first-class question.
 
-Target: watch-driven path set. Code anchor: `backend/src/tasks/actor/album_index.rs:index_album_with_root`.
+Target: watch-driven path set. Code anchor:
+`backend/src/tasks/actor/album_index.rs:index_album_with_root`.
 
 Preconditions: watcher notifications missing or stopped for a stretch.
 
@@ -1004,17 +1443,26 @@ Touches: files, sweepPending.
 
 Effects (settled state assuming quiescence after the event):
 
-- Agreed: all changes during the gap are repaired by the next scan or sweep; nothing outside the gap window survives stale.
+- Agreed: all changes during the gap are repaired by the next scan or sweep;
+  nothing outside the gap window survives stale.
 
 Faults:
 
-- no scan trigger enabled (open): a gap with no rescan and no backstop heals never (REQ-5, REQ-6 open)
+- no scan trigger enabled (open): a gap with no rescan and no backstop heals
+  never (REQ-5, REQ-6 open)
 
-Notes: Modeled recovery: ScanRoot over the affected root queues present files and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that occurred during the gap. The gap itself is the absence of events. The fairness owner is decided: Flag::Rescan while the watcher is enabled plus the user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the implementation. DB_LOSS recovery makes the rescan a defined recovery path, not just an optimization backstop.
+Notes: Modeled recovery: ScanRoot over the affected root queues present files
+and marks the root's sweep; ScanRoot plus SweepRoot repairs changes that
+occurred during the gap. The gap itself is the absence of events. The fairness
+owner is decided: Flag::Rescan while the watcher is enabled plus the
+user-enabled periodic backstop (ASS-7); REQ-5 and REQ-6 track the
+implementation. DB_LOSS recovery makes the rescan a defined recovery path, not
+just an optimization backstop.
 
 ### PROCESS_CRASH (established, actor: environment)
 
-The backend dies mid-pipeline (mid-apply, mid-write). On restart, the state is whatever was durably written (redb flushes, completed file writes).
+The backend dies mid-pipeline (mid-apply, mid-write). On restart, the state is
+whatever was durably written (redb flushes, completed file writes).
 
 Target: backend process. Code anchor: `backend/src/init.rs:initialize`.
 
@@ -1024,22 +1472,48 @@ Touches: rows, derived-bytes.
 
 Effects (settled state assuming quiescence after the event):
 
-- Agreed: on restart the index converges again from filesystem plus recovery state; no torn rows are served.
+- Agreed: on restart the index converges again from filesystem plus recovery
+  state; no torn rows are served.
 
 Faults:
 
-- crash between row write and derived write (covered): row claims an artifact that does not exist; heals on next rescan via missing-thumb forced reprocess
-- mid-write crash during sidecar/albuminfo edit (open): REQUIRED (agreed): sidecar and albuminfo writes must be atomic - implemented, gate pending (REQ-13) (temp+rename verified in sidecar_edit.rs:write_bytes_atomically, covering per-asset .xmp AND album .albuminfo.xmp; xmp_write.rs:write_sidecar_content)
-- row/DB state interrupted mid-write (covered): converges on re-scan under FS-as-truth (ASS-3); recovery asserted, not yet proven
-- assign_album mid-crash separates asset from sidecar (open): ADOPTED: copy the sidecar to the destination first (atomic write), then move the asset, then delete the old sidecar; crash windows leave only orphan sidecar copies (logged per REQ-9), never separated metadata. Cleanup must not race an in-flight assign - see API_ASSIGN_ALBUM_DIR_MOVE
+- crash between row write and derived write (covered): row claims an artifact
+  that does not exist; heals on next rescan via missing-thumb forced reprocess
+- mid-write crash during sidecar/albuminfo edit (open): REQUIRED (agreed):
+  sidecar and albuminfo writes must be atomic - implemented, gate pending
+  (REQ-13) (temp+rename verified in sidecar_edit.rs:write_bytes_atomically,
+  covering per-asset .xmp AND album .albuminfo.xmp;
+  xmp_write.rs:write_sidecar_content)
+- row/DB state interrupted mid-write (covered): converges on re-scan under
+  FS-as-truth (ASS-3); recovery asserted, not yet proven
+- assign_album mid-crash separates asset from sidecar (open): ADOPTED: copy
+  the sidecar to the destination first (atomic write), then move the asset,
+  then delete the old sidecar; crash windows leave only orphan sidecar copies
+  (logged per REQ-9), never separated metadata. Cleanup must not race an
+  in-flight assign - see API_ASSIGN_ALBUM_DIR_MOVE
 
-Notes: Modeled as ProcessCrash: volatile intake is lost, durable state kept (SCOPE-6). Restart plus scan converges from every interrupted state the model represents; partial durable writes are abstracted away by SCOPE-6. Atomic sidecar/albuminfo writes are implemented (temp+rename) and tracked as REQ-13 (gate pending). Crash-survey synthesis: every mutating operator orders filesystem-first, DB-last (edit_*, delete, upload tmp+rename), so interrupted states converge under FS-as-truth; rotate_image still writes the thumbnail first (REQ-11: adopted order sidecar -> thumbnail -> DB). assign_album still renames the asset first and then the sidecar with errors ignored (REQ-12: adopted order copy the sidecar first, move the asset, delete the old sidecar). Orphan residue is logged rather than strived against. The design-doc mutation journal (docs/design.md) has no verified code counterpart - grep confirmed zero hits in backend/src.
+Notes: Modeled as ProcessCrash: volatile intake is lost, durable state kept
+(SCOPE-6). Restart plus scan converges from every interrupted state the model
+represents; partial durable writes are abstracted away by SCOPE-6. Atomic
+sidecar/albuminfo writes are implemented (temp+rename) and tracked as REQ-13
+(gate pending). Crash-survey synthesis: every mutating operator orders
+filesystem-first, DB-last (edit_*, delete, upload tmp+rename), so interrupted
+states converge under FS-as-truth; rotate_image still writes the thumbnail
+first (REQ-11: adopted order sidecar -> thumbnail -> DB). assign_album still
+renames the asset first and then the sidecar with errors ignored (REQ-12:
+adopted order copy the sidecar first, move the asset, delete the old sidecar).
+Orphan residue is logged rather than strived against. The design-doc mutation
+journal (docs/design.md) has no verified code counterpart - grep confirmed
+zero hits in backend/src.
 
 ### DERIVED_STORE_LOSS (established, actor: environment)
 
-Derived bytes referenced by rows are lost - either wiped (cache clear, disk pressure) or silently corrupted on disk. The scan sees the first case (presence) but not the second (it never checks artifact content).
+Derived bytes referenced by rows are lost - either wiped (cache clear, disk
+pressure) or silently corrupted on disk. The scan sees the first case
+(presence) but not the second (it never checks artifact content).
 
-Target: derived bytes (thumbnails). Code anchor: `backend/src/tasks/actor/album_index.rs:index_album_with_root`.
+Target: derived bytes (thumbnails). Code anchor:
+`backend/src/tasks/actor/album_index.rs:index_album_with_root`.
 
 Preconditions: thumbnail files wiped or lost.
 
@@ -1047,23 +1521,39 @@ Touches: derived-bytes.
 
 Effects (settled state assuming quiescence after the event):
 
-- Deleted thumbnails are restored by the next scan: a missing artifact forces reprocess.
-- Corrupted thumbnails are not restored by today's scan: it does not check artifact content.
-- Agreed: rows carry a thumbnail checksum; the scan regenerates and restores the thumbnail on mismatch (REQ-8 open).
+- Deleted thumbnails are restored by the next scan: a missing artifact forces
+  reprocess.
+- Corrupted thumbnails are not restored by today's scan: it does not check
+  artifact content.
+- Agreed: rows carry a thumbnail checksum; the scan regenerates and restores
+  the thumbnail on mismatch (REQ-8 open).
 
 Faults:
 
-- window between artifact loss and the next scan (open): artifact reads serve 500 (verified) until the scan restores it
-- corrupted but present artifact file (open): untouched by today's scan; agreed mitigation is a per-row artifact checksum checked at scan (REQ-8 open) - also closes the interrupted-rotate stale-thumbnail window (API_ROTATE_IMAGE)
-- read serving corrupt artifact bytes (tbd): unverified whether reads regenerate or serve them as-is; a scan-passed checksum narrows the window but does not close it
+- window between artifact loss and the next scan (open): artifact reads serve
+  500 (verified) until the scan restores it
+- corrupted but present artifact file (open): untouched by today's scan;
+  agreed mitigation is a per-row artifact checksum checked at scan (REQ-8
+  open) - also closes the interrupted-rotate stale-thumbnail window
+  (API_ROTATE_IMAGE)
+- read serving corrupt artifact bytes (tbd): unverified whether reads
+  regenerate or serve them as-is; a scan-passed checksum narrows the window
+  but does not close it
 
-Notes: Modeled as LoseThumbs: a missing artifact forces reprocess and is restored by the next scan. Deleted thumbnails are restored as part of scan (missing artifact forces reprocess); corrupted thumbnails are not discovered - content is not checked during normal scan. A per-row checksum makes scans robust (regenerate on mismatch); REQ-8 tracks it.
+Notes: Modeled as LoseThumbs: a missing artifact forces reprocess and is
+restored by the next scan. Deleted thumbnails are restored as part of scan
+(missing artifact forces reprocess); corrupted thumbnails are not discovered -
+content is not checked during normal scan. A per-row checksum makes scans
+robust (regenerate on mismatch); REQ-8 tracks it.
 
 ### DB_LOSS (established, actor: environment)
 
-The metadata database is lost while the filesystem remains intact: Picasu restarts and fully re-scans, restoring the index from the filesystem-as-truth baseline. The ultimate reindex-from-nothing test.
+The metadata database is lost while the filesystem remains intact: Picasu
+restarts and fully re-scans, restoring the index from the filesystem-as-truth
+baseline. The ultimate reindex-from-nothing test.
 
-Target: metadata database. Code anchor: `backend/src/tasks/actor/album_index.rs:index_album_with_root`.
+Target: metadata database. Code anchor:
+`backend/src/tasks/actor/album_index.rs:index_album_with_root`.
 
 Preconditions: metadata store lost entirely; filesystem intact.
 
@@ -1071,20 +1561,31 @@ Touches: rows, nextAssetId, generations.
 
 Effects (settled state assuming quiescence after the event):
 
-- Agreed: restart plus full re-scan rebuilds the index from the filesystem alone; fresh assetIds; content-keyed derived artifacts survive untouched.
+- Agreed: restart plus full re-scan rebuilds the index from the filesystem
+  alone; fresh assetIds; content-keyed derived artifacts survive untouched.
 
 Faults:
 
-- restart + re-scan recovery unmodeled and untested (open): restoration to the FS-as-truth baseline is asserted, not proven
-- asset identity churn (fresh assetIds after rebuild) (open): accepted under the FS-as-truth baseline; persistent references to assetIds (e.g. bookmarked URLs) unverified
+- restart + re-scan recovery unmodeled and untested (open): restoration to the
+  FS-as-truth baseline is asserted, not proven
+- asset identity churn (fresh assetIds after rebuild) (open): accepted under
+  the FS-as-truth baseline; persistent references to assetIds (e.g. bookmarked
+  URLs) unverified
 
-Notes: Modeled as DbLoss: rows and generations are cleared and the nextAssetId restarts; a full ScanRoot rebuild restores the filesystem-as-truth baseline with fresh assetIds. Asset identity need not survive (accepted).
+Notes: Modeled as DbLoss: rows and generations are cleared and the nextAssetId
+restarts; a full ScanRoot rebuild restores the filesystem-as-truth baseline
+with fresh assetIds. Asset identity need not survive (accepted).
 
 ### API_EDIT_METADATA (proposed, actor: api)
 
-A client edits metadata (tag, description, flags, rating, share, album membership) for one asset or a batch over HTTP. Sidecars (.xmp per asset, .albuminfo.xmp per album) are rewritten atomically and then the DB payload is stored; a failed sidecar write rolls back already-written sidecars and stores nothing.
+A client edits metadata (tag, description, flags, rating, share, album
+membership) for one asset or a batch over HTTP. Sidecars (.xmp per asset,
+.albuminfo.xmp per album) are rewritten atomically and then the DB payload is
+stored; a failed sidecar write rolls back already-written sidecars and stores
+nothing.
 
-Target: sidecar file(s) + DB row(s). Code anchor: `backend/src/process/sidecar_edit.rs:commit_metadata_edits`.
+Target: sidecar file(s) + DB row(s). Code anchor:
+`backend/src/process/sidecar_edit.rs:commit_metadata_edits`.
 
 Preconditions: row exists; caller passes write gate.
 
@@ -1092,22 +1593,37 @@ Touches: files, rows.
 
 Effects (settled state assuming quiescence after the event):
 
-- Bytes first: each item's sidecar lands before the store transaction commits the payload.
-- A batch interrupted by crash applies partially; retrying the edit converges (fs-wins reprocess reads the newer sidecar).
-- Sidecar and DB never disagree in opposite directions: failure aborts before the store phase.
+- Bytes first: each item's sidecar lands before the store transaction commits
+  the payload.
+- A batch interrupted by crash applies partially; retrying the edit converges
+  (fs-wins reprocess reads the newer sidecar).
+- Sidecar and DB never disagree in opposite directions: failure aborts before
+  the store phase.
 
 Faults:
 
-- crash after sidecar write(s), before DB flush (covered): sidecar ahead of row; rescan's present-sidecar forced reprocess converges the row
-- partial-failure rollback is best-effort (open): the code comment itself warns files may end up disagreeing with the cache in the direction only a reindex can fix - no verified convergence guarantee beyond scan
+- crash after sidecar write(s), before DB flush (covered): sidecar ahead of
+  row; rescan's present-sidecar forced reprocess converges the row
+- partial-failure rollback is best-effort (open): the code comment itself
+  warns files may end up disagreeing with the cache in the direction only a
+  reindex can fix - no verified convergence guarantee beyond scan
 
-Notes: PROPOSED/TBD - new event discovered by the multi-file crash survey (edit_tag, edit_description, edit_flags, edit_rating, edit_album, edit_share all route through commit_metadata_edits). Order verified: sidecars first, payloads second (sidecar_edit.rs doc). No success-path sidecar deletion verified; if reverting edits deletes a sidecar, the missing sidecar identity (REQ-1) applies and prevents convergence.
+Notes: PROPOSED/TBD - new event discovered by the multi-file crash survey
+(edit_tag, edit_description, edit_flags, edit_rating, edit_album, edit_share
+all route through commit_metadata_edits). Order verified: sidecars first,
+payloads second (sidecar_edit.rs doc). No success-path sidecar deletion
+verified; if reverting edits deletes a sidecar, the missing sidecar identity
+(REQ-1) applies and prevents convergence.
 
 ### API_ROTATE_IMAGE (proposed, actor: api)
 
-A client rotates an asset over HTTP. Four artifacts are involved: the compressed rendition, the thumbnail, the XMP sidecar (rotation persisted there), and the DB records. Verified order: the sidecar rotation is persisted first, then the thumbnail is regenerated, then the record flush.
+A client rotates an asset over HTTP. Four artifacts are involved: the
+compressed rendition, the thumbnail, the XMP sidecar (rotation persisted
+there), and the DB records. Verified order: the sidecar rotation is persisted
+first, then the thumbnail is regenerated, then the record flush.
 
-Target: compressed bytes + thumbnail + sidecar + row of one asset. Code anchor: `backend/src/router/put/rotate_image.rs:rotate_image`.
+Target: compressed bytes + thumbnail + sidecar + row of one asset. Code
+anchor: `backend/src/router/put/rotate_image.rs:rotate_image`.
 
 Preconditions: row exists; asset is an image; caller passes write gate.
 
@@ -1115,13 +1631,30 @@ Touches: rows, derived-bytes, files.
 
 Effects (settled state assuming quiescence after the event):
 
-- Settled state (no crash): thumbnail, sidecar rotation, and DB records all reflect the new rotation.
-- Verified order (REQ-11): sidecar rotation first, then thumbnail, then DB records. A post-sidecar interruption leaves a present sidecar that forces reprocess; the pipeline re-derives rotation from it and regenerates the thumbnail.
+- Settled state (no crash): thumbnail, sidecar rotation, and DB records all
+  reflect the new rotation.
+- Verified order (REQ-11): sidecar rotation first, then thumbnail, then DB
+  records. A post-sidecar interruption leaves a present sidecar that forces
+  reprocess; the pipeline re-derives rotation from it and regenerates the
+  thumbnail.
 
 Faults:
 
-- interruption between sidecar write and thumbnail/DB (covered): sidecar-first order (REQ-11) leaves a present sidecar that forces reprocess; the pipeline re-derives rotation from the sidecar and regenerates the thumbnail - converges
-- failed sidecar write mid-request (covered): with the adopted order the abort precedes any other artifact change: DB, thumbnail, and sidecar all stay on the previous rotation
-- route doc says the compressed JPEG is written back; no such write located (tbd): rotation is sidecar-carried and applied at decode (verified); the doc comment appears stale - confirm or correct it with the rotate change (REQ-11)
+- interruption between sidecar write and thumbnail/DB (covered): sidecar-first
+  order (REQ-11) leaves a present sidecar that forces reprocess; the pipeline
+  re-derives rotation from the sidecar and regenerates the thumbnail -
+  converges
+- failed sidecar write mid-request (covered): with the adopted order the abort
+  precedes any other artifact change: DB, thumbnail, and sidecar all stay on
+  the previous rotation
+- route doc says the compressed JPEG is written back; no such write located
+  (tbd): rotation is sidecar-carried and applied at decode (verified); the doc
+  comment appears stale - confirm or correct it with the rotate change
+  (REQ-11)
 
-Notes: Rotation source of truth is the sidecar (rotate_image.rs comment); apply_rotation (misc.rs) is shared by the endpoint and the index pipeline so a reindex reproduces the displayed rotation. The per-row artifact checksum (REQ-8) additionally guards the thumbnail-mismatch window against interrupted rotates of the current implementation.
+Notes: Rotation source of truth is the sidecar (rotate_image.rs comment);
+apply_rotation (misc.rs) is shared by the endpoint and the index pipeline so a
+reindex reproduces the displayed rotation. The per-row artifact checksum
+(REQ-8) additionally guards the thumbnail-mismatch window against interrupted
+rotates of the current implementation.
+

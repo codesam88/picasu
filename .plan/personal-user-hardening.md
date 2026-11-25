@@ -8,147 +8,140 @@ area: backend
 ## Notes
 
 The working spec for the task: problem, goal, implementation steps. Refine
-these sections in place as understanding changes; append only short dated lines
-for settled decisions. Keep it concise — progress chatter and back-and-forth
-belong in commit messages, not here.
+these sections in place as understanding changes; append only short dated
+lines for settled decisions. Keep it concise — progress chatter and
+back-and-forth belong in commit messages, not here.
 
 ## Problem / purpose
 
-The round-3 critical review (`/tmp/opencode/personal-albums-review-r3.md`:
-two discoverers, cross-model challenge, parent mechanism verification)
-upheld the isolation model but found its enforcement incomplete: several
-mutating and read paths never check the caller, so the per-handler
-`write_gate`/`visible_to` convention the feature relies on is not
-universal. This task closes the gaps, with tests proving each one.
+The round-3 critical review (`/tmp/opencode/personal-albums-review-r3.md`: two
+discoverers, cross-model challenge, parent mechanism verification) upheld the
+isolation model but found its enforcement incomplete: several mutating and
+read paths never check the caller, so the per-handler
+`write_gate`/`visible_to` convention the feature relies on is not universal.
+This task closes the gaps, with tests proving each one.
 
 ## Settled decisions
 
-- Scope is the round-3 FIX NOW list only (F1–F10 below); RIDE-ALONG items
-  stay batched for when adjacent code is next touched; no new scope.
+- Scope is the round-3 FIX NOW list only (F1–F10 below); RIDE-ALONG items stay
+  batched for when adjacent code is next touched; no new scope.
 - F3 took the full caller-bound snapshots direction (option B, user-decided
   2026-11-01): `ClaimsSnapshot.caller` minted at prefetch, `GuardSnapshot`
   binds presenter (user id, `""` + share-pair for shares), renewed tokens
   require caller equality (admins included), `get-metadata` checks
-  `visible_to` for user sessions (404 canon), `ClaimsAsset` carries
-  caller + share scope with presenter enforcement on serving, renew-hash
-  checks presenter scope + claim equality. Commits B1–B6 on
+  `visible_to` for user sessions (404 canon), `ClaimsAsset` carries caller +
+  share scope with presenter enforcement on serving, renew-hash checks
+  presenter scope + claim equality. Commits B1–B6 on
   `feature/personal-user-albums` (99951389, 1ec905c4, c4c8b53f, 2a0cdbc9,
   eaae77b5, 1cc06957).
 - F5 (share survives move into personal area): REFUSE moves carrying
   foreign-owned shares. Rationale: the alternatives (prune, reveal, or
-  otherwise disable someone else's share) would break expected behavior
-  for the share's owner and holders. The move is refused; nothing is
-  rewritten; the creator keeps full control of their share.
-- F8 (MyAlbums shows personal albums only): DECIDED personal-only
-  selector — MyAlbums lists only the caller's own personal roots
-  (user-decided 2026-11-01). DONE: prefetch derives a
-  server-side personal-only flag when the query combines
-  `include_personal` with a root-album selector and drops
-  public-tree roots (ownership still via row_visible); cache key
-  covers the flag; `af07b2d8`.
+  otherwise disable someone else's share) would break expected behavior for
+  the share's owner and holders. The move is refused; nothing is rewritten;
+  the creator keeps full control of their share.
+- F8 (MyAlbums shows personal albums only): DECIDED personal-only selector —
+  MyAlbums lists only the caller's own personal roots (user-decided
+  2026-11-01). DONE: prefetch derives a server-side personal-only flag when
+  the query combines `include_personal` with a root-album selector and drops
+  public-tree roots (ownership still via row_visible); cache key covers the
+  flag; `af07b2d8`.
 - F7 (personal_albums_enabled switch): DECIDED — mirror IMAGE_HOME
-  (user-decided, re-confirmed 2026-11-01): the switch is removed
-  entirely (no gating anywhere); USERS_HOME defaults to
-  `<data_home>/users` on first launch and is backfilled once for
-  existing configs, persisted like IMAGE_HOME; boot aborts only on
-  explicit empty value or nested/equal roots (existing check stays).
-  No breaking change; personal areas effectively always on.
-  personalAlbumsEnabled stays as the public signal (always true at
-  runtime).
-- Verification: every fix ships with a failing-first test proving a
-  second user cannot read/mutate the first user's personal data through
-  the fixed path, plus the standard gates (`just check`, backend + frontend
-  suites, openapi/auth-matrix where annotations change).
+  (user-decided, re-confirmed 2026-11-01): the switch is removed entirely (no
+  gating anywhere); USERS_HOME defaults to `<data_home>/users` on first launch
+  and is backfilled once for existing configs, persisted like IMAGE_HOME; boot
+  aborts only on explicit empty value or nested/equal roots (existing check
+  stays). No breaking change; personal areas effectively always on.
+  personalAlbumsEnabled stays as the public signal (always true at runtime).
+- Verification: every fix ships with a failing-first test proving a second
+  user cannot read/mutate the first user's personal data through the fixed
+  path, plus the standard gates (`just check`, backend + frontend suites,
+  openapi/auth-matrix where annotations change).
 
 ## Open decisions (blocking their item; defaults apply if undecided)
 
-- D1 (F6): DECIDED operator carve-out with censored admin visibility
-  (user direction 2026-11-01): export streams the same censored view
-  admins see — personal rows included, share bearer URLs and password
-  values redacted unconditionally, absolute paths redacted. Covered by
-  the share-token plan's S4 (export) — no separate F6 step.
-  Personal-content scoping beyond that is intentionally left to the
-  operator capability, documented as such.
-- D5 (user deletion vs personal tree): DECIDED 2026-11-01 — deletion
-  stays admin-only and is refused with 409 while the user has any photos
-  in their personal area; confirmation is password re-entry via the
-  existing GuardReauth guard; owned shares cascade-delete with the user
-  (shares first, then the record); new disable/enable lever
-  (`UserRecord.disabled`, login/session rejection, ver bump, last-enabled
-  admin protected). Implementation plan: `.plan/user-deletion-disable.md`
-  (D5-1 backend deletion, D5-2 disable + UI).
+- D1 (F6): DECIDED operator carve-out with censored admin visibility (user
+  direction 2026-11-01): export streams the same censored view admins see —
+  personal rows included, share bearer URLs and password values redacted
+  unconditionally, absolute paths redacted. Covered by the share-token plan's
+  S4 (export) — no separate F6 step. Personal-content scoping beyond that is
+  intentionally left to the operator capability, documented as such.
+- D5 (user deletion vs personal tree): DECIDED 2026-11-01 — deletion stays
+  admin-only and is refused with 409 while the user has any photos in their
+  personal area; confirmation is password re-entry via the existing
+  GuardReauth guard; owned shares cascade-delete with the user (shares first,
+  then the record); new disable/enable lever (`UserRecord.disabled`,
+  login/session rejection, ver bump, last-enabled admin protected).
+  Implementation plan: `.plan/user-deletion-disable.md` (D5-1 backend
+  deletion, D5-2 disable + UI).
 
-Deferred by user choice 2026-11-01 (decisions recorded, work not
-scheduled yet): F9 E2E honesty bundle, F10 docs claim corrections.
+Deferred by user choice 2026-11-01 (decisions recorded, work not scheduled
+yet): F9 E2E honesty bundle, F10 docs claim corrections.
 
 ## Closeout 2026-11-02
 
-F1–F8 done, F9-0–F9-5 done, F10 done. F6 folded into share-token
-plan; index-move race tracked separately in
-.plan/index-move-scan-race.md.
+F1–F8 done, F9-0–F9-5 done, F10 done. F6 folded into share-token plan;
+index-move race tracked separately in .plan/index-move-scan-race.md.
 
 ## Implementation steps
 
-Each step is one worker invocation, TDD (RED observed, then GREEN), one
-commit per step after parent review. No step starts until the previous
-one is committed.
+Each step is one worker invocation, TDD (RED observed, then GREEN), one commit
+per step after parent review. No step starts until the previous one is
+committed.
 
 ### F1 — Gate all ID/snapshot-addressed writes (S1)
 
 `set_album_title`, `edit_tag`, `edit_rating`, `edit_description`,
 `rotate-image`, `regenerate-thumbnail` (+ audit `update_album`'s other
 callers): `visible_to`/`write_gate` before any filesystem or DB effect,
-cross-user refusal tests (403 for per-asset/by-id, 404 for invisible
-albums per canon). Mechanical; same shape as gated `edit_flags`.
+cross-user refusal tests (403 for per-asset/by-id, 404 for invisible albums
+per canon). Mechanical; same shape as gated `edit_flags`.
 
 ### F2 — Input-validity sweep across all routes (S1)
 
-Starting from the known instance (regenerate-thumbnail writes the file
-before DB lookup, `&asset_id[0..2]` panics on short/multibyte input):
-sweep every route that turns request input into filesystem paths, array
-indices, or snapshot lookups; resolve + validate + gate before any
-filesystem or DB effect. Fix straightforward cases inline in the
-established style; do NOT change anything non-trivial — report it as a
-finding with a recommendation instead (non-trivial = unclear ownership
-semantics, behavior change, or ambiguous error contract).
+Starting from the known instance (regenerate-thumbnail writes the file before
+DB lookup, `&asset_id[0..2]` panics on short/multibyte input): sweep every
+route that turns request input into filesystem paths, array indices, or
+snapshot lookups; resolve + validate + gate before any filesystem or DB
+effect. Fix straightforward cases inline in the established style; do NOT
+change anything non-trivial — report it as a finding with a recommendation
+instead (non-trivial = unclear ownership semantics, behavior change, or
+ambiguous error contract).
 
 ### F3 — get_metadata any-id on user sessions (S1, DONE via option B)
 
-Caller-bound snapshot tokens (user-decided direction 2026-11-01,
-commits B1–B6): `ClaimsSnapshot` carries the minting caller's id,
-`GuardSnapshot` binds the request's presenter to it, renewed tokens
-require caller equality (admins included), `get-metadata` checks
-`visible_to` for user sessions (404 canon), `ClaimsAsset` carries
-caller + share scope with presenter enforcement on serving, and
-renew-hash checks presenter scope + claim equality. Cross-user refusal
-tests pin each path.
+Caller-bound snapshot tokens (user-decided direction 2026-11-01, commits
+B1–B6): `ClaimsSnapshot` carries the minting caller's id, `GuardSnapshot`
+binds the request's presenter to it, renewed tokens require caller equality
+(admins included), `get-metadata` checks `visible_to` for user sessions (404
+canon), `ClaimsAsset` carries caller + share scope with presenter enforcement
+on serving, and renew-hash checks presenter scope + claim equality. Cross-user
+refusal tests pin each path.
 
 ### F4 — Tag census unfiltered in edit_tag response (S2)
 
-Return caller-filtered `Tree::read_tags`; assert hidden tags absent.
-Test-only plus one-line fix.
+Return caller-filtered `Tree::read_tags`; assert hidden tags absent. Test-only
+plus one-line fix.
 
 ### F5 — Refuse moves carrying foreign-owned shares (S2, DECIDED: refuse)
 
 In the move path, when the album's `share_list` contains entries whose
 `created_by` differs from the caller, refuse the whole move before any
 filesystem effect (no partial rename). Tests: cross-user share on public
-album, then owner moves album into own personal tree → 4xx and tree
-unchanged; owner's own shares still move fine.
+album, then owner moves album into own personal tree → 4xx and tree unchanged;
+owner's own shares still move fine.
 
 ### F6 — Export streams every personal row incl. share secrets (S2,
 
 DECIDED: covered by share-token plan S4)
 
-Redact secrets (share URLs, password hashes, absolute paths)
-unconditionally; scope per D1 decision above. No separate step.
+Redact secrets (share URLs, password hashes, absolute paths) unconditionally;
+scope per D1 decision above. No separate step.
 
 ### F7 — Switch semantics (S2)
 
 Per D3 decision. If wired: `users_home` set + switch off behaves as
-feature-off (no provisioning, no scan, no personal rows); tests pin the
-2x2 matrix. If documented: state exactly what the switch does and does
-not gate.
+feature-off (no provisioning, no scan, no personal rows); tests pin the 2x2
+matrix. If documented: state exactly what the switch does and does not gate.
 
 ### F8 — MyAlbums shows global roots (S2 per separation requirement)
 
@@ -157,22 +150,22 @@ behavior.
 
 ### F9 — E2E honesty bundle (S2, test-only)
 
-Positive controls + route assertions on direct-nav checks; real toggle
-on/off assertions (current steps are wait.ms no-ops); justify or drop the
-assignment skip comment. No production-code change unless a step fails
-for a real reason (then file it as a finding, do not work around it).
+Positive controls + route assertions on direct-nav checks; real toggle on/off
+assertions (current steps are wait.ms no-ops); justify or drop the assignment
+skip comment. No production-code change unless a step fails for a real reason
+(then file it as a finding, do not work around it).
 
 ### F10 — Correct plan/model done-claims (S2, docs-only)
 
-Where no test exists, the docs must not claim a check: adjust S3 per-op
-test claims, AUTH-17..20 "static+test" pins, and the toggle coverage
-statement to match what the suite actually pins.
+Where no test exists, the docs must not claim a check: adjust S3 per-op test
+claims, AUTH-17..20 "static+test" pins, and the toggle coverage statement to
+match what the suite actually pins.
 
 ## Explicitly out of scope
 
-- RIDE-ALONG batch from the round-3 review (stale allows/comments, doc
-  drift, capture.param, filter/line collapses, source_for whitelist,
-  OpenAPI enum, toggle catch/rollback, pathless-gate probes, Outside
-  fail-closed, cache-key share identity, VideosPage scope, delete
-  UX notes) — batch when adjacent code is next touched.
+- RIDE-ALONG batch from the round-3 review (stale allows/comments, doc drift,
+  capture.param, filter/line collapses, source_for whitelist, OpenAPI enum,
+  toggle catch/rollback, pathless-gate probes, Outside fail-closed, cache-key
+  share identity, VideosPage scope, delete UX notes) — batch when adjacent
+  code is next touched.
 - Anything not listed above.

@@ -7,11 +7,10 @@ area: tooling
 
 ## Notes
 
-Periodic (not PR-gating) mutation testing to catch vacuous tests that
-pattern scans miss: delete/change production code, confirm the suite
-fails. StrykerJS is the candidate for the frontend suite; equivalent
-coverage for backend suites to be decided if this proves valuable.
-Good to have, not now.
+Periodic (not PR-gating) mutation testing to catch vacuous tests that pattern
+scans miss: delete/change production code, confirm the suite fails. StrykerJS
+is the candidate for the frontend suite; equivalent coverage for backend
+suites to be decided if this proves valuable. Good to have, not now.
 
 ## Steps
 
@@ -21,6 +20,6 @@ Good to have, not now.
 
 ## Out of scope
 
-The `vacuousTestBlocks` meta-test (shipped in
-`frontend-structure-rework`) remains the cheap pattern-level backstop;
-this item is the semantic backstop above it.
+The `vacuousTestBlocks` meta-test (shipped in `frontend-structure-rework`)
+remains the cheap pattern-level backstop; this item is the semantic backstop
+above it.

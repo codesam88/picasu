@@ -1,113 +1,108 @@
 # utils/quint
 
 Checkable models of subsystem protocols, one file per subsystem:
-`utils/quint/pipeline/<subsystem>.qnt`. Each spec is exercised by `just quint-check`
-(typecheck plus `quint test`); exploratory simulation is `quint run`
-and never gates.
+`utils/quint/pipeline/<subsystem>.qnt`. Each spec is exercised by
+`just quint-check` (typecheck plus `quint test`); exploratory simulation is
+`quint run` and never gates.
 
 ## Assumption rules
 
-Assumptions record what the model takes as given: operating
-conditions it relies on, non-goals it excludes, and properties met
-by components out of scope here.
+Assumptions record what the model takes as given: operating conditions it
+relies on, non-goals it excludes, and properties met by components out of
+scope here.
 
 - Assumptions are expensive and require human review.
-- If the assumption can be reasonably expressed as a requirement
-  onto the implementation, it is a requirement, not an assumption.
-- If the assumption has no formal representation in the model,
-  it is likely vacuous or redundant. Consider consolidating.
+- If the assumption can be reasonably expressed as a requirement onto the
+  implementation, it is a requirement, not an assumption.
+- If the assumption has no formal representation in the model, it is likely
+  vacuous or redundant. Consider consolidating.
 
 Current contents of `pipeline/`:
 
-- `eventual-consistency.qnt` — the pipeline protocol as prescribed
-  event handling: watcher/API boundary events, recovery events
-  (watcher gap, crash, derived-store loss, DB loss), intake submits,
-  worker steps, and per-root scan/sweep. Invariants: no lost intake
-  work, no permanent stale rows; the convergence goal is `Converged`
-  (every processable asset path has exactly one correct row; every
-  row's asset exists; nothing queued), pinned per diverged shape by
-  the runs. Unprocessable paths are logged, never indexed, and are
-  excluded from the goal.
+- `eventual-consistency.qnt` — the pipeline protocol as prescribed event
+  handling: watcher/API boundary events, recovery events (watcher gap, crash,
+  derived-store loss, DB loss), intake submits, worker steps, and per-root
+  scan/sweep. Invariants: no lost intake work, no permanent stale rows; the
+  convergence goal is `Converged` (every processable asset path has exactly
+  one correct row; every row's asset exists; nothing queued), pinned per
+  diverged shape by the runs. Unprocessable paths are logged, never indexed,
+  and are excluded from the goal.
 
-  The spec is split across modules that import each other (native
-  Quint modules, no preprocessor): `eventual-consistency-state.qnt` holds shared
-  types, variables, finite bounds (five paths, two roots), and the
-  initial state; `eventual-consistency-assumptions.qnt` holds the snapshot matcher
-  plus the `NoLostUpload` / `NoPermanentStale` safety predicates,
-  each beside its prose and ASS tag;
-  `eventual-consistency-goal.qnt` holds the `Converged` goal
-  predicate — the subsystem-specific part;
-  `eventual-consistency.qnt` holds the actions, the `step`
-  interleaving, and the runs.
+  The spec is split across modules that import each other (native Quint
+  modules, no preprocessor): `eventual-consistency-state.qnt` holds shared
+  types, variables, finite bounds (five paths, two roots), and the initial
+  state; `eventual-consistency-assumptions.qnt` holds the snapshot matcher
+  plus the `NoLostUpload` / `NoPermanentStale` safety predicates, each beside
+  its prose and ASS tag; `eventual-consistency-goal.qnt` holds the `Converged`
+  goal predicate — the subsystem-specific part; `eventual-consistency.qnt`
+  holds the actions, the `step` interleaving, and the runs.
 
 - `asset-aspects.qnt` — the four-aspect slice (asset file, sidecar,
-  thumbnail/derived, DB asset row): alignment predicates and
-  conflicting-pair runs over the same state; imports
-  `eventual-consistency.qnt`.
-- `asset-aspects-step.qnt` — the proof-lane entry: `stepCompletion`
-  enumerates every base and asset-aspect action over its parameter
-  ranges in a three-phase completion machine (`phase` 0 free, 1
-  draining, 2 scanning; `scannedRoots` watermark). Phase 0 admits every
-  action; phase 1 freezes the environment and admits the work-consuming
-  branches, crashes, and untracked rescans; phase 2 takes one tracked
-  `CompleteScan` per root and drains the work it creates.
-  `Quiescent` is the drained-state predicate and `CompletionInvariant`
-  claims the goal at phase-2 quiescence. Its sanity runs are
-  simulation-only and are not part of `just quint test`.
-- `operations.json` — internal mutation operations OP-1..OP-12 with
-  events, aspect reads/writes, guards, status and interaction nodes;
-  validated by `just operations-check` against backend annotations.
-  Out of scope by design: the read-model invalidation advance
-  (`mark_tree_dirty_background`) and the dir-album sweep lane
-  (`handle_sweep_dir_albums`); tree-epoch modeling is deferred
-  (node N5 / the full aspect boundary).- `events.json` — boundary and recovery events with their settled
-  effects and known faults, validated by `just events-check`.
-- `goals.json` — goals G0–G4 with decision (`committed`, `queued`,
-  `dropped`), anchors and assumptions; only committed goals source
-  requirements. Validated by `just catalog-check`.
-- `requirements.json` — implementation obligations (REQ-1..n) derived
-  from committed goals. Each entry carries the contract (`statement`,
+  thumbnail/derived, DB asset row): alignment predicates and conflicting-pair
+  runs over the same state; imports `eventual-consistency.qnt`.
+- `asset-aspects-step.qnt` — the proof-lane entry: `stepCompletion` enumerates
+  every base and asset-aspect action over its parameter ranges in a
+  three-phase completion machine (`phase` 0 free, 1 draining, 2 scanning;
+  `scannedRoots` watermark). Phase 0 admits every action; phase 1 freezes the
+  environment and admits the work-consuming branches, crashes, and untracked
+  rescans; phase 2 takes one tracked `CompleteScan` per root and drains the
+  work it creates. `Quiescent` is the drained-state predicate and
+  `CompletionInvariant` claims the goal at phase-2 quiescence. Its sanity runs
+  are simulation-only and are not part of `just quint test`.
+- `operations.json` — internal mutation operations OP-1..OP-12 with events,
+  aspect reads/writes, guards, status and interaction nodes; validated by
+  `just operations-check` against backend annotations. Out of scope by design:
+  the read-model invalidation advance (`mark_tree_dirty_background`) and the
+  dir-album sweep lane (`handle_sweep_dir_albums`); tree-epoch modeling is
+  deferred (node N5 / the full aspect boundary).- `events.json` — boundary and
+  recovery events with their settled effects and known faults, validated by
+  `just events-check`.
+- `goals.json` — goals G0–G4 with decision (`committed`, `queued`, `dropped`),
+  anchors and assumptions; only committed goals source requirements. Validated
+  by `just catalog-check`.
+- `requirements.json` — implementation obligations (REQ-1..n) derived from
+  committed goals. Each entry carries the contract (`statement`,
   `derived_from`, `owner`, `gate`, `status`) plus the review text
-  (`implementation`, `tests`, optional `limits`). `catalog-check`
-  enforces that a requirement derives only from committed goals, that
-  every committed goal derives at least one requirement, and that a
-  `verified` requirement names at least one gate test. The generated
-  `docs/eventual-consistency.md` renders the contract under
-  Requirements and the review text under Implementation.
-- `assumptions.json` — index of ASS-1..n with owner and status;
-  the model's `@assumes` tags state which definitions each one
-  grounds, and the generated traceability map carries the reverse
-  refs. Validated by `just catalog-check`.
-- `scope.json` — modeling bounds and abstractions (SCOPE-1..n), each
-  with bound, why_safe, lifting step, and provisional flag where the
-  safety argument is weaker than the implementation's guarantee. A
-  top-level `modeled_scope` summarizes the current model boundary;
-  validated by `just catalog-check`.
-- `catalog.schema.json` — required fields and enums shared by the
-  catalog validators.
+  (`implementation`, `tests`, optional `limits`). `catalog-check` enforces
+  that a requirement derives only from committed goals, that every committed
+  goal derives at least one requirement, and that a `verified` requirement
+  names at least one gate test. The generated `docs/eventual-consistency.md`
+  renders the contract under Requirements and the review text under
+  Implementation.
+- `assumptions.json` — index of ASS-1..n with owner and status; the model's
+  `@assumes` tags state which definitions each one grounds, and the generated
+  traceability map carries the reverse refs. Validated by
+  `just catalog-check`.
+- `scope.json` — modeling bounds and abstractions (SCOPE-1..n), each with
+  bound, why_safe, lifting step, and provisional flag where the safety
+  argument is weaker than the implementation's guarantee. A top-level
+  `modeled_scope` summarizes the current model boundary; validated by
+  `just catalog-check`.
+- `catalog.schema.json` — required fields and enums shared by the catalog
+  validators.
 - `traceability.json` — machine-generated mapping written by
-  `just spec-check --generate`. The audit fails on drift.
-  Load-bearing references appear in `.qnt` action comments and
-  `events.json` notes. Code-test refs are hand-maintained in
-  `operations.json` `properties` instead.
+  `just spec-check --generate`. The audit fails on drift. Load-bearing
+  references appear in `.qnt` action comments and `events.json` notes.
+  Code-test refs are hand-maintained in `operations.json` `properties`
+  instead.
 
-Each catalog file carries a top-level `description`; the generated
-review doc renders it as the section introduction. Requirements derive
-from committed goals (never from dropped or queued ones), and
-`@requires` tags in the model resolve against `requirements.json`. A requirement stays `open` until its gate test
-exists, and is `imposed`/`verified` only with that gate.
+Each catalog file carries a top-level `description`; the generated review doc
+renders it as the section introduction. Requirements derive from committed
+goals (never from dropped or queued ones), and `@requires` tags in the model
+resolve against `requirements.json`. A requirement stays `open` until its gate
+test exists, and is `imposed`/`verified` only with that gate.
 
-Conventions for new subsystems: name the file for the subsystem, keep
-bounds tiny (2–3 of each entity), state enabling conditions explicitly,
-and record every derived contract where its enforcement lives (see
-`docs/quint-modeling.md` for the full flow). Simulator
-counterexamples become regression tests or documented transients —
-never silent.
+Conventions for new subsystems: name the file for the subsystem, keep bounds
+tiny (2–3 of each entity), state enabling conditions explicitly, and record
+every derived contract where its enforcement lives (see
+`docs/quint-modeling.md` for the full flow). Simulator counterexamples become
+regression tests or documented transients — never silent.
 
 ## Structure
 
 - `quint-annotate/` — the validating proc-macro crate (package name stays
-  `quint`; attribute path `#[quint::operation(...)]` / `#[quint::event(...)]`).
+  `quint`; attribute path `#[quint::operation(...)]` /
+  `#[quint::event(...)]`).
 - `coverage/` — the TypeScript validation tool (dispatcher
   `coverage/bin/check.ts`).
 - `pipeline/` — `.qnt` specs and JSON catalogs.
@@ -117,44 +112,43 @@ never silent.
 
 - `coverage/bin/check.ts specs` — closed-world tag audit and the generated
   `pipeline/traceability.json` map.
-- `coverage/bin/check.ts steps` — branch-completeness audit for step
-  actions: every `action` declaration reachable through a `step*` module's
-  imports must appear in its `any { ... }` list (`init`/`init<Name>` entry
-  actions and the step actions themselves are exempt). A forgotten branch
-  fails the gate instead of silently narrowing the verified reachable set;
-  stutter (`Skip`) presence is not required.
+- `coverage/bin/check.ts steps` — branch-completeness audit for step actions:
+  every `action` declaration reachable through a `step*` module's imports must
+  appear in its `any { ... }` list (`init`/`init<Name>` entry actions and the
+  step actions themselves are exempt). A forgotten branch fails the gate
+  instead of silently narrowing the verified reachable set; stutter (`Skip`)
+  presence is not required.
 - `coverage/bin/check.ts events`, `coverage/bin/check.ts catalog` — catalog
   validation against `pipeline/catalog.schema.json`.
 - `coverage/bin/check.ts ops` — validates `pipeline/operations.json` and the
-  `#[quint::operation(...)]` / `#[quint::event(...)]`
-  markers in `backend/src/**/*.rs`.
+  `#[quint::operation(...)]` / `#[quint::event(...)]` markers in
+  `backend/src/**/*.rs`.
 - `coverage/bin/check.ts docs` — writes `docs/eventual-consistency.md`.
 
 ## Operations and annotations
 
 `pipeline/operations.json` tracks the implementation of the four-aspect slice
-(asset file, sidecar, thumbnail/derived, DB asset row) as operations OP-1..OP-12.
-Each operation records its events, aspect reads/writes, guards, optional
-`properties` objects `{model, test?}` linking guarded behavior to model
-declarations and backend tests, status and interaction nodes. Backend functions
-carry attribute markers from the `quint` crate
-(`#[quint::operation("OP-N")]`,
-`#[quint::event("EVENT_NAME")]`). Compile-time validation (rung 0 of the
-annotation crate) rejects unknown or misspelled operation/event ids at
-`cargo check -p picasu`, so a typo'd or renamed OP id fails the build
-instead of surfacing only in `just check`. `operations-check.mjs` remains the
-catalog-side backstop and is the rung 2a/2b gate: it counts a marker only
-when it sits on a real attribute line (comment, doc-comment, string and
-`#[cfg(test)]`-gated mentions do not count), requires every cataloged OP to
-have at least one marker and rejects markers naming an unknown OP, requires
-every event to be owned by at least one operation or to be an explicitly
-exempt read/recovery event, validates each `properties[].model` against the
-declarations (`val`/`def`/`action`/`run` from `utils/quint/pipeline/*.qnt`),
-validates each `properties[].test` ref, and fails when a guarded OP has no
-`@operation` tag in the model. It prints a per-OP coverage matrix, marks
-properties without a test ref as `NO TEST`, and reports
-`properties with test: X/Y`. What is still NOT enforced (rung 2+): a marker
-naming a wrong-but-valid id still compiles (id correctness against the
+(asset file, sidecar, thumbnail/derived, DB asset row) as operations
+OP-1..OP-12. Each operation records its events, aspect reads/writes, guards,
+optional `properties` objects `{model, test?}` linking guarded behavior to
+model declarations and backend tests, status and interaction nodes. Backend
+functions carry attribute markers from the `quint` crate
+(`#[quint::operation("OP-N")]`, `#[quint::event("EVENT_NAME")]`). Compile-time
+validation (rung 0 of the annotation crate) rejects unknown or misspelled
+operation/event ids at `cargo check -p picasu`, so a typo'd or renamed OP id
+fails the build instead of surfacing only in `just check`.
+`operations-check.mjs` remains the catalog-side backstop and is the rung 2a/2b
+gate: it counts a marker only when it sits on a real attribute line (comment,
+doc-comment, string and `#[cfg(test)]`-gated mentions do not count), requires
+every cataloged OP to have at least one marker and rejects markers naming an
+unknown OP, requires every event to be owned by at least one operation or to
+be an explicitly exempt read/recovery event, validates each
+`properties[].model` against the declarations (`val`/`def`/`action`/`run` from
+`utils/quint/pipeline/*.qnt`), validates each `properties[].test` ref, and
+fails when a guarded OP has no `@operation` tag in the model. It prints a
+per-OP coverage matrix, marks properties without a test ref as `NO TEST`, and
+reports `properties with test: X/Y`. What is still NOT enforced (rung 2+): a
+marker naming a wrong-but-valid id still compiles (id correctness against the
 function is not checked), and aspect read/write set and order drift between
 model and implementation is not checked. The markers carry only ids; aspect
 read/write set matching is rung 2+ material.
@@ -182,50 +176,47 @@ Code-test refs stay in `operations.json`, not in the generated
 `pipeline/traceability.json` map: `specs-check.mjs` rewrites the traceability
 map and fails when it is stale, so it cannot carry hand-maintained links.
 
-The Quint toolchain installer stays in `scripts/deps/quint.sh` with the
-shared pins in `scripts/deps/versions.env`.
+The Quint toolchain installer stays in `scripts/deps/quint.sh` with the shared
+pins in `scripts/deps/versions.env`.
 
-Modeling scope (not assumptions, no formal counterpart required):
-no cross-root identity in v1 — moves across watched-root
-boundaries are observed as creation plus ghost and deletion; walk
-roots are disjoint from the derived store, so pipeline writes
-cannot resubmit themselves.
+Modeling scope (not assumptions, no formal counterpart required): no
+cross-root identity in v1 — moves across watched-root boundaries are observed
+as creation plus ghost and deletion; walk roots are disjoint from the derived
+store, so pipeline writes cannot resubmit themselves.
 
 ## Source of truth
 
 The axiom (ASS-3): any external or user filesystem modification — edits,
-renames, deletions, restores from backup, crash residue — is
-authoritative over DB state and is adopted as part of convergence. This
-is a design premise, not a checked property; watcher events, rescan,
-snapshot comparison and the sweep operationalize it.
+renames, deletions, restores from backup, crash residue — is authoritative
+over DB state and is adopted as part of convergence. This is a design premise,
+not a checked property; watcher events, rescan, snapshot comparison and the
+sweep operationalize it.
 
-The goal (G5): the system converges based on the filesystem as the
-primary truth — asset media bytes, the asset's stored path and its
-sidecar (`.xmp`, or `.albuminfo.xmp` for albums) carry user-authored
-metadata. The redb tables (`ASSET_BY_ID`, `ASSET_BY_PATH`,
-`DUPE_INDEX`, `METADATA_TABLE`) and the thumbnail/derived store are
-secondary and exist for speed and caching only: loss, orphaning or
-tearing of derived state is not a goal violation because convergence
-rebuilds it. The enumerated exception is DB-only non-derived state —
-`share_list` (album access state) — which cannot be rebuilt from the
-filesystem and must be individually guarded. Model state vars carry
-their role (authoritative / derived / DB-only exception); when a survey
-note says "loss", the role decides whether that is a violation.
+The goal (G5): the system converges based on the filesystem as the primary
+truth — asset media bytes, the asset's stored path and its sidecar (`.xmp`, or
+`.albuminfo.xmp` for albums) carry user-authored metadata. The redb tables
+(`ASSET_BY_ID`, `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`) and the
+thumbnail/derived store are secondary and exist for speed and caching only:
+loss, orphaning or tearing of derived state is not a goal violation because
+convergence rebuilds it. The enumerated exception is DB-only non-derived state
+— `share_list` (album access state) — which cannot be rebuilt from the
+filesystem and must be individually guarded. Model state vars carry their role
+(authoritative / derived / DB-only exception); when a survey note says "loss",
+the role decides whether that is a violation.
 
 ## Model-to-code terminology
 
-Rule: model identifiers must map to a concrete class, function,
-operation or table in the implementation. When the mapping is direct and
-stable (op names, function names, table names), the identifier takes the
-code entity's name — e.g. `SweepRemoveBatchApply` is named after
-`WriteOp::SweepRemoveBatch` / `flush_tree.rs::sweep_remove_batch`. When
-the mapping is conceptual or likely to move (phases inside one function,
-per-worker branches, generic state), the identifier keeps a descriptive
-name and carries a doc-comment anchor (`// <term> maps to <entity>`), as
-in the table below. Renaming an identifier is done only when its mapping
-is stable, and as its own small commit — never bundled with behavior
-changes. Unqualified role words like "the writer" are not used in model
-names, catalogs or docs; name the entity
+Rule: model identifiers must map to a concrete class, function, operation or
+table in the implementation. When the mapping is direct and stable (op names,
+function names, table names), the identifier takes the code entity's name —
+e.g. `SweepRemoveBatchApply` is named after `WriteOp::SweepRemoveBatch` /
+`flush_tree.rs::sweep_remove_batch`. When the mapping is conceptual or likely
+to move (phases inside one function, per-worker branches, generic state), the
+identifier keeps a descriptive name and carries a doc-comment anchor
+(`// <term> maps to <entity>`), as in the table below. Renaming an identifier
+is done only when its mapping is stable, and as its own small commit — never
+bundled with behavior changes. Unqualified role words like "the writer" are
+not used in model names, catalogs or docs; name the entity
 (`tasks/queue/writer.rs`, `flush_tree.rs::sweep_remove_batch`,
 `tasks/queue/worker.rs`).
 

@@ -10,10 +10,9 @@ area: backend
 Structural assurance for the authentication subsystem: convert the invariants
 behind the security assessment (remediated findings F1–F4 in
 `.plan/authz-fix.md`, open findings F5–F10 in `.plan/auth-hardening.md`) from
-conventions
-into machine-checkable statements, so a violation cannot merge. The rationale
-and verified exploit transcripts live in that document's assessment; this plan
-is the work item. Five components, in dependency order:
+conventions into machine-checkable statements, so a violation cannot merge.
+The rationale and verified exploit transcripts live in that document's
+assessment; this plan is the work item. Five components, in dependency order:
 
 ### 1. Policy artifact (semi-formal authz model)
 
@@ -57,22 +56,22 @@ this adds rule families over the policy artifact:
   `GuardReadOnlyMode` and the policy's guards (F9);
 - rejection propagation: every `GuardResult<…>` binding's rejection must be
   propagated (`?` or equivalent) — `let _ = auth;` leaves the route enforcing
-  nothing while the OpenAPI document still declares its status (proven incident
-  `.plan/bug-get-rows-auth-guard-discarded.md`; moved here from
+  nothing while the OpenAPI document still declares its status (proven
+  incident `.plan/bug-get-rows-auth-guard-discarded.md`; moved here from
   `.plan/openapi-annotation-checks.md` step 7). Distinct from claims
-  consumption below, which assumes the rejection already propagated; route–policy
-  parity does not catch it either, since a handler with the right signature set
-  that discards its rejection passes the signature comparison. Shares
-  `openapi-sanity`'s signature-argument parsing — build the use-site analysis
-  once, not in both tools;
+  consumption below, which assumes the rejection already propagated;
+  route–policy parity does not catch it either, since a handler with the right
+  signature set that discards its rejection passes the signature comparison.
+  Shares `openapi-sanity`'s signature-argument parsing — build the use-site
+  analysis once, not in both tools;
 - claims consumption: a `GuardShare` handler whose inputs name an external
   resource must read the guard's claims — `let _ = auth?` before a
   body-targeted write is a finding (F3);
 - decode agreement: the type parameter at every JWT decode site equals the
   type policy assigns to that guard (F1);
-- secret handling: constant-time secret comparison (F5), no
-  `httpOnly: false` (F7), no query-string bearer (F10), no
-  `Cache-Control: public` on `/object` (F10).
+- secret handling: constant-time secret comparison (F5), no `httpOnly: false`
+  (F7), no query-string bearer (F10), no `Cache-Control: public` on `/object`
+  (F10).
 
 One `authz-check` phase in the `just check`/precommit family, structured like
 `openapi-check`'s phases: a red result blocks the change, not the release.
@@ -90,8 +89,8 @@ each invariant moved down it is a permanent regression reduction.
   mismatch;
 - declared funnels: `Claims*` minting, `validate_share_access`,
   `resolve_show_download_and_metadata` are the only sanctioned sites for their
-  operations, scanner flags new ones. First enumerate sanctioned flag readers —
-  `prefetch` reads `show_metadata` directly for its filter, the upload path
+  operations, scanner flags new ones. First enumerate sanctioned flag readers
+  — `prefetch` reads `show_metadata` directly for its filter, the upload path
   reads `show_upload` directly — and treat additions as policy changes;
 - deny-by-default composition: read-only/flag/expiry checks resolve through
   helpers whose fallback branch denies.

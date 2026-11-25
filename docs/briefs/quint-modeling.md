@@ -47,21 +47,20 @@ harder. The docs are blunt: start with safety, it goes a long way.
 
 ## The verification ladder (approaches, weakest to strongest)
 
-1. **Simulation** (`quint test`/`quint run`): find the first bugs cheaply.
-   The docs' own workflow advice: iterate with the simulator until it runs
-   for a long time finding nothing, _then_ reach for a model checker — using
-   verify for first bug-hunting means slow feedback cycles.
+1. **Simulation** (`quint test`/`quint run`): find the first bugs cheaply. The
+   docs' own workflow advice: iterate with the simulator until it runs for a
+   long time finding nothing, _then_ reach for a model checker — using verify
+   for first bug-hunting means slow feedback cycles.
 2. **Bounded model checking** (`quint verify`): proves the invariant for all
-   executions up to `--max-steps` (default 10). Always bounded — the result
-   is honest only together with the step bound.
-3. **Inductive invariants** (`quint verify --inductive-invariant`): a
-   stronger invariant proved by base case + inductive step; this gives
-   unbounded verification without state exploration. Requirements and
-   mechanics:
-   - For each state variable, the first occurrence in the inductive
-     invariant must be a domain constraint (`x.in(<set>)` or `x == <value>`);
-     stronger facts about `x` come only after. The domain predicate is
-     conventionally called `TypeOK`.
+   executions up to `--max-steps` (default 10). Always bounded — the result is
+   honest only together with the step bound.
+3. **Inductive invariants** (`quint verify --inductive-invariant`): a stronger
+   invariant proved by base case + inductive step; this gives unbounded
+   verification without state exploration. Requirements and mechanics:
+   - For each state variable, the first occurrence in the inductive invariant
+     must be a domain constraint (`x.in(<set>)` or `x == <value>`); stronger
+     facts about `x` come only after. The domain predicate is conventionally
+     called `TypeOK`.
    - Quint invokes Apalache 2–3 times (base, step, implication) — it
      decomposes into the `--invariant`/`--init`/`--max-steps 0|1` calls for
      you; simulation does not support inductive invariants at all.
@@ -69,10 +68,10 @@ harder. The docs are blunt: start with safety, it goes a long way.
      examples: TeachingConcurrency, mutex, bakery, reliable broadcast,
      ewd840). Expect iteration: prove something stronger than the goal.
 4. **Liveness** (temporal properties): only TLC has real support (Apalache's
-   temporal support is partial); needs fairness assumptions. For many
-   systems the practical substitute is **witnesses** — "this good state is
-   reachable" checked with `--witnesses` (counting) or by negating the
-   witness and feeding it to `--invariant` to _print_ an example trace.
+   temporal support is partial); needs fairness assumptions. For many systems
+   the practical substitute is **witnesses** — "this good state is reachable"
+   checked with `--witnesses` (counting) or by negating the witness and
+   feeding it to `--invariant` to _print_ an example trace.
 
 ## The two verify backends
 
@@ -85,19 +84,18 @@ harder. The docs are blunt: start with safety, it goes a long way.
 | State space      | handles large/complex state spaces symbolically                                                                                                                    | must be small enough to enumerate; cost grows directly with it                    |
 | Maintenance      | active: own org (apalache-mc) since 2024-08, releases ~every 2 weeks (0.63.0 Nov 2026), not organizationally funded — de-facto funded by its small maintainer team | actively maintained (TLA+ foundation)                                             |
 
-Both consume the same spec shape: an `init` action, a `step` action
-(typically `one of { ... }` over the system's actions, with each branch
-assigning every state variable), and top-level invariant definitions. **The
-`step` action is the shared prerequisite of verification and model-based
-testing** — write it once, both work.
+Both consume the same spec shape: an `init` action, a `step` action (typically
+`one of { ... }` over the system's actions, with each branch assigning every
+state variable), and top-level invariant definitions. **The `step` action is
+the shared prerequisite of verification and model-based testing** — write it
+once, both work.
 
-Apalache integration details that matter operationally: quint talks to it
-over an RPC interface, launches an on-demand `apalache-mc server` process
-per verify invocation (JVM, ~125 MB), auto-downloads a hardcoded compatible
-Apalache version from GitHub releases on first use, and needs a JRE in
-`$PATH` (minimum Java 17; 21+ since 0.62). Alternatively, run the server
-yourself and point quint at it (`--server-endpoint`). TLC needs no separate
-process.
+Apalache integration details that matter operationally: quint talks to it over
+an RPC interface, launches an on-demand `apalache-mc server` process per
+verify invocation (JVM, ~125 MB), auto-downloads a hardcoded compatible
+Apalache version from GitHub releases on first use, and needs a JRE in `$PATH`
+(minimum Java 17; 21+ since 0.62). Alternatively, run the server yourself and
+point quint at it (`--server-endpoint`). TLC needs no separate process.
 
 ## Model-based testing and the code bridge
 
@@ -151,7 +149,8 @@ changes).
 - TLC on a model with set-valued state over a large universe explodes; size
   the nondet universes before choosing it.
 - Apalache auto-download depends on GitHub reachability and a JRE; in CI,
-  prefer a pre-installed Apalache + explicit server endpoint, and pin versions.
+  prefer a pre-installed Apalache + explicit server endpoint, and pin
+  versions.
 - `--max-samples`/`--max-steps` defaults (10k samples) are tuned for
   interactive use; long campaigns need explicit values and recorded seeds.
 - Witnesses are reachability checks under sampling — "witnessed in 70% of
@@ -168,9 +167,9 @@ changes).
   the strengthening effort dominates; for systems where per-run bounds are
   honest (e.g. "within one backstop cycle"), bounded checking is the right
   stop.
-- Don't build a refinement chain of specs down to the code "to be close to
-  the implementation": the docs call it hard and it still doesn't keep the
-  two in sync — that's MBT's job.
+- Don't build a refinement chain of specs down to the code "to be close to the
+  implementation": the docs call it hard and it still doesn't keep the two in
+  sync — that's MBT's job.
 - Trace validation is not yet a supported workflow; treat it as research.
 
 ## Pointers

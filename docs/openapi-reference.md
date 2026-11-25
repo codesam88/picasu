@@ -20,12 +20,14 @@ headingLevel: 2
 
 <h1 id="picasu">picasu v0.1.0</h1>
 
-> Scroll down for code samples, example requests and responses. Select a language for code samples from the tabs above or the mobile navigation menu.
+> Scroll down for code samples, example requests and responses. Select a
+> language for code samples from the tabs above or the mobile navigation menu.
 
-Self-hosted photo gallery API. This document is generated from the `#[utoipa::path]` annotations in `backend/src/router`; see `docs/openapi-generator.md`.
+Self-hosted photo gallery API. This document is generated from the
+`#[utoipa::path]` annotations in `backend/src/router`; see
+`docs/openapi-generator.md`.
 
-Web: <a href="https://github.com/codesam88/picasu">picasu</a>
-License: MIT
+Web: <a href="https://github.com/codesam88/picasu">picasu</a> License: MIT
 
 # Authentication
 
@@ -186,15 +188,15 @@ func main() {
 `DELETE /delete/invites/{invite_id}`
 
 Admin-only. The invite's row is removed, so its token stops redeeming
-immediately; a registration attempt afterwards answers 404. Ids come
-from `GET /get/invites`.
+immediately; a registration attempt afterwards answers 404. Ids come from
+`GET /get/invites`.
 
-Corner cases: Revoking an already-removed id is a 404, not a success —
-the second caller cannot distinguish "revoked twice" from "never
-existed", which leaks nothing.
+Corner cases: Revoking an already-removed id is a 404, not a success — the
+second caller cannot distinguish "revoked twice" from "never existed", which
+leaks nothing.
 
-Errors: 401 missing or invalid admin credentials — 404 unknown invite
-id — 405 read-only mode — 500 storage failure.
+Errors: 401 missing or invalid admin credentials — 404 unknown invite id — 405
+read-only mode — 500 storage failure.
 
 <h3 id="revoke-an-invite-token.-parameters">Parameters</h3>
 
@@ -370,24 +372,22 @@ func main() {
 
 `DELETE /delete/users/{user_id}`
 
-Admin-only: a non-admin, share, or missing credential is denied at
-dispatch with 401. The deletion refuses to leave zero admins; deleting
-the sole admin is therefore impossible, while self-delete with another
-admin present succeeds. The identity record (including its password
-hash) is removed in one store write.
+Admin-only: a non-admin, share, or missing credential is denied at dispatch
+with 401. The deletion refuses to leave zero admins; deleting the sole admin
+is therefore impossible, while self-delete with another admin present
+succeeds. The identity record (including its password hash) is removed in one
+store write.
 
-Requires re-authentication via the `X-Picasu-Password` header (403 when
-it is missing or wrong). Refuses with 409 while the user still has
-personal photos.
+Requires re-authentication via the `X-Picasu-Password` header (403 when it is
+missing or wrong). Refuses with 409 while the user still has personal photos.
 
-Corner cases: Unknown `user_id` names no user. An invalid id (empty or
-over 64 chars) is a 400. Read-only mode refuses with 405.
+Corner cases: Unknown `user_id` names no user. An invalid id (empty or over 64
+chars) is a 400. Read-only mode refuses with 405.
 
-Errors: 400 invalid `user_id` — 401 missing or invalid credentials,
-non-admin caller, or share credentials — 403 missing or wrong
-re-authentication password — 404 unknown `user_id` — 405 read-only mode
-— 409 deletion would leave zero admins, or the user still has personal
-photos — 500 storage failure.
+Errors: 400 invalid `user_id` — 401 missing or invalid credentials, non-admin
+caller, or share credentials — 403 missing or wrong re-authentication password
+— 404 unknown `user_id` — 405 read-only mode — 409 deletion would leave zero
+admins, or the user still has personal photos — 500 storage failure.
 
 <h3 id="delete-a-user-account-(admin-remediation).-parameters">Parameters</h3>
 
@@ -566,14 +566,14 @@ func main() {
 
 `GET /get/invites`
 
-Admin-only. Returns every invite with its display `prefix`, creator,
-expiry and — once redeemed — the `usedBy` user id. Tokens themselves are
-never returned: `id` is the blake3 hash of the token (preimage-resistant
-and useless as a bearer) and identifies the invite for
+Admin-only. Returns every invite with its display `prefix`, creator, expiry
+and — once redeemed — the `usedBy` user id. Tokens themselves are never
+returned: `id` is the blake3 hash of the token (preimage-resistant and useless
+as a bearer) and identifies the invite for
 `DELETE /delete/invites/{invite_id}`.
 
-Corner cases: A store that has never seen an invite returns an empty
-list rather than an error.
+Corner cases: A store that has never seen an invite returns an empty list
+rather than an error.
 
 Errors: 401 missing or invalid admin credentials — 500 storage failure.
 
@@ -772,9 +772,9 @@ func main() {
 
 `GET /get/invites/limits`
 
-Admin-only. The console fetches this when building the invite panel so
-the client-side expiry parser validates against the same bound the
-server enforces, instead of hard-coding policy.
+Admin-only. The console fetches this when building the invite panel so the
+client-side expiry parser validates against the same bound the server
+enforces, instead of hard-coding policy.
 
 Errors: 401 missing or invalid admin credentials.
 
@@ -954,8 +954,8 @@ func main() {
 Any logged-in user may call this; share tokens are rejected by `GuardUser`.
 Reading is allowed while read-only mode is on.
 
-Errors: 401 missing/invalid session or share token; 403 no enrolled
-users; 404 unknown user; 500 storage failure.
+Errors: 401 missing/invalid session or share token; 403 no enrolled users; 404
+unknown user; 500 storage failure.
 
 > Example responses
 
@@ -1138,15 +1138,15 @@ func main() {
 
 `GET /get/server-info`
 
-Answers without credentials in every install state so the login and
-register pages can route before any session exists: `enrolled` is true
-once any user row exists, `enrollmentOpen` is true only on an empty
-store with the bootstrap flag set, and `captcha` is always null for now.
+Answers without credentials in every install state so the login and register
+pages can route before any session exists: `enrolled` is true once any user
+row exists, `enrollmentOpen` is true only on an empty store with the bootstrap
+flag set, and `captcha` is always null for now.
 
-Corner cases: the shape is fixed to exactly `enrolled`, `enrollmentOpen`
-and `captcha` — no user rows or secrets are ever included. The response
-carries `Cache-Control: no-store` because enrollment state flips on
-first registration and must never be served stale.
+Corner cases: the shape is fixed to exactly `enrolled`, `enrollmentOpen` and
+`captcha` — no user rows or secrets are ever included. The response carries
+`Cache-Control: no-store` because enrollment state flips on first registration
+and must never be served stale.
 
 Errors: 500 storage failure.
 
@@ -1524,22 +1524,21 @@ func main() {
 
 `POST /post/invites`
 
-Admin-only. The `token` field is shown exactly once: only its blake3
-hash is stored, so the value cannot be retrieved again — the admin
-distributes it out of band (for example as
-`${origin}/register?invite=${token}`). Expiry is required, in hours
-(`0` never expires — pass 168 for the conventional 7-day lifetime);
-the invite redeems once, for a single registration.
+Admin-only. The `token` field is shown exactly once: only its blake3 hash is
+stored, so the value cannot be retrieved again — the admin distributes it out
+of band (for example as `${origin}/register?invite=${token}`). Expiry is
+required, in hours (`0` never expires — pass 168 for the conventional 7-day
+lifetime); the invite redeems once, for a single registration.
 
-Corner cases: Creating an invite requires a live admin session, so on
-an empty store invites are created only after the first bootstrap.
-Listing, expiry, use and revoke are handled by
-`GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional
-`username` binds the invite to that user id (403 on mismatch at redeem).
+Corner cases: Creating an invite requires a live admin session, so on an empty
+store invites are created only after the first bootstrap. Listing, expiry, use
+and revoke are handled by `GET /get/invites` and
+`DELETE /delete/invites/{invite_id}`. An optional `username` binds the invite
+to that user id (403 on mismatch at redeem).
 
-Errors: 400 negative or over-limit `expiresInHours` (max one year) or
-invalid `username` — 401 missing or invalid admin credentials — 405
-read-only mode — 500 storage failure.
+Errors: 400 negative or over-limit `expiresInHours` (max one year) or invalid
+`username` — 401 missing or invalid admin credentials — 405 read-only mode —
+500 storage failure.
 
 > Body parameter
 
@@ -1717,11 +1716,11 @@ func main() {
 
 `POST /post/logout`
 
-`HttpOnly` cookies cannot be removed by page JS, so logout is a server
-round trip. Idempotent: succeeds with or without a live session. The
-presented token is revoked (filed in the revocation list until its
-expiry), so it stops working even though it stays cryptographically
-valid; the cookie is always cleared and the answer is always 204.
+`HttpOnly` cookies cannot be removed by page JS, so logout is a server round
+trip. Idempotent: succeeds with or without a live session. The presented token
+is revoked (filed in the revocation list until its expiry), so it stops
+working even though it stays cryptographically valid; the cookie is always
+cleared and the answer is always 204.
 
 <h3 id="clear-the-session-cookie.-responses">Responses</h3>
 
@@ -1893,13 +1892,13 @@ func main() {
 `POST /post/renew-hash-token`
 
 The submitted token is decoded with expiration checking disabled, so an
-expired but correctly signed token is accepted. The returned token keeps
-the original `hash`, `assetId` and `allowOriginal` claims and expires 300
-seconds after it is issued.
+expired but correctly signed token is accepted. The returned token keeps the
+original `hash`, `assetId` and `allowOriginal` claims and expires 300 seconds
+after it is issued.
 
 Corner cases: The request must also carry a valid, unexpired prefetch
-timestamp bearer token, and the `timestamp` claim of the submitted token
-must match it — renewing only extends the lifetime of the same snapshot.
+timestamp bearer token, and the `timestamp` claim of the submitted token must
+match it — renewing only extends the lifetime of the same snapshot.
 
 Errors: 400 unusable request body — 401 unverifiable signature, mismatched
 `timestamp`, or a missing or invalid timestamp bearer token — 500 internal
@@ -2119,24 +2118,23 @@ func main() {
 
 `POST /post/renew-timestamp-token`
 
-Accepts share credentials (`x-album-id` + `x-share-id` headers or
-`albumId` + `shareId` query parameters) or an admin JWT cookie. The
-submitted token is decoded with expiration checking disabled and reissued
-with its original snapshot `timestamp` and resolved share intact, expiring
-300 seconds later.
+Accepts share credentials (`x-album-id` + `x-share-id` headers or `albumId` +
+`shareId` query parameters) or an admin JWT cookie. The submitted token is
+decoded with expiration checking disabled and reissued with its original
+snapshot `timestamp` and resolved share intact, expiring 300 seconds later.
 
-A presenter may only renew a snapshot minted for themselves: a share
-presenter renews only its own share's snapshot (share-pair equality), and
-a user presenter renews only snapshots whose `caller` equals their user id.
-Admins are not exempt. The embedded share is also re-resolved from the DB
-before re-issue, so a share that has since been disabled or expired stops
-yielding refreshed tokens.
+A presenter may only renew a snapshot minted for themselves: a share presenter
+renews only its own share's snapshot (share-pair equality), and a user
+presenter renews only snapshots whose `caller` equals their user id. Admins
+are not exempt. The embedded share is also re-resolved from the DB before
+re-issue, so a share that has since been disabled or expired stops yielding
+refreshed tokens.
 
 Corner cases: Re-renewing keeps addressing the same snapshot, so only the
 expiry changes and the underlying data is not re-read.
 
-Errors: 400 only one of the share credential header or query pair given —
-401 missing or invalid credentials, a token whose share differs from the
+Errors: 400 only one of the share credential header or query pair given — 401
+missing or invalid credentials, a token whose share differs from the
 presenter's, an expired or removed embedded share, or an unverifiable token
 signature — 500 internal failure.
 
@@ -2352,22 +2350,20 @@ SameSite=Strict; Path=/` response header — page JS never sees the token
 is unset, so changing `authKey` invalidates every token issued under
 the previous one.
 
-Errors: 400 the login `userId` is empty or longer than 64 characters, or
-the body does not parse as a login object — 401 unknown user or wrong
-password (on an empty store every login is unknown: enrollment happens
-only via `POST /post/users/bootstrap`) — 429 the attempt is throttled
-(`Retry-After` carries the
-remaining ban seconds) — 500 internal error.
+Errors: 400 the login `userId` is empty or longer than 64 characters, or the
+body does not parse as a login object — 401 unknown user or wrong password (on
+an empty store every login is unknown: enrollment happens only via
+`POST /post/users/bootstrap`) — 429 the attempt is throttled (`Retry-After`
+carries the remaining ban seconds) — 500 internal error.
 
-Brute-force throttle: before the KDF runs, every attempt
-reserves a slot and then checks the IP-short, IP-long, and user-long
-buckets (see [`crate::auth::rate_limit`]); while any bucket bans, a
-429 is returned without hashing. Evaluated failures record into all
-applicable buckets, a success drops the username entry and clears the
-IP burst bucket (keeping IP-long history), and throttled attempts are
-never recorded. The environment-only kill
-switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the
-throttle — for fuzzing runs — while the failure logging stays.
+Brute-force throttle: before the KDF runs, every attempt reserves a slot and
+then checks the IP-short, IP-long, and user-long buckets (see
+[`crate::auth::rate_limit`]); while any bucket bans, a 429 is returned without
+hashing. Evaluated failures record into all applicable buckets, a success
+drops the username entry and clears the IP burst bucket (keeping IP-long
+history), and throttled attempts are never recorded. The environment-only kill
+switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the throttle —
+for fuzzing runs — while the failure logging stays.
 
 > Body parameter
 
@@ -2576,18 +2572,18 @@ func main() {
 
 `POST /post/users/bootstrap`
 
-The only online admin-granting path. Open only while the user store is
-empty **and `--bootstrap-admin` is set**; the created user is forced to
-`admin: true`. Closed by default: with the flag off an empty store
-rejects with the same 401 as every other guarded surface, and once any
-user exists the window stays shut (further users come from
-`POST /post/users/register`; role changes from `PUT /put/users/admin`).
+The only online admin-granting path. Open only while the user store is empty
+**and `--bootstrap-admin` is set**; the created user is forced to
+`admin: true`. Closed by default: with the flag off an empty store rejects
+with the same 401 as every other guarded surface, and once any user exists the
+window stays shut (further users come from `POST /post/users/register`; role
+changes from `PUT /put/users/admin`).
 
 Corner cases: The password is trimmed before hashing.
 
-Errors: 400 invalid `userId` or password violating the policy — 401
-the bootstrap window is closed (flag off, or the store is non-empty) —
-405 read-only mode — 409 `userId` already exists — 500 storage failure.
+Errors: 400 invalid `userId` or password violating the policy — 401 the
+bootstrap window is closed (flag off, or the store is non-empty) — 405
+read-only mode — 409 `userId` already exists — 500 storage failure.
 
 > Body parameter
 
@@ -2800,24 +2796,24 @@ func main() {
 
 Public route (no auth guard) behind the read-only guard. Three gates, in
 order: a valid admin session registers without an invite; with
-`allowRegistration` on, anyone registers without an invite; otherwise a
-valid, unexpired, unused invite is required. Non-admin sessions count as
-anonymous for gating. The account is always created with `admin: false` —
+`allowRegistration` on, anyone registers without an invite; otherwise a valid,
+unexpired, unused invite is required. Non-admin sessions count as anonymous
+for gating. The account is always created with `admin: false` —
 `POST /post/users/bootstrap` (flag ∧ empty store) is the only online
 admin-granting path. While an invite is not needed (admin session or open
-knob), an `invite` in the body is ignored: it neither fails nor gets
-burned.
+knob), an `invite` in the body is ignored: it neither fails nor gets burned.
 
-Corner cases: The password is trimmed once and must satisfy the
-default policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption
-marks the token used and inserts the user record in one transaction, so
-a failed request never half-consumes an invite. An invite may be bound
-to a `username` at creation; redemption then requires that same id.
+Corner cases: The password is trimmed once and must satisfy the default policy
+(see `auth::password::check_strength`); an empty `invite` string counts as
+absent. Invite redemption marks the token used and inserts the user record in
+one transaction, so a failed request never half-consumes an invite. An invite
+may be bound to a `username` at creation; redemption then requires that same
+id.
 
 Errors: 400 invalid `userId` or password violating the policy — 403
-registration disabled (no invite), invite expired, or invite username
-mismatch — 404 unknown or revoked invite token — 405 read-only mode —
-409 `userId` already exists or invite already used — 500 storage failure.
+registration disabled (no invite), invite expired, or invite username mismatch
+— 404 unknown or revoked invite token — 405 read-only mode — 409 `userId`
+already exists or invite already used — 500 storage failure.
 
 > Body parameter
 
@@ -3030,22 +3026,22 @@ func main() {
 
 `PUT /put/users/admin`
 
-Admin-only: a non-admin, share, or missing credential is denied at
-dispatch with 401. A change that would leave zero admins is refused,
-whether the target is the caller or the sole other admin; self-demotion
-with another admin present succeeds (transfer). No-op same-flag writes
-succeed without an audit line.
+Admin-only: a non-admin, share, or missing credential is denied at dispatch
+with 401. A change that would leave zero admins is refused, whether the target
+is the caller or the sole other admin; self-demotion with another admin
+present succeeds (transfer). No-op same-flag writes succeed without an audit
+line.
 
-Requires re-authentication via the `X-Picasu-Password` header (403 when
-it is missing or wrong).
+Requires re-authentication via the `X-Picasu-Password` header (403 when it is
+missing or wrong).
 
-Corner cases: Unknown `userId` names no user. The caller id is read from
-the dispatch-validated claims, never from the body.
+Corner cases: Unknown `userId` names no user. The caller id is read from the
+dispatch-validated claims, never from the body.
 
-Errors: 400 invalid `userId` — 401 missing or invalid credentials,
-non-admin caller, or share credentials — 403 missing or wrong
-re-authentication password — 404 unknown `userId` — 405 read-only mode
-— 409 demotion would leave zero admins — 500 storage failure.
+Errors: 400 invalid `userId` — 401 missing or invalid credentials, non-admin
+caller, or share credentials — 403 missing or wrong re-authentication password
+— 404 unknown `userId` — 405 read-only mode — 409 demotion would leave zero
+admins — 500 storage failure.
 
 > Body parameter
 
@@ -3246,9 +3242,9 @@ func main() {
 
 `PUT /put/users/disabled`
 
-Locked accounts cannot log in and their outstanding sessions die;
-personal data and shares are untouched, and re-enabling restores
-access with a fresh login.
+Locked accounts cannot log in and their outstanding sessions die; personal
+data and shares are untouched, and re-enabling restores access with a fresh
+login.
 
 > Body parameter
 
@@ -3449,26 +3445,25 @@ func main() {
 
 `PUT /put/users/password`
 
-A self-change (target == caller) always requires the correct
-`oldPassword`, admins included; an admin may set another user's password
-without the old one (recovery path). A non-admin may only change their
-own. The new
-password is trimmed and must satisfy the default password policy
-after trimming (length floor/ceiling, blocklist, user-id and pattern
-rules — see `auth::password::check_strength`).
+A self-change (target == caller) always requires the correct `oldPassword`,
+admins included; an admin may set another user's password without the old one
+(recovery path). A non-admin may only change their own. The new password is
+trimmed and must satisfy the default password policy after trimming (length
+floor/ceiling, blocklist, user-id and pattern rules — see
+`auth::password::check_strength`).
 
-Corner cases: Any authenticated user reaches this route (share tokens
-are rejected); unauthenticated callers are denied at dispatch.
+Corner cases: Any authenticated user reaches this route (share tokens are
+rejected); unauthenticated callers are denied at dispatch.
 
-Requires re-authentication via the `X-Picasu-Password` header (403 when
-it is missing or wrong).
+Requires re-authentication via the `X-Picasu-Password` header (403 when it is
+missing or wrong).
 
-Errors: 400 invalid `userId`, `newPassword` violating the password
-policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
-targeting another user — 404 unknown `userId` — 405 read-only mode —
-500 storage failure. 401 is the `GuardUser` cookie guard rejecting an
-unauthenticated or sessionless caller, or this route revoking the
-session after the (ip, jti) guess budget is spent.
+Errors: 400 invalid `userId`, `newPassword` violating the password policy, or
+a wrong/missing `oldPassword` on self-change — 403 non-admin targeting another
+user — 404 unknown `userId` — 405 read-only mode — 500 storage failure. 401 is
+the `GuardUser` cookie guard rejecting an unauthenticated or sessionless
+caller, or this route revoking the session after the (ip, jti) guess budget is
+spent.
 
 > Body parameter
 
@@ -3669,13 +3664,12 @@ func main() {
 
 `PUT /put/users/sharing`
 
-Admin-only. Sharing is not a liveness property, so no zero-enabled-admin
-check applies. A same-flag write is a no-op reporting success without an
-audit line.
+Admin-only. Sharing is not a liveness property, so no zero-enabled-admin check
+applies. A same-flag write is a no-op reporting success without an audit line.
 
-Errors: 400 invalid `userId` — 401 missing or invalid credentials,
-non-admin caller, or share credentials — 404 unknown `userId` — 405
-read-only mode — 500 storage failure.
+Errors: 400 invalid `userId` — 401 missing or invalid credentials, non-admin
+caller, or share credentials — 404 unknown `userId` — 405 read-only mode — 500
+storage failure.
 
 > Body parameter
 
@@ -3723,7 +3717,8 @@ cookie_jwt
 
 <h1 id="picasu-albums">albums</h1>
 
-Albums and shares: creation, assignment, covers, titles, descriptions, share links
+Albums and shares: creation, assignment, covers, titles, descriptions, share
+links
 
 ## List every album the metadata tree knows.
 
@@ -3869,17 +3864,17 @@ func main() {
 Returns one entry per album with `albumId`, `albumName`, the album's
 `shareList` share definitions, `dirPath` and `parentAlbumId`.
 
-Corner cases: `dirPath` is reported relative to the configured `imagePath`
-so clients never handle the absolute library location, falling back to the
+Corner cases: `dirPath` is reported relative to the configured `imagePath` so
+clients never handle the absolute library location, falling back to the
 absolute path for albums outside that root; `parentAlbumId` names the direct
-parent directory album and is `null` for top-level dir albums and all
-manually created albums. Share entries carry `hasPassword` presence only —
-the stored password is never returned by an album read. Each album's
-`shareList` is scoped to the caller: only shares they created are listed
-(see [`crate::storage::db::share_visible_to`]).
+parent directory album and is `null` for top-level dir albums and all manually
+created albums. Share entries carry `hasPassword` presence only — the stored
+password is never returned by an album read. Each album's `shareList` is
+scoped to the caller: only shares they created are listed (see
+[`crate::storage::db::share_visible_to`]).
 
-Errors: 401 missing, invalid or share-role session — 403 no enrolled
-users — 500 storage failure.
+Errors: 401 missing, invalid or share-role session — 403 no enrolled users —
+500 storage failure.
 
 > Example responses
 
@@ -4110,14 +4105,13 @@ func main() {
 
 `GET /get/share/token`
 
-The album must be visible to the caller (invisible albums answer 404,
-same no-oracle canon as the other share endpoints). The entry is then
-located by its non-secret fingerprint; the bearer is returned only when
-the entry's `created_by` equals the caller. Any other case — unknown
-fingerprint, foreign creator, including an admin who did not create the
-share — answers 404 with the same message, so existence is never
-disclosed to non-creators. Retrieval is logged at info level without
-the token value.
+The album must be visible to the caller (invisible albums answer 404, same
+no-oracle canon as the other share endpoints). The entry is then located by
+its non-secret fingerprint; the bearer is returned only when the entry's
+`created_by` equals the caller. Any other case — unknown fingerprint, foreign
+creator, including an admin who did not create the share — answers 404 with
+the same message, so existence is never disclosed to non-creators. Retrieval
+is logged at info level without the token value.
 
 <h3 id="reveal-the-bearer-token-for-one-of-an-album's-shares.-parameters">Parameters</h3>
 
@@ -4314,14 +4308,14 @@ func main() {
 
 `POST /post/create_dir_album`
 
-`name` is trimmed and must be a single path segment — no separator, no `.`
-or `..`. The directory is created directly under the existing parent
-album's own directory, registered as an album, and the parent album is
-refreshed before the response returns.
+`name` is trimmed and must be a single path segment — no separator, no `.` or
+`..`. The directory is created directly under the existing parent album's own
+directory, registered as an album, and the parent album is refreshed before
+the response returns.
 
-Corner cases: The new album's ID is returned as a string. A failure after
-the directory was created but before the album was registered leaves the
-empty directory behind.
+Corner cases: The new album's ID is returned as a string. A failure after the
+directory was created but before the album was registered leaves the empty
+directory behind.
 
 Errors: 400 unusable `name`, or a `parentAlbumId` that names no dir-album —
 401 missing or invalid credentials — 405 read-only mode — 500 the directory
@@ -4537,20 +4531,19 @@ func main() {
 `POST /post/create_share`
 
 `albumId` must name an existing album row. The returned id is a freshly
-generated 64-character lowercase alphanumeric string that becomes the
-album's `shareList` key. `exp` is stored verbatim as unix seconds, where
-`0` marks a share that never expires; `password`, `showMetadata`,
-`showDownload` and `showUpload` are stored as posted and decide what later
-requests carrying the share may do.
+generated 64-character lowercase alphanumeric string that becomes the album's
+`shareList` key. `exp` is stored verbatim as unix seconds, where `0` marks a
+share that never expires; `password`, `showMetadata`, `showDownload` and
+`showUpload` are stored as posted and decide what later requests carrying the
+share may do.
 
-Corner cases: The id is generated, never supplied by the caller, so a
-second share for the same album is a separate entry. Nothing is written
-unless the album exists. The caller's user id is recorded as the share's
-owner in the same transaction, which is what per-caller album listings
-filter on.
+Corner cases: The id is generated, never supplied by the caller, so a second
+share for the same album is a separate entry. Nothing is written unless the
+album exists. The caller's user id is recorded as the share's owner in the
+same transaction, which is what per-caller album listings filter on.
 
-Errors: 400 unusable request body — 401 missing or invalid credentials —
-404 `albumId` names no album — 405 read-only mode — 500 storage failure.
+Errors: 400 unusable request body — 401 missing or invalid credentials — 404
+`albumId` names no album — 405 read-only mode — 500 storage failure.
 
 > Body parameter
 
@@ -4767,12 +4760,12 @@ func main() {
 
 `assetId` addresses the asset record and `albumId` the destination album,
 whose directory is resolved from the album directory cache. Only the file at
-the asset's own path moves, never hash-matched duplicates: the stored path
-and album membership are rewritten to match, an album moves as its whole
-directory tree with every descendant record's path rewritten, and a `.xmp`
-sidecar rides along with the file. The destination album's stats are
-refreshed and the query-cache version bumped before the response returns, so
-the next prefetch already reflects the move.
+the asset's own path moves, never hash-matched duplicates: the stored path and
+album membership are rewritten to match, an album moves as its whole directory
+tree with every descendant record's path rewritten, and a `.xmp` sidecar rides
+along with the file. The destination album's stats are refreshed and the
+query-cache version bumped before the response returns, so the next prefetch
+already reflects the move.
 
 Corner cases: `onConflict` is required and has no default — `skip` leaves an
 existing destination untouched and reports `skipped`, `rename` lands under a
@@ -4784,8 +4777,8 @@ content hash, not by path, so no derivative moves or is invalidated.
 
 Errors: 400 unknown asset or album id, a source path or album directory that
 no longer exists, or a destination album that has no directory — 401 missing
-or invalid credentials; share tokens are not accepted — 405 read-only
-mode — 500 storage failure.
+or invalid credentials; share tokens are not accepted — 405 read-only mode —
+500 storage failure.
 
 > Body parameter
 
@@ -4994,14 +4987,13 @@ func main() {
 
 `PUT /put/delete_share`
 
-`albumId` names the album and `shareId` the entry to drop from its share
-list. The removal is committed to the album's stored share list, no
-`.albuminfo.xmp` sidecar is written, and the in-memory tree is rebuilt
-before the call returns.
+`albumId` names the album and `shareId` the entry to drop from its share list.
+The removal is committed to the album's stored share list, no `.albuminfo.xmp`
+sidecar is written, and the in-memory tree is rebuilt before the call returns.
 
-Corner cases: removing a share that is not present, or addressing an
-`albumId` that holds no album row, is a silent no-op that still answers 200
-rather than a 404.
+Corner cases: removing a share that is not present, or addressing an `albumId`
+that holds no album row, is a silent no-op that still answers 200 rather than
+a 404.
 
 Errors: 400 malformed body — 401 missing or invalid admin credentials; share
 tokens are not accepted — 405 read-only mode — 500 storage failure.
@@ -5215,11 +5207,11 @@ func main() {
 
 The submitted `share` object is stored under the key `share.url`, replacing
 any entry already held under that key, so a share is edited by posting a
-complete object. The password is the exception to the full replace: an
-absent or `null` `password` keeps the stored secret, the empty string
-clears it, and any other string sets it. The payload is never checked
-against the album, no `.albuminfo.xmp` sidecar is written, and the
-in-memory tree is rebuilt before the call returns.
+complete object. The password is the exception to the full replace: an absent
+or `null` `password` keeps the stored secret, the empty string clears it, and
+any other string sets it. The payload is never checked against the album, no
+`.albuminfo.xmp` sidecar is written, and the in-memory tree is rebuilt before
+the call returns.
 
 Corner cases: an `albumId` that holds no album row is a silent no-op that
 still answers 200.
@@ -5439,9 +5431,9 @@ record. The album's `cover` becomes `coverAssetId` and its `thumbhash` is
 overwritten with the cover's, and the in-memory tree is rebuilt before the
 call returns.
 
-Corner cases: the cover's kind is never checked, so any asset can serve as
-the cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is
-stored in the database only.
+Corner cases: the cover's kind is never checked, so any asset can serve as the
+cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is stored
+in the database only.
 
 Errors: 400 `albumId` names a media record — 401 missing or invalid
 credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
@@ -5645,17 +5637,17 @@ func main() {
 
 `PUT /put/set_album_title`
 
-`albumId` names the album to edit and `title` its new display title. Both
-the raw display `title` and `custom_title`, the value written to the album's
-`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree
-is rebuilt before the call returns.
+`albumId` names the album to edit and `title` its new display title. Both the
+raw display `title` and `custom_title`, the value written to the album's
+`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree is
+rebuilt before the call returns.
 
 Corner cases: `title: null` clears `custom_title` and falls `title` back to
 the directory-derived default, so a cleared title leaves no empty string
 behind.
 
-Errors: 400 malformed body — 401 missing or invalid session —
-403 no enrolled user — 405 read-only mode — 500 storage failure.
+Errors: 400 malformed body — 401 missing or invalid session — 403 no enrolled
+user — 405 read-only mode — 500 storage failure.
 
 > Body parameter
 
@@ -5864,13 +5856,13 @@ the in-memory tree is rebuilt before the call returns. Share credentials
 (`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted
 alongside the admin JWT cookie.
 
-Corner cases: an index whose asset record no longer exists is skipped
-and still answers 200, and a failed sidecar write is logged rather than
-failing the request.
+Corner cases: an index whose asset record no longer exists is skipped and
+still answers 200, and a failed sidecar write is logged rather than failing
+the request.
 
 Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
-session — 403 no enrolled user — 405 read-only mode — 500 out-of-range
-index or storage failure.
+session — 403 no enrolled user — 405 read-only mode — 500 out-of-range index
+or storage failure.
 
 > Body parameter
 
@@ -5920,7 +5912,8 @@ cookie_jwt
 
 <h1 id="picasu-assets">assets</h1>
 
-Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, deletion
+Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails,
+deletion
 
 ## Delete the listed assets: files, sidecars and metadata rows are removed.
 
@@ -6077,20 +6070,19 @@ func main() {
 
 `DELETE /delete/delete-data`
 
-`assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar
-are removed from disk and its metadata row is dropped. Every album the
-deletion touched is refreshed before the response returns.
+`assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar are
+removed from disk and its metadata row is dropped. Every album the deletion
+touched is refreshed before the response returns.
 
-Corner cases: An empty `assetIds` is a 400. IDs are processed in order, so
-a malformed or unresolvable ID aborts the request part-way and files
-already removed by earlier entries stay deleted. Deleting an album also
-removes every descendant asset, sidecar and directory below it, and a
-compressed thumbnail is kept while another asset still references the same
-content hash.
+Corner cases: An empty `assetIds` is a 400. IDs are processed in order, so a
+malformed or unresolvable ID aborts the request part-way and files already
+removed by earlier entries stay deleted. Deleting an album also removes every
+descendant asset, sidecar and directory below it, and a compressed thumbnail
+is kept while another asset still references the same content hash.
 
-Errors: 400 empty `assetIds`, or an ID that exceeds 64 bytes — 401 missing
-or invalid credentials — 404 an ID names no asset — 405 read-only mode —
-500 storage failure.
+Errors: 400 empty `assetIds`, or an ID that exceeds 64 bytes — 401 missing or
+invalid credentials — 404 an ID names no asset — 405 read-only mode — 500
+storage failure.
 
 > Body parameter
 
@@ -6294,15 +6286,13 @@ its stored payload.
 
 Corner cases: `timestamp` is required and must equal the prefetch token's
 `timestamp` claim. When the token resolves to a share with
-`show_metadata: false`, the metadata fields — including the stored path —
-are cleared before responding, so a share that hides metadata cannot leak it
-here. A share token may only read assets that belong to its own album; any
-other `asset_id` answers 404, so the route does not reveal that the id
-exists.
+`show_metadata: false`, the metadata fields — including the stored path — are
+cleared before responding, so a share that hides metadata cannot leak it here.
+A share token may only read assets that belong to its own album; any other
+`asset_id` answers 404, so the route does not reveal that the id exists.
 
-Errors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched
-prefetch token — 404 unknown `asset_id` — 500 the asset record could not be
-composed.
+Errors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched prefetch
+token — 404 unknown `asset_id` — 500 the asset record could not be composed.
 
 <h3 id="serve-the-full-metadata-of-a-single-asset.-parameters">Parameters</h3>
 
@@ -6494,19 +6484,19 @@ func main() {
 
 `PUT /put/edit_flags`
 
-`indexArray` addresses the assets in the snapshot named by `timestamp`, and
-a sent `isTrashed` value lands on each asset's own record _and_ on its XMP
-sidecar as the `picasu:Trashed` marker: the record is a cache, so without
-the marker a rebuild from the filesystem would bring trashed files back as
-normal assets. A restore removes the marker. The sidecar is written before
-the record, and a write that cannot land fails the request without storing
+`indexArray` addresses the assets in the snapshot named by `timestamp`, and a
+sent `isTrashed` value lands on each asset's own record _and_ on its XMP
+sidecar as the `picasu:Trashed` marker: the record is a cache, so without the
+marker a rebuild from the filesystem would bring trashed files back as normal
+assets. A restore removes the marker. The sidecar is written before the
+record, and a write that cannot land fails the request without storing
 anything. Every album that lost or regained a member is refreshed in the
 background, so its counts may still be catching up when the call returns.
 
 Corner cases: the removed `isFavorite` and `isArchived` keys are still
 accepted and ignored rather than rejected, and an absent `isTrashed` leaves
-every flag as it was. An index whose asset record no longer exists is
-skipped and still answers 200.
+every flag as it was. An index whose asset record no longer exists is skipped
+and still answers 200.
 
 Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
 credentials; share tokens are not accepted — 405 read-only mode — 500
@@ -6715,18 +6705,18 @@ func main() {
 `PUT /put/edit_rating`
 
 `indexArray` addresses the assets in the snapshot named by `timestamp`, and
-`rating` carries 0–5 or `null` to clear. Each rating is written to the
-asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the
-in-memory tree is rebuilt before the call returns.
+`rating` carries 0–5 or `null` to clear. Each rating is written to the asset's
+`.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the in-memory
+tree is rebuilt before the call returns.
 
-Corner cases: a rating above 5 is rejected before any asset is touched, so
-one bad value fails the whole batch. An index whose asset record no longer
-exists is skipped and still answers 200, and a failed sidecar write is
-logged rather than failing the request.
+Corner cases: a rating above 5 is rejected before any asset is touched, so one
+bad value fails the whole batch. An index whose asset record no longer exists
+is skipped and still answers 200, and a failed sidecar write is logged rather
+than failing the request.
 
-Errors: 400 `rating` above 5, malformed body, or unknown snapshot id —
-401 missing or invalid credentials; share tokens are not accepted —
-405 read-only mode — 500 out-of-range index or storage failure.
+Errors: 400 `rating` above 5, malformed body, or unknown snapshot id — 401
+missing or invalid credentials; share tokens are not accepted — 405 read-only
+mode — 500 out-of-range index or storage failure.
 
 > Body parameter
 
@@ -6938,13 +6928,13 @@ func main() {
 `indexArray` addresses the assets in the snapshot named by `timestamp`, and
 additions and removals are applied per asset in list order after
 NFC-normalization and filtering to valid XML characters. Each asset's
-`.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the
-returned list counts every tag over the whole metadata table, not only the
-edited assets.
+`.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the returned
+list counts every tag over the whole metadata table, not only the edited
+assets.
 
-Corner cases: a tag that sanitizes to empty is skipped on add but still
-serves as the removal key, and an index whose asset record no longer exists
-is skipped and still answers 200.
+Corner cases: a tag that sanitizes to empty is skipped on add but still serves
+as the removal key, and an index whose asset record no longer exists is
+skipped and still answers 200.
 
 Errors: 400 malformed body or unknown snapshot id — 401 missing or invalid
 credentials; share tokens are not accepted — 405 read-only mode — 500
@@ -7167,21 +7157,21 @@ func main() {
 
 `PUT /put/regenerate-thumbnail-with-frame`
 
-The multipart body carries the `asset_id` and the `frame` file, and the
-frame is written to the asset's compressed-thumbnail path,
+The multipart body carries the `asset_id` and the `frame` file, and the frame
+is written to the asset's compressed-thumbnail path,
 `object/compressed/<first two characters of the asset id>/<asset_id>.jpg`,
 overwriting whatever was there. `thumbhash`, `phash` and `updatedAt` are
 recomputed and flushed.
 
 Corner cases: the frame is written before the record is looked up, so a
 request naming an unknown id still leaves the file behind. The recomputed
-hashes are derived from the original file on disk rather than from the
-frame, and the stored dimensions, EXIF and `.albuminfo.xmp` sidecar are
-left untouched.
+hashes are derived from the original file on disk rather than from the frame,
+and the stored dimensions, EXIF and `.albuminfo.xmp` sidecar are left
+untouched.
 
 Errors: 400 malformed multipart body or an `asset_id` longer than 64 bytes —
-401 missing or invalid credentials; share tokens are not accepted —
-404 `asset_id` names no asset record — 405 read-only mode — 500 frame write,
+401 missing or invalid credentials; share tokens are not accepted — 404
+`asset_id` names no asset record — 405 read-only mode — 500 frame write,
 decode, or storage failure.
 
 > Body parameter
@@ -7377,22 +7367,22 @@ func main() {
 
 `PUT /put/rotate-image`
 
-The compressed JPEG is loaded, rotated and written back, `width` and
-`height` are swapped, and `thumbhash` and `phash` are recomputed. The
-accumulated rotation (90°, 180°, 270°, then back to 0°) is persisted to the
-asset's XMP sidecar as `picasu:Rotation`, which is the source of truth a
-later reindex reads to reproduce this display state. Each parent album's
-`updatedAt` is bumped before the records are flushed.
+The compressed JPEG is loaded, rotated and written back, `width` and `height`
+are swapped, and `thumbhash` and `phash` are recomputed. The accumulated
+rotation (90°, 180°, 270°, then back to 0°) is persisted to the asset's XMP
+sidecar as `picasu:Rotation`, which is the source of truth a later reindex
+reads to reproduce this display state. Each parent album's `updatedAt` is
+bumped before the records are flushed.
 
-Corner cases: only the compressed JPEG is re-rendered — the original file
-and its EXIF data are left as they were — so the rotation is a display-level
-transform that accumulates across repeated calls. The original content hash
-is not recomputed.
+Corner cases: only the compressed JPEG is re-rendered — the original file and
+its EXIF data are left as they were — so the rotation is a display-level
+transform that accumulates across repeated calls. The original content hash is
+not recomputed.
 
 Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
-missing or invalid credentials; share tokens are not accepted — 404
-`asset_id` names no asset record — 405 read-only mode — 500 decode,
-thumbnail write, XMP sidecar write, or storage failure.
+missing or invalid credentials; share tokens are not accepted — 404 `asset_id`
+names no asset record — 405 read-only mode — 500 decode, thumbnail write, XMP
+sidecar write, or storage failure.
 
 > Body parameter
 
@@ -7583,10 +7573,9 @@ func main() {
 
 `GET /get/admin/config`
 
-Returns one entry per known field with its current value, tier
-(`host` vs `runtime`), source (`env` vs `file`) and whether it is
-writable via the admin API. Admin-only; reading is always allowed
-(no read-only guard).
+Returns one entry per known field with its current value, tier (`host` vs
+`runtime`), source (`env` vs `file`) and whether it is writable via the admin
+API. Admin-only; reading is always allowed (no read-only guard).
 
 Errors: 401 missing or invalid admin credentials.
 
@@ -7784,9 +7773,9 @@ func main() {
 
 `GET /get/admin/config/export`
 
-Returns the writable runtime subset with a version and scope marker so
-backups stay safe to store alongside the data. The signing key is never
-exported. Admin-only.
+Returns the writable runtime subset with a version and scope marker so backups
+stay safe to store alongside the data. The signing key is never exported.
+Admin-only.
 
 Errors: 401 missing or invalid admin credentials.
 
@@ -7989,16 +7978,15 @@ func main() {
 Returns the values a client needs to drive the other operations:
 `uploadFolder` (relative to the image library root), `maxUploadSize`,
 `readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,
-`validateUploadContent`, `useClientTimestampInfo` and
-`personalAlbumsEnabled` (boolean only — whether per-user personal areas
-are enabled; the host path of the personal-users root is never served).
+`validateUploadContent`, `useClientTimestampInfo` and `personalAlbumsEnabled`
+(boolean only — whether per-user personal areas are enabled; the host path of
+the personal-users root is never served).
 
-Corner cases: the host image path is never served here — it is a
-host-only setting (env/file) surfaced to admins through
-`GET /get/admin/config`. The signing key is never exposed in any form.
-`uploadFolder` is relative and visible to every admitted caller, so the
-response carries no per-tier fields at all and is identical for every
-credential that passes the gate.
+Corner cases: the host image path is never served here — it is a host-only
+setting (env/file) surfaced to admins through `GET /get/admin/config`. The
+signing key is never exposed in any form. `uploadFolder` is relative and
+visible to every admitted caller, so the response carries no per-tier fields
+at all and is identical for every credential that passes the gate.
 
 Errors: 400 half-supplied share credentials or an id that is not an album —
 401 no valid admin or share credentials.
@@ -8185,10 +8173,9 @@ func main() {
 
 `GET /get/config/export`
 
-Returns the complete serialized configuration with the signing key
-redacted (`authKey` is removed, never exported), so the document stays
-safe to store alongside backups. `webRoot` is the only other field never
-serialized.
+Returns the complete serialized configuration with the signing key redacted
+(`authKey` is removed, never exported), so the document stays safe to store
+alongside backups. `webRoot` is the only other field never serialized.
 
 Errors: 400 invalid input — 401 no valid admin credentials.
 
@@ -8394,11 +8381,11 @@ func main() {
 
 `GET /get/path-completion`
 
-An absent or blank `path` returns the platform roots plus the
-subdirectories of the server's working directory with `is_default: true`. A
-trailing separator lists that directory, a bare name is matched against the
-roots and the working directory, and a path with a parent lists the parent
-filtered by its last segment.
+An absent or blank `path` returns the platform roots plus the subdirectories
+of the server's working directory with `is_default: true`. A trailing
+separator lists that directory, a bare name is matched against the roots and
+the working directory, and a path with a parent lists the parent filtered by
+its last segment.
 
 Corner cases: only directories are returned, as absolute paths, sorted
 case-insensitively and truncated to 50 entries. A non-empty prefix that
@@ -8592,10 +8579,10 @@ func main() {
 
 `POST /post/admin/config/disable-read-only`
 
-Clears `readOnlyMode` and persists the change. Admin-only and deliberately
-NOT gated by `GuardMutate`: lifting the kill-switch must be callable
-while it is on. Requires re-authentication via the `X-Picasu-Password`
-header (403 when it is missing or wrong).
+Clears `readOnlyMode` and persists the change. Admin-only and deliberately NOT
+gated by `GuardMutate`: lifting the kill-switch must be callable while it is
+on. Requires re-authentication via the `X-Picasu-Password` header (403 when it
+is missing or wrong).
 
 Errors: 401 missing or invalid admin credentials — 403 missing or wrong
 re-authentication password — 500 config write failure.
@@ -8767,14 +8754,13 @@ func main() {
 
 `POST /post/config/auth-key/reset`
 
-Generates a new strong random key, persists it to the owner-only
-secrets file, and installs it in memory. All previously issued tokens
-stop verifying, so every session is invalidated by construction.
-Overrides from `PICASU_AUTH_KEY` still win at the next boot (they are
-never persisted).
+Generates a new strong random key, persists it to the owner-only secrets file,
+and installs it in memory. All previously issued tokens stop verifying, so
+every session is invalidated by construction. Overrides from `PICASU_AUTH_KEY`
+still win at the next boot (they are never persisted).
 
-Errors: 401 missing or invalid admin credentials — 405 read-only mode —
-500 the new key could not be stored.
+Errors: 401 missing or invalid admin credentials — 405 read-only mode — 500
+the new key could not be stored.
 
 > Example responses
 
@@ -9225,11 +9211,10 @@ func main() {
 
 `GET /get/index/status`
 
-The body carries the job's state (`idle`, `running`, `completed`,
-`canceled` or `failed`), the root it walks, the `scanned` / `matched` /
-`processed` / `failed` counters, `startedAt` / `finishedAt` epoch
-milliseconds and `cancelRequested`, so an album-index run can be polled
-until it settles.
+The body carries the job's state (`idle`, `running`, `completed`, `canceled`
+or `failed`), the root it walks, the `scanned` / `matched` / `processed` /
+`failed` counters, `startedAt` / `finishedAt` epoch milliseconds and
+`cancelRequested`, so an album-index run can be polled until it settles.
 
 Corner cases: before the first run the state is `idle` with zeroed counters
 and no timestamps. Only the album-index job writes this status: a new run
@@ -9432,10 +9417,10 @@ func main() {
 
 `POST /post/index/album`
 
-`album` is a directory path relative to `IMAGE_HOME`, where `"/"` selects
-the root. The walk is asynchronous: the response returns once the job is
-accepted, and progress — the scanned, matched, processed and failed
-counters plus the final state — is reported by `GET /get/index/status`.
+`album` is a directory path relative to `IMAGE_HOME`, where `"/"` selects the
+root. The walk is asynchronous: the response returns once the job is accepted,
+and progress — the scanned, matched, processed and failed counters plus the
+final state — is reported by `GET /get/index/status`.
 
 Corner cases: One album-index job runs at a time, so a request made while
 another job is running is a 409. The walk does not stop at a file it cannot
@@ -9631,15 +9616,15 @@ func main() {
 `POST /post/index/cancel`
 
 Stores a cancel flag that the running walk checks as it goes; the response
-returns as soon as the flag is set, while the job itself keeps walking
-until it reaches its next directory entry.
+returns as soon as the flag is set, while the job itself keeps walking until
+it reaches its next directory entry.
 
-Corner cases: Cancellation is cooperative, not immediate. While the walk
-winds down the job reports `cancelRequested` with its state still `running`;
-the state settles as `canceled` only once the walk has actually stopped.
+Corner cases: Cancellation is cooperative, not immediate. While the walk winds
+down the job reports `cancelRequested` with its state still `running`; the
+state settles as `canceled` only once the walk has actually stopped.
 
-Errors: 400 malformed request — 401 missing or invalid credentials —
-404 no index job is active.
+Errors: 400 malformed request — 401 missing or invalid credentials — 404 no
+index job is active.
 
 > Example responses
 
@@ -9828,10 +9813,10 @@ Resolves the requested path under `DATA_HOME/object/compressed` and serves
 `.jpg` in a single response or `.mp4` as a range-capable stream pinned to
 `video/mp4`.
 
-Corner cases: one image-serving token authorizes exactly one file — its
-`hash` claim must equal the id in the last path segment. Any extension other
-than `.jpg` or `.mp4`, and a path without an extension, are rejected as
-invalid input.
+Corner cases: one image-serving token authorizes exactly one file — its `hash`
+claim must equal the id in the last path segment. Any extension other than
+`.jpg` or `.mp4`, and a path without an extension, are rejected as invalid
+input.
 
 Errors: 400 unsupported or missing file extension — 401 no valid admin or
 share credentials, or no image-serving token for this file — 500 the
@@ -10024,18 +10009,17 @@ func main() {
 
 `GET /object/imported/{file_path}`
 
-There is no copy under `DATA_HOME`: `imagePath` holds the single
-authoritative copy. The last path segment is `<id>.<ext>`, where `id` is the
-asset ID, and the record for that ID names the location the file is streamed
-from.
+There is no copy under `DATA_HOME`: `imagePath` holds the single authoritative
+copy. The last path segment is `<id>.<ext>`, where `id` is the asset ID, and
+the record for that ID names the location the file is streamed from.
 
-Corner cases: resolving is by asset ID alone — there is no hash fallback —
-and the image-serving token must both grant original access and name this
-asset in its `asset_id` claim.
+Corner cases: resolving is by asset ID alone — there is no hash fallback — and
+the image-serving token must both grant original access and name this asset in
+its `asset_id` claim.
 
-Errors: 400 the path carries no usable asset id — 401 no valid admin or
-share credentials, or no image-serving token granting original access —
-404 unknown asset id — 500 the asset record or the file could not be read.
+Errors: 400 the path carries no usable asset id — 401 no valid admin or share
+credentials, or no image-serving token granting original access — 404 unknown
+asset id — 500 the asset record or the file could not be read.
 
 <h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-parameters">Parameters</h3>
 
@@ -10230,13 +10214,12 @@ func main() {
 Returns the rows in the half-open index range `[start, end)` of the snapshot
 named by `timestamp`. Media rows carry identity and timing fields only, so
 tags, EXIF, description and rating come from the single-asset metadata
-operation; album rows additionally carry their stored title, cover and
-counts, which their tiles render.
+operation; album rows additionally carry their stored title, cover and counts,
+which their tiles render.
 
-Corner cases: `end` is clamped to the snapshot length, and a range that
-starts past it answers with an empty array rather than an error. Each row's
-timestamp is the snapshot's own sort date, so a media row keeps its
-EXIF-derived date.
+Corner cases: `end` is clamped to the snapshot length, and a range that starts
+past it answers with an empty array rather than an error. Each row's timestamp
+is the snapshot's own sort date, so a media row keeps its EXIF-derived date.
 
 Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
 mismatched prefetch token — 500 the snapshot or an asset record could not be
@@ -10640,8 +10623,8 @@ and height and nothing else — no asset data — so a virtualized grid can
 reserve space before it fetches the rows themselves.
 
 Corner cases: an `index` beyond the snapshot's last batch is a server-side
-fault rather than an empty row, and the last batch of a snapshot shorter
-than 20 entries is reported with `end` past the snapshot length.
+fault rather than an empty row, and the last batch of a snapshot shorter than
+20 entries is reported with `end` past the snapshot length.
 
 Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
 mismatched prefetch token — 500 the snapshot could not be read or the row
@@ -11050,15 +11033,15 @@ func main() {
 
 `GET /get/get-tags`
 
-Counts every stored tag in the tree together with how many assets carry it,
-so the result covers assets outside the snapshot or share a client happens
-to be viewing.
+Counts every stored tag in the tree together with how many assets carry it, so
+the result covers assets outside the snapshot or share a client happens to be
+viewing.
 
 Corner cases: the counts are accumulated in parallel, so the order of the
 returned list is unspecified and not stable between calls.
 
-Errors: 400 invalid input — 401 missing, invalid or share-role session —
-403 no enrolled users — 500 storage failure.
+Errors: 400 invalid input — 401 missing, invalid or share-role session — 403
+no enrolled users — 500 storage failure.
 
 > Example responses
 
@@ -11270,20 +11253,19 @@ func main() {
 `POST /get/prefetch`
 
 The optional JSON filter body selects the assets to include; results are
-cached by expression, `locate` and tree version, so an identical query
-reuses the snapshot that already exists. The response carries the snapshot
-`timestamp`, the row count, the `locateTo` index, a new prefetch bearer
-token valid for 300 seconds, and the resolved share when the query ran for
-one. That token and timestamp are what the row, data and scroll bar
-operations require.
+cached by expression, `locate` and tree version, so an identical query reuses
+the snapshot that already exists. The response carries the snapshot
+`timestamp`, the row count, the `locateTo` index, a new prefetch bearer token
+valid for 300 seconds, and the resolved share when the query ran for one. That
+token and timestamp are what the row, data and scroll bar operations require.
 
-Corner cases: the filter body is optional, and a body the server cannot
-parse is treated as absent and selects the whole tree. For a share the
-album filter is combined with the supplied expression, and a share that
-hides metadata additionally rewrites the filter so metadata-derived
-conditions (tag, path, camera make or model) can never match. `locate`
-names the asset whose row index comes back as `locateTo`, which is `null`
-when that asset is not in the result.
+Corner cases: the filter body is optional, and a body the server cannot parse
+is treated as absent and selects the whole tree. For a share the album filter
+is combined with the supplied expression, and a share that hides metadata
+additionally rewrites the filter so metadata-derived conditions (tag, path,
+camera make or model) can never match. `locate` names the asset whose row
+index comes back as `locateTo`, which is `null` when that asset is not in the
+result.
 
 Errors: 400 half-supplied share credentials or an id that is not an album —
 401 no valid admin or share credentials — 500 the tree could not be read or
@@ -11511,27 +11493,25 @@ func main() {
 
 `POST /post/upload`
 
-With a target album the files land in that album's own directory; without
-one they land in the configured `uploadFolder` below `imagePath`, which
-becomes its own top-level album. Each file is written to its final location
-and indexed before the response returns.
+With a target album the files land in that album's own directory; without one
+they land in the configured `uploadFolder` below `imagePath`, which becomes
+its own top-level album. Each file is written to its final location and
+indexed before the response returns.
 
-Corner cases: Credentials may be admin or share — a share is accepted when
-it sets `showUpload`, is unexpired, matches `x-share-password` and names
-the same album as `presigned_album_id_opt`. `on_conflict` defaults to
-`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that
-part without writing or indexing it, and any other value is a 400. Every
-part is validated before the first file is written, so a rejected name, an
-extension outside the image or video whitelist, or a
-`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves
-nothing behind. The stored extension always comes from the part's
-`Content-Type` rather than the client filename, and a file the indexing
-pipeline cannot decode is removed again and reported as a 400.
+Corner cases: Credentials may be admin or share — a share is accepted when it
+sets `showUpload`, is unexpired, matches `x-share-password` and names the same
+album as `presigned_album_id_opt`. `on_conflict` defaults to `rename`, which
+suffixes a collision `-001`, `-002`, …; `skip` discards that part without
+writing or indexing it, and any other value is a 400. Every part is validated
+before the first file is written, so a rejected name, an extension outside the
+image or video whitelist, or a `file`/`lastModified` count mismatch aborts the
+batch with a 400 and leaves nothing behind. The stored extension always comes
+from the part's `Content-Type` rather than the client filename, and a file the
+indexing pipeline cannot decode is removed again and reported as a 400.
 
 Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
-rejected filename, count mismatch, missing `imagePath`, or an undecodable
-file — 401 missing or invalid session — 405 read-only
-mode — 500 storage failure.
+rejected filename, count mismatch, missing `imagePath`, or an undecodable file
+— 401 missing or invalid session — 405 read-only mode — 500 storage failure.
 
 > Body parameter
 
@@ -11697,11 +11677,10 @@ func main() {
 
 `GET /`
 
-Returns `index.html` — the embedded asset in a build with
-`embed-frontend`, otherwise `<web_root>/index.html` from the app config —
-the same shell every page route returns. The Vue Router root record
-redirects `/` to `/timeline` in the browser, so no server-side redirect is
-issued here.
+Returns `index.html` — the embedded asset in a build with `embed-frontend`,
+otherwise `<web_root>/index.html` from the app config — the same shell every
+page route returns. The Vue Router root record redirects `/` to `/timeline` in
+the browser, so no server-side redirect is issued here.
 
 <h3 id="serve-the-spa-shell;-the-client-router-opens-the-timeline.-responses">Responses</h3>
 
@@ -11830,13 +11809,13 @@ func main() {
 
 `GET /albums`
 
-Returns the shared `index.html` shell for the `albums` client route. The
-album list itself comes from the albums API route, which reads the album
-index, so this route performs no lookup of its own.
+Returns the shared `index.html` shell for the `albums` client route. The album
+list itself comes from the albums API route, which reads the album index, so
+this route performs no lookup of its own.
 
-Corner cases: An album URL has a different shape — `/album/<album-id>` —
-and is matched by the rank-11 catch-all, which verifies that the album
-exists before returning the same shell.
+Corner cases: An album URL has a different shape — `/album/<album-id>` — and
+is matched by the rank-11 catch-all, which verifies that the album exists
+before returning the same shell.
 
 <h3 id="serve-the-spa-shell-for-the-albums-page.-responses">Responses</h3>
 
@@ -11965,12 +11944,12 @@ func main() {
 
 `GET /albums/view/{path}`
 
-Returns `index.html` for `/albums/view/<path..>` at any depth. The
-captured path is bound and discarded; the client router resolves the view
+Returns `index.html` for `/albums/view/<path..>` at any depth. The captured
+path is bound and discarded; the client router resolves the view
 (`view/:assetId`) from the URL, so the server performs no lookup.
 
-Corner cases: Every path below `/albums/view/` gets the shell, including
-one the client router cannot resolve into an asset id.
+Corner cases: Every path below `/albums/view/` gets the shell, including one
+the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-an-albums-view-path-resolved-by-the-client.-parameters">Parameters</h3>
 
@@ -12237,9 +12216,9 @@ func main() {
 
 `GET /favicon.ico`
 
-Returns `favicon.ico` from the frontend build — the embedded asset in a
-build with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the
-content type guessed from the file extension.
+Returns `favicon.ico` from the frontend build — the embedded asset in a build
+with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the content
+type guessed from the file extension.
 
 Errors: 404 frontend build without the embedded asset — 500 open of
 `<web_root>/favicon.ico` failed.
@@ -12373,10 +12352,10 @@ func main() {
 
 `GET /login`
 
-Returns `index.html`, the shell every page route returns. The `login`
-client route renders the password prompt, which posts the entered password
-to the authentication API, so this route answers an authenticated session
-with the same shell it gives an anonymous one.
+Returns `index.html`, the shell every page route returns. The `login` client
+route renders the password prompt, which posts the entered password to the
+authentication API, so this route answers an authenticated session with the
+same shell it gives an anonymous one.
 
 <h3 id="serve-the-spa-shell-where-the-sign-in-page-is-rendered.-responses">Responses</h3>
 
@@ -12636,8 +12615,8 @@ func main() {
 
 `GET /my-albums/view/{path}`
 
-Returns `index.html` for `/my-albums/view/<path..>` at any depth. The
-captured path is bound and discarded; the client router resolves the view
+Returns `index.html` for `/my-albums/view/<path..>` at any depth. The captured
+path is bound and discarded; the client router resolves the view
 (`view/:assetId`) from the URL, so the server performs no lookup.
 
 <h3 id="serve-the-spa-shell-for-a-my-albums-view-path-resolved-by-the-client.-parameters">Parameters</h3>
@@ -12774,9 +12753,9 @@ func main() {
 
 `GET /redirect-to-login`
 
-Answers 303 See Other with a `Location: /login` header and an empty body.
-The client that follows the redirect receives the SPA shell from the
-sign-in page route, which renders the password prompt.
+Answers 303 See Other with a `Location: /login` header and an empty body. The
+client that follows the redirect receives the SPA shell from the sign-in page
+route, which renders the password prompt.
 
 <h3 id="redirect-to-the-sign-in-page.-responses">Responses</h3>
 
@@ -12905,10 +12884,9 @@ func main() {
 
 `GET /register`
 
-Returns `index.html` like every other page route. The client boot
-guard forces this page on an empty store with `--bootstrap-admin`;
-without a backend route here a browser reload on `/register` answers
-404 instead of the shell.
+Returns `index.html` like every other page route. The client boot guard forces
+this page on an empty store with `--bootstrap-admin`; without a backend route
+here a browser reload on `/register` answers 404 instead of the shell.
 
 <h3 id="serve-the-spa-shell-for-the-first-admin-registration-page.-responses">Responses</h3>
 
@@ -13850,8 +13828,8 @@ func main() {
 
 Returns `index.html` for the `timeline` client route, the shell every page
 route returns. The timeline's rows, albums and scrollbar come from the
-separate `/get/...` API routes that read the metadata database, so this
-route performs no lookup of its own.
+separate `/get/...` API routes that read the metadata database, so this route
+performs no lookup of its own.
 
 <h3 id="serve-the-spa-shell-for-the-timeline-page.-responses">Responses</h3>
 
@@ -13980,13 +13958,13 @@ func main() {
 
 `GET /timeline/view/{path}`
 
-Returns `index.html` for `/timeline/view/<path..>` at any depth. The
-captured path is bound and discarded: the client router resolves the view
+Returns `index.html` for `/timeline/view/<path..>` at any depth. The captured
+path is bound and discarded: the client router resolves the view
 (`view/:assetId`) from the URL and then reads the asset through the API
 routes, so the server performs no lookup.
 
-Corner cases: Every path below `/timeline/view/` gets the shell, including
-one the client router cannot resolve into an asset id.
+Corner cases: Every path below `/timeline/view/` gets the shell, including one
+the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-timeline-view-path-resolved-by-the-client.-parameters">Parameters</h3>
 
@@ -14394,13 +14372,13 @@ func main() {
 
 `GET /unauthorized`
 
-Returns the status alone — no body and no `Location` header — so the
-browser renders its own error page for it. Nothing navigates here: no
-route redirects to this path and it is not a login page; it exists so
-monitoring and tests can observe a bare 401.
+Returns the status alone — no body and no `Location` header — so the browser
+renders its own error page for it. Nothing navigates here: no route redirects
+to this path and it is not a login page; it exists so monitoring and tests can
+observe a bare 401.
 
-Corner cases: Every request to this path gets that status; the SPA shell
-is never returned here.
+Corner cases: Every request to this path gets that status; the SPA shell is
+never returned here.
 
 Errors: 401 always returned, whatever the request carries.
 
@@ -14805,8 +14783,8 @@ func main() {
 `GET /{dynamic_album_id}`
 
 The one-segment matcher returns `index.html` when the captured segment starts
-with `album-`; the prefix is the only server-side check and no album record
-is read. Any other one-segment top-level path answers 404 with the JSON error
+with `album-`; the prefix is the only server-side check and no album record is
+read. Any other one-segment top-level path answers 404 with the JSON error
 body the shared error type produces.
 
 Corner cases: Multi-segment paths are left to the rank-11 catch-all. Among the
@@ -14951,20 +14929,19 @@ func main() {
 `GET /{path}`
 
 Returns `index.html` for every path no other route matches. A path starting
-with `album/` is checked first: the remainder must be an existing album
-record in the metadata database.
+with `album/` is checked first: the remainder must be an existing album record
+in the metadata database.
 
 Corner cases: Rank 11 puts this route last, so the page routes and the API
 routes take precedence over it. Paths under the API and asset prefixes
-(`get/`, `post/`, `put/`, `delete/`, `object/`, `assets/`) are refused
-before the shell: they are forwarded API misses (e.g. a missing required
-query param), not page navigations. The album check covers the `album/`
-prefix only; any other multi-segment path gets the shell without a
-database read.
+(`get/`, `post/`, `put/`, `delete/`, `object/`, `assets/`) are refused before
+the shell: they are forwarded API misses (e.g. a missing required query
+param), not page navigations. The album check covers the `album/` prefix only;
+any other multi-segment path gets the shell without a database read.
 
-Errors: 404 path under an API or asset prefix, or `/album/<album-id>`
-names no album record — 500 metadata database read, blocking task, or
-shell file failure.
+Errors: 404 path under an API or asset prefix, or `/album/<album-id>` names no
+album record — 500 metadata database read, blocking task, or shell file
+failure.
 
 <h3 id="serve-the-spa-shell-for-unmatched-paths,-verifying-album-paths-first.-parameters">Parameters</h3>
 
@@ -15328,9 +15305,9 @@ silent about what happened to the selected item.
 }
 ```
 
-Result of rotating the JWT signing key. Always true after a successful
-reset; the client drives its key-state display off this (the key itself
-is never returned).
+Result of rotating the JWT signing key. Always true after a successful reset;
+the client drives its key-state display off this (the key itself is never
+returned).
 
 ### Properties
 
@@ -15352,9 +15329,9 @@ is never returned).
 }
 ```
 
-Body for `POST /post/users/bootstrap`. There is deliberately no `admin`
-field: creation never grants admin through a body flag, and bootstrap
-always forces `admin: true`.
+Body for `POST /post/users/bootstrap`. There is deliberately no `admin` field:
+creation never grants admin through a body flag, and bootstrap always forces
+`admin: true`.
 
 ### Properties
 
@@ -15376,8 +15353,8 @@ always forces `admin: true`.
 
 Captcha challenge descriptor, reserved for future brute-force throttling.
 
-Never populated yet: the handler always answers `captcha: null`. Kept as
-a named schema so a future challenge can extend it without reshaping the
+Never populated yet: the handler always answers `captcha: null`. Kept as a
+named schema so a future challenge can extend it without reshaping the
 enrollment response.
 
 ### Properties
@@ -15568,9 +15545,9 @@ Response for `POST /post/invites`.
 ```
 
 Response payload for `POST /post/create_share`: the freshly minted bearer
-(`link`) plus its non-secret fingerprint (`fingerprint`). The bearer is
-used to build/show the share link; the fingerprint is the management
-handle for edit/delete/reveal.
+(`link`) plus its non-secret fingerprint (`fingerprint`). The bearer is used
+to build/show the share link; the fingerprint is the management handle for
+edit/delete/reveal.
 
 ### Properties
 
@@ -15855,8 +15832,8 @@ Invite creation limits for the admin console.
 }
 ```
 
-Listing view of an invite: the stored metadata plus the row id (the
-token hash). Never contains the token itself.
+Listing view of an invite: the stored metadata plus the row id (the token
+hash). Never contains the token itself.
 
 ### Properties
 
@@ -15883,8 +15860,8 @@ token hash). Never contains the token itself.
 }
 ```
 
-Request body for `POST /post/users/authenticate`: a user login object. There is
-deliberately no `admin` field: unknown keys are rejected, never honored.
+Request body for `POST /post/users/authenticate`: a user login object. There
+is deliberately no `admin` field: unknown keys are rejected, never honored.
 
 ### Properties
 
@@ -15904,11 +15881,10 @@ deliberately no `admin` field: unknown keys are rejected, never honored.
 "skip"
 ```
 
-Filename-collision strategy for moves and uploads: `skip` leaves an
-existing destination untouched (the source stays put, outcome `skipped`);
-`rename` lands the file under a unique suffixed name (outcome
-`renamedFrom`). Required on assign with no default; upload defaults to
-`rename`.
+Filename-collision strategy for moves and uploads: `skip` leaves an existing
+destination untouched (the source stays put, outcome `skipped`); `rename`
+lands the file under a unique suffixed name (outcome `renamedFrom`). Required
+on assign with no default; upload defaults to `rename`.
 
 ### Properties
 
@@ -16087,8 +16063,8 @@ continued
 }
 ```
 
-Body for `POST /post/users/register`. There is deliberately no `admin`
-field: registration always creates standard users; elevation is
+Body for `POST /post/users/register`. There is deliberately no `admin` field:
+registration always creates standard users; elevation is
 `PUT /put/users/admin` only.
 
 ### Properties
@@ -16276,8 +16252,8 @@ field: registration always creates standard users; elevation is
 }
 ```
 
-The runtime-tier subset of the configuration, shared by the admin PUT
-response and the versioned export envelope.
+The runtime-tier subset of the configuration, shared by the admin PUT response
+and the versioned export envelope.
 
 ### Properties
 
@@ -16375,8 +16351,8 @@ _None_
 }
 ```
 
-The identity half of a self profile: read-only attributes owned by the
-user store. `home` is `null` when unset.
+The identity half of a self profile: read-only attributes owned by the user
+store. `home` is `null` when unset.
 
 ### Properties
 
@@ -16643,8 +16619,8 @@ Body for `PUT /put/users/sharing`.
 }
 ```
 
-One album's share entry as served to clients: the policy plus presence of
-a password, never the secret itself.
+One album's share entry as served to clients: the policy plus presence of a
+password, never the secret itself.
 
 ### Properties
 
@@ -16715,11 +16691,10 @@ a password, never the secret itself.
 
 The JSON body of the shared `401 Unauthorized` response.
 
-Every 401 carries an `AppError` serialization: `kind` is always `"Auth"`,
-and `retryAfter` never appears on a 401. `message` is the fixed
-`"Unauthorized"` string for framework rejections answered by the 401
-catcher, and the handler's reason for credential rejections raised in a
-handler body.
+Every 401 carries an `AppError` serialization: `kind` is always `"Auth"`, and
+`retryAfter` never appears on a 401. `message` is the fixed `"Unauthorized"`
+string for framework rejections answered by the 401 catcher, and the handler's
+reason for credential rejections raised in a handler body.
 
 ### Properties
 

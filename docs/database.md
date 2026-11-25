@@ -57,16 +57,15 @@ pub enum MetadataRecord {
 | Video  | `width`, `height`, `duration`, `exif_vec`                                                                                                 |
 | Album  | `title`, `created_time`, `start_time`, `end_time`, `last_modified_time`, `cover`, `item_count`, `item_size`, `share_list`, `custom_title` |
 
-Identity fields are deliberately absent: no `id`, no asset `path`
-(neither `AssetRecord.path` nor the view's `path`/file entry), no
-`modified`/`scan_time`/`is_trashed`, no `size`/`ext`, no
-`album`, no `dir_path`, no `obj_type`. Readers compose the wire
-`AbstractData` from `AssetRecord` + payload via
-`compose_abstract_data`; writers extract the payload via
-`to_metadata_record`. The on-disk table name (`asset_metadata`) differs from
-the previous `metadata` table so rows written under the previous value type
-are never decoded — there is no migration; a clean rebuild repopulates the
-table.
+Identity fields are deliberately absent: no `id`, no asset `path` (neither
+`AssetRecord.path` nor the view's `path`/file entry), no
+`modified`/`scan_time`/`is_trashed`, no `size`/`ext`, no `album`, no
+`dir_path`, no `obj_type`. Readers compose the wire `AbstractData` from
+`AssetRecord` + payload via `compose_abstract_data`; writers extract the
+payload via `to_metadata_record`. The on-disk table name (`asset_metadata`)
+differs from the previous `metadata` table so rows written under the previous
+value type are never decoded — there is no migration; a clean rebuild
+repopulates the table.
 
 ### AbstractData variants (wire/view type)
 
@@ -163,11 +162,10 @@ Source: `backend/src/model/response.rs`
 | `scan_time`  | `i64`    | Last scan timestamp (ms)                               |
 | `is_trashed` | `bool`   | Per-path trash flag (buried vs. visible in trash view) |
 
-`FileEntry` is a view type assembled from `AssetRecord`
-(`path`, `modified`, `scan_time`, `is_trashed`) at composition
-time — it is never stored. Each media record carries it as its single
-`path: Option<FileEntry>` on the wire; `None` means the path was pruned and
-the file is gone.
+`FileEntry` is a view type assembled from `AssetRecord` (`path`, `modified`,
+`scan_time`, `is_trashed`) at composition time — it is never stored. Each
+media record carries it as its single `path: Option<FileEntry>` on the wire;
+`None` means the path was pruned and the file is gone.
 
 #### Share
 
@@ -209,12 +207,12 @@ pub struct ReducedData {
 
 Source: `backend/src/storage/cache.rs`
 
-`size_of::<ReducedData>()` is 168 B on the 64-bit targets the server
-supports, so a resident 5653-row view holds about 0.95 MB of rows. The tree
-view it is built from is `DatabaseTimestamp` at 656 B per row (grown from
-584 B by the album `manual_cover` + `aggregates_dirty` fields); a rebuild
-composes that full row. Both sizes are pinned by a unit test and logged as
-`observe rows:` when observer stats are on.
+`size_of::<ReducedData>()` is 168 B on the 64-bit targets the server supports,
+so a resident 5653-row view holds about 0.95 MB of rows. The tree view it is
+built from is `DatabaseTimestamp` at 656 B per row (grown from 584 B by the
+album `manual_cover` + `aggregates_dirty` fields); a rebuild composes that
+full row. Both sizes are pinned by a unit test and logged as `observe rows:`
+when observer stats are on.
 
 The on-disk DB acts as a backing store when the in-memory `DashMap` evicts
 entries.
@@ -239,8 +237,8 @@ pub struct Prefetch {
 
 Source: `backend/src/storage/cache.rs`
 
-The query hash is computed from the filter expression parameters combined
-with the current version timestamp.
+The query hash is computed from the filter expression parameters combined with
+the current version timestamp.
 
 ---
 
@@ -271,8 +269,8 @@ These supplement the persistent store with fast read-optimized views:
 | `TREE_SNAPSHOT.in_memory`  | `DashMap<i64, Vec<ReducedData>>`      | Bucketed tree views per timestamp                        |
 | `QUERY_SNAPSHOT.in_memory` | `DashMap<u64, Prefetch>`              | Query prefetch results                                   |
 
-`DatabaseTimestamp` pairs an `AbstractData` with its path-primary asset ID
-and computed sort timestamp:
+`DatabaseTimestamp` pairs an `AbstractData` with its path-primary asset ID and
+computed sort timestamp:
 
 ```rust
 pub struct DatabaseTimestamp {
@@ -297,8 +295,7 @@ Stored enum records (`MetadataRecord` in `index_v5.redb`) are prefixed with a
 `0xFF` is safe as a magic marker because `MetadataRecord` is a 3-variant enum;
 bitcode encodes the discriminant in the lowest 2 bits of the first byte
 (values 0, 1, 2). A first byte of `0xFF` has bits `[1:0] = 11` = discriminant
-3, which is invalid — so no legitimately encoded record can start with
-`0xFF`.
+3, which is invalid — so no legitimately encoded record can start with `0xFF`.
 
 Current schema versions: **1** (`SCHEMA_VERSION` for `AbstractData`, which is
 no longer written to disk, and `METADATA_SCHEMA_VERSION` for
@@ -326,19 +323,19 @@ decode::<MetadataRecord>(payload) // current structs, no transform
   conversions.
 - Any other version byte, or input with no `0xFF` prefix at all, panics via
   `rebuild_required`, which tells the operator to rebuild
-  (`POST /post/index/album` with `{\"clear\": true}`) or start with a fresh `DATA_HOME`. Prefixless input
-  is rejected rather than treated as the current version, because the current
-  version means the _current_ schema — silently decoding ancient prefixless
-  bytes against it would corrupt data.
+  (`POST /post/index/album` with `{\"clear\": true}`) or start with a fresh
+  `DATA_HOME`. Prefixless input is rejected rather than treated as the current
+  version, because the current version means the _current_ schema — silently
+  decoding ancient prefixless bytes against it would corrupt data.
 
 redb 4.2's `Value::from_bytes` returns the decoded value directly (no
-associated error type), so a decode failure can only surface as a panic —
-the same mechanism the other `Value` impls in `ser_de.rs` use.
+associated error type), so a decode failure can only surface as a panic — the
+same mechanism the other `Value` impls in `ser_de.rs` use.
 
 ### Changing the schema
 
-Migration between schema versions is **not supported**; a clean rebuild is
-the only upgrade path. When the schema changes (new fields, removed fields,
+Migration between schema versions is **not supported**; a clean rebuild is the
+only upgrade path. When the schema changes (new fields, removed fields,
 reordered variants):
 
 1. Increment the relevant schema version constant.
@@ -359,8 +356,8 @@ opens `index_v5.redb` directly.
 | V4           | `index_v4.redb` | redb 3.x       | Removed          |
 | V5 (current) | `index_v5.redb` | redb 4.x       | Schema version 1 |
 
-Older formats are not supported and no migration path exists between them
-(or between per-record schema versions) — rebuild from the filesystem
-(`POST /post/index/album` with `{\"clear\": true}`) or start with a fresh `DATA_HOME`. A stale
-`index_v4.redb` file, if present, is simply ignored: the app opens
-`index_v5.redb`.
+Older formats are not supported and no migration path exists between them (or
+between per-record schema versions) — rebuild from the filesystem
+(`POST /post/index/album` with `{\"clear\": true}`) or start with a fresh
+`DATA_HOME`. A stale `index_v4.redb` file, if present, is simply ignored: the
+app opens `index_v5.redb`.

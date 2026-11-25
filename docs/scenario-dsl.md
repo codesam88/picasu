@@ -5,18 +5,17 @@ Semi-formal spec and authoring guide for spec-driven E2E testing.
 Two scenario types with overlapping `given:` vocabularies and disjoint
 `when:`/assertion verb sets (`then:` for API scenarios, `assert:` for UI):
 
-- **API scenarios** (`backend/tests/scenarios/*.yaml`) — compiled
-  at build time into Rocket `local::Client` tests via `build.rs`. Test
-  backend HTTP endpoints directly with no browser.
-- **UI scenarios** (`frontend/tests/playwright/scenarios/*.yaml`)
-  — loaded at runtime by the Playwright test runner via `loadScenarios.ts`.
-  Drive a real browser against a running backend + built frontend.
+- **API scenarios** (`backend/tests/scenarios/*.yaml`) — compiled at build
+  time into Rocket `local::Client` tests via `build.rs`. Test backend HTTP
+  endpoints directly with no browser.
+- **UI scenarios** (`frontend/tests/playwright/scenarios/*.yaml`) — loaded at
+  runtime by the Playwright test runner via `loadScenarios.ts`. Drive a real
+  browser against a running backend + built frontend.
 
 ## Common structure
 
-Every scenario file is a YAML document with required and optional
-top-level keys. The API type answers to `then:`, the UI type to
-`assert:` (or `steps:`):
+Every scenario file is a YAML document with required and optional top-level
+keys. The API type answers to `then:`, the UI type to `assert:` (or `steps:`):
 
 ```yaml
 # API scenario:
@@ -41,10 +40,10 @@ assert: ...
 
 ## `given:` vocabulary (shared)
 
-Each entry in `given:` seeds state. Some forms may bind a result to
-`id_as` for later reference in `when:` bodies and `then:`/`assert:`
-assertions. Variables are interpolated as `${variable_name}` in string values
-across all verb blocks.
+Each entry in `given:` seeds state. Some forms may bind a result to `id_as`
+for later reference in `when:` bodies and `then:`/`assert:` assertions.
+Variables are interpolated as `${variable_name}` in string values across all
+verb blocks.
 
 | Form                        | Description                                                                                                                                                | Available in |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
@@ -93,9 +92,10 @@ present, so a corruption cannot be a silent no-op.
 ### `randomize:` (API only)
 
 Opt a scenario into seeded format selection. It then runs **once per seed** in
-the named set, and each pass materialises `random_media` in the format that seed
-resolves to. The seed randomises the _input_; the assertions stay the same for
-every seed, so they may only assert what holds for every eligible format.
+the named set, and each pass materialises `random_media` in the format that
+seed resolves to. The seed randomises the _input_; the assertions stay the
+same for every seed, so they may only assert what holds for every eligible
+format.
 
 ```yaml
 randomize:
@@ -138,8 +138,8 @@ format recorded for it.
 | `PICASU_RANDOM_SEEDS=<set>`  | Run that set instead (e.g. `nightly`).                 |
 | `PICASU_RANDOM_SEEDS=1,5`    | Run exactly those seeds, to replay a reported failure. |
 
-Each pass prints its seed and resolved format, and a failure repeats them in the
-panic message:
+Each pass prints its seed and resolved format, and a failure repeats them in
+the panic message:
 
 ```
 [randomized] <scenario> run 3/6: seed=2 format=tiff ext=tif source=pinned fixture=tiff-48x32-exif
@@ -147,11 +147,11 @@ panic message:
 
 ### `config:` (API and UI)
 
-Sets backend runtime configuration before the calls or the browser run.
-The API harness accepts `read_only_mode`, `fs_notify_watcher`,
+Sets backend runtime configuration before the calls or the browser run. The
+API harness accepts `read_only_mode`, `fs_notify_watcher`,
 `validate_upload_content`, `use_client_timestamp_info`, and
-`normalize_upload_filenames`; the UI harness additionally accepts
-`auth_key` and `allow_registration`:
+`normalize_upload_filenames`; the UI harness additionally accepts `auth_key`
+and `allow_registration`:
 
 ```yaml
 - config:
@@ -160,8 +160,8 @@ The API harness accepts `read_only_mode`, `fs_notify_watcher`,
 
 ## API scenarios (`backend/tests/scenarios/`)
 
-Compiled at build time by `build.rs` into one `#[test]` per YAML file.
-The runtime interpreter lives in `src/tests/backend_api.rs`. Run with
+Compiled at build time by `build.rs` into one `#[test]` per YAML file. The
+runtime interpreter lives in `src/tests/backend_api.rs`. Run with
 `cargo test`.
 
 ### `when:` — single API call
@@ -212,16 +212,16 @@ valid in both places:
 
 Body assertions must use the `response.json.` prefix: `backend_api.rs`
 dispatches a body assertion only for a key that starts with it, so a bare
-`response.<path>` in a `then:` list would be read and silently dropped —
-and the schema must not admit a form that asserts nothing. The path allows
-`:` and `-` inside segments (ffprobe-derived video keys are literally named
-e.g. `TAG:major_brand`) and `[n]` for array indices.
+`response.<path>` in a `then:` list would be read and silently dropped — and
+the schema must not admit a form that asserts nothing. The path allows `:` and
+`-` inside segments (ffprobe-derived video keys are literally named e.g.
+`TAG:major_brand`) and `[n]` for array indices.
 
-`not_null` and the `contains`/`not_contains`/`all_absolute` objects are
-**form markers**, not values. `not_contains` is the only way to say "the cache
-is unchanged" about an edit that _removes_ a value: asserting that the old
-value is still there would pass for a cache that stored both the removal and
-the addition.
+`not_null` and the `contains`/`not_contains`/`all_absolute` objects are **form
+markers**, not values. `not_contains` is the only way to say "the cache is
+unchanged" about an edit that _removes_ a value: asserting that the old value
+is still there would pass for a cache that stored both the removal and the
+addition.
 
 `${var}` interpolation applies to `response.json.` values and to `file_*`
 paths, so a randomized scenario can assert on the selected format's extension.
@@ -233,9 +233,9 @@ joined onto IMAGE_HOME it would resolve to a location that cannot exist, which
 makes `file_absent` pass and `file_exists` meaningless.
 
 `serve_image_ok: $<hash>` fetches
-`GET /object/compressed/<hash[0:2]>/<hash>.jpg` — the route the frontend uses —
-and requires 200, an `image/jpeg` content type and JPEG bytes. The variable is
-the content hash `id_as` binds; token issuance for that route is covered by
+`GET /object/compressed/<hash[0:2]>/<hash>.jpg` — the route the frontend uses
+— and requires 200, an `image/jpeg` content type and JPEG bytes. The variable
+is the content hash `id_as` binds; token issuance for that route is covered by
 `token_hash_compressed_serving.yaml`.
 
 ### Multi-step chains
@@ -255,10 +255,9 @@ when:
 
 ### Minting a timestamp token (`mint_timestamp_token`)
 
-Timestamp bearer tokens are signed server-side (`exp` included), so a
-scenario cannot produce one — let alone an expired one — through
-`capture`/`calc` alone. A multi-step `when:` block may include a mint item
-instead of a call:
+Timestamp bearer tokens are signed server-side (`exp` included), so a scenario
+cannot produce one — let alone an expired one — through `capture`/`calc`
+alone. A multi-step `when:` block may include a mint item instead of a call:
 
 ```yaml
 when:
@@ -274,17 +273,16 @@ when:
       Authorization: "Bearer ${expired_token}"
 ```
 
-Snapshot-bearer routes also require the presenter's credentials: the
-default session cookie (or share headers on share pages) must accompany
-the bearer, and a minted token's `caller` must equal the presenting user
-(`""` for share-minted tokens). The mint helper signs `caller: "admin"`,
-matching the runner's default admin session, so the example above
-presents correctly.
+Snapshot-bearer routes also require the presenter's credentials: the default
+session cookie (or share headers on share pages) must accompany the bearer,
+and a minted token's `caller` must equal the presenting user (`""` for
+share-minted tokens). The mint helper signs `caller: "admin"`, matching the
+runner's default admin session, so the example above presents correctly.
 `timestamp` becomes the token's `timestamp` claim (pass the snapshot the
 request targets so expiry, not a claim mismatch, is the rejection reason);
 `exp_offset` is seconds relative to now (`300`, the app default, when
-omitted). A mint produces no HTTP response, so it cannot be the last item
-of `when:` — nothing for `then:` to assert against.
+omitted). A mint produces no HTTP response, so it cannot be the last item of
+`when:` — nothing for `then:` to assert against.
 
 A `call:` (or `upload:`) that is **not** the last one asserts its own inline
 `then:` block, and every form in it runs — status, `response.json.*`,
@@ -342,21 +340,19 @@ only).
 
 ### Escape-hatch policy (API)
 
-No raw-Rust escape hatch for assertions. A missing assertion form is
-resolved by adding a reusable verb to the vocabulary, not by inlining
-code.
+No raw-Rust escape hatch for assertions. A missing assertion form is resolved
+by adding a reusable verb to the vocabulary, not by inlining code.
 
 ## UI scenarios (`frontend/tests/playwright/scenarios/`)
 
 Loaded at runtime by `loadScenarios.ts`, validated against Zod schemas
-(`types.ts`), and executed by `interpreter.spec.ts`. No code generation
-step — the YAML is interpreted directly by Playwright.
+(`types.ts`), and executed by `interpreter.spec.ts`. No code generation step —
+the YAML is interpreted directly by Playwright.
 
 ### Scenario structure
 
-A UI scenario either uses flat `when`/`assert` (a single interaction
-followed by assertions) or `steps` (a list of interleaved
-interaction–assertion pairs):
+A UI scenario either uses flat `when`/`assert` (a single interaction followed
+by assertions) or `steps` (a list of interleaved interaction–assertion pairs):
 
 ```yaml
 # Flat form — single when, then assert
@@ -386,9 +382,8 @@ steps:
 Keys mirror the real Picasu option names (`AppConfig` field names in
 `backend/src/model/config.rs`): `bootstrap_admin` (`PICASU_BOOTSTRAP_ADMIN`)
 and `login_ip_base_ban_secs` (`PICASU_LOGIN_IP_BASE_BAN_SECS`). Absent
-`server:` keeps the harness defaults (bootstrap open, weak password
-hashing). A scenario that declares `server:` boots its own backend with
-the mapped env.
+`server:` keeps the harness defaults (bootstrap open, weak password hashing).
+A scenario that declares `server:` boots its own backend with the mapped env.
 
 ```yaml
 server:
@@ -428,38 +423,41 @@ escape hatch.
 
 ### `assert:` — UI assertions (one or more)
 
-| Form                                                                            | Assertion                                                                |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `ui.visible: <role>/<label>`                                                    | Element is visible                                                       |
-| `ui.hidden: <role>/<label>`                                                     | Element is hidden/absent                                                 |
-| `ui.text: <role>/<label>, contains: <text>`                                     | Element text includes string                                             |
-| `ui.text_visible: <text>`                                                       | Text is visible anywhere on the page                                     |
-| `ui.text_hidden: <text>`                                                        | Text is not visible anywhere on the page                                 |
-| `ui.disabled: <role>/<label>`                                                   | Element is disabled                                                      |
-| `ui.enabled: <role>/<label>`                                                    | Element is enabled                                                       |
-| `ui.chip_visible: <text>`                                                       | Album/filename chip with given text is visible in a grid card            |
-| `ui.sidebar_visible: <text>`                                                    | Text is visible inside the metadata sidebar (`#abstractData-col`)        |
-| `ui.count: <selector>, equals: <number>`                                        | Count of elements matching a CSS selector equals the given number        |
-| `ui.toast: type: <type>, contains: <text>`                                      | Toast of given type (`error`/`success`/`warning`) with matching text     |
-| `ui.modal: open                                                                 | closed` — Modal dialog state                                             |
-| `ui.route: <pattern>`                                                           | Current URL matches pattern                                              |
-| `ui.aria_snapshot: <name>`                                                      | Compare ARIA role/name/state tree against committed snapshot             |
-| `api.response: url, status[, method, body, headers, header, json, json_absent]` | Backend API call returns expected status code (default `GET`)            |
-| `api.statuses: url, equals: [int,...]`                                          | Ordered HTTP statuses of browser-driven responses whose path matches url |
+| Form                                                                                                           | Assertion                                                                |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `ui.visible: <role>/<label>`                                                                                   | Element is visible                                                       |
+| `ui.hidden: <role>/<label>`                                                                                    | Element is hidden/absent                                                 |
+| `ui.text: <role>/<label>, contains: <text>`                                                                    | Element text includes string                                             |
+| `ui.text_visible: <text>`                                                                                      | Text is visible anywhere on the page                                     |
+| `ui.text_hidden: <text>`                                                                                       | Text is not visible anywhere on the page                                 |
+| `ui.disabled: <role>/<label>`                                                                                  | Element is disabled                                                      |
+| `ui.enabled: <role>/<label>`                                                                                   | Element is enabled                                                       |
+| `ui.chip_visible: <text>`                                                                                      | Album/filename chip with given text is visible in a grid card            |
+| `ui.sidebar_visible: <text>`                                                                                   | Text is visible inside the metadata sidebar (`#abstractData-col`)        |
+| `ui.count: <selector>, equals: <number>`                                                                       | Count of elements matching a CSS selector equals the given number        |
+| `ui.toast: type: <type>, contains: <text>`                                                                     | Toast of given type (`error`/`success`/`warning`) with matching text     |
+| `ui.modal: open                                                                 | closed` — Modal dialog state |                                                                          |
+| `ui.route: <pattern>`                                                                                          | Current URL matches pattern                                              |
+| `ui.aria_snapshot: <name>`                                                                                     | Compare ARIA role/name/state tree against committed snapshot             |
+| `api.response: url, status[, method, body, headers, header, json, json_absent]`                                | Backend API call returns expected status code (default `GET`)            |
+| `api.statuses: url, equals: [int,...]`                                                                         | Ordered HTTP statuses of browser-driven responses whose path matches url |
 
-`headers: { "<name>": "<value>" }` sends request-side headers (e.g. `X-Picasu-Password` for re-auth scenarios); distinct from the response-side `header` assertion. `json: { "<dot.path>": <value> }` pins response-body fields (dot paths with `[n]` array indices; `${var}` interpolated); `json_absent: "<dot.path>"` pins a path is absent.
+`headers: { "<name>": "<value>" }` sends request-side headers (e.g.
+`X-Picasu-Password` for re-auth scenarios); distinct from the response-side
+`header` assertion. `json: { "<dot.path>": <value> }` pins response-body
+fields (dot paths with `[n]` array indices; `${var}` interpolated);
+`json_absent: "<dot.path>"` pins a path is absent.
 
 New assertions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
 
 ### `steps:` — multi-step scenarios
 
-Use `steps` when a scenario needs to checkpoint state mid-flow (e.g.
-verify a toast appeared before the page navigates). Each step is a
-`when`/`assert` pair executed sequentially. The `given` block runs once
-before all steps. Non-obvious assertions carry a single-line `#` comment
-stating what they pin and why; hints stay one line, obvious assertions
-need none.
+Use `steps` when a scenario needs to checkpoint state mid-flow (e.g. verify a
+toast appeared before the page navigates). Each step is a `when`/`assert` pair
+executed sequentially. The `given` block runs once before all steps.
+Non-obvious assertions carry a single-line `#` comment stating what they pin
+and why; hints stay one line, obvious assertions need none.
 
 ```yaml
 steps:
@@ -485,8 +483,8 @@ steps:
 
 ### `covers:` (optional)
 
-Declares what the scenario intends to exercise. After the scenario runs,
-the tracer compares expected vs actual and logs advisory warnings for any
+Declares what the scenario intends to exercise. After the scenario runs, the
+tracer compares expected vs actual and logs advisory warnings for any
 unexercised declaration. Warnings do not fail the test.
 
 ```yaml
@@ -499,27 +497,26 @@ covers:
     - route:/home
 ```
 
-- `covers.api` — HTTP method + path pairs (e.g. `"PUT /put/config"`).
-  Matched against API calls recorded during the `given:` phase via the
+- `covers.api` — HTTP method + path pairs (e.g. `"PUT /put/config"`). Matched
+  against API calls recorded during the `given:` phase via the
   `CoverageTracer`.
-- `covers.ui` — assertion target strings. For role/label assertions this
-  is the raw target (e.g. `main/`); for others a prefixed form
-  (`route:/albums`, `toast:error:unauthorized`, `snapshot:login-page`).
+- `covers.ui` — assertion target strings. For role/label assertions this is
+  the raw target (e.g. `main/`); for others a prefixed form (`route:/albums`,
+  `toast:error:unauthorized`, `snapshot:login-page`).
 
 Full coverage tracing design in `docs/playwright_generator.md`.
 
 ### Escape-hatch policy (UI)
 
-Same as API: no raw-TypeScript. A missing interaction or assertion verb
-is a gap in the DSL, not a reason to inline code. Extend the vocabulary
-in this document and the interpreter in `interpreter.ts`.
+Same as API: no raw-TypeScript. A missing interaction or assertion verb is a
+gap in the DSL, not a reason to inline code. Extend the vocabulary in this
+document and the interpreter in `interpreter.ts`.
 
 ## Schema validation
 
-The DSL has separate JSON Schemas at
-`backend/tests/schema.json` (API) and
-`frontend/tests/playwright/schema.json` (UI). A schema mismatch is a hard error
-in both.
+The DSL has separate JSON Schemas at `backend/tests/schema.json` (API) and
+`frontend/tests/playwright/schema.json` (UI). A schema mismatch is a hard
+error in both.
 
 **API scenarios are validated by a test.**
 `backend/src/tests/scenario_schema.rs` compiles `backend/tests/schema.json` as
@@ -527,8 +524,8 @@ the draft it declares (`2020-12`) and validates every YAML file under
 `backend/tests/scenarios/`, `selftest/` included, against it, under
 `cargo test -p picasu`. The YAML is parsed as data and never executed, so the
 check is static and costs no backend process. Three further tests keep the
-schema honest rather than merely present: one checks it compiles as the dialect
-it declares; one feeds it documents it must reject, so "every scenario
+schema honest rather than merely present: one checks it compiles as the
+dialect it declares; one feeds it documents it must reject, so "every scenario
 validates" cannot be satisfied by a schema that accepts everything; one
 asserts the response-assertion forms listed above stay expressible, so a
 tightened schema fails instead of the corpus.
@@ -537,10 +534,10 @@ tightened schema fails instead of the corpus.
 `tests/scenarios/*.yaml` and `tests/scenarios/selftest/*.yaml` to generate one
 `#[test]` per file, and the interpreter reads each file at run time.
 
-The API check is a lower bound on the interpreter's acceptance, not an equality:
-a form the schema allows and the interpreter silently ignores — a misspelled
-`then:` key, for instance — passes validation. That class of gap is pinned by a
-scenario instead, in `backend/tests/scenarios/selftest/`.
+The API check is a lower bound on the interpreter's acceptance, not an
+equality: a form the schema allows and the interpreter silently ignores — a
+misspelled `then:` key, for instance — passes validation. That class of gap is
+pinned by a scenario instead, in `backend/tests/scenarios/selftest/`.
 
 UI scenarios are validated at runtime by `loadScenarios.ts` via the Zod
 `UiScenario` schema in `types.ts`.
@@ -548,11 +545,11 @@ UI scenarios are validated at runtime by `loadScenarios.ts` via the Zod
 ## Idempotency and isolation
 
 - Each Playwright scenario runs its own backend instance with a unique
-  `{TEST_DIR}/playwright-{id}/` directory (see `paths.ts`), so fixture
-  files on disk are already isolated. No scenario-name directory prefix
-  is used — albums are placed at the root of `IMAGE_HOME` and respect
-  the `root_album` backend filter.
-- In API scenarios, all assertions are made through the HTTP API only
-  — no direct redb access.
-- In UI scenarios, state is seeded before the browser navigates to the
-  page under test. Auth tokens are reset per scenario.
+  `{TEST_DIR}/playwright-{id}/` directory (see `paths.ts`), so fixture files
+  on disk are already isolated. No scenario-name directory prefix is used —
+  albums are placed at the root of `IMAGE_HOME` and respect the `root_album`
+  backend filter.
+- In API scenarios, all assertions are made through the HTTP API only — no
+  direct redb access.
+- In UI scenarios, state is seeded before the browser navigates to the page
+  under test. Auth tokens are reset per scenario.
