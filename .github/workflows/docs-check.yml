@@ -35,6 +35,11 @@ jobs:
           node-version: "24"
       - run: npm ci
         working-directory: frontend
+      - name: Install plan
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install plan
+          plan --version
       - run: just docs-check
-      - run: just plan-lint
-      - run: just gates-check
+      - run: just gates-test

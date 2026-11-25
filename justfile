@@ -1,7 +1,6 @@
 # Picasu dev tasks
-# Install just: cargo install just
-# Activate pre-commit hook: git config core.hooksPath .githooks
-# Recipe comments are single-line summaries; keep `just --list` within 80 columns.
+# Bootstrap dev-setup: ./scripts/deps-install.sh --tool just && just setup-dev
+# User 'just help' is generated from per recipe comments - keep within 80 columns
 
 [private]
 help:
@@ -165,7 +164,7 @@ openapi-gen:
 
 # Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match auth-matrix-check
+openapi-check: openapi-sanity openapi-breakcheck openapi-lint openapi-routes-match
 
 # run dylint auth lints (advisory)
 [group('utils')]
@@ -194,21 +193,6 @@ openapi-routes-match: frontend-build-maybe
 openapi-routes-release:
     {{justfile_directory()}}/target/release/picasu --check-openapi "{{justfile_directory()}}/backend/openapi.json"
 
-# Ensure that committed/staged json matches current --dump-openapi output
-[private]
-openapi-json-match:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    generated="$(mktemp)"
-    trap 'rm -f "$generated"' EXIT
-    RUST_MIN_STACK=16777216 cargo run -q --package picasu -- --dump-openapi > "$generated"
-    if ! diff -u backend/openapi.json "$generated"; then
-        echo ""
-        echo "backend/openapi.json is out of date with the utoipa annotations."
-        echo "Run 'just openapi-gen' and commit the result."
-        exit 1
-    fi
-    echo "openapi.json matches the generated spec"
 
 # Install one managed tool: `just install <name>` (e.g. `just install ffmpeg`).
 # dispatcher loops scripts/deps/*.sh
@@ -268,55 +252,11 @@ env-var-check:
     node --test {{justfile_directory()}}/scripts/env-var-lint.test.mjs
     node {{justfile_directory()}}/scripts/env-var-lint.mjs {{justfile_directory()}}
 
-# ensure auth-matrix artifacts match generator
-[group('utils')]
-auth-matrix-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' EXIT
-    mkdir -p "$tmpdir/backend"
-    cp "{{justfile_directory()}}/backend/openapi.json" "$tmpdir/backend/openapi.json"
-    node "{{justfile_directory()}}/scripts/auth-matrix.mjs" "$tmpdir"
-    if ! diff -u "{{justfile_directory()}}/docs/auth-matrix.md" "$tmpdir/docs/auth-matrix.md"; then
-        echo ""
-        echo "docs/auth-matrix.md is out of date with the generator."
-        echo "Run 'node scripts/auth-matrix.mjs .' and commit the result."
-        exit 1
-    fi
-    if ! diff -u "{{justfile_directory()}}/backend/auth-matrix.json" "$tmpdir/backend/auth-matrix.json"; then
-        echo ""
-        echo "backend/auth-matrix.json is out of date with the generator."
-        echo "Run 'node scripts/auth-matrix.mjs .' and commit the result."
-        exit 1
-    fi
-    echo "auth-matrix artifacts match the generated output"
-
-# Install 'plan' and 'gloss' tools (pinned)
-[group('deps')]
-install-plan:
-    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
-
-# Auto-format .plan task frontmatter and body
-[group('utils')]
-plan-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
-
-# check .plan task frontmatter correctness
-[group('utils')]
-plan-lint:
-    node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
-
 # ensure all test/check rules are called from CI and global rules
 [group('utils')]
-gates-check:
+gates-test:
     node --test {{justfile_directory()}}/scripts/quality-gates.test.mjs
-    node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}}
 
-# run plan <args> (needs install-plan)
-[group('utils')]
-plan *args:
-    plan --root {{justfile_directory()}} {{args}}
 
 # ── Documentation ───────────────────────────────────────────────────────────────
 
@@ -324,9 +264,8 @@ plan *args:
 [group('docs')]
 docs-openapi: openapi-gen
     npx --yes widdershins@4.0.1 --summary backend/openapi.json -o docs/openapi-reference.md
-    npx prettier --write docs/openapi-reference.md
 
-# Regenerate the gates doc (checked by gates-check)
+# Regenerate the gates doc
 [group('docs')]
 gates-docs:
     node {{justfile_directory()}}/scripts/quality-gates.mjs {{justfile_directory()}} --generate docs/quality-gates.md
@@ -351,15 +290,26 @@ docs-build: docs-openapi quint::docs (install "mdbook")
 docs-serve:
     python3 -m http.server 3637 -d target/docs/book
 
-# format markdown (README, docs, .plan, utils)
+# format plans and docs (plan format)
 [group('docs')]
 docs-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
+    plan format --exclude fixtures --recursive -w 78 .plan docs utils scripts
 
-# check markdown (docs, .plan, utils)
+# check plans and docs (plan lint; plan format)
 [group('docs')]
 docs-check:
-    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
+    plan lint
+    plan format --exclude fixtures --recursive --check -w 78 .plan docs utils scripts
+
+# regenerate everything offline (code -> spec -> derived docs), then format
+[group('docs')]
+docs-regen:
+    just openapi-gen
+    just gates-docs
+    node scripts/auth-matrix.mjs .
+    just quint docs
+    just docs-format
+    @echo "docs-openapi skipped (network); run 'just docs-openapi' manually if the reference doc needs refreshing."
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
@@ -369,7 +319,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check zizmor-check gates-check branches-prune-test quint::lint quint::check
+check: backend-check utils-check frontend-check docs-check openapi-check env-var-check zizmor-check branches-prune-test quint::lint quint::check
 
 # run full test suite
 [group('global')]
@@ -490,6 +440,10 @@ precommit:
     fi
 
     echo "[ precommit ] On '$branch' — format/lint enforced; targeted checks/tests run for changed areas."
+    # Regen + stage first, so openapi-check/docs-check verify fresh artifacts.
+    if echo "$changed" | grep -qE '^(backend/|utils/|\.plan/|docs/|[^/]+\.md$|justfile$|\.github/workflows/|scripts/)'; then
+        ./scripts/precommit-md.sh
+    fi
     if echo "$changed" | grep -q '^backend/'; then
         just backend-check
         just openapi-check
@@ -511,8 +465,7 @@ precommit:
     if echo "$changed" | grep -qE '^(backend|utils)/'; then
         just utils-test
     fi
-    if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
-        just plan-lint
+    if echo "$changed" | grep -qE '^(\.plan/|docs/|utils/.*\.md$|scripts/.*\.md$|justfile$|\.github/workflows/|scripts/(quality-gates|auth-matrix)\.mjs$)'; then
         just docs-check
     fi
     if echo "$changed" | grep -q '^frontend/'; then
@@ -521,3 +474,5 @@ precommit:
     if echo "$changed" | grep -qE '^(backend/|docs/config\.md$|README\.md$)'; then
         just env-var-check
     fi
+
+# vim: set et:

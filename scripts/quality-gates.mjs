@@ -22,7 +22,6 @@
 // is the explicit form of the default (check, write nothing).
 import { execFileSync } from "node:child_process";
 import {
-  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -700,7 +699,6 @@ if (generateArg) {
   const target = generateArg.startsWith("/") ? generateArg : join(root, generateArg);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, content);
-  formatFile(target);
   console.log(`gates-check: wrote ${generateArg}`);
 }
 const genAbs =
@@ -724,26 +722,6 @@ if (!skipDrift) {
         ? `${checkDisplay} differs from regenerated output. Run 'node scripts/quality-gates.mjs ${root} --generate ${checkArg}' and commit the result.`
         : `docs/quality-gates.md differs from regenerated output. Run 'just gates-docs' and commit the result.`,
     );
-  }
-}
-
-function formatFile(p) {
-  const prettierBin = join(root, "frontend", "node_modules", ".bin", "prettier");
-  try {
-    if (existsSync(prettierBin)) {
-      execFileSync(prettierBin, ["--write", p], { stdio: "ignore" });
-      return;
-    }
-  } catch {
-    // fall through
-  }
-  try {
-    execFileSync("npx", ["--no-install", "prettier", "--write", p], {
-      cwd: join(root, "frontend"),
-      stdio: "ignore",
-    });
-  } catch {
-    // formatting best-effort
   }
 }
 
