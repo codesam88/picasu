@@ -98,6 +98,28 @@ def main():
     text, c = count_replace(text, old_filter, new_filter)
     counts["apply_filter"] = c
 
+    # 4b. Dupe/thumb membership recompute: same key-view rewrite, multi-line
+    #     shape (dupeIndex and thumbPresent each wrap the excluded member set).
+    old_members = (
+        "      sweepBatch.keys().filter(p =>\n"
+        "        assetByPath.keys().contains(p) and\n"
+        "        not(files.get(p).present) and\n"
+        "        assetById.keys().contains(assetByPath.get(p)) and\n"
+        "        assetById.get(assetByPath.get(p)).contentHash == h\n"
+        "      ).map(p => assetByPath.get(p))\n"
+    )
+    new_members = (
+        "      PATHS.filter(p =>\n"
+        "        sweepBatch.get(p) != -1 and\n"
+        "        assetByPath.keys().contains(p) and\n"
+        "        not(files.get(p).present) and\n"
+        "        assetById.keys().contains(assetByPath.get(p)) and\n"
+        "        assetById.get(assetByPath.get(p)).contentHash == h\n"
+        "      ).map(p => assetByPath.get(p))\n"
+    )
+    text, c = count_replace(text, old_members, new_members)
+    counts["apply_members"] = c
+
     # 5. Val invariants.
     old_inv1 = "val SweepRemoveBatchSkipsPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))"
     new_inv1 = "val SweepRemoveBatchSkipsPresentFile = PATHS.forall(p => sweepBatch.get(p) == -1 or not(files.get(p).present))"

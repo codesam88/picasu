@@ -303,16 +303,14 @@ class Projection:
             if not self.asset_present(aid):
                 return False
             a = self.asset_by_id[aid]
-            if a["path"] != p or a["contentHash"] != f["assetHash"]:
+            if a["path"] != p or a["contentHash"] != f["ver"]:
                 return False
             if not self.meta_present(aid):
                 return False
             m = self.metadata[aid]
             if (
-                m["assetHash"] != f["assetHash"]
-                or m["modified"] != f["mtime"]
+                m["ver"] != f["ver"]
                 or m["fileSize"] != f["len"]
-                or m["sidecar"] != f["sidecar"]
                 or not m["converged"]
             ):
                 return False
@@ -332,16 +330,14 @@ class Projection:
                 if not self.asset_present(aid):
                     return False
                 a = self.asset_by_id[aid]
-                if a["path"] != p or a["contentHash"] != f["assetHash"]:
+                if a["path"] != p or a["contentHash"] != f["ver"]:
                     return False
                 if not self.meta_present(aid):
                     return False
                 m = self.metadata[aid]
                 if (
-                    m["assetHash"] != f["assetHash"]
-                    or m["modified"] != f["mtime"]
+                    m["ver"] != f["ver"]
                     or m["fileSize"] != f["len"]
-                    or m["sidecar"] != f["sidecar"]
                     or not m["converged"]
                 ):
                     return False
@@ -378,7 +374,7 @@ class Projection:
 
         for p in PATHS:
             f = self.files[p]
-            for field in ("present", "assetHash", "mtime", "len", "sidecar"):
+            for field in ("present", "ver", "len"):
                 out[f"files.{p}.{field}"] = f[field]
             out[f"rows.{p}.present"] = self.row_present(p)
             if self.row_present(p):
@@ -399,10 +395,8 @@ class Projection:
                 if m is not None:
                     for field in (
                         "kind",
-                        "assetHash",
-                        "modified",
+                        "ver",
                         "fileSize",
-                        "sidecar",
                         "converged",
                         "itemCount",
                         "itemSize",

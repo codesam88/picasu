@@ -5,16 +5,14 @@
 // Each copy carries a `// @mirrors-merged` comment with its source line.
 // Action modules import this module and add their own init/step/invariants.
 module local_common {
-  // @mirrors-merged merged.qnt:39-45 FileState
+  // @mirrors-merged merged.qnt:37-45 FileState
   type FileState = {
     present: bool,
-    assetHash: int,
-    mtime: int,
-    len: int,
-    sidecar: int
+    ver: int,
+    len: int
   }
 
-  // @mirrors-merged merged.qnt:53-60 AssetRecord
+  // @mirrors-merged merged.qnt:55-66 AssetRecord
   type AssetRecord = {
     assetId: int,
     kind: str,
@@ -24,55 +22,51 @@ module local_common {
     isTrashed: bool
   }
 
-  // @mirrors-merged merged.qnt:69-79 MetadataRecord
+  // @mirrors-merged merged.qnt:71-79 MetadataRecord
   type MetadataRecord = {
     kind: str,
-    assetHash: int,
-    modified: int,
+    ver: int,
     fileSize: int,
-    sidecar: int,
     converged: bool,
     itemCount: int,
     itemSize: int,
     hasShareList: bool
   }
 
-  // @mirrors-merged merged.qnt:81-89 IntakeItem
+  // @mirrors-merged merged.qnt:81-86 IntakeItem
   type IntakeItem = {
     path: str,
     generation: int,
     kind: str,
-    mtime: int,
-    len: int,
-    sidecar: int,
-    assetHash: int
+    ver: int,
+    len: int
   }
 
-  // @mirrors-merged merged.qnt:92 files
+  // @mirrors-merged merged.qnt:91 files
   var files: str -> FileState
-  // @mirrors-merged merged.qnt:94 generations
+  // @mirrors-merged merged.qnt:93 generations
   var generations: str -> int
-  // @mirrors-merged merged.qnt:96 intake
+  // @mirrors-merged merged.qnt:95 intake
   var intake: Set[IntakeItem]
-  // @mirrors-merged merged.qnt:98 assetById
+  // @mirrors-merged merged.qnt:97 assetById
   var assetById: int -> AssetRecord
-  // @mirrors-merged merged.qnt:100 assetByPath
+  // @mirrors-merged merged.qnt:99 assetByPath
   var assetByPath: str -> int
-  // @mirrors-merged merged.qnt:102 dupeIndex
+  // @mirrors-merged merged.qnt:101 dupeIndex
   var dupeIndex: int -> Set[int]
-  // @mirrors-merged merged.qnt:104 metadataPayload
+  // @mirrors-merged merged.qnt:103 metadataPayload
   var metadataPayload: int -> MetadataRecord
-  // @mirrors-merged merged.qnt:106 thumbPresent
+  // @mirrors-merged merged.qnt:105 thumbPresent
   var thumbPresent: int -> bool
-  // @mirrors-merged merged.qnt:108 sweepPending
+  // @mirrors-merged merged.qnt:107 sweepPending
   var sweepPending: str -> bool
-  // @mirrors-merged merged.qnt:110 sweepBatch
+  // @mirrors-merged merged.qnt:109 sweepBatch
   var sweepBatch: str -> int
-  // @mirrors-merged merged.qnt:112 leasedPaths
+  // @mirrors-merged merged.qnt:111 leasedPaths
   var leasedPaths: Set[str]
-  // @mirrors-merged merged.qnt:114 nextAssetId
+  // @mirrors-merged merged.qnt:113 nextAssetId
   var nextAssetId: int
-  // @mirrors-merged merged.qnt:116 unprocessable
+  // @mirrors-merged merged.qnt:115 unprocessable
   var unprocessable: Set[str]
 
   // Local instance bounds: three paths on two roots (p1 on r1, p2/p3 on r2).
@@ -82,11 +76,11 @@ module local_common {
   // @mirrors-merged merged.qnt:37 rootOf
   pure def rootOf(p: str): str = if (p.in(SECOND_ROOT_PATHS)) "r2" else "r1"
 
-  // @mirrors-merged merged.qnt:119-120 initialId
+  // @mirrors-merged merged.qnt:118-119 initialId
   pure def initialId(p: str): int =
     if (p == "p1") 1 else (if (p == "p2") 2 else (if (p == "p3") 3 else (if (p == "p4") 4 else 5)))
 
-  // @mirrors-merged merged.qnt:132-139 initialAssetRecord
+  // @mirrors-merged merged.qnt:129-137 initialAssetRecord
   pure def initialAssetRecord(p: str): AssetRecord = {
     assetId: initialId(p),
     kind: "media",
@@ -96,20 +90,18 @@ module local_common {
     isTrashed: false
   }
 
-  // @mirrors-merged merged.qnt:142-152 initialMetadataRecord
+  // @mirrors-merged merged.qnt:139-147 initialMetadataRecord
   pure def initialMetadataRecord(p: str): MetadataRecord = {
     kind: "media",
-    assetHash: 0,
-    modified: 0,
+    ver: 0,
     fileSize: 0,
-    sidecar: 0,
     converged: true,
     itemCount: 0,
     itemSize: 0,
     hasShareList: false
   }
 
-  // @mirrors-merged merged.qnt:155-162 initialAlbumAssetRecord
+  // @mirrors-merged merged.qnt:150-158 initialAlbumAssetRecord
   pure def initialAlbumAssetRecord: AssetRecord = {
     assetId: 0,
     kind: "album",
@@ -119,13 +111,11 @@ module local_common {
     isTrashed: false
   }
 
-  // @mirrors-merged merged.qnt:165-175 initialAlbumMetadataRecord
+  // @mirrors-merged merged.qnt:160-169 initialAlbumMetadataRecord
   pure def initialAlbumMetadataRecord: MetadataRecord = {
     kind: "album",
-    assetHash: 0,
-    modified: 0,
+    ver: 0,
     fileSize: 0,
-    sidecar: 0,
     converged: true,
     itemCount: PATHS.size(),
     itemSize: 0,
@@ -135,12 +125,12 @@ module local_common {
   // No permanent staleness: a present file either matches its row or has work
   // queued; an absent file either has no row, has removal queued, or awaits
   // the root's sweep. Unprocessable paths are excluded (logged, never indexed).
-  // @mirrors-merged merged.qnt:298-316 NoPermanentStale
+  // @mirrors-merged merged.qnt:281-299 NoPermanentStale
   val NoPermanentStale = PATHS.forall(p =>
     p.in(unprocessable) or
     if (files.get(p).present) {
       if (assetByPath.keys().contains(p)) {
-        (metadataPayload.keys().contains(assetByPath.get(p)) and metadataPayload.get(assetByPath.get(p)).assetHash == files.get(p).assetHash and metadataPayload.get(assetByPath.get(p)).modified == files.get(p).mtime and metadataPayload.get(assetByPath.get(p)).fileSize == files.get(p).len and metadataPayload.get(assetByPath.get(p)).sidecar == files.get(p).sidecar) or
+        (metadataPayload.keys().contains(assetByPath.get(p)) and metadataPayload.get(assetByPath.get(p)).ver == files.get(p).ver and metadataPayload.get(assetByPath.get(p)).fileSize == files.get(p).len) or
         intake.exists(i => i.path == p)
       } else {
         intake.exists(i => i.path == p)

@@ -25,7 +25,7 @@ import sys
 CORE = pathlib.Path(__file__).resolve().parents[1] / "inductive-core.qnt"
 
 INIT_INITIALIZER = (
-    "dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h)"
+    "dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h)"
     ".map(p => initialId(p)))"
 )
 DBLOSS_INITIALIZER = "dupeIndex' = HASHES.mapBy(h => Set())"
