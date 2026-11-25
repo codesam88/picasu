@@ -522,29 +522,36 @@ size −file_size)` for non-trashed album members
   outside the record sets) — these are genuine round-1 conjuncts
   (metadata kind/key coherence as the partner of `AssetIdKeyCoherent`).
 
-Resource calibration (final, instrumented 2026-11-25): the consecution
-check has **unbounded memory growth**, not a configuration problem.
-Decisive probe: VC 3 _alone_ (`search.invariantFilter=1->state3`, the
-documented per-VC partition), full 15-domain hypothesis, fresh 24 GB-heap
-server, all scratch on disk (java.io.tmpdir, out-dir, TMPDIR verified via
-`/proc/<pid>/environ`), host RSS sampled every 5 s. Curve: 324 MB idle →
-3.7 GB → ~1 GB/min and accelerating → process gone at ≥ 9.4 GB with
-~35 GB still free, no `hs_err`, no Java OOM, no cgroup cap (all `max`) —
-kernel OOM-kill during continued growth. Prior deaths fit the same
-mechanism: the "4th-conjunct" positional pattern was the first VC to
-cross the headroom boundary; per-VC costs differ (28 s – 11 min to hold)
-but the full-hypothesis query's demand is unbounded for any budget we
-can give it (4/10/12/24 GB heaps, incremental/offline, flat/grouped —
-Apalache flattens nested conjunctions, "Checking 15 state invariants" —
-and the documented `search.invariantFilter` partition still asserts the
-full hypothesis per VC). The base case (`initCompletion ⇒ Domains`) is
-proven in every configuration, and completes in 12 s under the `arrays`
-encoding. The every-var assignment rule blocks sound subset splitting;
-`I` is structurally ≥ `Domains`, so no strengthening shrinks the query.
-The inductive route is closed at the toolchain level for quint 0.33.1 +
-Apalache 0.62.4 (candidate upstream report: unbounded memory growth in a
-single finite-state consecution VC); a toolchain upgrade is the only
-reopening path.
+Resource calibration (final, instrumented 2026-11-25, post-collapse):
+the consecution check has **unbounded memory growth, independent of
+hypothesis size** — confirmed by the strongest available lever. The
+user-approved snapshot collapse (SCOPE-19) shrank the suspected dominant
+terms by up to 9× (intake universe 2,616 → 312, FILESTATES 55 → 7,
+MEDIA_METARECORDS 54 → 6) with all evidence re-established (suites 70/70
+both models, audit 42/42, differential clean, shape track 9/10 green
+with identical state counts and depths). The consecution retry on the
+collapsed model reproduced the wall exactly: initiation PASS, VCs 0–2
+hold (2 m 07 s / 1.3 s / 0.03 s), **VC 3 unbounded** — RSS 8.3 → 30.1 GB
+at ~1.5 GB/min, kernel `oom_kill 1`, 26 m 26 s into the run. Instrumented
+solo probe (the documented `search.invariantFilter=1->state3` partition,
+24 GB-heap server, all scratch on disk — java.io.tmpdir, out-dir, TMPDIR
+verified via `/proc/<pid>/environ`): 324 MB idle → 3.7 GB → ~1 GB/min and
+accelerating → process gone at ≥ 9.4 GB with ~35 GB still free, no
+`hs_err`, no Java OOM, no cgroup cap (all `max`) — kernel OOM-kill during
+continued growth. Hypothesis bisection is structurally impossible (the
+every-var assignment rule rejects subset invariants at consecution).
+Per-VC times are nondeterministic across identical inputs (VC 0: 0.1 s /
+2.4 min / 28 s); the outcome is not (always VC 3, always unbounded).
+Plain bounded checking (depth 2, no inductive flag) with the full
+invariant also ran ~2 h without finishing — the invariant's composition
+is heavy in every Apalache mode, and shrinking it 9× did not lift the
+wall, so the growth is in the checker's consecution processing itself.
+The base case (`initCompletion ⇒ Domains`) is proven in every
+configuration, and completes in 12 s under the `arrays` encoding. The
+inductive route is closed at the toolchain level for quint 0.33.1 +
+Apalache 0.62.4. Candidate upstream report: unbounded memory growth in a
+single finite-state consecution VC, reproducible across hypothesis sizes
+9× apart. Reopening path: a toolchain upgrade, or the upstream fix.
 
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
