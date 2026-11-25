@@ -212,6 +212,13 @@ module inductive_proof {
   val KeyCoherent: bool =
     WithinBoundsCore and AssetIdKeyCoherentCore and MetadataKeyCoherent and IdBudget
 
+  // Round 1's checked invariant: the Domains floor + the KeyCoherent group
+  // (plan §3.2 items 1-2). Checked with the partitioned protocol (see plan
+  // §4.2 amendment): no-deadlock, VC batches via invariantFilter, transition
+  // partitions via transitionFilter; the composed verdict = every VC of this
+  // invariant holds over every transition.
+  val Round1: bool = TypeOK and KeyCoherent
+
   // ---------- section: state-property init ----------
   // initI is the nondet init for the goal-implication check:
   //   quint verify utils/quint/inductive/inductive-proof.qnt --main inductive_proof \

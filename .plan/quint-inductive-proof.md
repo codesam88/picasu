@@ -738,7 +738,15 @@ traceability, and docs run counts pinned to `pipeline/`):
 - `utils/quint/inductive/tools/` — the per-table codemod scripts (§2.2
   drift rule), the standing `audit.py` invariant check (§2.4 test point 3),
   and the §4.5 differential harness. Committed; the core file is their
-  output.
+  output. The checker-server lifecycle (`apalache-server.sh`) and the
+  partitioned inductive-invariant runner (`partitioned-typeok.sh`) live
+  here too: the round-loop check protocol (§4.2 amendment) —
+  `no-deadlock` via `--apalache-config`, VC batches via
+  `search.invariantFilter`, transition partitions via
+  `search.transitionFilter`; each partition ≤362 transitions, every
+  partition rung individually recorded, the composed verdict = every VC
+  of the checked invariant over every transition. `just quint
+inductive-partitioned` runs it (advisory; not a merge gate).
 
 Justfile recipe (advisory, nightly — explicitly **not** a merge gate and
 changing no existing gate):

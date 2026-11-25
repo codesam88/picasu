@@ -50,6 +50,13 @@ fulltest: _install-quint
     set -euo pipefail
     quint test --max-samples 100000 "{{ pipeline_dir }}/entry-canonical.qnt"
 
+# Advisory (nightly): the partitioned inductive-invariant check for the
+# inductive lane (see utils/quint/inductive/tools/partitioned-typeok.sh
+# and the plan record). Not a merge gate.
+[group('quint')]
+inductive-partitioned: _install-quint
+    bash "{{ source_directory() }}/inductive/tools/partitioned-typeok.sh" TypeOK 8832
+
 # Regenerate docs/eventual-consistency.md from the catalogs.
 [group('quint')]
 docs:
