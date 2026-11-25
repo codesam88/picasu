@@ -522,36 +522,36 @@ size −file_size)` for non-trashed album members
   outside the record sets) — these are genuine round-1 conjuncts
   (metadata kind/key coherence as the partner of `AssetIdKeyCoherent`).
 
-Resource calibration (final, instrumented 2026-11-25, post-collapse):
-the consecution check has **unbounded memory growth, independent of
-hypothesis size** — confirmed by the strongest available lever. The
-user-approved snapshot collapse (SCOPE-19) shrank the suspected dominant
-terms by up to 9× (intake universe 2,616 → 312, FILESTATES 55 → 7,
-MEDIA_METARECORDS 54 → 6) with all evidence re-established (suites 70/70
-both models, audit 42/42, differential clean, shape track 9/10 green
-with identical state counts and depths). The consecution retry on the
-collapsed model reproduced the wall exactly: initiation PASS, VCs 0–2
-hold (2 m 07 s / 1.3 s / 0.03 s), **VC 3 unbounded** — RSS 8.3 → 30.1 GB
-at ~1.5 GB/min, kernel `oom_kill 1`, 26 m 26 s into the run. Instrumented
-solo probe (the documented `search.invariantFilter=1->state3` partition,
-24 GB-heap server, all scratch on disk — java.io.tmpdir, out-dir, TMPDIR
-verified via `/proc/<pid>/environ`): 324 MB idle → 3.7 GB → ~1 GB/min and
-accelerating → process gone at ≥ 9.4 GB with ~35 GB still free, no
-`hs_err`, no Java OOM, no cgroup cap (all `max`) — kernel OOM-kill during
-continued growth. Hypothesis bisection is structurally impossible (the
-every-var assignment rule rejects subset invariants at consecution).
-Per-VC times are nondeterministic across identical inputs (VC 0: 0.1 s /
-2.4 min / 28 s); the outcome is not (always VC 3, always unbounded).
-Plain bounded checking (depth 2, no inductive flag) with the full
-invariant also ran ~2 h without finishing — the invariant's composition
-is heavy in every Apalache mode, and shrinking it 9× did not lift the
-wall, so the growth is in the checker's consecution processing itself.
-The base case (`initCompletion ⇒ Domains`) is proven in every
-configuration, and completes in 12 s under the `arrays` encoding. The
-inductive route is closed at the toolchain level for quint 0.33.1 +
-Apalache 0.62.4. Candidate upstream report: unbounded memory growth in a
-single finite-state consecution VC, reproducible across hypothesis sizes
-9× apart. Reopening path: a toolchain upgrade, or the upstream fix.
+Resource calibration (final, instrumented 2026-11-25, resolved): the
+single-run consecution check fails from **two checker-side causes**, not
+from the model, the invariant, or hypothesis size. (1) quint's inductive
+flow runs Apalache's deadlock check, which is semantically wrong for an
+inductive check over arbitrary I-states (most are unreachable) and is a
+memory bomb here; `"no-deadlock": true` removes it. (2) Even with the
+deadlock check off, the _single-run_ consecution over all 372 transitions
+dies with unbounded memory growth (RSS 11.3 GB at death, kernel OOM-kill;
+reproduced across hypothesis sizes 9× apart, i.e. independent of the
+invariant's content and size — the snapshot collapse (SCOPE-19) shrank
+the suspected terms by up to 9× with zero effect). **The partitioned
+protocol unblocks it** — the tuning docs' own "check different parts on
+different machines" pattern: `no-deadlock` + `search.invariantFilter`
+(VC batches) + `search.transitionFilter` (transition partitions). VCs
+are independent, so partitioned green runs compose to the full
+consecution; every partition used here is individually recorded.
+
+**Result: `TypeOK` (the 15-domain invariant) is inductively verified**
+on the collapsed model at the reduced instance: base case
+(`initCompletion ⇒ Domains`) proven in every run; consecution verified
+per-VC across the partitions — VC 3 via three solo runs
+(`20261125-vc3-t353`/`-t362`/`-tail9`, covering transitions 0–371), and
+VCs 0–2, 4–14 via the 16-run batch×partition series
+(`20261125-typeok-b*-p*`, all `[ok] No violation found`; summary:
+`logs/20261125-typeok-partitioned-summary.tsv`). Per-run cost ~9 min,
+translation-dominated; memory modest (RSS ≤ 4.8 GB). This is the check
+protocol for the round loop (§4.2): same configuration, one conjunct
+group per round. Upstream report candidates remain: the deadlock check
+running in inductive mode, and the single-run consecution's unbounded
+growth.
 
 ```sh
 quint typecheck utils/quint/inductive/inductive-proof.qnt
