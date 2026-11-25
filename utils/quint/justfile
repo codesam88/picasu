@@ -34,7 +34,7 @@ format:
 # Fast spec gates: run on any code change (no model runs).
 [group('quint')]
 check:
-    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}" "{{ docs_report }}"
+    node "{{ source_directory() }}/coverage/bin/check.ts" all "{{ pipeline_dir }}"
 
 # Run both model entries at the standard sample count (10k per run).
 [group('quint')]
@@ -54,7 +54,6 @@ fulltest: _install-quint
 [group('quint')]
 docs:
     node "{{ source_directory() }}/coverage/bin/check.ts" docs "{{ pipeline_dir }}" "{{ docs_report }}"
-    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern "{{ docs_report }}"
 
 # Generated-doc drift gate: regenerate + diff against the committed doc.
 [group('quint')]

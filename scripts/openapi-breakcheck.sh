@@ -2,7 +2,7 @@
 # Fail on breaking OpenAPI changes vs the base branch's committed spec.
 #
 # Compares a freshly generated spec (not the committed file — drift between
-# the two is openapi-json-match's job) against the base branch's committed
+# the two is caught by committed_artifact_is_up_to_date / the docs-regen gate) against the base branch's committed
 # backend/openapi.json. Breaking findings fail; entries in
 # .oasdiff-ignore.txt are explicitly accepted breaks, not failures.
 #

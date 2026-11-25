@@ -292,20 +292,6 @@ export function docCheck(args: string[]): number {
   const md = render(base);
   writeFileSync(generatedPath, md, "utf8");
 
-  // prettier formatting: invoke the frontend's prettier on the temp file
-  // (best effort — the committed file is prettier-formatted, so the
-  // comparison must be too). The frontend dir is derived from the repo
-  // root above the specs dir; fall back to plain npx resolution.
-  const frontendDir = resolve(base, "..", "..", "..", "frontend");
-  try {
-    spawnSync("npx", ["--no-install", "prettier", "--write", generatedPath], {
-      cwd: frontendDir,
-      stdio: "ignore",
-    });
-  } catch {
-    // ignore
-  }
-
   let existing = "";
   try {
     existing = readFileSync(target, "utf8");
