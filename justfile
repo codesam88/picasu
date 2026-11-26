@@ -184,8 +184,8 @@ openapi-sanity:
 # Compare mounted Rocket routes with documented OpenAPI operations.
 [group('utils')]
 [private]
-openapi-routes-match: frontend-build-maybe
-    cargo run --quiet --package picasu --features "embed-frontend auto-open-browser" -- \
+openapi-routes-match:
+    cargo run --quiet --package picasu -- \
         --check-openapi "{{justfile_directory()}}/backend/openapi.json"
 
 # Run the already-built release binary's route-set gate against the committed spec.

@@ -58,9 +58,9 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      # The contract check builds the backend with the embed-frontend
-      # feature, and that build embeds the built assets — so this job needs
-      # node and the frontend build, not only cargo.
+      # Node stays for spectral, which runs via npx --no-install in the
+      # API validation gate; the contract check no longer embeds frontend
+      # assets, so the frontend build is not needed here.
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -128,9 +128,6 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           just install uv
           uv --version
-
-      - name: Build the frontend assets
-        run: just frontend-build
 
       - name: Check (backend, utils, API contract, env vars)
         run: |
