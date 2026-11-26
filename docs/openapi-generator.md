@@ -585,10 +585,15 @@ refactor that empties a check fails a named test instead of quietly passing:
   stay silent. Each fixture is pulled in with `include_str!`, so a deleted
   fixture breaks the build instead of skipping its test.
 
-The markdown reference is generated but not drift-checked: `widdershins` is
-fetched with `npx --yes` at generation time, which needs network access that
-CI gates should not depend on. Regenerate it with `just docs-openapi` when the
-spec changes; it therefore lags `backend/openapi.json` until someone does.
+The markdown reference is now vendored and drift-checked: `widdershins`
+4.0.1 is a frontend devDependency (pinned in `frontend/package.json` and
+`frontend/package-lock.json`), and `docs-openapi` runs through `npx
+--no-install`, so generation needs no network. `docs-openapi` is part of
+`just docs-regen`, and the pre-commit helper regenerates
+`docs/openapi-reference.md` whenever `backend/openapi.json` changes or the
+OpenAPI spec is regenerated, staging it with the other regenerated outputs.
+CI's `git diff --exit-code` gate therefore covers the reference doc like every
+other generated artifact.
 
 ### Coverage check
 

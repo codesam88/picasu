@@ -2,7 +2,7 @@
 # precommit-md.sh — markdown cleanup flow for precommit.
 # Scopes: tracked (staged+unstaged vs HEAD) + untracked *.md under
 # .plan/, docs/, utils/, scripts/. Regenerates gates/auth-matrix
-# docs when their inputs change, never runs docs-openapi (network).
+# docs when their inputs change, including the vendored-widdershins OpenAPI reference.
 # All in-scope markdown is now formatted and staged, including generated docs.
 set -euo pipefail
 
@@ -100,9 +100,11 @@ if any_match '^utils/bench/(bench|battery|render_baselines|compare_reports)\.py$
   echo "[precommit-md] reminder: bench generator inputs changed; run 'just bench extract' manually if baselines need refreshing (needs run data)." >&2
 fi
 
-# openapi inputs changed -> reminder only (never run docs-openapi / network)
-if any_match '^backend/(openapi\.json|src/)' ; then
-  echo "[precommit-md] reminder: OpenAPI inputs changed; run 'just docs-openapi' manually if the reference doc needs refreshing (network)." >&2
+# openapi reference regen (widdershins is vendored; runs offline)
+if (( openapi_gen_ran )) || any_match '^backend/openapi\.json$'; then
+  echo "[precommit-md] regenerating docs/openapi-reference.md (just docs-openapi)"
+  just docs-openapi
+  regenerated+=(docs/openapi-reference.md)
 fi
 
 # single format pass over all markdown (plan78 + docs/utils at 80)

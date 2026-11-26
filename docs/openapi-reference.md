@@ -14,6 +14,7 @@ includes: []
 search: true
 highlight_theme: darkula
 headingLevel: 2
+
 ---
 
 <!-- Generator: Widdershins v4.0.1 -->
@@ -31,16 +32,16 @@ Web: <a href="https://github.com/codesam88/picasu">picasu</a> License: MIT
 
 # Authentication
 
-- API Key (album_id)
-  - Parameter Name: **x-album-id**, in: header.
+* API Key (album_id)
+    - Parameter Name: **x-album-id**, in: header.
 
-* HTTP Authentication, scheme: bearer
+- HTTP Authentication, scheme: bearer
 
-- API Key (cookie_jwt)
-  - Parameter Name: **jwt**, in: cookie.
+* API Key (cookie_jwt)
+    - Parameter Name: **jwt**, in: cookie.
 
-- API Key (share_id)
-  - Parameter Name: **x-share-id**, in: header.
+* API Key (share_id)
+    - Parameter Name: **x-share-id**, in: header.
 
 <h1 id="picasu-auth">auth</h1>
 
@@ -67,21 +68,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/delete/invites/{invite_id}", {
-  method: "DELETE",
+fetch('/delete/invites/{invite_id}',
+{
+  method: 'DELETE',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -252,21 +255,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/delete/users/{user_id}", {
-  method: "DELETE",
+fetch('/delete/users/{user_id}',
+{
+  method: 'DELETE',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -446,21 +451,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/invites", {
-  method: "GET",
+fetch('/get/invites',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -618,7 +625,7 @@ Status Code **200**
 
 | Name        | Type                              | Required | Restrictions | Description                                                                                                            |
 | ----------- | --------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_ | [[InviteView](#schemainviteview)] | false    | none         | [Listing view of an invite: the stored metadata plus the row id (the<br>token hash). Never contains the token itself.] |
+| *anonymous* | [[InviteView](#schemainviteview)] | false    | none         | [Listing view of an invite: the stored metadata plus the row id (the<br>token hash). Never contains the token itself.] |
 | » createdBy | string                            | true     | none         | none                                                                                                                   |
 | » expiresAt | integer,null(int64)               | false    | none         | none                                                                                                                   |
 | » id        | string                            | true     | none         | Row id — blake3 hash hex of the token; identifies the invite for<br>revoke. Preimage-resistant, useless as a token.    |
@@ -652,21 +659,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/invites/limits", {
-  method: "GET",
+fetch('/get/invites/limits',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -831,21 +840,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/self/profile", {
-  method: "GET",
+fetch('/get/self/profile',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -1018,21 +1029,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/server-info", {
-  method: "GET",
+fetch('/get/server-info',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -1195,21 +1208,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/users", {
-  method: "GET",
+fetch('/get/users',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -1360,7 +1375,7 @@ Status Code **200**
 
 | Name            | Type                                | Required | Restrictions | Description                                                     |
 | --------------- | ----------------------------------- | -------- | ------------ | --------------------------------------------------------------- |
-| _anonymous_     | [[UserSummary](#schemausersummary)] | false    | none         | [Summary of a user record. Password hashes are never exported.] |
+| *anonymous*     | [[UserSummary](#schemausersummary)] | false    | none         | [Summary of a user record. Password hashes are never exported.] |
 | » admin         | boolean                             | true     | none         | none                                                            |
 | » disabled      | boolean                             | false    | none         | none                                                            |
 | » sharesEnabled | boolean                             | false    | none         | none                                                            |
@@ -1617,15 +1632,18 @@ POST /post/logout HTTP/1.1
 ```
 
 ```javascript
-fetch("/post/logout", {
-  method: "POST",
+
+fetch('/post/logout',
+{
+  method: 'POST'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -3741,21 +3759,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/get-albums", {
-  method: "GET",
+fetch('/get/get-albums',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -3938,7 +3958,7 @@ Status Code **200**
 
 | Name                        | Type                            | Required | Restrictions | Description                                                                                                                                                       |
 | --------------------------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                                                                              |
+| *anonymous*                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                                                                              |
 | » albumId                   | string                          | true     | none         | none                                                                                                                                                              |
 | » albumName                 | string,null                     | false    | none         | none                                                                                                                                                              |
 | » dirPath                   | string,null                     | false    | none         | none                                                                                                                                                              |
@@ -3981,21 +4001,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/share/token?album_id=string&fingerprint=string", {
-  method: "GET",
+fetch('/get/share/token?album_id=string&fingerprint=string',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -4763,9 +4785,9 @@ whose directory is resolved from the album directory cache. Only the file at
 the asset's own path moves, never hash-matched duplicates: the stored path and
 album membership are rewritten to match, an album moves as its whole directory
 tree with every descendant record's path rewritten, and a `.xmp` sidecar rides
-along with the file. The destination album's stats are refreshed and the
-query-cache version bumped before the response returns, so the next prefetch
-already reflects the move.
+along with the file. Album aggregates are maintained by deltas; the
+query-cache version is bumped before the response returns, so the next
+prefetch already reflects the move.
 
 Corner cases: `onConflict` is required and has no default — `skip` leaves an
 existing destination untouched and reports `skipped`, `rename` lands under a
@@ -5431,9 +5453,10 @@ record. The album's `cover` becomes `coverAssetId` and its `thumbhash` is
 overwritten with the cover's, and the in-memory tree is rebuilt before the
 call returns.
 
-Corner cases: the cover's kind is never checked, so any asset can serve as the
-cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is stored
-in the database only.
+The new cover is persisted to the album's `.albuminfo.xmp` sidecar (as
+`picasu:CoverAssetId`) via the shared sidecar-then-store contract, so it
+survives a database rebuild. The cover's kind is never checked, so any asset
+can serve as the cover.
 
 Errors: 400 `albumId` names a media record — 401 missing or invalid
 credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
@@ -6071,8 +6094,8 @@ func main() {
 `DELETE /delete/delete-data`
 
 `assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar are
-removed from disk and its metadata row is dropped. Every album the deletion
-touched is refreshed before the response returns.
+removed from disk and its metadata row is dropped. Album aggregates are
+maintained by deltas.
 
 Corner cases: An empty `assetIds` is a 400. IDs are processed in order, so a
 malformed or unresolvable ID aborts the request part-way and files already
@@ -6088,7 +6111,9 @@ storage failure.
 
 ```json
 {
-  "assetIds": ["string"],
+  "assetIds": [
+    "string"
+  ],
   "timestamp": 0
 }
 ```
@@ -6151,22 +6176,24 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  Authorization: "Bearer {access-token}",
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
 };
 
-fetch("/get/metadata/{asset_id}?timestamp=0", {
-  method: "GET",
+fetch('/get/metadata/{asset_id}?timestamp=0',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -6485,13 +6512,12 @@ func main() {
 `PUT /put/edit_flags`
 
 `indexArray` addresses the assets in the snapshot named by `timestamp`, and a
-sent `isTrashed` value lands on each asset's own record _and_ on its XMP
+sent `isTrashed` value lands on each asset's own record *and* on its XMP
 sidecar as the `picasu:Trashed` marker: the record is a cache, so without the
 marker a rebuild from the filesystem would bring trashed files back as normal
 assets. A restore removes the marker. The sidecar is written before the
 record, and a write that cannot land fails the request without storing
-anything. Every album that lost or regained a member is refreshed in the
-background, so its counts may still be catching up when the call returns.
+anything. Album aggregates are maintained by deltas in the same transaction.
 
 Corner cases: the removed `isFavorite` and `isArchived` keys are still
 accepted and ignored rather than rejected, and an absent `isTrashed` leaves
@@ -6506,7 +6532,9 @@ out-of-range index or storage failure.
 
 ```json
 {
-  "indexArray": [0],
+  "indexArray": [
+    0
+  ],
   "isTrashed": true,
   "timestamp": 0
 }
@@ -6722,7 +6750,9 @@ mode — 500 out-of-range index or storage failure.
 
 ```json
 {
-  "indexArray": [0],
+  "indexArray": [
+    0
+  ],
   "rating": 0,
   "timestamp": 0
 }
@@ -6944,9 +6974,15 @@ out-of-range index or storage failure.
 
 ```json
 {
-  "addTagsArray": ["string"],
-  "indexArray": [0],
-  "removeTagsArray": ["string"],
+  "addTagsArray": [
+    "string"
+  ],
+  "indexArray": [
+    0
+  ],
+  "removeTagsArray": [
+    "string"
+  ],
   "timestamp": 0
 }
 ```
@@ -6999,7 +7035,7 @@ Status Code **200**
 
 | Name        | Type                        | Required | Restrictions | Description |
 | ----------- | --------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [[TagInfo](#schemataginfo)] | false    | none         | none        |
+| *anonymous* | [[TagInfo](#schemataginfo)] | false    | none         | none        |
 | » number    | integer                     | true     | none         | none        |
 | » tag       | string                      | true     | none         | none        |
 
@@ -7031,23 +7067,24 @@ Accept: application/json
 ```
 
 ```javascript
-const inputBody = "{}";
+const inputBody = '{}';
 const headers = {
-  "Content-Type": "multipart/form-data",
-  Accept: "application/json",
+  'Content-Type':'multipart/form-data',
+  'Accept':'application/json'
 };
 
-fetch("/put/regenerate-thumbnail-with-frame", {
-  method: "PUT",
+fetch('/put/regenerate-thumbnail-with-frame',
+{
+  method: 'PUT',
   body: inputBody,
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -7178,6 +7215,7 @@ decode, or storage failure.
 
 ```yaml
 {}
+
 ```
 
 <h3 id="replace-an-asset's-compressed-thumbnail-with-an-uploaded-frame.-parameters">Parameters</h3>
@@ -7453,21 +7491,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/admin/config", {
-  method: "GET",
+fetch('/get/admin/config',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -7619,7 +7659,7 @@ Status Code **200**
 
 | Name              | Type                                          | Required | Restrictions | Description                                                                 |
 | ----------------- | --------------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------- |
-| _anonymous_       | [[ConfigFieldEntry](#schemaconfigfieldentry)] | false    | none         | [One annotated configuration field as returned by `GET /get/admin/config`.] |
+| *anonymous*       | [[ConfigFieldEntry](#schemaconfigfieldentry)] | false    | none         | [One annotated configuration field as returned by `GET /get/admin/config`.] |
 | » name            | string                                        | true     | none         | none                                                                        |
 | » requiresRestart | boolean                                       | true     | none         | none                                                                        |
 | » source          | string                                        | true     | none         | none                                                                        |
@@ -7653,21 +7693,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/admin/config/export", {
-  method: "GET",
+fetch('/get/admin/config/export',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -7845,23 +7887,25 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  "x-album-id": "API_KEY",
-  "x-share-id": "API_KEY",
+  'Accept':'application/json',
+  'x-album-id':'API_KEY',
+  'x-share-id':'API_KEY'
 };
 
-fetch("/get/config", {
-  method: "GET",
+fetch('/get/config',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -8053,21 +8097,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/config/export", {
-  method: "GET",
+fetch('/get/config/export',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -8192,6 +8238,7 @@ Errors: 400 invalid input — 401 no valid admin credentials.
   "dataHome": "string",
   "fsNotifyWatcher": true,
   "imagePath": "string",
+  "indexBackstopIntervalSecs": 0,
   "loginIpBaseBanSecs": 0,
   "loginIpLongBaseBanSecs": 0,
   "loginIpLongMaxBanSecs": 0,
@@ -8261,21 +8308,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/path-completion", {
-  method: "GET",
+fetch('/get/path-completion',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -8407,9 +8456,13 @@ matched no directory — 500 the directory could not be read.
 
 ```json
 {
-  "children": ["string"],
+  "children": [
+    "string"
+  ],
   "is_default": true,
-  "roots": ["string"]
+  "roots": [
+    "string"
+  ]
 }
 ```
 
@@ -8459,21 +8512,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/post/admin/config/disable-read-only", {
-  method: "POST",
+fetch('/post/admin/config/disable-read-only',
+{
+  method: 'POST',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -8634,21 +8689,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/post/config/auth-key/reset", {
-  method: "POST",
+fetch('/post/config/auth-key/reset',
+{
+  method: 'POST',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -9036,7 +9093,9 @@ mode — 500 config write failure.
     "useClientTimestampInfo": true,
     "validateUploadContent": true
   },
-  "restartRequired": ["string"]
+  "restartRequired": [
+    "string"
+  ]
 }
 ```
 
@@ -9091,21 +9150,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/index/status", {
-  method: "GET",
+fetch('/get/index/status',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -9230,7 +9291,9 @@ Errors: 401 no valid admin credentials.
 {
   "cancelRequested": true,
   "failed": 0,
-  "failedPaths": ["string"],
+  "failedPaths": [
+    "string"
+  ],
   "finishedAt": 0,
   "matched": 0,
   "processed": 0,
@@ -9495,21 +9558,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/post/index/cancel", {
-  method: "POST",
+fetch('/post/index/cancel',
+{
+  method: 'POST',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -9679,23 +9744,25 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  "x-album-id": "API_KEY",
-  "x-share-id": "API_KEY",
+  'Accept':'application/json',
+  'x-album-id':'API_KEY',
+  'x-share-id':'API_KEY'
 };
 
-fetch("/object/compressed/{file_path}", {
-  method: "GET",
+fetch('/object/compressed/{file_path}',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -9879,23 +9946,25 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  "x-album-id": "API_KEY",
-  "x-share-id": "API_KEY",
+  'Accept':'application/json',
+  'x-album-id':'API_KEY',
+  'x-share-id':'API_KEY'
 };
 
-fetch("/object/imported/{file_path}", {
-  method: "GET",
+fetch('/object/imported/{file_path}',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -10081,22 +10150,24 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  Authorization: "Bearer {access-token}",
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
 };
 
-fetch("/get/get-data?timestamp=0&start=0&end=0", {
-  method: "GET",
+fetch('/get/get-data?timestamp=0&start=0&end=0',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -10275,7 +10346,7 @@ Status Code **200**
 
 | Name           | Type                                                        | Required | Restrictions | Description                                                                                                                                                               |
 | -------------- | ----------------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_    | [[DataBaseTimestampReturn](#schemadatabasetimestampreturn)] | false    | none         | none                                                                                                                                                                      |
+| *anonymous*    | [[DataBaseTimestampReturn](#schemadatabasetimestampreturn)] | false    | none         | none                                                                                                                                                                      |
 | » abstractData | object                                                      | true     | none         | none                                                                                                                                                                      |
 | » assetId      | string                                                      | true     | none         | Path-primary asset ID.                                                                                                                                                    |
 | » coverHash    | string,null                                                 | false    | none         | For albums: the cover image's content hash (used for compressed<br>thumbnail URL construction and token validation). `None` for media<br>items or albums without a cover. |
@@ -10308,21 +10379,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/get-export", {
-  method: "GET",
+fetch('/get/get-export',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -10488,22 +10561,24 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  Authorization: "Bearer {access-token}",
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
 };
 
-fetch("/get/get-rows?index=0&timestamp=0", {
-  method: "GET",
+fetch('/get/get-rows?index=0&timestamp=0',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -10702,22 +10777,24 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
-  Authorization: "Bearer {access-token}",
+  'Accept':'application/json',
+  'Authorization':'Bearer {access-token}'
 };
 
-fetch("/get/get-scroll-bar?timestamp=0", {
-  method: "GET",
+fetch('/get/get-scroll-bar?timestamp=0',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -10882,7 +10959,7 @@ Status Code **200**
 
 | Name        | Type                                    | Required | Restrictions | Description |
 | ----------- | --------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [[ScrollBarData](#schemascrollbardata)] | false    | none         | none        |
+| *anonymous* | [[ScrollBarData](#schemascrollbardata)] | false    | none         | none        |
 | » index     | integer                                 | true     | none         | none        |
 | » month     | integer                                 | true     | none         | none        |
 | » year      | integer                                 | true     | none         | none        |
@@ -10913,21 +10990,23 @@ Accept: application/json
 ```
 
 ```javascript
+
 const headers = {
-  Accept: "application/json",
+  'Accept':'application/json'
 };
 
-fetch("/get/get-tags", {
-  method: "GET",
+fetch('/get/get-tags',
+{
+  method: 'GET',
 
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -11082,7 +11161,7 @@ Status Code **200**
 
 | Name        | Type                        | Required | Restrictions | Description |
 | ----------- | --------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [[TagInfo](#schemataginfo)] | false    | none         | none        |
+| *anonymous* | [[TagInfo](#schemataginfo)] | false    | none         | none        |
 | » number    | integer                     | true     | none         | none        |
 | » tag       | string                      | true     | none         | none        |
 
@@ -11116,25 +11195,26 @@ Accept: application/json
 ```
 
 ```javascript
-const inputBody = "null";
+const inputBody = 'null';
 const headers = {
-  "Content-Type": "application/json",
-  Accept: "application/json",
-  "x-album-id": "API_KEY",
-  "x-share-id": "API_KEY",
+  'Content-Type':'application/json',
+  'Accept':'application/json',
+  'x-album-id':'API_KEY',
+  'x-share-id':'API_KEY'
 };
 
-fetch("/get/prefetch", {
-  method: "POST",
+fetch('/get/prefetch',
+{
+  method: 'POST',
   body: inputBody,
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -11344,7 +11424,7 @@ album_id & share_id, cookie_jwt
 
 File upload
 
-## Upload media files into an album or the upload folder and index each one.
+## Upload a single media file into an album or the upload folder and store it.
 
 <a id="opIdupload"></a>
 
@@ -11367,23 +11447,24 @@ Accept: application/json
 ```
 
 ```javascript
-const inputBody = "{}";
+const inputBody = '{}';
 const headers = {
-  "Content-Type": "multipart/form-data",
-  Accept: "application/json",
+  'Content-Type':'multipart/form-data',
+  'Accept':'application/json'
 };
 
-fetch("/post/upload", {
-  method: "POST",
+fetch('/post/upload',
+{
+  method: 'POST',
   body: inputBody,
-  headers: headers,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -11493,33 +11574,40 @@ func main() {
 
 `POST /post/upload`
 
-With a target album the files land in that album's own directory; without one
-they land in the configured `uploadFolder` below `imagePath`, which becomes
-its own top-level album. Each file is written to its final location and
-indexed before the response returns.
+With a target album the file lands in that album's own directory; without one
+it lands in the configured `uploadFolder` below `imagePath`, which becomes its
+own top-level album. The file is written to its final location and a 200
+response returns the stored name plus the target directory
+(`{"files": [...], "dir": ...}`) so the client can poll for exactly what
+landed; indexing happens asynchronously in the background, so a row may not be
+visible immediately.
 
 Corner cases: Credentials may be admin or share — a share is accepted when it
 sets `showUpload`, is unexpired, matches `x-share-password` and names the same
 album as `presigned_album_id_opt`. `on_conflict` defaults to `rename`, which
-suffixes a collision `-001`, `-002`, …; `skip` discards that part without
-writing or indexing it, and any other value is a 400. Every part is validated
-before the first file is written, so a rejected name, an extension outside the
-image or video whitelist, or a `file`/`lastModified` count mismatch aborts the
-batch with a 400 and leaves nothing behind. The stored extension always comes
-from the part's `Content-Type` rather than the client filename, and a file the
-indexing pipeline cannot decode is removed again and reported as a 400.
+suffixes a collision `-001`, `-002`, …; `skip` discards the file without
+writing or indexing it, and any other value is a 400. The single uploaded file
+is validated before it is written, so a rejected name, an extension outside
+the image or video whitelist, or unidentifiable bytes abort the request with a
+400 and leave nothing behind. The stored extension always comes from the
+part's `Content-Type` rather than the client filename. Content that passes the
+cheap pre-flight checks but is later rejected by the full decode pipeline is
+not removed and does not fail the request: it is reported as a failed scan
+later. Each request stands alone: any file that is stored is a success, and a
+failure applies only to that request.
 
 Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
-rejected filename, count mismatch, missing `imagePath`, or an undecodable file
-— 401 missing or invalid session — 405 read-only mode — 500 storage failure.
+rejected filename, missing `imagePath` — 401 missing or invalid session — 405
+read-only mode — 500 storage failure.
 
 > Body parameter
 
 ```yaml
 {}
+
 ```
 
-<h3 id="upload-media-files-into-an-album-or-the-upload-folder-and-index-each-one.-parameters">Parameters</h3>
+<h3 id="upload-a-single-media-file-into-an-album-or-the-upload-folder-and-store-it.-parameters">Parameters</h3>
 
 | Name                   | In    | Type    | Required | Description                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------- | ----- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -11529,6 +11617,12 @@ rejected filename, count mismatch, missing `imagePath`, or an undecodable file
 | body                   | body  | object  | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
 > Example responses
+
+> 200 Response
+
+```json
+null
+```
 
 > 401 Response
 
@@ -11540,16 +11634,18 @@ rejected filename, count mismatch, missing `imagePath`, or an undecodable file
 }
 ```
 
-<h3 id="upload-media-files-into-an-album-or-the-upload-folder-and-index-each-one.-responses">Responses</h3>
+<h3 id="upload-a-single-media-file-into-an-album-or-the-upload-folder-and-store-it.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                      |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Upload successful                                                                          | None                                        |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Upload successful                                                                          | Inline                                      |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+
+<h3 id="upload-a-single-media-file-into-an-album-or-the-upload-folder-and-store-it.-responseschema">Response Schema</h3>
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -11578,15 +11674,18 @@ GET / HTTP/1.1
 ```
 
 ```javascript
-fetch("/", {
-  method: "GET",
+
+fetch('/',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -11710,15 +11809,18 @@ GET /albums HTTP/1.1
 ```
 
 ```javascript
-fetch("/albums", {
-  method: "GET",
+
+fetch('/albums',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -11845,15 +11947,18 @@ GET /albums/view/{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/albums/view/{path}", {
-  method: "GET",
+
+fetch('/albums/view/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -11986,15 +12091,18 @@ GET /config HTTP/1.1
 ```
 
 ```javascript
-fetch("/config", {
-  method: "GET",
+
+fetch('/config',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12117,15 +12225,18 @@ GET /favicon.ico HTTP/1.1
 ```
 
 ```javascript
-fetch("/favicon.ico", {
-  method: "GET",
+
+fetch('/favicon.ico',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12253,15 +12364,18 @@ GET /login HTTP/1.1
 ```
 
 ```javascript
-fetch("/login", {
-  method: "GET",
+
+fetch('/login',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12385,15 +12499,18 @@ GET /my-albums HTTP/1.1
 ```
 
 ```javascript
-fetch("/my-albums", {
-  method: "GET",
+
+fetch('/my-albums',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12516,15 +12633,18 @@ GET /my-albums/view/{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/my-albums/view/{path}", {
-  method: "GET",
+
+fetch('/my-albums/view/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12654,15 +12774,18 @@ GET /redirect-to-login HTTP/1.1
 ```
 
 ```javascript
-fetch("/redirect-to-login", {
-  method: "GET",
+
+fetch('/redirect-to-login',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12785,15 +12908,18 @@ GET /register HTTP/1.1
 ```
 
 ```javascript
-fetch("/register", {
-  method: "GET",
+
+fetch('/register',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -12916,15 +13042,18 @@ GET /registerSW.js HTTP/1.1
 ```
 
 ```javascript
-fetch("/registerSW.js", {
-  method: "GET",
+
+fetch('/registerSW.js',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13053,15 +13182,18 @@ GET /serviceWorker.js HTTP/1.1
 ```
 
 ```javascript
-fetch("/serviceWorker.js", {
-  method: "GET",
+
+fetch('/serviceWorker.js',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13190,15 +13322,18 @@ GET /setting HTTP/1.1
 ```
 
 ```javascript
-fetch("/setting", {
-  method: "GET",
+
+fetch('/setting',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13323,15 +13458,18 @@ GET /share/{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/share/{path}", {
-  method: "GET",
+
+fetch('/share/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13465,15 +13603,18 @@ GET /shares HTTP/1.1
 ```
 
 ```javascript
-fetch("/shares", {
-  method: "GET",
+
+fetch('/shares',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13596,15 +13737,18 @@ GET /tags HTTP/1.1
 ```
 
 ```javascript
-fetch("/tags", {
-  method: "GET",
+
+fetch('/tags',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13727,15 +13871,18 @@ GET /timeline HTTP/1.1
 ```
 
 ```javascript
-fetch("/timeline", {
-  method: "GET",
+
+fetch('/timeline',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -13859,15 +14006,18 @@ GET /timeline/view/{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/timeline/view/{path}", {
-  method: "GET",
+
+fetch('/timeline/view/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14001,15 +14151,18 @@ GET /trashed HTTP/1.1
 ```
 
 ```javascript
-fetch("/trashed", {
-  method: "GET",
+
+fetch('/trashed',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14132,15 +14285,18 @@ GET /trashed/view/{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/trashed/view/{path}", {
-  method: "GET",
+
+fetch('/trashed/view/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14273,15 +14429,18 @@ GET /unauthorized HTTP/1.1
 ```
 
 ```javascript
-fetch("/unauthorized", {
-  method: "GET",
+
+fetch('/unauthorized',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14410,15 +14569,18 @@ GET /videos HTTP/1.1
 ```
 
 ```javascript
-fetch("/videos", {
-  method: "GET",
+
+fetch('/videos',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14542,15 +14704,18 @@ GET /videos/view/{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/videos/view/{path}", {
-  method: "GET",
+
+fetch('/videos/view/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14683,15 +14848,18 @@ GET /{dynamic_album_id} HTTP/1.1
 ```
 
 ```javascript
-fetch("/{dynamic_album_id}", {
-  method: "GET",
+
+fetch('/{dynamic_album_id}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14829,15 +14997,18 @@ GET /{path} HTTP/1.1
 ```
 
 ```javascript
-fetch("/{path}", {
-  method: "GET",
+
+fetch('/{path}',
+{
+  method: 'GET'
+
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
@@ -14985,6 +15156,7 @@ This operation does not require authentication
   "scope": "string",
   "version": 0
 }
+
 ```
 
 ### Properties
@@ -15014,8 +15186,11 @@ This operation does not require authentication
     "useClientTimestampInfo": true,
     "validateUploadContent": true
   },
-  "restartRequired": ["string"]
+  "restartRequired": [
+    "string"
+  ]
 }
+
 ```
 
 ### Properties
@@ -15034,23 +15209,24 @@ This operation does not require authentication
 
 ```json
 "idle"
+
 ```
 
 ### Properties
 
 | Name        | Type   | Required | Restrictions | Description |
 | ----------- | ------ | -------- | ------------ | ----------- |
-| _anonymous_ | string | false    | none         | none        |
+| *anonymous* | string | false    | none         | none        |
 
 #### Enumerated Values
 
 | Property    | Value     |
 | ----------- | --------- |
-| _anonymous_ | idle      |
-| _anonymous_ | running   |
-| _anonymous_ | completed |
-| _anonymous_ | canceled  |
-| _anonymous_ | failed    |
+| *anonymous* | idle      |
+| *anonymous* | running   |
+| *anonymous* | completed |
+| *anonymous* | canceled  |
+| *anonymous* | failed    |
 
 <h2 id="tocS_AlbumIndexStatus">AlbumIndexStatus</h2>
 <!-- backwards compatibility -->
@@ -15063,7 +15239,9 @@ This operation does not require authentication
 {
   "cancelRequested": true,
   "failed": 0,
-  "failedPaths": ["string"],
+  "failedPaths": [
+    "string"
+  ],
   "finishedAt": 0,
   "matched": 0,
   "processed": 0,
@@ -15072,6 +15250,7 @@ This operation does not require authentication
   "startedAt": 0,
   "state": "idle"
 }
+
 ```
 
 ### Properties
@@ -15125,6 +15304,7 @@ This operation does not require authentication
     }
   }
 }
+
 ```
 
 ### Properties
@@ -15156,6 +15336,7 @@ This operation does not require authentication
   "dataHome": "string",
   "fsNotifyWatcher": true,
   "imagePath": "string",
+  "indexBackstopIntervalSecs": 0,
   "loginIpBaseBanSecs": 0,
   "loginIpLongBaseBanSecs": 0,
   "loginIpLongMaxBanSecs": 0,
@@ -15179,41 +15360,43 @@ This operation does not require authentication
   "usersHome": "string",
   "validateUploadContent": true
 }
+
 ```
 
 ### Properties
 
-| Name                     | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| address                  | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| allowRegistration        | boolean        | false    | none         | Allow self-registration via `POST /post/users/register` without an<br>invite token. Default off: registration then requires a valid invite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| authKey                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| bootstrapAdmin           | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin; until then `POST /post/users/authenticate` takes<br>the unknown-user path and every guarded route refuses with<br>`No administrator enrolled` (the refusal names the bootstrap<br>endpoint while the window is open). Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-cmd` CLI). Enabling<br>the flag against an existing user store makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                            |
-| dataHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| imagePath                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| loginIpBaseBanSecs       | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpLongBaseBanSecs   | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginIpLongMaxBanSecs    | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginIpLongMaxFailures   | integer(int32) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginIpLongWindowSecs    | integer(int64) | false    | none         | Login throttle IP-long daily bucket: paced spraying ceiling across<br>many usernames from one source. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpMaxBanSecs        | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpMaxFailures       | integer(int32) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpWindowSecs        | integer(int64) | false    | none         | Login throttle IP-short burst bucket: `login_ip_max_failures`<br>failures within `login_ip_window_secs` open a ban of<br>`login_ip_base_ban_secs`, doubling per further pair of failures up<br>to `login_ip_max_ban_secs`. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginUserLongBaseBanSecs | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| loginUserLongMaxBanSecs  | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| loginUserLongMaxFailures | integer(int32) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| loginUserLongWindowSecs  | integer(int64) | false    | none         | Login throttle user-long daily bucket: per-account ceiling catching<br>low-and-slow attacks, keyed on the claimed name even when unknown.<br>Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| maxUploadSize            | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| normalizeUploadFilenames | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| port                     | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| readOnlyMode             | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| trivialPasswords         | boolean        | false    | none         | Disable the default password-strength checks (length floor/ceiling,<br>blocklist, user-id and pattern rules) for new passwords. Default<br>off. Only for development, throwaway installs, or tests that must<br>use weak fixtures — the bypass is warn-logged at first use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| trustProxyForwardedFor   | boolean        | false    | none         | Trust the `X-Forwarded-For` header when keying the login throttle<br>(leftmost entry, only when it parses as an IP address). Default off:<br>the header is client-spoofable, so only a reverse-proxy deployment<br>that strips or overwrites it may enable this. Host-only (restart<br>required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| uploadFolder             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| useClientTimestampInfo   | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`).                                                                                                                                                                                                                                                                   |
-| usersHome                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| validateUploadContent    | boolean        | false    | none         | Cross-check uploaded content against the type its declared<br>`Content-Type` implies. The declared extension yields the expected<br>format from the supported-format table; the content is then identified<br>and the two are compared. See `backend/src/process/format.rs`.<br><br>Content that cannot be identified at all is always rejected, with or<br>without this setting: there is no way to tell whether such bytes are<br>what the extension claims. This setting governs only the mismatch case,<br>where the content _is_ identified but is not the type the extension<br>claims — for example a video uploaded with an image content type, or an<br>image named with the wrong extension. Enabled (the default) rejects<br>those with `400 InvalidInput`; disabling it stores the file anyway, which<br>misdescribes it and leaves the indexer trusting a wrong extension. Only<br>disable this to tolerate mislabeled files. |
+| Name                      | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| address                   | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| allowRegistration         | boolean        | false    | none         | Allow self-registration via `POST /post/users/register` without an<br>invite token. Default off: registration then requires a valid invite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| authKey                   | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| bootstrapAdmin            | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin; until then `POST /post/users/authenticate` takes<br>the unknown-user path and every guarded route refuses with<br>`No administrator enrolled` (the refusal names the bootstrap<br>endpoint while the window is open). Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-cmd` CLI). Enabling<br>the flag against an existing user store makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                            |
+| dataHome                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| fsNotifyWatcher           | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| imagePath                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| indexBackstopIntervalSecs | integer(int64) | false    | none         | Periodic full-scan backstop interval in seconds. `0` (the default)<br>disables the backstop. Host-only: the loop is started at boot and<br>reads this value once.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| loginIpBaseBanSecs        | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpLongBaseBanSecs    | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongMaxBanSecs     | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongMaxFailures    | integer(int32) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongWindowSecs     | integer(int64) | false    | none         | Login throttle IP-long daily bucket: paced spraying ceiling across<br>many usernames from one source. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpMaxBanSecs         | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpMaxFailures        | integer(int32) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpWindowSecs         | integer(int64) | false    | none         | Login throttle IP-short burst bucket: `login_ip_max_failures`<br>failures within `login_ip_window_secs` open a ban of<br>`login_ip_base_ban_secs`, doubling per further pair of failures up<br>to `login_ip_max_ban_secs`. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginUserLongBaseBanSecs  | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongMaxBanSecs   | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongMaxFailures  | integer(int32) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongWindowSecs   | integer(int64) | false    | none         | Login throttle user-long daily bucket: per-account ceiling catching<br>low-and-slow attacks, keyed on the claimed name even when unknown.<br>Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| maxUploadSize             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| normalizeUploadFilenames  | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| port                      | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| readOnlyMode              | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| trivialPasswords          | boolean        | false    | none         | Disable the default password-strength checks (length floor/ceiling,<br>blocklist, user-id and pattern rules) for new passwords. Default<br>off. Only for development, throwaway installs, or tests that must<br>use weak fixtures — the bypass is warn-logged at first use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| trustProxyForwardedFor    | boolean        | false    | none         | Trust the `X-Forwarded-For` header when keying the login throttle<br>(leftmost entry, only when it parses as an IP address). Default off:<br>the header is client-spoofable, so only a reverse-proxy deployment<br>that strips or overwrites it may enable this. Host-only (restart<br>required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| uploadFolder              | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| useClientTimestampInfo    | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`).                                                                                                                                                                                                                                                                   |
+| usersHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| validateUploadContent     | boolean        | false    | none         | Cross-check uploaded content against the type its declared<br>`Content-Type` implies. The declared extension yields the expected<br>format from the supported-format table; the content is then identified<br>and the two are compared. See `backend/src/process/format.rs`.<br><br>Content that cannot be identified at all is always rejected, with or<br>without this setting: there is no way to tell whether such bytes are<br>what the extension claims. This setting governs only the mismatch case,<br>where the content *is* identified but is not the type the extension<br>claims — for example a video uploaded with an image content type, or an<br>image named with the wrong extension. Enabled (the default) rejects<br>those with `400 InvalidInput`; disabling it stores the file anyway, which<br>misdescribes it and leaves the indexer trusting a wrong extension. Only<br>disable this to tolerate mislabeled files. |
 
 <h2 id="tocS_AssignAlbumData">AssignAlbumData</h2>
 <!-- backwards compatibility -->
@@ -15228,6 +15411,7 @@ This operation does not require authentication
   "assetId": "string",
   "onConflict": "skip"
 }
+
 ```
 
 Request body for `PUT /put/assign_album`. Strict: unknown fields (including
@@ -15250,6 +15434,7 @@ the legacy multi-alias `alias` path) are rejected rather than ignored.
 
 ```json
 "moved"
+
 ```
 
 The concrete result of a successful assign: `moved`, `renamedFrom` (an
@@ -15260,15 +15445,15 @@ strategy is skip).
 
 | Name        | Type   | Required | Restrictions | Description                                                                                                                                                                 |
 | ----------- | ------ | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_ | string | false    | none         | The concrete result of a successful assign: `moved`, `renamedFrom` (an<br>auto-`-001` suffix collision), or `skipped` (destination already exists and<br>strategy is skip). |
+| *anonymous* | string | false    | none         | The concrete result of a successful assign: `moved`, `renamedFrom` (an<br>auto-`-001` suffix collision), or `skipped` (destination already exists and<br>strategy is skip). |
 
 #### Enumerated Values
 
 | Property    | Value       |
 | ----------- | ----------- |
-| _anonymous_ | moved       |
-| _anonymous_ | renamedFrom |
-| _anonymous_ | skipped     |
+| *anonymous* | moved       |
+| *anonymous* | renamedFrom |
+| *anonymous* | skipped     |
 
 <h2 id="tocS_AssignResult">AssignResult</h2>
 <!-- backwards compatibility -->
@@ -15281,6 +15466,7 @@ strategy is skip).
 {
   "outcome": "moved"
 }
+
 ```
 
 Outcome of an `assign_album` call, reported to the caller so the UI is never
@@ -15303,6 +15489,7 @@ silent about what happened to the selected item.
 {
   "hasAuthKey": true
 }
+
 ```
 
 Result of rotating the JWT signing key. Always true after a successful reset;
@@ -15327,6 +15514,7 @@ returned).
   "password": "string",
   "userId": "string"
 }
+
 ```
 
 Body for `POST /post/users/bootstrap`. There is deliberately no `admin` field:
@@ -15349,6 +15537,7 @@ creation never grants admin through a body flag, and bootstrap always forces
 
 ```json
 {}
+
 ```
 
 Captcha challenge descriptor, reserved for future brute-force throttling.
@@ -15359,7 +15548,7 @@ enrollment response.
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_ConfigFieldEntry">ConfigFieldEntry</h2>
 <!-- backwards compatibility -->
@@ -15377,6 +15566,7 @@ _None_
   "value": null,
   "writable": true
 }
+
 ```
 
 One annotated configuration field as returned by `GET /get/admin/config`.
@@ -15410,6 +15600,7 @@ One annotated configuration field as returned by `GET /get/admin/config`.
   "useClientTimestampInfo": true,
   "validateUploadContent": true
 }
+
 ```
 
 ### Properties
@@ -15437,6 +15628,7 @@ One annotated configuration field as returned by `GET /get/admin/config`.
   "name": "string",
   "parentAlbumId": "string"
 }
+
 ```
 
 ### Properties
@@ -15458,6 +15650,7 @@ One annotated configuration field as returned by `GET /get/admin/config`.
   "expiresInHours": 0,
   "username": "string"
 }
+
 ```
 
 Body for `POST /post/invites`.
@@ -15488,6 +15681,7 @@ Body for `POST /post/invites`.
   },
   "token": "string"
 }
+
 ```
 
 Response for `POST /post/invites`.
@@ -15516,6 +15710,7 @@ Response for `POST /post/invites`.
   "showMetadata": true,
   "showUpload": true
 }
+
 ```
 
 ### Properties
@@ -15542,6 +15737,7 @@ Response for `POST /post/invites`.
   "fingerprint": "string",
   "link": "string"
 }
+
 ```
 
 Response payload for `POST /post/create_share`: the freshly minted bearer
@@ -15571,6 +15767,7 @@ edit/delete/reveal.
   "timestamp": 0,
   "token": "string"
 }
+
 ```
 
 ### Properties
@@ -15592,9 +15789,12 @@ edit/delete/reveal.
 
 ```json
 {
-  "assetIds": ["string"],
+  "assetIds": [
+    "string"
+  ],
   "timestamp": 0
 }
+
 ```
 
 ### Properties
@@ -15616,6 +15816,7 @@ edit/delete/reveal.
   "albumId": "string",
   "shareId": "string"
 }
+
 ```
 
 ### Properties
@@ -15637,6 +15838,7 @@ edit/delete/reveal.
   "displayHeight": 0,
   "displayWidth": 0
 }
+
 ```
 
 ### Properties
@@ -15655,10 +15857,13 @@ edit/delete/reveal.
 
 ```json
 {
-  "indexArray": [0],
+  "indexArray": [
+    0
+  ],
   "isTrashed": true,
   "timestamp": 0
 }
+
 ```
 
 ### Properties
@@ -15678,10 +15883,13 @@ edit/delete/reveal.
 
 ```json
 {
-  "indexArray": [0],
+  "indexArray": [
+    0
+  ],
   "rating": 0,
   "timestamp": 0
 }
+
 ```
 
 ### Properties
@@ -15713,6 +15921,7 @@ edit/delete/reveal.
     "url": "string"
   }
 }
+
 ```
 
 ### Properties
@@ -15731,11 +15940,18 @@ edit/delete/reveal.
 
 ```json
 {
-  "addTagsArray": ["string"],
-  "indexArray": [0],
-  "removeTagsArray": ["string"],
+  "addTagsArray": [
+    "string"
+  ],
+  "indexArray": [
+    0
+  ],
+  "removeTagsArray": [
+    "string"
+  ],
   "timestamp": 0
 }
+
 ```
 
 ### Properties
@@ -15756,10 +15972,15 @@ edit/delete/reveal.
 
 ```json
 {
-  "children": ["string"],
+  "children": [
+    "string"
+  ],
   "is_default": true,
-  "roots": ["string"]
+  "roots": [
+    "string"
+  ]
 }
+
 ```
 
 ### Properties
@@ -15783,6 +16004,7 @@ edit/delete/reveal.
   "clear": true,
   "root": "string"
 }
+
 ```
 
 ### Properties
@@ -15804,6 +16026,7 @@ edit/delete/reveal.
 {
   "maxExpiryHours": 0
 }
+
 ```
 
 Invite creation limits for the admin console.
@@ -15830,6 +16053,7 @@ Invite creation limits for the admin console.
   "usedBy": "string",
   "username": "string"
 }
+
 ```
 
 Listing view of an invite: the stored metadata plus the row id (the token
@@ -15858,6 +16082,7 @@ hash). Never contains the token itself.
   "password": "string",
   "userId": "string"
 }
+
 ```
 
 Request body for `POST /post/users/authenticate`: a user login object. There
@@ -15879,6 +16104,7 @@ is deliberately no `admin` field: unknown keys are rejected, never honored.
 
 ```json
 "skip"
+
 ```
 
 Filename-collision strategy for moves and uploads: `skip` leaves an existing
@@ -15890,14 +16116,14 @@ on assign with no default; upload defaults to `rename`.
 
 | Name        | Type   | Required | Restrictions | Description                                                                                                                                                                                                                                                                                              |
 | ----------- | ------ | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_ | string | false    | none         | Filename-collision strategy for moves and uploads: `skip` leaves an<br>existing destination untouched (the source stays put, outcome `skipped`);<br>`rename` lands the file under a unique suffixed name (outcome<br>`renamedFrom`). Required on assign with no default; upload defaults to<br>`rename`. |
+| *anonymous* | string | false    | none         | Filename-collision strategy for moves and uploads: `skip` leaves an<br>existing destination untouched (the source stays put, outcome `skipped`);<br>`rename` lands the file under a unique suffixed name (outcome<br>`renamedFrom`). Required on assign with no default; upload defaults to<br>`rename`. |
 
 #### Enumerated Values
 
 | Property    | Value  |
 | ----------- | ------ |
-| _anonymous_ | skip   |
-| _anonymous_ | rename |
+| *anonymous* | skip   |
+| *anonymous* | rename |
 
 <h2 id="tocS_PartialUpdateConfigRequest">PartialUpdateConfigRequest</h2>
 <!-- backwards compatibility -->
@@ -15935,6 +16161,7 @@ on assign with no default; upload defaults to `rename`.
   "useClientTimestampInfo": true,
   "validateUploadContent": true
 }
+
 ```
 
 ### Properties
@@ -15981,6 +16208,7 @@ on assign with no default; upload defaults to `rename`.
   "locateTo": 0,
   "timestamp": 0
 }
+
 ```
 
 ### Properties
@@ -16021,6 +16249,7 @@ on assign with no default; upload defaults to `rename`.
   },
   "token": "string"
 }
+
 ```
 
 ### Properties
@@ -16034,13 +16263,13 @@ oneOf
 
 | Name          | Type                                  | Required | Restrictions | Description |
 | ------------- | ------------------------------------- | -------- | ------------ | ----------- |
-| » _anonymous_ | [ResolvedShare](#schemaresolvedshare) | false    | none         | none        |
+| » *anonymous* | [ResolvedShare](#schemaresolvedshare) | false    | none         | none        |
 
 xor
 
 | Name          | Type | Required | Restrictions | Description |
 | ------------- | ---- | -------- | ------------ | ----------- |
-| » _anonymous_ | null | false    | none         | none        |
+| » *anonymous* | null | false    | none         | none        |
 
 continued
 
@@ -16061,6 +16290,7 @@ continued
   "password": "string",
   "userId": "string"
 }
+
 ```
 
 Body for `POST /post/users/register`. There is deliberately no `admin` field:
@@ -16086,6 +16316,7 @@ registration always creates standard users; elevation is
 {
   "expiredHashToken": "string"
 }
+
 ```
 
 ### Properties
@@ -16105,6 +16336,7 @@ registration always creates standard users; elevation is
 {
   "token": "string"
 }
+
 ```
 
 ### Properties
@@ -16124,6 +16356,7 @@ registration always creates standard users; elevation is
 {
   "token": "string"
 }
+
 ```
 
 ### Properties
@@ -16143,6 +16376,7 @@ registration always creates standard users; elevation is
 {
   "token": "string"
 }
+
 ```
 
 ### Properties
@@ -16173,6 +16407,7 @@ registration always creates standard users; elevation is
     "url": "string"
   }
 }
+
 ```
 
 ### Properties
@@ -16194,6 +16429,7 @@ registration always creates standard users; elevation is
 {
   "assetId": "string"
 }
+
 ```
 
 ### Properties
@@ -16221,6 +16457,7 @@ registration always creates standard users; elevation is
   "rowIndex": 0,
   "start": 0
 }
+
 ```
 
 ### Properties
@@ -16250,6 +16487,7 @@ registration always creates standard users; elevation is
   "useClientTimestampInfo": true,
   "validateUploadContent": true
 }
+
 ```
 
 The runtime-tier subset of the configuration, shared by the admin PUT response
@@ -16281,6 +16519,7 @@ and the versioned export envelope.
   "month": 0,
   "year": 0
 }
+
 ```
 
 ### Properties
@@ -16307,6 +16546,7 @@ and the versioned export envelope.
     "userId": "string"
   }
 }
+
 ```
 
 Single self resource returned by `GET /get/self/profile`.
@@ -16327,6 +16567,7 @@ Single self resource returned by `GET /get/self/profile`.
 
 ```json
 {}
+
 ```
 
 Reserved sub-object for future roaming preferences. Empty today: theme and
@@ -16334,7 +16575,7 @@ density stay client-only.
 
 ### Properties
 
-_None_
+*None*
 
 <h2 id="tocS_SelfProfileUser">SelfProfileUser</h2>
 <!-- backwards compatibility -->
@@ -16349,6 +16590,7 @@ _None_
   "home": "string",
   "userId": "string"
 }
+
 ```
 
 The identity half of a self profile: read-only attributes owned by the user
@@ -16375,6 +16617,7 @@ store. `home` is `null` when unset.
   "enrolled": true,
   "enrollmentOpen": true
 }
+
 ```
 
 Anonymous enrollment state for boot routing.
@@ -16389,13 +16632,13 @@ oneOf
 
 | Name          | Type                              | Required | Restrictions | Description                                                                                                                                                                                                                                                   |
 | ------------- | --------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| » _anonymous_ | [CaptchaInfo](#schemacaptchainfo) | false    | none         | Captcha challenge descriptor, reserved for future brute-force throttling.<br><br>Never populated yet: the handler always answers `captcha: null`. Kept as<br>a named schema so a future challenge can extend it without reshaping the<br>enrollment response. |
+| » *anonymous* | [CaptchaInfo](#schemacaptchainfo) | false    | none         | Captcha challenge descriptor, reserved for future brute-force throttling.<br><br>Never populated yet: the handler always answers `captcha: null`. Kept as<br>a named schema so a future challenge can extend it without reshaping the<br>enrollment response. |
 
 xor
 
 | Name          | Type | Required | Restrictions | Description |
 | ------------- | ---- | -------- | ------------ | ----------- |
-| » _anonymous_ | null | false    | none         | none        |
+| » *anonymous* | null | false    | none         | none        |
 
 continued
 
@@ -16416,6 +16659,7 @@ continued
   "albumId": "string",
   "coverAssetId": "string"
 }
+
 ```
 
 Payload for updating a specific album's cover image.
@@ -16439,6 +16683,7 @@ Payload for updating a specific album's cover image.
   "albumId": "string",
   "title": "string"
 }
+
 ```
 
 Payload for renaming an album.
@@ -16462,6 +16707,7 @@ Payload for renaming an album.
   "admin": true,
   "userId": "string"
 }
+
 ```
 
 Body for `PUT /put/users/admin`.
@@ -16486,6 +16732,7 @@ Body for `PUT /put/users/admin`.
   "index": 0,
   "timestamp": 0
 }
+
 ```
 
 ### Properties
@@ -16508,6 +16755,7 @@ Body for `PUT /put/users/admin`.
   "disabled": true,
   "userId": "string"
 }
+
 ```
 
 Body for `PUT /put/users/disabled`.
@@ -16532,6 +16780,7 @@ Body for `PUT /put/users/disabled`.
   "oldPassword": "string",
   "userId": "string"
 }
+
 ```
 
 Body for `PUT /put/users/password`.
@@ -16556,6 +16805,7 @@ Body for `PUT /put/users/password`.
   "enabled": true,
   "userId": "string"
 }
+
 ```
 
 Body for `PUT /put/users/sharing`.
@@ -16585,6 +16835,7 @@ Body for `PUT /put/users/sharing`.
   "showUpload": true,
   "url": "string"
 }
+
 ```
 
 ### Properties
@@ -16617,6 +16868,7 @@ Body for `PUT /put/users/sharing`.
   "showMetadata": true,
   "showUpload": true
 }
+
 ```
 
 One album's share entry as served to clients: the policy plus presence of a
@@ -16645,6 +16897,7 @@ password, never the secret itself.
 {
   "token": "string"
 }
+
 ```
 
 ### Properties
@@ -16665,6 +16918,7 @@ password, never the secret itself.
   "number": 0,
   "tag": "string"
 }
+
 ```
 
 ### Properties
@@ -16683,10 +16937,13 @@ password, never the secret itself.
 
 ```json
 {
-  "context": ["string"],
+  "context": [
+    "string"
+  ],
   "kind": "Auth",
   "message": "Unauthorized"
 }
+
 ```
 
 The JSON body of the shared `401 Unauthorized` response.
@@ -16718,6 +16975,7 @@ reason for credential rejections raised in a handler body.
   "sharesEnabled": true,
   "userId": "string"
 }
+
 ```
 
 Summary of a user record. Password hashes are never exported.
