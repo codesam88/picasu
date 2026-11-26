@@ -51,7 +51,15 @@ def rewrite_presence(text):
         out.append("(assetById.get(" + arg + ").kind != \"absent\")")
         count += 1
         i = close_idx + 1
-    return "".join(out), count
+    joined = "".join(out)
+    # Canonical negated form: not((get(x).kind != "absent")) == get(x).kind == "absent"
+    import re as _re
+    joined, n_neg = _re.subn(
+        r'not\(\((assetById\.get\([0-9A-Za-z_]+\)\.kind != "absent")\)\)',
+        lambda m: m.group(1).replace("!=", "=="),
+        joined,
+    )
+    return joined, count + n_neg
 
 
 def rewrite_exclude_removal(text):

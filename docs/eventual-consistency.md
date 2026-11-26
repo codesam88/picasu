@@ -231,16 +231,6 @@ Why safe: The checked properties are settled-state safety properties, so schedul
 
 Lifting: Fairness-aware scheduling (alongside SCOPE-3) for liveness properties; a fault budget above one per attempt.
 
-### SCOPE-19: Snapshot projection
-
-Bound: Snapshot projection: (assetHash, mtime, sidecar) collapse to one version token ver per file, record and intake item (FileState.ver, MetadataRecord.ver, IntakeItem.ver; AssetRecord.contentHash stores the same token). The model compares tokens: Converged and AspectAligned require contentHash == files.ver and metadata.ver == files.ver plus fileSize == len; NoPermanentStale and NoLostUpload compare metadata.ver == files.ver and fileSize == len; snapshotMatches compares ver and len. The concrete hash/mtime/sidecar triple is not modelled.
-
-Why safe: Direction: every token write is a function of the concrete write its action models, so concrete equality implies token equality — the projection can miss a real divergence (distinct concrete snapshots may share a token: aliasing) but cannot invent one. Token divergence therefore implies concrete divergence, the model's convergence claim is token agreement, and the heal machinery stays non-vacuous because ExternalModify, ForceModify, the sidecar events and the rotate window all move the token. The code keeps the concrete comparison, gated by the requirements (REQ-1 sidecar identity for the hash short-circuit, REQ-11 rotate writes the sidecar before the thumbnail and DB); token agreement under the projection is the model's convergence claim, not a claim about the concrete fields. Known narrowing, accepted: post-collapse RotateFinish rewrites AssetRecord.contentHash and re-keys dupeIndex/thumbPresent, which the code does not do on rotation (rotation changes no content hash; backend/src/router/put/rotate_image.rs:150-195 flushes the insert with an unchanged size). The model therefore heals dupe/thumb staleness after a rotate that the code leaves; this is an accepted abstraction narrowing, not a bug source.
-
-Lifting: Compare the concrete fields again (content hash, mtime, size, sidecar id) once the worker micro-stages are modelled; the token becomes the derived agreement predicate. Lifting revives the concrete 'rotation changes no content hash' fact, so the RotateFinish re-key recorded in why_safe must be dropped with it.
-
-Provisional: the safety argument is weaker than the implementation guarantee.
-
 ## Requirements
 
 Implementation obligations derived from committed goals: each entry carries the contract, a concise implementation summary, its gate tests, and known limits.

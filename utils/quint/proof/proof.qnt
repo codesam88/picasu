@@ -46,34 +46,41 @@ module proof {
     assetById.keys().contains(assetByPath.get(p)) and
     assetById.get(assetByPath.get(p)).path != p
 
-  // StaleContent: the record's content hash (identity token) differs from the
-  // file's snapshot token. Under the snapshot projection (SCOPE-19) the token
-  // projects the concrete (content hash, mtime, sidecar) triple.
+  // StaleContent: the record's content hash differs from the file bytes.
   def StaleContent(p: str): bool =
     files.get(p).present and
     assetByPath.keys().contains(p) and
     assetById.keys().contains(assetByPath.get(p)) and
-    assetById.get(assetByPath.get(p)).contentHash != files.get(p).ver
+    assetById.get(assetByPath.get(p)).contentHash != files.get(p).assetHash
 
   // MissingMeta: the path row has no metadata payload.
   def MissingMeta(p: str): bool =
     assetByPath.keys().contains(p) and
     not(metadataPayload.keys().contains(assetByPath.get(p)))
 
-  // StaleMetaVer: the metadata snapshot token disagrees with the file's. One
-  // shape covers the former StaleMetaHash and StaleSidecar: the projection
-  // collapses both fields into ver, so a sidecar-only or hash-only
-  // disagreement is the same token mismatch.
-  def StaleMetaVer(p: str): bool =
+  // StaleMetaHash: metadata content snapshot disagrees with the file bytes.
+  def StaleMetaHash(p: str): bool =
     assetByPath.keys().contains(p) and
     metadataPayload.keys().contains(assetByPath.get(p)) and
-    metadataPayload.get(assetByPath.get(p)).ver != files.get(p).ver
+    metadataPayload.get(assetByPath.get(p)).assetHash != files.get(p).assetHash
+
+  // StaleMtime: metadata mtime disagrees with the file mtime.
+  def StaleMtime(p: str): bool =
+    assetByPath.keys().contains(p) and
+    metadataPayload.keys().contains(assetByPath.get(p)) and
+    metadataPayload.get(assetByPath.get(p)).modified != files.get(p).mtime
 
   // StaleSize: metadata file size disagrees with the file length.
   def StaleSize(p: str): bool =
     assetByPath.keys().contains(p) and
     metadataPayload.keys().contains(assetByPath.get(p)) and
     metadataPayload.get(assetByPath.get(p)).fileSize != files.get(p).len
+
+  // StaleSidecar: metadata sidecar id disagrees with the file sidecar.
+  def StaleSidecar(p: str): bool =
+    assetByPath.keys().contains(p) and
+    metadataPayload.keys().contains(assetByPath.get(p)) and
+    metadataPayload.get(assetByPath.get(p)).sidecar != files.get(p).sidecar
 
   // NotConvergedFlag: the metadata converged flag is still unset.
   def NotConvergedFlag(p: str): bool =
@@ -114,8 +121,10 @@ module proof {
         WrongPath(p) or
         StaleContent(p) or
         MissingMeta(p) or
-        StaleMetaVer(p) or
+        StaleMetaHash(p) or
+        StaleMtime(p) or
         StaleSize(p) or
+        StaleSidecar(p) or
         NotConvergedFlag(p) or
         MissingThumb(p) or
         MissingDupe(p)
@@ -202,7 +211,7 @@ module proof {
 
   run staleSidecarReachable = initCompletion
     .then(Stay(ExternalSidecarCreate("p1")))
-    .then(all { assert(StaleMetaVer("p1")), Skip })
+    .then(all { assert(StaleSidecar("p1")), Skip })
 
   run missingThumbReachable = initCompletion
     .then(BeginDrain)
@@ -261,10 +270,9 @@ module proof {
   //   GhostRow      ExternalDelete leaves the path row behind.
   //   MissingRow    ApiMoveFsOnly and the rename windows move files before rows.
   //   TornRow       RemoveIdOnly (N5) drops the record before the row.
-  //   StaleContent  ExternalModify / ForceModify change the file snapshot;
-  //                 StaleMetaVer and StaleSize share the witness.
-  //                 StaleMetaVer is also the rotate-window shape
-  //                 (RotateWriteSidecar moves the file token only).
+  //   StaleContent  ExternalModify / ForceModify change the file bytes;
+  //                 StaleMetaHash, StaleMtime and StaleSize share the witness.
+  //   StaleSidecar  ExternalSidecarCreate changes the sidecar bytes.
   //   MissingThumb  ThumbLossReboot / LoseThumbs drop the rendition.
   //   QueuedIntake  SubmitScan / SubmitWatcherIndex queue intake.
   //
@@ -283,12 +291,12 @@ module proof {
   action initGhostRowWitness: bool = all {
     files' = PATHS
       .mapBy(p => initialFile(p))
-      .set("p1", { present: false, ver: 0, len: 0 }),
+      .set("p1", { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }),
     generations' = PATHS.mapBy(_ => 0),
     intake' = Set(),
     assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -301,17 +309,17 @@ module proof {
     faults' = 0,
   }
 
-  // StaleContent("p1"): the file snapshot token changed; the row and metadata
-  // still hold the initial token and size, so they are stale.
+  // StaleContent("p1"): the file bytes changed; the row and metadata still
+  // hold the initial hash/mtime/size, so they are stale.
   action initStaleContentWitness: bool = all {
     files' = PATHS
       .mapBy(p => initialFile(p))
-      .set("p1", { present: true, ver: 1, len: 1 }),
+      .set("p1", { present: true, assetHash: 1, mtime: 1, len: 1, sidecar: 0 }),
     generations' = PATHS.mapBy(_ => 0),
     intake' = Set(),
     assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -329,10 +337,10 @@ module proof {
   action initQueuedIntakeWitness: bool = all {
     files' = PATHS.mapBy(p => initialFile(p)),
     generations' = PATHS.mapBy(_ => 0),
-    intake' = Set({ path: "p1", generation: 0, kind: "watcher", ver: 0, len: 0 }),
+    intake' = Set({ path: "p1", generation: 0, kind: "watcher", mtime: 0, len: 0, sidecar: 0, assetHash: 0 }),
     assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -352,7 +360,7 @@ module proof {
     intake' = Set(),
     assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.filter(p => not(p == "p1")).mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -373,7 +381,7 @@ module proof {
     intake' = Set(),
     assetById' = PATHS.filter(p => not(p == "p1")).fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.filter(p => not(p == "p1")).fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -386,19 +394,16 @@ module proof {
     faults' = 0,
   }
 
-  // StaleMetaVer("p1"): the file's snapshot token moved (the rotate-window
-  // shape) while metadata keeps the initial token 0. Under the projection the
-  // same state also reads as StaleContent: the token covers the content hash
-  // and the sidecar together.
+  // StaleSidecar("p1"): the file sidecar changed; metadata keeps sidecar 0.
   action initStaleSidecarWitness: bool = all {
     files' = PATHS
       .mapBy(p => initialFile(p))
-      .set("p1", { present: true, ver: 1, len: 0 }),
+      .set("p1", { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }),
     generations' = PATHS.mapBy(_ => 0),
     intake' = Set(),
     assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(h => h == 0),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -418,7 +423,7 @@ module proof {
     intake' = Set(),
     assetById' = PATHS.fold(Map(0 -> initialAlbumAssetRecord), (acc, p) => acc.put(initialId(p), initialAssetRecord(p))),
     assetByPath' = PATHS.mapBy(p => initialId(p)),
-    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).ver == h).map(p => initialId(p))),
+    dupeIndex' = HASHES.mapBy(h => PATHS.filter(p => initialFile(p).assetHash == h).map(p => initialId(p))),
     metadataPayload' = PATHS.fold(Map(0 -> initialAlbumMetadataRecord), (acc, p) => acc.put(initialId(p), initialMetadataRecord(p))),
     thumbPresent' = HASHES.mapBy(_ => false),
     sweepPending' = ROOTS.mapBy(_ => false),
@@ -451,7 +456,7 @@ module proof {
     nondet th0 = Set(true, false).oneOf()
     all {
       files' = PATHS.mapBy(p =>
-        if (p == ghost) { present: false, ver: 0, len: 0 } else initialFile(p)
+        if (p == ghost) { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 } else initialFile(p)
       ),
       generations' = PATHS.mapBy(_ => 0),
       intake' = Set(),
@@ -482,13 +487,12 @@ module proof {
   //
   // Drawn dimensions:
   //   - lease windows: a rotate window (`rotateWindow`) is a path whose file
-  //     snapshot token moved, whose metadata token is still 0, and which holds
-  //     a lease. It is the state `RotateWriteSidecar` leaves behind
-  //     (merged.qnt: the file token becomes a different token, `leasedPaths`
-  //     plus p); `RotateFinish` requires a held lease, a token mismatch, a
-  //     present file and a resolvable record plus metadata; it rewrites the
-  //     metadata token, re-keys the identity token with the dupe bucket and the
-  //     thumbnail flag (SCOPE-19 narrowing) and releases the lease.
+  //     sidecar is 1, whose metadata sidecar is still 0, and which holds a
+  //     lease. It is the state `RotateWriteSidecar` leaves behind
+  //     (merged.qnt: file sidecar toggled, `leasedPaths` plus p); `RotateFinish`
+  //     requires a held lease, a sidecar mismatch, a present file and a
+  //     resolvable record plus metadata, and it rewrites the metadata sidecar
+  //     and releases the lease.
   //   - move windows: at most one drawn move `src>dst`, laid out as
   //     `ApiMoveFsOnly` leaves it (merged.qnt): the source becomes `ghost`
   //     (file absent, row and record kept), the destination becomes
@@ -535,8 +539,7 @@ module proof {
   //
   // Pinned dimensions (logged limitations, not drawn):
   //   - full field draws per path: a kind fixes the whole field tuple, so e.g.
-  //     a stale file with a fresh token and a moved sidecar is not drawn (the
-  //     projection cannot separate them: one token covers both).
+  //     a stale file with a moved sidecar is not drawn.
   //
   // Family size: 7 kinds, 7 move options (`none` plus the six ordered pairs),
   // 2 thumbnail flags, 4 sweepPending sets, 4 staleExtra sets and 12 intake
@@ -583,16 +586,16 @@ module proof {
     else if (moveDst(mv) == p) (if (mvStale) "missingRowStale" else "missingRow")
     else comboKind(p, k1, k2, k3)
 
-  // File snapshot for a kind: `stale` moves the token and the length,
-  // `staleSidecar` and `rotateWindow` move the token only, `ghost` removes the
-  // file, `missingRowStale` holds moved stale bytes with no row, the rest keep
-  // the initial snapshot.
+  // File bytes for a kind: `stale` moves mtime/len, `staleSidecar` moves the
+  // sidecar id, `rotateWindow` moves the sidecar id and keeps the lease, `ghost`
+  // removes the file, `missingRowStale` holds moved stale bytes with no row,
+  // the rest keep the initial bytes.
   pure def comboFile(p: str, kind: str): FileState =
-    if (kind == "stale") { present: true, ver: 1, len: 1 }
-    else if (kind == "staleSidecar") { present: true, ver: 1, len: 0 }
-    else if (kind == "rotateWindow") { present: true, ver: 1, len: 0 }
-    else if (kind == "ghost") { present: false, ver: 0, len: 0 }
-    else if (kind == "missingRowStale") { present: true, ver: 1, len: 1 }
+    if (kind == "stale") { present: true, assetHash: 0, mtime: 1, len: 1, sidecar: 0 }
+    else if (kind == "staleSidecar") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
+    else if (kind == "rotateWindow") { present: true, assetHash: 0, mtime: 0, len: 0, sidecar: 1 }
+    else if (kind == "ghost") { present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 }
+    else if (kind == "missingRowStale") { present: true, assetHash: 0, mtime: 1, len: 1, sidecar: 0 }
     else initialFile(p)
 
   // A row exists for every kind except the missing-row kinds. A rotate window
@@ -601,7 +604,8 @@ module proof {
     kind != "missingRow" and kind != "missingRowStale"
 
   // Record and metadata exist for every kind except the missing-row kinds and
-  // `torn`. The rotate window keeps both: its metadata token still holds 0.
+  // `torn`. The rotate window keeps both: its metadata differs only in the
+  // sidecar id.
   pure def comboRecordPresent(kind: str): bool =
     kind != "missingRow" and kind != "missingRowStale" and kind != "torn"
 
@@ -635,8 +639,10 @@ module proof {
           path: ip,
           generation: gen,
           kind: ik,
-          ver: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).ver,
+          mtime: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).mtime,
           len: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).len,
+          sidecar: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).sidecar,
+          assetHash: comboFile(ip, effKind(ip, k1, k2, k3, mv, mvStale)).assetHash,
         })
         else Set(),
       assetById' = PATHS

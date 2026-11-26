@@ -51,7 +51,15 @@ def rewrite_presence(text):
         out.append("(metadataPayload.get(" + arg + ").kind != \"absent\")")
         count += 1
         i = close_idx + 1
-    return "".join(out), count
+    joined = "".join(out)
+    # Canonical negated form: not((get(x).kind != "absent")) == get(x).kind == "absent"
+    import re as _re
+    joined, n_neg = _re.subn(
+        r'not\(\((metadataPayload\.get\([0-9A-Za-z_]+\)\.kind != "absent")\)\)',
+        lambda m: m.group(1).replace("!=", "=="),
+        joined,
+    )
+    return joined, count + n_neg
 
 
 def rewrite_exclude_removal(text):
@@ -92,8 +100,10 @@ ABSENT_DEF = (
     "  // unwritten id slot and for removal wipes.\n"
     "  pure def absentMetadataRecord: MetadataRecord = {\n"
     "    kind: \"absent\",\n"
-    "    ver: 0,\n"
+    "    assetHash: 0,\n"
+    "    modified: 0,\n"
     "    fileSize: 0,\n"
+    "    sidecar: 0,\n"
     "    converged: false,\n"
     "    itemCount: 0,\n"
     "    itemSize: 0,\n"
@@ -104,8 +114,10 @@ ABSENT_DEF = (
 ALBUM_BLOCK = (
     "  pure def initialAlbumMetadataRecord: MetadataRecord = {\n"
     "    kind: \"album\",\n"
-    "    ver: 0,\n"
+    "    assetHash: 0,\n"
+    "    modified: 0,\n"
     "    fileSize: 0,\n"
+    "    sidecar: 0,\n"
     "    converged: true,\n"
     "    itemCount: PATHS.size(),\n"
     "    itemSize: 0,\n"

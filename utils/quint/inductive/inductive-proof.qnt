@@ -30,19 +30,25 @@ module inductive_proof {
   // form with a finite value set. A totality-only conjunct (keys() == KEYS)
   // leaves the value type unbounded and fails the assignment analysis.
 
-  // Every reachable FileState: a present file over HASHES x SMALL, or the
+  // Every reachable FileState: a present file over HASHES x SMALL^3, or the
   // absent shape (ExternalDelete/rename zero every field). Writers: init (0s),
-  // ExternalModify/ForceModify (ver in HASHES, len in SMALL), ExternalDelete
-  // (0s), sidecar create/modify (nonzero ver), sidecar delete (ver 0),
-  // rename/copy sites (carry source), RestoreIndexed (from the metadata row),
-  // RotateWriteSidecar (a different token, len kept).
+  // ExternalModify/ForceModify (HASHES x SMALL), ExternalDelete (0s),
+  // rename/copy sites (carry source), AppSidecarEdit (sidecar 1),
+  // RotateWriteSidecar (sidecar flips 1<->2), RestoreIndexed (from the
+  // metadata row).
   pure val FILESTATES: Set[FileState] =
-    Set({ present: false, ver: 0, len: 0 })
+    Set({ present: false, assetHash: 0, mtime: 0, len: 0, sidecar: 0 })
       .union(
-        HASHES.fold(Set(), (accH, v) =>
-          SMALL.map(ln =>
-            { present: true, ver: v, len: ln }
-          ).union(accH)
+        HASHES.fold(Set(), (accH, ah) =>
+          SMALL.fold(accH, (accM, mt) =>
+            SMALL.fold(accM, (accL, ln) =>
+              accL.union(
+                SMALL.map(sc =>
+                  { present: true, assetHash: ah, mtime: mt, len: ln, sidecar: sc }
+                )
+              )
+            )
+          )
         )
       )
 
@@ -68,9 +74,9 @@ module inductive_proof {
     Set(absentAssetRecord, initialAlbumAssetRecord).union(MEDIA_ASSETRECORDS)
 
   // Album MetadataRecord shapes. Only id 0 carries kind "album"; every write
-  // to id 0 preserves ver/fileSize/converged from initialAlbumMetadataRecord
-  // (0,0,true) and moves only the aggregates (itemCount 0..PATHS.size(),
-  // itemSize in ITEMSIZE_VALUES) and hasShareList.
+  // to id 0 preserves assetHash/modified/fileSize/sidecar/converged from
+  // initialAlbumMetadataRecord (0,0,0,0,true) and moves only the aggregates
+  // (itemCount 0..PATHS.size(), itemSize in ITEMSIZE_VALUES) and hasShareList.
   // The itemSize lower bound 0 is the coherent range, so a domain state that
   // subtracts below it is a genuine consecution failure.
   pure val ALBUM_METARECORDS: Set[MetadataRecord] =
@@ -78,7 +84,7 @@ module inductive_proof {
       accC.union(
         ITEMSIZE_VALUES.fold(Set(), (accS, isz) =>
           Set(true, false).map(hs =>
-            { kind: "album", ver: 0, fileSize: 0,
+            { kind: "album", assetHash: 0, modified: 0, fileSize: 0, sidecar: 0,
               converged: true, itemCount: ic, itemSize: isz, hasShareList: hs }
           ).union(accS)
         )
@@ -86,14 +92,18 @@ module inductive_proof {
     )
 
   // Media MetadataRecord shapes. Writers: init (0s) and WorkerApplySuccess
-  // (ver and fileSize from the intake item); converged is always true, media
-  // itemCount/itemSize stay 0, hasShareList stays false.
+  // (assetHash/modified/fileSize/sidecar from the intake item); converged is
+  // always true, media itemCount/itemSize stay 0, hasShareList stays false.
   pure val MEDIA_METARECORDS: Set[MetadataRecord] =
-    HASHES.fold(Set(), (accH, v) =>
-      SMALL.map(fs =>
-        { kind: "media", ver: v, fileSize: fs,
-          converged: true, itemCount: 0, itemSize: 0, hasShareList: false }
-      ).union(accH)
+    HASHES.fold(Set(), (accH, ah) =>
+      SMALL.fold(accH, (accM, md) =>
+        SMALL.fold(accM, (accL, fs) =>
+          SMALL.map(sc =>
+            { kind: "media", assetHash: ah, modified: md, fileSize: fs, sidecar: sc,
+              converged: true, itemCount: 0, itemSize: 0, hasShareList: false }
+          ).union(accL)
+        )
+      )
     )
 
   pure val METARECORDS: Set[MetadataRecord] =
@@ -102,19 +112,23 @@ module inductive_proof {
   // Finite universe for the intake queue (a set of records, so `.in` is the
   // assignment-analysis form Apalache accepts; a forall/contains conjunct is
   // not recognised as a domain). Reachable shapes only: remove items carry
-  // zero version fields, watcher/scan items carry a file snapshot (ver in
-  // HASHES, len in SMALL).
+  // zero content fields, watcher/scan items carry a file snapshot
+  // (mtime/len/sidecar in SMALL, assetHash in HASHES).
   pure val INTAKE_UNIVERSE: Set[IntakeItem] =
     PATHS.fold(Set(), (accP, path) =>
       0.to(G).fold(accP, (accG, gen) =>
         accG.union(
-          Set({ path: path, generation: gen, kind: "remove", ver: 0, len: 0 })
+          Set({ path: path, generation: gen, kind: "remove", mtime: 0, len: 0, sidecar: 0, assetHash: 0 })
             .union(
               Set("watcher", "scan").fold(Set(), (accK, kind) =>
-                HASHES.fold(accK, (accV, v) =>
-                  SMALL.map(ln =>
-                    { path: path, generation: gen, kind: kind, ver: v, len: ln }
-                  ).union(accV)
+                SMALL.fold(accK, (accM, mt) =>
+                  SMALL.fold(accM, (accL, ln) =>
+                    SMALL.fold(accL, (accS, sc) =>
+                      HASHES.map(ah =>
+                        { path: path, generation: gen, kind: kind, mtime: mt, len: ln, sidecar: sc, assetHash: ah }
+                      ).union(accS)
+                    )
+                  )
                 )
               )
             )

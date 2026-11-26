@@ -140,16 +140,15 @@ GENERATIONS_WRITE_FORMS = (
 GENERATIONS_BUMP_RE = r"generations\.get\([^()]*\)\s*\+\s*1"
 ALL_ZERO_GENERATIONS_RE = r"PATHS\.mapBy\(_\s*=>\s*0\)"
 
-# The five fields of the §2.1 intake universe (path, generation, kind, ver,
-# len), as the proof entry must bound them (whitespace is normalised before
-# matching).
+# The seven fields of the §2.1 intake universe, as the proof entry must bound
+# them (whitespace is normalised before matching).
 INTAKE_UNIVERSE_BOUNDS = (
     "intake.in(INTAKE_UNIVERSE.powerset())",
     "PATHS.fold(",
     "0.to(G).fold(",
     'Set("watcher", "scan").fold(',
-    "HASHES.fold(",
-    "SMALL.map(",
+    "SMALL.fold(",
+    "HASHES.map(",
 )
 
 
@@ -507,9 +506,9 @@ def check_intake_universe(proof_text):
     return Check(
         name,
         True,
-        "proof entry bounds all 5 intake fields by construction: "
+        "proof entry bounds all 7 intake fields by construction: "
         "INTAKE_UNIVERSE folds over PATHS x 0..G x {watcher,scan} + the "
-        "remove shape x HASHES x SMALL; the var's domain conjunct uses "
+        "remove shape x SMALL^3 x HASHES; the var's domain conjunct uses "
         "the Apalache-required powerset form",
     )
 

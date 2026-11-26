@@ -98,27 +98,29 @@ def main():
     text, c = count_replace(text, old_filter, new_filter)
     counts["apply_filter"] = c
 
-    # 4b. Dupe/thumb membership recompute: same key-view rewrite, multi-line
-    #     shape (dupeIndex and thumbPresent each wrap the excluded member set).
-    old_members = (
+    # 4b. The reconciled model's dupe/thumb membership sites (inside .exclude)
+    # carry the batch filter in source form (assetbypath/assetbyid run later);
+    # emit the final sentinel form directly (asset_store.rs::remove_asset_rows
+    # _in_txn membership semantics).
+    old_dupe = (
         "      sweepBatch.keys().filter(p =>\n"
         "        assetByPath.keys().contains(p) and\n"
         "        not(files.get(p).present) and\n"
         "        assetById.keys().contains(assetByPath.get(p)) and\n"
         "        assetById.get(assetByPath.get(p)).contentHash == h\n"
-        "      ).map(p => assetByPath.get(p))\n"
+        "      ).map(p => assetByPath.get(p))"
     )
-    new_members = (
+    new_dupe = (
         "      PATHS.filter(p =>\n"
         "        sweepBatch.get(p) != -1 and\n"
-        "        assetByPath.keys().contains(p) and\n"
+        "        assetByPath.get(p) != 0 and\n"
         "        not(files.get(p).present) and\n"
-        "        assetById.keys().contains(assetByPath.get(p)) and\n"
+        "        (assetById.get(assetByPath.get(p)).kind != \"absent\") and\n"
         "        assetById.get(assetByPath.get(p)).contentHash == h\n"
-        "      ).map(p => assetByPath.get(p))\n"
+        "      ).map(p => assetByPath.get(p))"
     )
-    text, c = count_replace(text, old_members, new_members)
-    counts["apply_members"] = c
+    text, c = count_replace(text, old_dupe, new_dupe)
+    counts["dupe_thumb_membership"] = c
 
     # 5. Val invariants.
     old_inv1 = "val SweepRemoveBatchSkipsPresentFile = sweepBatch.keys().forall(p => not(files.get(p).present) or not(sweepBatch.keys().contains(p)))"
