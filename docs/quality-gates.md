@@ -117,15 +117,15 @@ graph TD
   frontend-playwright ~~~ frontend-audit & frontend-build & frontend-check & frontend-format
 ```
 
-| Rule (justfile)       | Description                                                              | CI Workflow       | Trigger               |
-| --------------------- | ------------------------------------------------------------------------ | ----------------- | --------------------- |
-| `frontend-audit`      | npm audit                                                                | (audit)           | PR, main, scheduled   |
-| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | ci, fuzz-advisory | PR, main, scheduled   |
-| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | ci                | local, PR, main       |
-| `frontend-format`     | prettier --write                                                         | ❌️                | -                     |
-| `frontend-playwright` | run playwright tests (optional filter)                                   | ci, release       | local, PR, main, tags |
-| `frontend-test`       | all frontend tests                                                       | ❌️                | local                 |
-| `frontend-vitest`     | vitest run                                                               | ci                | local, PR, main       |
+| Rule (justfile)       | Description                                                              | CI Workflow   | Trigger               |
+| --------------------- | ------------------------------------------------------------------------ | ------------- | --------------------- |
+| `frontend-audit`      | npm audit                                                                | (audit)       | PR, main, scheduled   |
+| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | fuzz-advisory | scheduled             |
+| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | ci            | local, PR, main       |
+| `frontend-format`     | prettier --write                                                         | ❌️            | -                     |
+| `frontend-playwright` | run playwright tests (optional filter)                                   | ci, release   | local, PR, main, tags |
+| `frontend-test`       | all frontend tests                                                       | ❌️            | local                 |
+| `frontend-vitest`     | vitest run                                                               | ci            | local, PR, main       |
 
 ### Utils
 

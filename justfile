@@ -263,7 +263,7 @@ gates-test:
 # Generate OpenAPI spec and reference doc
 [group('docs')]
 docs-openapi: openapi-gen
-    npx --yes widdershins@4.0.1 --summary backend/openapi.json -o docs/openapi-reference.md
+    npx --no-install widdershins --summary backend/openapi.json -o docs/openapi-reference.md
 
 # Regenerate the gates doc
 [group('docs')]
@@ -307,9 +307,9 @@ docs-regen:
     just openapi-gen
     just gates-docs
     node scripts/auth-matrix.mjs .
+    just docs-openapi
     just quint docs
     just docs-format
-    @echo "docs-openapi skipped (network); run 'just docs-openapi' manually if the reference doc needs refreshing."
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
