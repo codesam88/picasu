@@ -15,7 +15,7 @@ ensure_rust() {
         installed="$(rustc --version 2>/dev/null | awk '{print $2}')"
     fi
     local ok=0
-    if [[ -n "$installed" && "$installed" == 1.99* ]]; then
+    if [[ -n "$installed" && "$installed" == 1.100* ]]; then
         ok=1
     fi
     echo "rust: ${installed:-<missing>} (supported $RUST_SUPPORTED)"
