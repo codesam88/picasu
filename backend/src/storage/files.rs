@@ -189,7 +189,7 @@ fn canonicalize_if_exists(p: &Path) -> PathBuf {
     while !prefix.as_os_str().is_empty() && !prefix.exists() {
         if let Some(name) = prefix.file_name() {
             tail.push(name.to_os_string());
-            prefix = prefix.parent().map(Path::to_path_buf).unwrap_or_default();
+            prefix = prefix.parent().map_or_default(Path::to_path_buf);
         } else {
             break;
         }

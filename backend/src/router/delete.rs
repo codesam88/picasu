@@ -305,10 +305,7 @@ fn validate_paths_unchanged(
             AbstractData::Album(a) if !a.metadata.dir_path.is_empty() => {
                 a.metadata.dir_path.clone()
             }
-            _ => abstract_data
-                .path()
-                .map(|e| e.file.clone())
-                .unwrap_or_default(),
+            _ => abstract_data.path().map_or_default(|e| e.file.clone()),
         };
         if record.path != current_path {
             return Err(AppError::new(

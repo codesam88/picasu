@@ -927,8 +927,7 @@ impl AppConfig {
                 config
                     .users_home
                     .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_default()
+                    .map_or_default(|p| p.display().to_string())
             );
             if let Err(e) = Self::save_update(&config) {
                 warn!("Failed to persist backfilled users_home: {e}");

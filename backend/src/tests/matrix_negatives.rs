@@ -76,18 +76,15 @@ fn expectation_for(operation: &Value, principal: Principal, public: bool) -> Opt
     let credentials: Vec<&str> = auth
         .get("credentials")
         .and_then(Value::as_array)
-        .map(|list| list.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+        .map_or_default(|list| list.iter().filter_map(Value::as_str).collect());
     let guards: Vec<&str> = auth
         .get("guards")
         .and_then(Value::as_array)
-        .map(|list| list.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+        .map_or_default(|list| list.iter().filter_map(Value::as_str).collect());
     let invariants: Vec<&str> = auth
         .get("invariants")
         .and_then(Value::as_array)
-        .map(|list| list.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+        .map_or_default(|list| list.iter().filter_map(Value::as_str).collect());
     let has_session = credentials.contains(&"session");
     let has_bearer = credentials
         .iter()
@@ -190,7 +187,7 @@ fn required_query(operation: &Value) -> Vec<(String, String)> {
     operation
         .get("parameters")
         .and_then(Value::as_array)
-        .map(|parameters| {
+        .map_or_default(|parameters| {
             parameters
                 .iter()
                 .filter(|parameter| {
@@ -208,7 +205,6 @@ fn required_query(operation: &Value) -> Vec<(String, String)> {
                 })
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// A value that parses for the parameter's declared type. The guard layer

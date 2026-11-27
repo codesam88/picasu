@@ -27,7 +27,7 @@ pub fn initialize_logger() {
             let dur_raw = record
                 .key_values()
                 .get(Key::from("duration"))
-                .map(|v| {
+                .map_or_default(|v| {
                     let s = format!("{v}");
                     if let Some(idx) = s.find(|c: char| c.is_alphabetic()) {
                         let (num, unit) = (&s[..idx], &s[idx..]);
@@ -36,8 +36,7 @@ pub fn initialize_logger() {
                         }
                     }
                     s
-                })
-                .unwrap_or_default();
+                });
 
             let dur = if dur_raw.is_empty() {
                 " ".repeat(10)
@@ -351,7 +350,7 @@ mod tests {
         let name = format!(".upload-live.{pid}.2.tmp");
         let old = dir.path().join(&name);
         fs::write(&old, b"x").expect("write");
-        let past = SystemTime::now() - Duration::from_secs(2 * 3600);
+        let past = SystemTime::now() - Duration::from_hours(2);
         set_file_mtime(&old, FileTime::from_system_time(past)).expect("set mtime");
         let n = sweep_temp_files(&[dir.path().to_path_buf()]);
         assert_eq!(n, 1);

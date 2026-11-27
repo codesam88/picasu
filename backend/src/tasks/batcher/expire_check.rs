@@ -40,22 +40,18 @@ pub(crate) fn expire_check_task() {
                 && EXPIRE.expired_check(timestamp)
             {
                 let table_definition: TableDefinition<u64, Prefetch> = TableDefinition::new(&name);
-                let tree_ids: Vec<i64> = read_txn
-                    .open_table(table_definition)
-                    .ok()
-                    .map(|table| {
-                        table
-                            .iter()
-                            .ok()
-                            .map(|iter| {
+                let tree_ids: Vec<i64> =
+                    read_txn
+                        .open_table(table_definition)
+                        .ok()
+                        .map_or_default(|table| {
+                            table.iter().ok().map_or_default(|iter| {
                                 iter.filter_map(|result| {
                                     result.ok().map(|(_, guard)| guard.value().timestamp)
                                 })
                                 .collect()
                             })
-                            .unwrap_or_default()
-                    })
-                    .unwrap_or_default();
+                        });
 
                 debug!("Collect expired query cache table: {timestamp}");
                 expired.push((name, timestamp, tree_ids));

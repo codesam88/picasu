@@ -715,10 +715,7 @@ mod tests {
             (400..500).contains(&status),
             "missing query on /get/get-data must be 4xx, got {status}"
         );
-        let content_type = resp
-            .content_type()
-            .map(|ct| ct.to_string())
-            .unwrap_or_default();
+        let content_type = resp.content_type().map_or_default(|ct| ct.to_string());
         assert!(
             content_type.contains("application/json"),
             "missing query must answer JSON, got content-type {content_type:?}"
@@ -742,10 +739,7 @@ mod tests {
                 404,
                 "unknown API path {uri} must be 404"
             );
-            let content_type = resp
-                .content_type()
-                .map(|ct| ct.to_string())
-                .unwrap_or_default();
+            let content_type = resp.content_type().map_or_default(|ct| ct.to_string());
             assert!(
                 content_type.contains("application/json"),
                 "unknown API path {uri} must answer JSON, got {content_type:?}"
