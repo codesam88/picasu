@@ -433,7 +433,10 @@ impl MyCow {
 #[derive(Debug)]
 pub struct QuerySnapshot {
     pub in_disk: &'static redb::Database,
-    pub in_memory: &'static DashMap<u64, Prefetch>, // hash of query and VERSION_COUNT_TIMESTAMP -> prefetch
+    /// Query-hash → entry. The key hashes only the query (expression,
+    /// locate, caller, scoping flags); the entry carries the tree epoch its
+    /// rows were computed at, and reads re-validate it.
+    pub in_memory: &'static DashMap<u64, QueryCacheEntry>,
 }
 
 pub static QUERY_SNAPSHOT: LazyLock<QuerySnapshot> = LazyLock::new(QuerySnapshot::new);
@@ -448,7 +451,8 @@ static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     redb::Database::create(path).expect("failed to create query snapshot database")
 });
 
-static QUERY_SNAPSHOT_IN_MEMORY: LazyLock<DashMap<u64, Prefetch>> = LazyLock::new(DashMap::new);
+static QUERY_SNAPSHOT_IN_MEMORY: LazyLock<DashMap<u64, QueryCacheEntry>> =
+    LazyLock::new(DashMap::new);
 
 impl QuerySnapshot {
     pub fn new() -> Self {
@@ -459,15 +463,26 @@ impl QuerySnapshot {
     }
 }
 
+use crate::storage::ser_de::QueryCacheEntry;
+use crate::storage::tree_view;
 use crate::{model::response::Prefetch, storage::db::VERSION_COUNT_TIMESTAMP};
 
 impl QuerySnapshot {
+    /// Read the cached entry for `query_hash`, validating it against the
+    /// current tree epoch. Returns `None` both for "never cached" and
+    /// "cached but stale" — either way the caller recomputes — and drops
+    /// stale in-memory entries so they cannot be revived by a later reader.
     pub fn read_query_snapshot(
         &'static self,
         query_hash: u64,
     ) -> Result<Option<Prefetch>, Box<dyn Error>> {
-        if let Some(data) = self.in_memory.get(&query_hash) {
-            return Ok(Some(*data.value()));
+        let now_epoch = tree_view::current_epoch();
+        if let Some(entry) = self.in_memory.get(&query_hash) {
+            if entry.epoch == now_epoch {
+                return Ok(Some(entry.prefetch));
+            }
+            drop(entry);
+            self.in_memory.remove(&query_hash);
         }
 
         let read_txn = self
@@ -477,13 +492,17 @@ impl QuerySnapshot {
 
         let count_version = VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
 
-        let table_definition: TableDefinition<u64, Prefetch> = TableDefinition::new(&count_version);
+        let table_definition: TableDefinition<u64, QueryCacheEntry> =
+            TableDefinition::new(&count_version);
 
         let table = read_txn.open_table(table_definition)?;
 
-        let timestamp = table.get(query_hash)?;
-
-        Ok(timestamp.map(|inner_value| inner_value.value()))
+        let entry = table.get(query_hash)?;
+        match entry.map(|inner| inner.value()) {
+            // Fresh on disk: serve. Stale on disk or absent: recompute.
+            Some(cached) if cached.epoch == now_epoch => Ok(Some(cached.prefetch)),
+            _ => Ok(None),
+        }
     }
 }
 

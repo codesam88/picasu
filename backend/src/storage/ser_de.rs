@@ -1,4 +1,5 @@
 use crate::model::response::Prefetch;
+use bitcode::{Decode, Encode};
 
 use crate::model::{
     abstract_data::AbstractData,
@@ -239,6 +240,47 @@ impl Value for Prefetch {
 
     fn type_name() -> TypeName {
         TypeName::new("Prefetch")
+    }
+}
+
+/// A prefetch query cache entry together with the tree epoch its rows were
+/// computed at. Readers re-validate the epoch against the current one: a
+/// mismatch means a write committed after the entry was computed, so the
+/// entry is stale and must be recomputed. This is the exactness contract
+/// that keeps served query results from outliving the data they were
+/// built from.
+#[derive(Debug, Clone, Copy, Encode, Decode)]
+pub struct QueryCacheEntry {
+    pub epoch: u64,
+    pub prefetch: Prefetch,
+}
+
+impl Value for QueryCacheEntry {
+    type SelfType<'a>
+        = Self
+    where
+        Self: 'a;
+    type AsBytes<'a>
+        = Vec<u8>
+    where
+        Self: 'a;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        bitcode::decode::<Self>(data).expect("Failed to deserialize QueryCacheEntry")
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
+        bitcode::encode(value)
+    }
+
+    fn type_name() -> TypeName {
+        TypeName::new("QueryCacheEntry")
     }
 }
 

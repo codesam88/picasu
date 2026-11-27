@@ -7,29 +7,26 @@
 //!
 //! # Freshness contract
 //!
-//! - **Background writes** (writer flush/sweep/expire batches): mark the tree
-//!   dirty on every batch, but advance the request-visible invalidation
-//!   counter ([`INVALIDATION_VERSION`]) at most once per ~1 s via a
-//!   leading-edge throttle. The first background write after a quiet window
-//!   longer than ~1 s invalidates immediately; further writes inside the
-//!   window only dirty the tree. A reader may therefore see a prefetch cache
-//!   that is up to ~1-2 s stale during a scan — explicitly acceptable.
-//! - **Request-path commits**: full synchronous bump on every commit, so
-//!   read-your-write stays intact and the CACHE-01 same-millisecond case keeps
-//!   working.
-//! - **Scan terminal transition** (completed/failed/canceled): a full
-//!   synchronous bump runs strictly before the terminal state is published, so
-//!   a client that polls status and then reads (~20 ms later) always observes
-//!   the finished scan's rows.
+//! - Every write — background batch, request-path commit, scan terminal
+//!   transition — advances [`Self::current_epoch`] exactly once per committed
+//!   batch. The epoch is the single staleness signal: no throttling, no
+//!   missed bumps.
+//! - The in-memory view rebuilds when a reader observes an epoch newer than
+//!   the one it was built at (`refresh_if_stale`).
+//! - The prefetch query cache stamps each entry with the epoch its rows were
+//!   computed at (`QueryCacheEntry`) and re-validates on every read: an entry
+//!   whose epoch differs from the current one is stale and is recomputed.
+//!   Serve-stale-while-recompute (deferring the recompute) is a policy layer
+//!   on top of this signal, not part of it.
 
 use chrono::Utc;
 use rayon::prelude::ParallelSliceMut;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::model::response::DatabaseTimestamp;
-use crate::storage::db::{INVALIDATION_VERSION, TREE, VERSION_COUNT_TIMESTAMP};
+use crate::storage::db::{TREE, VERSION_COUNT_TIMESTAMP};
 use crate::tasks::observe::{Stage, Timer};
 
 /// Advanced after any asset-table write. `snapshot_tree` rebuilds when this
@@ -43,68 +40,19 @@ static REBUILD_LOCK: Mutex<()> = Mutex::new(());
 
 const PRIORITY_LIST: &[&str] = &["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-/// Wall-clock millisecond of the last background invalidation. 0 means "never",
-/// so the first background write invalidates immediately.
-static LAST_BG_INVALIDATION_MS: AtomicU64 = AtomicU64::new(0);
-
-/// Mark the cached view stale: advance the epoch and keep the wall-clock
-/// identity current. Does NOT touch the invalidation counter, so prefetch
-/// cache keys stay stable across background writes that fall inside the
-/// throttle window.
+/// Advance the staleness epoch: every committed write calls this exactly
+/// once, so the epoch is an exact, unthrottled change signal. Also keeps the
+/// wall-clock identity current for table names/expiry.
 pub(crate) fn mark_tree_dirty() {
     TREE_EPOCH.fetch_add(1, Ordering::SeqCst);
-    // Concern (b): keep the wall-clock identity current for table names/expiry.
     VERSION_COUNT_TIMESTAMP.fetch_max(Utc::now().timestamp_millis(), Ordering::SeqCst);
 }
 
-/// Full bump: dirty the tree AND advance the invalidation counter. Used by
-/// request-path commits and scan terminal transitions; never throttled.
-pub(crate) fn bump_tree_epoch() {
-    mark_tree_dirty();
-    // Concern (a): strictly monotonic invalidation version for cache keys.
-    INVALIDATION_VERSION.fetch_add(1, Ordering::SeqCst);
-    // Keep the background throttle window aligned with this invalidation.
-    LAST_BG_INVALIDATION_MS.store(bg_now_ms(), Ordering::SeqCst);
-}
-
-/// Background write entry point: always dirty the tree, advance the
-/// invalidation counter only on the leading edge of a ~1 s quiet window.
-pub(crate) fn mark_tree_dirty_background() {
-    mark_tree_dirty();
-    let now = bg_now_ms();
-    // Leading-edge throttle: invalidate only if at least ~1 s elapsed since
-    // the last background (or full) invalidation.
-    let mut last = LAST_BG_INVALIDATION_MS.load(Ordering::SeqCst);
-    loop {
-        if now.saturating_sub(last) < 1000 {
-            break;
-        }
-        match LAST_BG_INVALIDATION_MS.compare_exchange(
-            last,
-            now,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
-            Ok(_) => {
-                INVALIDATION_VERSION.fetch_add(1, Ordering::SeqCst);
-                break;
-            }
-            Err(actual) => last = actual,
-        }
-    }
-}
-
-fn bg_now_ms() -> u64 {
-    #[cfg(test)]
-    {
-        let override_now = BG_INVALIDATION_NOW_OVERRIDE_MS.load(Ordering::SeqCst);
-        if override_now != 0 {
-            return override_now;
-        }
-    }
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0u64, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+/// Current staleness epoch. Cache entries stamp this at compute time and
+/// re-validate on every read; a mismatch means the entry predates a
+/// committed write and must be recomputed.
+pub(crate) fn current_epoch() -> u64 {
+    TREE_EPOCH.load(Ordering::SeqCst)
 }
 
 /// Shared snapshot of the current asset tree. Rebuilds first when writes
@@ -125,7 +73,7 @@ pub fn snapshot_tree() -> Vec<DatabaseTimestamp> {
 /// bookkeeping for the version timestamp the write produced. Request paths
 /// do not rebuild the tree: the next reader does.
 pub(crate) fn tree_changed() {
-    bump_tree_epoch();
+    mark_tree_dirty();
     crate::tasks::BATCH_COORDINATOR
         .execute_batch_detached(crate::tasks::batcher::update_expire::UpdateExpireTask);
 }
@@ -135,7 +83,7 @@ pub(crate) fn tree_changed() {
 /// rebuild that already read the old rows can only publish them under the
 /// old epoch and is discarded by the next reader.
 pub(crate) fn invalidate_tree_view() {
-    bump_tree_epoch();
+    mark_tree_dirty();
 }
 
 fn refresh_if_stale() {
@@ -252,32 +200,7 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Result<Vec<DatabaseTimesta
     Ok(entries)
 }
 
-// Test-only seam for the background throttle clock.
-#[cfg(test)]
-static BG_INVALIDATION_NOW_OVERRIDE_MS: AtomicU64 = AtomicU64::new(0);
-
-/// Reset background throttle state. Test-only.
-#[cfg(test)]
-pub(crate) fn reset_bg_invalidation_state() {
-    LAST_BG_INVALIDATION_MS.store(0, Ordering::SeqCst);
-    BG_INVALIDATION_NOW_OVERRIDE_MS.store(0, Ordering::SeqCst);
-}
-
-/// Set the clock used by the background throttle. 0 restores real time.
-/// Test-only.
-#[cfg(test)]
-pub(crate) fn set_bg_invalidation_now_ms(ms: u64) {
-    BG_INVALIDATION_NOW_OVERRIDE_MS.store(ms, Ordering::SeqCst);
-}
-
-/// Snapshot of the request-visible invalidation counter. Test-only, for
-/// contract tests that assert background writes do not advance it.
-#[cfg(test)]
-pub(crate) fn bg_invalidation_version_for_test() -> u64 {
-    INVALIDATION_VERSION.load(Ordering::SeqCst)
-}
-
-/// Snapshot of the tree dirtiness epoch. Test-only.
+// Test-only seam: the staleness epoch itself has no test-only state left.
 #[cfg(test)]
 pub(crate) fn tree_epoch_for_test() -> u64 {
     TREE_EPOCH.load(Ordering::SeqCst)
@@ -286,70 +209,12 @@ pub(crate) fn tree_epoch_for_test() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::db::INVALIDATION_VERSION;
-    use std::sync::atomic::Ordering;
 
     #[test]
-    fn two_bumps_yield_distinct_versions() {
-        bump_tree_epoch();
-        let v1 = INVALIDATION_VERSION.load(Ordering::SeqCst);
-        bump_tree_epoch();
-        let v2 = INVALIDATION_VERSION.load(Ordering::SeqCst);
-        assert!(
-            v2 > v1,
-            "each bump must advance the version: v1={v1}, v2={v2}"
-        );
-    }
-
-    #[test]
-    fn mark_tree_dirty_does_not_advance_invalidation_version() {
-        let before = INVALIDATION_VERSION.load(Ordering::SeqCst);
+    fn every_dirty_bump_advances_the_epoch() {
+        let before = TREE_EPOCH.load(Ordering::SeqCst);
         mark_tree_dirty();
-        let after = INVALIDATION_VERSION.load(Ordering::SeqCst);
-        assert_eq!(
-            before, after,
-            "dirty-only must not advance the invalidation counter"
-        );
-    }
-
-    #[test]
-    fn background_notes_throttle_invalidation() {
-        reset_bg_invalidation_state();
-        let before = INVALIDATION_VERSION.load(Ordering::SeqCst);
-
-        set_bg_invalidation_now_ms(1000);
-        for _ in 0..10 {
-            mark_tree_dirty_background();
-        }
-        // leading edge at 1000: exactly one invalidation so far
-        let mid = INVALIDATION_VERSION.load(Ordering::SeqCst);
-        assert!(
-            mid - before <= 1,
-            "rapid background notes within one window must not each invalidate: before={before}, mid={mid}"
-        );
-
-        // after ~1 s quiet window, the next note invalidates again
-        set_bg_invalidation_now_ms(2000);
-        mark_tree_dirty_background();
-        let after_second = INVALIDATION_VERSION.load(Ordering::SeqCst);
-        assert!(
-            after_second > mid,
-            "note after the window must invalidate: mid={mid}, after={after_second}"
-        );
-
-        // a note 500 ms later is throttled
-        set_bg_invalidation_now_ms(2500);
-        mark_tree_dirty_background();
-        let final_v = INVALIDATION_VERSION.load(Ordering::SeqCst);
-        assert_eq!(
-            final_v, after_second,
-            "note inside the new window must be throttled: after_second={after_second}, final={final_v}"
-        );
-
-        let total = final_v - before;
-        assert!(
-            total <= 2,
-            "N rapid background notes must advance invalidation <=2 times: total={total}"
-        );
+        let after = TREE_EPOCH.load(Ordering::SeqCst);
+        assert!(after > before, "each write must advance the epoch");
     }
 }

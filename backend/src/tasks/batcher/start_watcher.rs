@@ -401,7 +401,7 @@ pub(crate) fn handle_paired_rename(old: Option<PathBuf>, new: Option<PathBuf>) {
                 crate::process::dir_album::rewrite_dir_album_cache_prefix(&old, &new);
                 crate::router::put::assign_album::update_asset_tables_after_dir_move(&old, &new)
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
-                crate::storage::tree_view::bump_tree_epoch();
+                crate::storage::tree_view::mark_tree_dirty();
                 Ok::<(), anyhow::Error>(())
             })
             .await;

@@ -94,7 +94,7 @@ use tokio::sync::{Mutex, Notify, mpsc};
 
 use super::bridge::run_cpu;
 use crate::model::abstract_data::AbstractData;
-use crate::storage::tree_view::mark_tree_dirty_background;
+use crate::storage::tree_view::mark_tree_dirty;
 use crate::tasks::batcher::expire_check::expire_check_task;
 use crate::tasks::batcher::flush_tree::flush_tables;
 use crate::tasks::batcher::update_expire::update_expire_task;
@@ -402,7 +402,7 @@ async fn writer_loop(
             if let Err(err) = flush_tables(&inserts, &removes) {
                 log::error!("writer flush failed: {err:#}");
             }
-            mark_tree_dirty_background();
+            mark_tree_dirty();
             enqueue_cascade(&cascade_tx, flush_seq, CascadeOp::AfterWrite).await;
             complete_seq(flush_seq);
         }
@@ -436,7 +436,7 @@ fn handle_op(op: WriteOp) -> CascadeOp {
             if let Err(err) = flush_tables(&inserts, &removes) {
                 log::error!("writer flush failed: {err:#}");
             }
-            mark_tree_dirty_background();
+            mark_tree_dirty();
             CascadeOp::AfterWrite
         }
         WriteOp::ExpireCheck => CascadeOp::ExpireRound,
@@ -444,21 +444,21 @@ fn handle_op(op: WriteOp) -> CascadeOp {
             if let Err(err) = handle_sweep_dir_albums(entries) {
                 log::error!("sweep dir albums failed: {err:#}");
             }
-            mark_tree_dirty_background();
+            mark_tree_dirty();
             CascadeOp::Noop
         }
         WriteOp::PruneUsersRoot(users_root) => {
             if let Err(err) = handle_prune_users_root(&users_root) {
                 log::error!("prune users root failed: {err:#}");
             }
-            mark_tree_dirty_background();
+            mark_tree_dirty();
             CascadeOp::Noop
         }
         WriteOp::SweepRemoveBatch { paths } => {
             if let Err(err) = crate::tasks::batcher::flush_tree::sweep_remove_batch(&paths) {
                 log::error!("sweep remove batch failed: {err:#}");
             }
-            mark_tree_dirty_background();
+            mark_tree_dirty();
             CascadeOp::Noop
         }
         WriteOp::Barrier => CascadeOp::Noop,
@@ -636,39 +636,26 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn background_flushes_do_not_advance_request_invalidation() {
+    async fn every_background_flush_advances_the_epoch() {
         const FLUSHES: u64 = 5;
         let _ = &*crate::tests::bootstrap::TEST_ENV;
         crate::tasks::observe::reset();
         // Drain any writer state from the shared env before sampling counters.
         barrier().await;
-        crate::storage::tree_view::reset_bg_invalidation_state();
-        // Freeze the throttle clock so every flush lands inside one window:
-        // the leading edge advances the request-visible counter exactly
-        // once; later flushes may only dirty the tree.
-        crate::storage::tree_view::set_bg_invalidation_now_ms(1_000_000);
-        let version_before = crate::storage::tree_view::bg_invalidation_version_for_test();
         let epoch_before = crate::storage::tree_view::tree_epoch_for_test();
 
         for _ in 0..FLUSHES {
             submit_flush_insert(Vec::new()).await.expect("flush submit");
             // A barrier between flushes keeps the writer loop from merging
-            // them into one batch, so each cycle dirties the tree once.
+            // them into one batch, so each cycle commits separately.
             barrier().await;
         }
 
         let epoch_after = crate::storage::tree_view::tree_epoch_for_test();
-        let version_after = crate::storage::tree_view::bg_invalidation_version_for_test();
         assert_eq!(
             epoch_after - epoch_before,
             FLUSHES,
-            "each background flush must dirty the tree exactly once"
-        );
-        assert_eq!(
-            version_after - version_before,
-            1,
-            "background flushes must advance the request-visible invalidation counter at most once (leading edge), got {}",
-            version_after - version_before
+            "each background flush must advance the staleness epoch exactly once: readers key cache freshness on it"
         );
     }
 

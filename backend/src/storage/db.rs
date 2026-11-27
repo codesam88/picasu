@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use crate::model::response::DatabaseTimestamp;
-use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64, atomic::AtomicU64};
+use std::sync::{Arc, LazyLock, RwLock, atomic::AtomicI64};
 
 pub struct Tree {
     pub in_disk: &'static TrackedDatabase,
@@ -19,15 +19,11 @@ pub static TREE: LazyLock<Tree> = LazyLock::new(Tree::new);
 
 pub use crate::storage::tree_view::{snapshot_tree, snapshot_tree_arc};
 
+/// Wall-clock millisecond timestamp advanced on every asset-table write
+/// (`fetch_max`). Names the per-version redb tables in the cache databases
+/// and drives their expiry bookkeeping. Not a staleness signal — see
+/// `storage::tree_view` for the epoch that owns that contract.
 pub static VERSION_COUNT_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
-
-/// Strictly monotonic counter advanced once per cache invalidation.
-///
-/// Unlike `VERSION_COUNT_TIMESTAMP` (a wall-clock millisecond identity used for
-/// on-disk query-snapshot table names and expiry bookkeeping), this never
-/// resets and never collides across invalidations that land in the same
-/// millisecond. Hashed into prefetch cache keys so a bump always changes them.
-pub static INVALIDATION_VERSION: AtomicU64 = AtomicU64::new(0);
 
 static TREE_SNAPSHOT_IN_MEMORY: LazyLock<Arc<RwLock<Arc<Vec<DatabaseTimestamp>>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(Arc::new(vec![]))));
