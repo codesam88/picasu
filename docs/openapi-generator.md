@@ -129,14 +129,14 @@ The goal is an exact, auditable mapping between:
    `openapi_public::public_json()`: the generated document minus the test-only
    probes, pretty-printed with sorted keys.
 
-4. **`just docs-openapi`** — chains `openapi-gen` with:
-   - `widdershins` to convert `openapi.json` → `docs/openapi-reference.md`
-   - `prettier` for consistent markdown formatting
+4. **`just docs-openapi`** — converts the committed `openapi.json` into
+   `docs/openapi-reference.md` with `widdershins` (no spec generation, no
+   network). It is invoked by `just openapi-regen`.
 
-5. **`just openapi-check`** — the API contract gate, in two phases (see [The
-   contract gate](#the-contract-gate)). It is part of `just check`, so it runs
-   in CI, and the pre-commit hook runs it for any commit that touches
-   `backend/`.
+5. **`just openapi-check`** — the API contract gate (see [The contract
+   gate](#the-contract-gate)). It is part of `just check` and is invoked by
+   `just openapi-regen`; CI runs the whole `openapi-regen` recipe in its
+   backend Check step.
 
 6. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) —
    compare the mounted Rocket routes with the public spec, check that
@@ -164,9 +164,10 @@ The goal is an exact, auditable mapping between:
 
 ## The contract gate
 
-`just openapi-check` is the single command developers and CI run for the API
-contract. It runs four phases, and a failure stops the recipe with a nonzero
-exit, so the failing phase's own diagnostics are what the run shows:
+`just openapi-check` is the contract gate developers run directly; CI invokes
+it through `just openapi-regen`. It runs four phases, and a failure stops the
+recipe with a nonzero exit, so the failing phase's own diagnostics are what
+the run shows:
 
 1. **`openapi-sanity`** — the source phase. Runs
    [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) over
@@ -589,7 +590,7 @@ The markdown reference is now vendored and drift-checked: `widdershins`
 4.0.1 is a frontend devDependency (pinned in `frontend/package.json` and
 `frontend/package-lock.json`), and `docs-openapi` runs through `npx
 --no-install`, so generation needs no network. `docs-openapi` is part of
-`just docs-regen`, and the pre-commit helper regenerates
+`just openapi-regen`, and the pre-commit helper regenerates
 `docs/openapi-reference.md` whenever `backend/openapi.json` changes or the
 OpenAPI spec is regenerated, staging it with the other regenerated outputs.
 CI's `git diff --exit-code` gate therefore covers the reference doc like every

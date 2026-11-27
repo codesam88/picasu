@@ -44,17 +44,17 @@ graph LR
 
 | Orphan                  | Orphan                |
 | ----------------------- | --------------------- |
-| `backend-build`         | `docs-openapi`        |
-| `backend-build-release` | `docs-serve`          |
-| `backend-format`        | `format`              |
-| `bench::battery`        | `frontend-format`     |
-| `bench::clean`          | `fuzz::clean`         |
-| `bench::compare`        | `fuzz::diff`          |
-| `bench::extract`        | `fuzz::roles`         |
-| `bench::format`         | `fuzz::run`           |
-| `bench::lint`           | `gates-docs`          |
-| `bench::prepare`        | `install-dev`         |
-| `bench::run`            | `openapi-gen`         |
+| `backend-build`         | `docs-format`         |
+| `backend-build-release` | `docs-openapi`        |
+| `backend-format`        | `docs-serve`          |
+| `bench::battery`        | `format`              |
+| `bench::clean`          | `frontend-format`     |
+| `bench::compare`        | `fuzz::clean`         |
+| `bench::extract`        | `fuzz::diff`          |
+| `bench::format`         | `fuzz::roles`         |
+| `bench::lint`           | `fuzz::run`           |
+| `bench::prepare`        | `gates-docs`          |
+| `bench::run`            | `install-dev`         |
 | `bench::seed-images`    | `quint::doc-check`    |
 | `bench::server`         | `quint::docs`         |
 | `bench::status`         | `quint::format`       |
@@ -66,7 +66,6 @@ graph LR
 | `clean`                 | `test-release`        |
 | `distclean`             | `utils-format`        |
 | `docs-build`            | `zizmor-check-online` |
-| `docs-format`           |                       |
 
 ## Rules by group
 
@@ -141,6 +140,7 @@ graph TD
   openapi-check
   openapi-gen
   openapi-lint
+  openapi-regen
   openapi-routes-release
   openapi-sanity
   utils-check
@@ -151,8 +151,10 @@ graph TD
   openapi-check --> openapi-breakcheck
   openapi-check --> openapi-lint
   openapi-check --> openapi-sanity
+  openapi-regen --> openapi-check
+  openapi-regen --> openapi-gen
   utils-check --> zizmor-check
-  openapi-breakcheck ~~~ dylint-check & env-var-check & fuzz-check & fuzz-matrix & gates-test & msrv-check & openapi-gen & openapi-routes-release & utils-format & utils-test & zizmor-check-online
+  openapi-breakcheck ~~~ dylint-check & env-var-check & fuzz-check & fuzz-matrix & gates-test & msrv-check & openapi-routes-release & utils-format & utils-test & zizmor-check-online
 ```
 
 | Rule (justfile)          | Description                                                                       | CI Workflow           | Trigger             |
@@ -164,9 +166,10 @@ graph TD
 | `gates-test`             | ensure all test/check rules are called from CI and global rules                   | ci, docs-check        | PR, main            |
 | `msrv-check`             | Non-blocking by design: MSRV floor check (nightly lane).                          | msrv                  | scheduled           |
 | `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | (openapi-check)       | local, PR, main     |
-| `openapi-check`          | Run all OpenAPI checks.                                                           | ci                    | local, PR, main     |
-| `openapi-gen`            | Regenerate the checked-in OpenAPI artifact                                        | ❌️                    | -                   |
+| `openapi-check`          | Run all OpenAPI checks.                                                           | (openapi-regen)       | local, PR, main     |
+| `openapi-gen`            | Generate openapi.json from utopia annotations                                     | (openapi-regen)       | PR, main            |
 | `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | (openapi-check)       | local, PR, main     |
+| `openapi-regen`          | Regenerate OpenAPI spec, derived artifacts, and run checks                        | ci                    | PR, main            |
 | `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release               | tags                |
 | `openapi-sanity`         | check OpenAPI annotation conventions                                              | (openapi-check)       | local, PR, main     |
 | `utils-check`            | utils fmt + clippy (all targets)                                                  | ci                    | local, PR, main     |
@@ -193,15 +196,15 @@ graph TD
   docs-openapi ~~~ docs-check & docs-format & docs-regen & docs-serve & gates-docs
 ```
 
-| Rule (justfile) | Description                                                               | CI Workflow    | Trigger         |
-| --------------- | ------------------------------------------------------------------------- | -------------- | --------------- |
-| `docs-build`    | Build mdBook site at target/docs/                                         | ❌️             | -               |
-| `docs-check`    | check plans and docs (plan lint; plan format)                             | ci, docs-check | local, PR, main |
-| `docs-format`   | format plans and docs (plan format)                                       | ❌️             | -               |
-| `docs-openapi`  | Generate OpenAPI spec and reference doc                                   | ❌️             | -               |
-| `docs-regen`    | regenerate everything offline (code -> spec -> derived docs), then format | ci             | PR, main        |
-| `docs-serve`    | Serve mdbook documentation                                                | ❌️             | -               |
-| `gates-docs`    | Regenerate the gates doc                                                  | ❌️             | -               |
+| Rule (justfile) | Description                                                                           | CI Workflow    | Trigger         |
+| --------------- | ------------------------------------------------------------------------------------- | -------------- | --------------- |
+| `docs-build`    | Build mdBook site at target/docs/                                                     | ❌️             | -               |
+| `docs-check`    | check plans and docs (plan lint; plan format)                                         | ci, docs-check | local, PR, main |
+| `docs-format`   | format plans and docs (plan format)                                                   | ❌️             | -               |
+| `docs-openapi`  | Generate OpenAPI reference doc from the committed spec (regenerated by openapi-regen) | ❌️             | -               |
+| `docs-regen`    | regenerate derived docs offline, then format                                          | ci             | PR, main        |
+| `docs-serve`    | Serve mdbook documentation                                                            | ❌️             | -               |
+| `gates-docs`    | Regenerate the gates doc                                                              | ❌️             | -               |
 
 ### Deps
 

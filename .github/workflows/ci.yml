@@ -129,20 +129,20 @@ jobs:
           just install uv
           uv --version
 
-      - name: Check (backend, utils, API contract, env vars)
-        run: |
-          just backend-check
-          just utils-check
-          just openapi-check
-          just env-var-check
-          just gates-test
-
       - name: Install plan
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.local/bin:$PATH"
           just install plan
           plan --version
+
+      - name: Check (backend, utils, API contract, env vars)
+        run: |
+          just backend-check
+          just utils-check
+          just openapi-regen
+          just env-var-check
+          just gates-test
 
       - name: Check generated docs are current
         run: |
