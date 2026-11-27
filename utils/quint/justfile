@@ -21,15 +21,15 @@ _install-quint:
 # Static self-checks: prettier over the layer + typecheck both specs.
 [group('quint')]
 lint: _install-quint
-    cd "{{ root }}/frontend" && npx --no-install prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md' '../utils/quint/coverage/**/*.ts'
-    cd "{{ root }}/frontend" && npx --no-install tsc --noEmit -p ../utils/quint/coverage/tsconfig.json
+    cd "{{ root }}/frontend" && npx prettier --check --no-error-on-unmatched-pattern '../utils/quint/**/*.md' '../utils/quint/coverage/**/*.ts'
+    cd "{{ root }}/frontend" && npx tsc --noEmit -p ../utils/quint/coverage/tsconfig.json
     quint typecheck "{{ pipeline_dir }}/eventual-consistency.qnt"
     quint typecheck "{{ pipeline_dir }}/asset-aspects.qnt"
 
 # Apply formatting.
 [group('quint')]
 format:
-    cd "{{ root }}/frontend" && npx --no-install prettier --write --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
+    cd "{{ root }}/frontend" && npx prettier --write --no-error-on-unmatched-pattern '../utils/quint/**/*.md'
 
 # Fast spec gates: run on any code change (no model runs).
 [group('quint')]
