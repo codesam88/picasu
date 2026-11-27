@@ -15,6 +15,10 @@ ignore = [
     # xmpkit bumps quick-xml.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # chrono is flagged unmaintained (RUSTSEC-2026-0543) with no safe upgrade;
+    # it is pervasive here and pulled in transitively by rocket/exiftool.
+    # Migration (jiff/time) is a standalone rework, tracked separately.
+    "RUSTSEC-2026-0543",
 ]
 
 [licenses]
