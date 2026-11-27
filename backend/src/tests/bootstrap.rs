@@ -482,8 +482,7 @@ pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
     let ver = crate::auth::users::user_record(id)
         .ok()
         .flatten()
-        .map(|record| record.ver)
-        .unwrap_or_default();
+        .map_or_default(|record| record.ver);
     let claims = crate::router::auth::ClaimsSession::new_user(id.to_string(), admin, ver);
     rocket::http::Cookie::new("jwt", claims.encode())
 }

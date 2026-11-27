@@ -69,9 +69,7 @@ pub fn extract_xmp_data_from_packet(bytes: &[u8]) -> XmpData {
     let Ok(text) = std::str::from_utf8(bytes) else {
         return XmpData::default();
     };
-    XmpMeta::parse(text)
-        .map(|meta| normalize(&meta))
-        .unwrap_or_default()
+    XmpMeta::parse(text).map_or_default(|meta| normalize(&meta))
 }
 
 /// Return the `.xmp` sidecar path alongside `path` if it exists.
@@ -99,13 +97,11 @@ pub fn extract_xmp_data_from_file(path: &Path) -> XmpData {
         let Ok(text) = std::fs::read_to_string(&sidecar) else {
             return XmpData::default();
         };
-        return XmpMeta::parse(&text)
-            .map(|meta| normalize(&meta))
-            .unwrap_or_default();
+        return XmpMeta::parse(&text).map_or_default(|meta| normalize(&meta));
     }
     let mut file = XmpFile::new();
     match file.open(path) {
-        Ok(()) => file.get_xmp().map(normalize).unwrap_or_default(),
+        Ok(()) => file.get_xmp().map_or_default(normalize),
         Err(_) => XmpData::default(),
     }
 }

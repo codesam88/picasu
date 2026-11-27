@@ -31,8 +31,7 @@ pub struct UploadForm<'r> {
 
 fn get_filename(file: &TempFile<'_>) -> String {
     file.raw_name()
-        .map(|n| n.dangerous_unsafe_unsanitized_raw().to_string())
-        .unwrap_or_default()
+        .map_or_default(|n| n.dangerous_unsafe_unsanitized_raw().to_string())
 }
 
 /// Build the error shown when `auto_rename=false` and the filename needs
@@ -84,8 +83,7 @@ fn resolve_filename(
     } else {
         Path::new(&sanitize.name)
             .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default()
+            .map_or_default(|s| s.to_string_lossy().into_owned())
     };
 
     if auto_rename {
@@ -295,8 +293,7 @@ pub async fn upload(
 
     let stored_name = Path::new(&final_path)
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_default(|n| n.to_string_lossy().into_owned());
     Ok(Json(
         serde_json::json!({"files": [stored_name], "dir": target_dir_str}),
     ))

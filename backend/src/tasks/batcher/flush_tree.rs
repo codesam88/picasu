@@ -506,8 +506,7 @@ fn remove_from_old_group(
         .get(old_hash.as_str())
         .ok()
         .flatten()
-        .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
-        .unwrap_or_default();
+        .map_or_default(|g| serde_json::from_str(g.value()).unwrap_or_default());
     let retained: Vec<String> = prior
         .into_iter()
         .filter(|id| id.as_str() != asset_id.as_str())
@@ -631,8 +630,7 @@ fn remove_asset_record_in_txn(
     let prior: Vec<String> = t
         .get(content_hash.as_str())
         .context("Failed to read DUPE_INDEX group")?
-        .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
-        .unwrap_or_default();
+        .map_or_default(|g| serde_json::from_str(g.value()).unwrap_or_default());
     let retained: Vec<String> = prior
         .into_iter()
         .filter(|id| id.as_str() != asset_id.as_str())

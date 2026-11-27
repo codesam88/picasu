@@ -187,15 +187,13 @@ fn upload_photo(client: &Client, src_rel: &str, dest_name: &str) -> PathBuf {
 /// Regular files currently in the uploads dir (empty if it does not exist
 /// yet — the upload handler creates it on first use).
 fn uploads_dir_files(dir: &Path) -> HashSet<PathBuf> {
-    fs::read_dir(dir)
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| path.is_file())
-                .collect()
-        })
-        .unwrap_or_default()
+    fs::read_dir(dir).map_or_default(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_file())
+            .collect()
+    })
 }
 
 #[test]

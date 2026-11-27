@@ -445,8 +445,7 @@ fn assert_serves_image(client: &Client, photo_var: &str, vars: &HashMap<String, 
     );
     let content_type = response
         .content_type()
-        .map(|value| value.to_string())
-        .unwrap_or_default();
+        .map_or_default(|value| value.to_string());
     let bytes = response
         .into_bytes()
         .expect("serve_image_ok: response body");
@@ -579,12 +578,10 @@ fn execute_call<'c>(
     let body_str = if let Some(raw) = call.get("raw_body").and_then(|v| v.as_str()) {
         interpolate(raw, vars)
     } else {
-        body_val
-            .map(|b| {
-                let interp = interpolate_value(b, vars);
-                serde_json::to_string(&interp).unwrap_or_default()
-            })
-            .unwrap_or_default()
+        body_val.map_or_default(|b| {
+            let interp = interpolate_value(b, vars);
+            serde_json::to_string(&interp).unwrap_or_default()
+        })
     };
 
     let path_interp = interpolate(path, vars);
@@ -1433,8 +1430,7 @@ fn materialize_random_media(
         "mime".to_string(),
         snapfab::capabilities::capabilities()
             .capability_for_format(&selected.format)
-            .map(|entry| entry.content_signature.mime.clone())
-            .unwrap_or_default(),
+            .map_or_default(|entry| entry.content_signature.mime.clone()),
     );
     let destination = random_media_destination(item, selected);
     match &selected.plan {
@@ -1468,14 +1464,11 @@ fn materialize_photo(
         materials.has_id_as = true;
     }
 
-    let tags: Vec<String> = item["tags"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|t| t.as_str().unwrap_or("unknown").to_string())
-                .collect()
-        })
-        .unwrap_or_default();
+    let tags: Vec<String> = item["tags"].as_array().map_or_default(|arr| {
+        arr.iter()
+            .map(|t| t.as_str().unwrap_or("unknown").to_string())
+            .collect()
+    });
 
     let exif_date = item["exif_date"].as_str();
     let has_tags = !tags.is_empty();
