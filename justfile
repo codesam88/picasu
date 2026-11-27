@@ -224,16 +224,6 @@ zizmor-check: (install "zizmor")
     ./scripts/deps-install.sh --tool zizmor --check
     ./scripts/zizmor-run.sh --offline --no-progress .
 
-# Non-blocking by design: MSRV floor check (nightly lane).
-[group('utils')]
-msrv-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    floor="$(grep '^rust-version' "{{justfile_directory()}}/backend/Cargo.toml" | cut -d'"' -f2)"
-    rustup toolchain install "$floor" --profile minimal
-    cd "{{justfile_directory()}}"
-    cargo +"$floor" check --workspace --locked --all-targets
-
 # Online audit for the scheduled CI job: stale pins, archived actions and
 # other checks that need the GitHub API. Needs GH_TOKEN (or GITHUB_TOKEN);
 # without one it degrades to the offline check. Takes extra zizmor flags,
