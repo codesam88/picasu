@@ -18,6 +18,7 @@
     <UploadOptionsModal v-if="modalStore.showUploadOptionsModal" />
     <AlbumInfoModal v-if="modalStore.showAlbumInfoModal" />
     <UserSettingsModal v-if="modalStore.showUserSettingsModal" />
+    <ReportIssueModal v-if="modalStore.showReportIssueModal" />
   </v-app>
 </template>
 
@@ -37,6 +38,7 @@ import UploadOptionsModal from '@/components/Modal/UploadOptionsModal.vue'
 import AssignAlbumModal from '@/components/Modal/AssignAlbumModal.vue'
 import AlbumInfoModal from '@/components/Modal/AlbumInfoModal.vue'
 import UserSettingsModal from '@/components/Modal/UserSettingsModal.vue'
+import ReportIssueModal from '@/components/Modal/ReportIssueModal.vue'
 import { useModalStore } from '@/store/modalStore'
 
 const modalStore = useModalStore('mainId')

@@ -80,6 +80,12 @@
               data-testid="user-menu-settings"
               @click="modalStore.showUserSettingsModal = true"
             />
+            <v-list-item
+              prepend-icon="mdi-bug-outline"
+              title="Report issue..."
+              data-testid="user-menu-report-issue"
+              @click="modalStore.showReportIssueModal = true"
+            />
             <v-list-item prepend-icon="mdi-logout" title="Log out" @click="handleLogout" />
           </v-list>
         </v-menu>
