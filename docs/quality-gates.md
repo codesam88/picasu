@@ -95,9 +95,9 @@ graph TD
 | `backend-audit`         | cargo deny                               | (audit)     | PR, main, scheduled |
 | `backend-build`         | cargo build (dev build)                  | ❌️          | -                   |
 | `backend-build-release` | cargo build (release build)              | ❌️          | -                   |
-| `backend-check`         | cargo fmt --check + clippy (all targets) | ci          | local, PR, main     |
+| `backend-check`         | cargo fmt --check + clippy (all targets) | ci          | PR, main            |
 | `backend-format`        | cargo fmt                                | ❌️          | -                   |
-| `backend-test`          | Backend tests (cargo-nextest)            | ci          | local, PR, main     |
+| `backend-test`          | Backend tests (cargo-nextest)            | ci          | PR, main            |
 | `backend-test-release`  | Backend tests in release mode            | release     | tags                |
 
 ### Frontend
@@ -116,15 +116,15 @@ graph TD
   frontend-playwright ~~~ frontend-audit & frontend-build & frontend-check & frontend-format
 ```
 
-| Rule (justfile)       | Description                                                              | CI Workflow   | Trigger               |
-| --------------------- | ------------------------------------------------------------------------ | ------------- | --------------------- |
-| `frontend-audit`      | npm audit                                                                | (audit)       | PR, main, scheduled   |
-| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | fuzz-advisory | scheduled             |
-| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | ci            | local, PR, main       |
-| `frontend-format`     | prettier --write                                                         | ❌️            | -                     |
-| `frontend-playwright` | run playwright tests (optional filter)                                   | ci, release   | local, PR, main, tags |
-| `frontend-test`       | all frontend tests                                                       | ❌️            | local                 |
-| `frontend-vitest`     | vitest run                                                               | ci            | local, PR, main       |
+| Rule (justfile)       | Description                                                              | CI Workflow   | Trigger             |
+| --------------------- | ------------------------------------------------------------------------ | ------------- | ------------------- |
+| `frontend-audit`      | npm audit                                                                | (audit)       | PR, main, scheduled |
+| `frontend-build`      | npm run build; resyncs deps when package.json/lock changed since install | fuzz-advisory | scheduled           |
+| `frontend-check`      | prettier --check + vue-tsc + eslint                                      | ci            | PR, main            |
+| `frontend-format`     | prettier --write                                                         | ❌️            | -                   |
+| `frontend-playwright` | run playwright tests (optional filter)                                   | ci, release   | PR, main, tags      |
+| `frontend-test`       | all frontend tests                                                       | ❌️            | -                   |
+| `frontend-vitest`     | vitest run                                                               | ci            | PR, main            |
 
 ### Utils
 
@@ -160,22 +160,22 @@ graph TD
 | Rule (justfile)          | Description                                                                       | CI Workflow           | Trigger             |
 | ------------------------ | --------------------------------------------------------------------------------- | --------------------- | ------------------- |
 | `dylint-check`           | run dylint auth lints (advisory)                                                  | ci                    | PR, main            |
-| `env-var-check`          | check PICASU_* env vars match docs/config.md                                      | ci                    | local, PR, main     |
+| `env-var-check`          | check PICASU_* env vars match docs/config.md                                      | ci                    | PR, main            |
 | `fuzz-check`             | Deprecated: CI invokes this name; use `just fuzz check`.                          | ci, fuzz-advisory     | PR, main, scheduled |
 | `fuzz-matrix`            | Deprecated: CI invokes this name; use `just fuzz matrix`.                         | ci                    | PR, main            |
 | `gates-test`             | ensure all test/check rules are called from CI and global rules                   | ci, docs-check        | PR, main            |
 | `msrv-check`             | Non-blocking by design: MSRV floor check (nightly lane).                          | msrv                  | scheduled           |
-| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | (openapi-check)       | local, PR, main     |
-| `openapi-check`          | Run all OpenAPI checks.                                                           | (openapi-regen)       | local, PR, main     |
+| `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | (openapi-check)       | PR, main            |
+| `openapi-check`          | Run all OpenAPI checks.                                                           | (openapi-regen)       | PR, main            |
 | `openapi-gen`            | Generate openapi.json from utopia annotations                                     | (openapi-regen)       | PR, main            |
-| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | (openapi-check)       | local, PR, main     |
+| `openapi-lint`           | Lint the OpenAPI document (errors fail)                                           | (openapi-check)       | PR, main            |
 | `openapi-regen`          | Regenerate OpenAPI spec, docs, and run checks                                     | ci                    | PR, main            |
 | `openapi-routes-release` | Run the already-built release binary's route-set gate against the committed spec. | release               | tags                |
-| `openapi-sanity`         | check OpenAPI annotation conventions                                              | (openapi-check)       | local, PR, main     |
-| `utils-check`            | utils fmt + clippy (all targets)                                                  | ci                    | local, PR, main     |
+| `openapi-sanity`         | check OpenAPI annotation conventions                                              | (openapi-check)       | PR, main            |
+| `utils-check`            | utils fmt + clippy (all targets)                                                  | ci                    | PR, main            |
 | `utils-format`           | cargo fmt on utils/ crates                                                        | ❌️                    | -                   |
-| `utils-test`             | cargo test utils/ + Schemathesis derivations                                      | ci                    | local, PR, main     |
-| `zizmor-check`           | audit workflows/deps offline (no GH_TOKEN)                                        | zizmor, (utils-check) | local, PR, main     |
+| `utils-test`             | cargo test utils/ + Schemathesis derivations                                      | ci                    | PR, main            |
+| `zizmor-check`           | audit workflows/deps offline (no GH_TOKEN)                                        | zizmor, (utils-check) | PR, main            |
 | `zizmor-check-online`    | e.g. --format=sarif                                                               | ❌️                    | -                   |
 
 Note: `dylint-check` - needs nightly-2026-08-01 toolchain+rDylint; CI-only by
@@ -196,15 +196,15 @@ graph TD
   docs-regen ~~~ docs-check & docs-format & docs-openapi & docs-serve & gates-docs
 ```
 
-| Rule (justfile) | Description                                                                           | CI Workflow    | Trigger         |
-| --------------- | ------------------------------------------------------------------------------------- | -------------- | --------------- |
-| `docs-check`    | check plans and docs (plan lint; plan format)                                         | ci, docs-check | local, PR, main |
-| `docs-format`   | format plans and docs (plan format)                                                   | ❌️             | -               |
-| `docs-mdbook`   | Build mdBook site at target/docs/                                                     | ❌️             | -               |
-| `docs-openapi`  | Generate OpenAPI reference doc from the committed spec (regenerated by openapi-regen) | ❌️             | -               |
-| `docs-regen`    | Regenerate ALL autogenerated docs (entry point)                                       | ci             | PR, main        |
-| `docs-serve`    | Serve mdbook documentation                                                            | ❌️             | -               |
-| `gates-docs`    | Regenerate the gates doc                                                              | ❌️             | -               |
+| Rule (justfile) | Description                                                                           | CI Workflow    | Trigger  |
+| --------------- | ------------------------------------------------------------------------------------- | -------------- | -------- |
+| `docs-check`    | check plans and docs (plan lint; plan format)                                         | ci, docs-check | PR, main |
+| `docs-format`   | format plans and docs (plan format)                                                   | ❌️             | -        |
+| `docs-mdbook`   | Build mdBook site at target/docs/                                                     | ❌️             | -        |
+| `docs-openapi`  | Generate OpenAPI reference doc from the committed spec (regenerated by openapi-regen) | ❌️             | -        |
+| `docs-regen`    | Regenerate ALL autogenerated docs (entry point)                                       | ci             | PR, main |
+| `docs-serve`    | Serve mdbook documentation                                                            | ❌️             | -        |
+| `gates-docs`    | Regenerate the gates doc                                                              | ❌️             | -        |
 
 ### Deps
 
@@ -220,13 +220,13 @@ graph TD
   install-dev ~~~ check-tools & install
 ```
 
-| Rule (justfile) | Description                                                       | CI Workflow                                                                                 | Trigger                          |
-| --------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------- |
-| `check-tools`   | verify installed tool versions                                    | ❌️                                                                                          | -                                |
-| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, docs-check, fuzz-advisory, release, zizmor, (openapi-breakcheck), (zizmor-check) | local, PR, main, tags, scheduled |
-| `install-dev`   | install managed dev tools                                         | ❌️                                                                                          | -                                |
-| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                                          | -                                |
-| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                                          | -                                |
+| Rule (justfile) | Description                                                       | CI Workflow                                                                                 | Trigger                   |
+| --------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------- |
+| `check-tools`   | verify installed tool versions                                    | ❌️                                                                                          | -                         |
+| `install`       | dispatcher loops scripts/deps/*.sh                                | audit, ci, docs-check, fuzz-advisory, release, zizmor, (openapi-breakcheck), (zizmor-check) | PR, main, tags, scheduled |
+| `install-dev`   | install managed dev tools                                         | ❌️                                                                                          | -                         |
+| `setup-dev`     | install dev tools + precommit hook                                | ❌️                                                                                          | -                         |
+| `setup-sccache` | Generate gitignored .cargo/sccache.toml when sccache is installed | ❌️                                                                                          | -                         |
 
 ### Global
 
@@ -256,16 +256,16 @@ graph TD
 | --------------------- | -------------------------------------------------------------------------- | ----------- | ------------------- |
 | `audit`               | Run security audits (backend + frontend)                                   | audit       | PR, main, scheduled |
 | `branches-prune`      | Prune stale local/remote branches (report; --apply + --expire-* to delete) | ❌️          | -                   |
-| `branches-prune-test` | Test the branch pruning helper against a fixture repository                | ❌️          | local               |
+| `branches-prune-test` | Test the branch pruning helper against a fixture repository                | ❌️          | -                   |
 | `build`               | Build frontend then backend (dev build)                                    | ❌️          | -                   |
 | `build-release`       | Release build with embedded assets                                         | ❌️          | -                   |
-| `check`               | Run all linters and static checks                                          | ❌️          | local               |
+| `check`               | Run all linters and static checks                                          | ❌️          | -                   |
 | `clean`               | Remove transient generated state                                           | ❌️          | -                   |
 | `distclean`           | Clean all generated files                                                  | ❌️          | -                   |
 | `format`              | Format everything                                                          | ❌️          | -                   |
 | `precommit`           | Run format, linter, static checks and tests                                | ❌️          | local               |
 | `run`                 | Build and run out of sandbox/{data,images}                                 | ❌️          | -                   |
-| `test`                | run full test suite                                                        | ❌️          | local               |
+| `test`                | run full test suite                                                        | ❌️          | -                   |
 | `test-release`        | build + test release (webroot embedded)                                    | ❌️          | -                   |
 
 ### Bench
@@ -318,7 +318,7 @@ graph TD
 | `fuzz::check`   | Tier-1 A1-A5 sweep, baseline-compared (gating; CI runs this).       | (fuzz-check)  | PR, main, scheduled |
 | `fuzz::clean`   | Remove the campaign's seeded state and per-role reports.            | ❌️            | -                   |
 | `fuzz::diff`    | Differential diff across per-role reports; fails on new diffs only. | ❌️            | -                   |
-| `fuzz::matrix`  | Deterministic auth-matrix checks (gating; included in `just test`). | (fuzz-matrix) | local, PR, main     |
+| `fuzz::matrix`  | Deterministic auth-matrix checks (gating; included in `just test`). | (fuzz-matrix) | PR, main            |
 | `fuzz::roles`   | Per-role differential passes, equal budget, report-<role>.json.     | ❌️            | -                   |
 | `fuzz::run`     | Advisory stateful campaign; seeds sandbox/fuzz on first use.        | ❌️            | -                   |
 
@@ -341,11 +341,11 @@ graph TD
 
 | Rule (justfile)    | Description                                                            | CI Workflow | Trigger |
 | ------------------ | ---------------------------------------------------------------------- | ----------- | ------- |
-| `quint::check`     | Fast spec gates: run on any code change (no model runs).               | ❌️          | local   |
+| `quint::check`     | Fast spec gates: run on any code change (no model runs).               | ❌️          | -       |
 | `quint::doc-check` | Generated-doc drift gate: regenerate + diff against the committed doc. | ❌️          | -       |
 | `quint::docs`      | Regenerate docs/eventual-consistency.md from the catalogs.             | ❌️          | -       |
 | `quint::format`    | Apply formatting.                                                      | ❌️          | -       |
 | `quint::fulltest`  | Deep model runs, elevated sample counts (nightly; tens of minutes).    | ❌️          | -       |
-| `quint::lint`      | Static self-checks: prettier over the layer + typecheck both specs.    | ❌️          | local   |
+| `quint::lint`      | Static self-checks: prettier over the layer + typecheck both specs.    | ❌️          | -       |
 | `quint::selftest`  | Checker self-tests: fixtures prove the gates fail when they should.    | ❌️          | -       |
-| `quint::test`      | Run both model entries at the standard sample count (10k per run).     | ❌️          | local   |
+| `quint::test`      | Run both model entries at the standard sample count (10k per run).     | ❌️          | -       |
