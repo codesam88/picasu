@@ -198,8 +198,9 @@ hooks null config fields, protect the admin account, and redirect share and
 delete operations to nonexistent fixtures so generative traffic cannot destroy
 the session under test.
 
-Regeneration is enforced: `just docs-regen` regenerates the matrix and CI
-fails on a tracked diff, and a missing or malformed matrix file fails the run.
+Regeneration is enforced: `just openapi-regen` regenerates the matrix (and the
+rest of the OpenAPI-derived artifacts) and CI fails on a tracked diff, and a
+missing or malformed matrix file fails the run.
 
 ## Refresh and reauthentication
 

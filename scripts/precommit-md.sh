@@ -2,8 +2,8 @@
 # precommit-md.sh — markdown cleanup flow for precommit.
 # Scopes: tracked (staged+unstaged vs HEAD) + untracked *.md under
 # .plan/, docs/, utils/, scripts/. Regenerates gates/auth-matrix
-# docs when their inputs change, including the vendored-widdershins OpenAPI reference.
-# All in-scope markdown is now formatted and staged, including generated docs.
+# docs when their inputs change, including widdershins openapi-reference.md
+# All in-scope markdown is formatted and staged, including generated docs.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -65,19 +65,20 @@ any_match() {
 }
 
 regenerated=()
-openapi_gen_ran=0
+openapi_regen_ran=0
 
-# backend code may affect the spec: regenerate openapi.json first (code -> spec)
+# backend code may affect the spec: regenerate all OpenAPI-derived artifacts
 if any_match '^backend/'; then
-  echo "[precommit-md] regenerating backend/openapi.json (just openapi-gen)"
-  just openapi-gen
-  openapi_gen_ran=1
-  regenerated+=(backend/openapi.json)
+  echo "[precommit-md] regenerating OpenAPI artifacts (just openapi-regen)"
+  just openapi-regen
+  openapi_regen_ran=1
+  regenerated+=(backend/openapi.json docs/auth-matrix.md backend/auth-matrix.json docs/openapi-reference.md)
 fi
 
-# auth-matrix runs when openapi-gen ran OR openapi.json itself changed
-if (( openapi_gen_ran )) || any_match '^backend/openapi\.json$'; then
-  echo "[precommit-md] regenerating auth-matrix artifacts"
+# auth-matrix generator itself changed (and no backend change that would have
+# run the aggregate): regenerate the matrix directly
+if (( ! openapi_regen_ran )) && any_match '^scripts/auth-matrix\.mjs$'; then
+  echo "[precommit-md] regenerating auth-matrix artifacts (scripts/auth-matrix.mjs changed)"
   node scripts/auth-matrix.mjs .
   regenerated+=(docs/auth-matrix.md backend/auth-matrix.json)
 fi
@@ -100,14 +101,7 @@ if any_match '^utils/bench/(bench|battery|render_baselines|compare_reports)\.py$
   echo "[precommit-md] reminder: bench generator inputs changed; run 'just bench extract' manually if baselines need refreshing (needs run data)." >&2
 fi
 
-# openapi reference regen (widdershins is vendored; runs offline)
-if (( openapi_gen_ran )) || any_match '^backend/openapi\.json$'; then
-  echo "[precommit-md] regenerating docs/openapi-reference.md (just docs-openapi)"
-  just docs-openapi
-  regenerated+=(docs/openapi-reference.md)
-fi
-
-# single format pass over all markdown (plan78 + docs/utils at 80)
+# single format pass over all in-scope markdown (mirrors docs-format)
 just docs-format
 
 # stage exactly the in-scope hand-written md files that docs-format touched

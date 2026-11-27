@@ -80,7 +80,7 @@ Each rule lives where its inputs live.
    table (`docs/auth-matrix.md`, the review baseline) and the machine file
    (`backend/auth-matrix.json`, per-operation records for downstream
    consumers) from the committed spec; drift in both is now caught by the CI
-   docs-regen gate (and the committed artifact test for openapi.json). The
+   openapi-regen step (and the committed artifact test for openapi.json). The
    reference still generates from `openapi.json` directly; the matrix stays a
    separate review artifact unless a future step merges them.
 2. **Schemathesis derivation (implemented).** The campaign hooks derive their
@@ -131,12 +131,12 @@ Each rule lives where its inputs live.
 
 ## Runners and gates
 
-| Command                             | Scope                                    | Gate                                  |
-| ----------------------------------- | ---------------------------------------- | ------------------------------------- |
-| `just openapi-check`                | spec parity, shape, lint, routes         | gating (CI + precommit on `backend/`) |
-| `just dylint-check`                 | AUTH-2, AUTH-3, decode agreement         | gating (CI)                           |
-| `just fuzz check` / `just fuzz run` | 5-check oracle sweep / stateful campaign | sweep gating in CI; campaign advisory |
-| `just env-var-check`                | config consistency                       | gating                                |
+| Command                             | Scope                                    | Gate                                              |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------- |
+| `just openapi-check`                | spec parity, shape, lint, routes         | gating (CI via `openapi-regen`; precommit helper) |
+| `just dylint-check`                 | AUTH-2, AUTH-3, decode agreement         | gating (CI)                                       |
+| `just fuzz check` / `just fuzz run` | 5-check oracle sweep / stateful campaign | sweep gating in CI; campaign advisory             |
+| `just env-var-check`                | config consistency                       | gating                                            |
 
 Quarterly re-pin cadence applies to Schemathesis, dylint nightlies, and the
 other pinned tools. Research digests live in `docs/briefs/`.
