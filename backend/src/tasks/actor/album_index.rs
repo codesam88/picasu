@@ -778,7 +778,7 @@ fn did_every_matched_file_fail(job_id: u64) -> bool {
 fn finish_job(job_id: u64, state: AlbumIndexState) {
     // Full synchronous bump strictly before the terminal state is published, so
     // a client polling status then reading sees the finished scan's rows.
-    crate::storage::tree_view::bump_tree_epoch();
+    crate::storage::tree_view::mark_tree_dirty();
     let report_context = {
         let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
         if slot.job_id == job_id {
@@ -1511,7 +1511,7 @@ mod tests {
         asset_store::insert_asset(&rec_outside).expect("insert outside ghost");
 
         // Make the on-disk rows visible to the sweep's in-memory read.
-        crate::storage::tree_view::bump_tree_epoch();
+        crate::storage::tree_view::mark_tree_dirty();
 
         index_album_with_root("/scanned_root", false, None).expect("index accepted");
         wait_for_index_completion();
@@ -1589,7 +1589,7 @@ mod tests {
         asset_store::insert_asset(&rec_outside).expect("insert outside ghost");
 
         // Make the on-disk rows visible to the sweep's in-memory read.
-        crate::storage::tree_view::bump_tree_epoch();
+        crate::storage::tree_view::mark_tree_dirty();
 
         index_album_with_root("/scanned_root", false, None).expect("index accepted");
         wait_for_index_completion();
@@ -1658,7 +1658,7 @@ mod tests {
         std::fs::create_dir_all(thumbnail.parent().expect("thumbnail parent"))
             .expect("create thumbnail dir");
         std::fs::write(&thumbnail, b"thumb").expect("write thumbnail");
-        crate::storage::tree_view::bump_tree_epoch();
+        crate::storage::tree_view::mark_tree_dirty();
 
         // A mutation holds the ghost path while the sweep runs.
         let lease = crate::tasks::path_epoch::lease_paths([ghost.clone()]);

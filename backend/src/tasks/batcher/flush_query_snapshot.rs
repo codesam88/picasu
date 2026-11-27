@@ -1,6 +1,6 @@
-use crate::model::response::Prefetch;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
+use crate::storage::ser_de::QueryCacheEntry;
 
 use mini_executor::BatchTask;
 use redb::TableDefinition;
@@ -54,7 +54,8 @@ pub(crate) fn flush_query_snapshot_task() {
         };
         slot_guard.acquired();
         let count_version = &VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
-        let table_definition: TableDefinition<u64, Prefetch> = TableDefinition::new(count_version);
+        let table_definition: TableDefinition<u64, QueryCacheEntry> =
+            TableDefinition::new(count_version);
 
         let mut table = {
             let opened = txn.open_table(table_definition);

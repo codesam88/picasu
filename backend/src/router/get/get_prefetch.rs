@@ -13,8 +13,9 @@ use crate::router::auth::GuardPresenter;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::cache::next_snapshot_id;
-use crate::storage::db::INVALIDATION_VERSION;
 use crate::storage::db::snapshot_tree_arc;
+use crate::storage::ser_de::QueryCacheEntry;
+use crate::storage::tree_view;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::observe::{self, Stage, Timer, claim_report, mono_ms};
 
@@ -250,9 +251,6 @@ fn build_cache_key(
 
     let mut hasher = DefaultHasher::new();
     expression_option.hash(&mut hasher);
-    INVALIDATION_VERSION
-        .load(Ordering::Relaxed)
-        .hash(&mut hasher);
     locate_option.hash(&mut hasher);
     caller_id.hash(&mut hasher);
     include_personal.hash(&mut hasher);
@@ -287,6 +285,7 @@ fn create_json_response(
     locate_to_index: Option<usize>,
     reduced_data_vector_length: usize,
     query_hash: u64,
+    computed_at_epoch: u64,
     resolved_share_option: Option<ResolvedShare>,
     caller_id: &str,
 ) -> Json<PrefetchReturn> {
@@ -298,8 +297,15 @@ fn create_json_response(
         reduced_data_vector_length,
     );
 
-    // Cache the result
-    QUERY_SNAPSHOT.in_memory.insert(query_hash, prefetch);
+    // Cache the result, stamped with the epoch the rows were computed at
+    // (captured before the filter ran — see the call site).
+    QUERY_SNAPSHOT.in_memory.insert(
+        query_hash,
+        QueryCacheEntry {
+            epoch: computed_at_epoch,
+            prefetch,
+        },
+    );
     BATCH_COORDINATOR.execute_batch_detached(FlushQuerySnapshotTask);
 
     // Build response
@@ -354,7 +360,11 @@ fn execute_prefetch_logic(
         return cached_response;
     }
 
-    // Step 3: Filter items
+    // Step 3: Filter items. The epoch is captured before computing: any
+    // write committing while the filter runs advances past it, so the
+    // entry stamps as stale on the next read instead of serving rows
+    // that never saw the write.
+    let computed_at_epoch = tree_view::current_epoch();
     let reduced_data_vector = filter_items(
         expression_option,
         resolved_share_option.as_ref(),
@@ -376,6 +386,7 @@ fn execute_prefetch_logic(
         locate_to_index,
         reduced_data_vector_length,
         query_hash,
+        computed_at_epoch,
         resolved_share_option,
         &caller_id,
     );
