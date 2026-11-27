@@ -135,7 +135,6 @@ graph TD
   fuzz-check
   fuzz-matrix
   gates-test
-  msrv-check
   openapi-breakcheck
   openapi-check
   openapi-gen
@@ -154,7 +153,7 @@ graph TD
   openapi-regen --> openapi-check
   openapi-regen --> openapi-gen
   utils-check --> zizmor-check
-  openapi-breakcheck ~~~ dylint-check & env-var-check & fuzz-check & fuzz-matrix & gates-test & msrv-check & openapi-routes-release & utils-format & utils-test & zizmor-check-online
+  openapi-breakcheck ~~~ dylint-check & env-var-check & fuzz-check & fuzz-matrix & gates-test & openapi-routes-release & utils-format & utils-test & zizmor-check-online
 ```
 
 | Rule (justfile)          | Description                                                                       | CI Workflow           | Trigger             |
@@ -164,7 +163,6 @@ graph TD
 | `fuzz-check`             | Deprecated: CI invokes this name; use `just fuzz check`.                          | ci, fuzz-advisory     | PR, main, scheduled |
 | `fuzz-matrix`            | Deprecated: CI invokes this name; use `just fuzz matrix`.                         | ci                    | PR, main            |
 | `gates-test`             | ensure all test/check rules are called from CI and global rules                   | ci, docs-check        | PR, main            |
-| `msrv-check`             | Non-blocking by design: MSRV floor check (nightly lane).                          | msrv                  | scheduled           |
 | `openapi-breakcheck`     | Fail on breaking OpenAPI changes                                                  | (openapi-check)       | PR, main            |
 | `openapi-check`          | Run all OpenAPI checks.                                                           | (openapi-regen)       | PR, main            |
 | `openapi-gen`            | Generate openapi.json from utopia annotations                                     | (openapi-regen)       | PR, main            |
