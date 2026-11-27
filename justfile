@@ -434,51 +434,6 @@ audit: backend-audit frontend-audit
 # Run format, linter, static checks and tests
 [group('global')]
 precommit:
-    #!/usr/bin/env sh
-    set -e
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    changed=$(git diff --cached --name-only)
-
-    if [ "$branch" = "main" ]; then
-        echo "[ precommit ] On main — full test suite is required to pass."
-        just check
-        just test
-        exit 0
-    fi
-
-    echo "[ precommit ] On '$branch' — format/lint enforced; targeted checks/tests run for changed areas."
-    # Regen + stage first, so openapi-check/docs-check verify fresh artifacts.
-    if echo "$changed" | grep -qE '^(backend/|utils/|\.plan/|docs/|[^/]+\.md$|justfile$|\.github/workflows/|scripts/)'; then
-        ./scripts/precommit-md.sh
-    fi
-    if echo "$changed" | grep -q '^backend/'; then
-        just backend-check
-    fi
-    if echo "$changed" | grep -qE '^\.(spectral\.yaml|oasdiff-ignore\.txt)$'; then
-        # Root files that configure the openapi gate run the gate they configure.
-        just openapi-check
-    fi
-    if echo "$changed" | grep -q '^utils/'; then
-        just utils-check
-    fi
-    if echo "$changed" | grep -q '^utils/quint/'; then
-        just quint lint
-        just quint check
-    fi
-    if echo "$changed" | grep -q '^utils/quint/.*\.qnt$'; then
-        just quint test
-    fi
-    if echo "$changed" | grep -qE '^(backend|utils)/'; then
-        just utils-test
-    fi
-    if echo "$changed" | grep -qE '^(\.plan/|docs/|utils/.*\.md$|scripts/.*\.md$|justfile$|\.github/workflows/|scripts/(quality-gates|auth-matrix)\.mjs$)'; then
-        just docs-check
-    fi
-    if echo "$changed" | grep -q '^frontend/'; then
-        just frontend-check
-    fi
-    if echo "$changed" | grep -qE '^(backend/|docs/config\.md$|README\.md$)'; then
-        just env-var-check
-    fi
+    ./scripts/precommit.sh
 
 # vim: set et:
