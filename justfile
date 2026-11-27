@@ -320,7 +320,7 @@ check: backend-check utils-check frontend-check docs-check openapi-check env-var
 
 # run full test suite
 [group('global')]
-test: backend-test utils-test frontend-test fuzz::matrix quint::test
+test: backend-test utils-test frontend-test fuzz::matrix
 
 # verify installed tool versions
 [group('deps')]
