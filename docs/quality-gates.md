@@ -34,7 +34,6 @@ graph LR
   test --> backend-test
   test --> frontend-test
   test --> fuzz::matrix
-  test --> quint::test
   test --> utils-test
   frontend-test --> frontend-playwright
   frontend-test --> frontend-vitest
@@ -44,28 +43,29 @@ graph LR
 
 | Orphan                  | Orphan                |
 | ----------------------- | --------------------- |
-| `backend-build`         | `docs-mdbook`         |
-| `backend-build-release` | `docs-openapi`        |
-| `backend-format`        | `docs-serve`          |
-| `bench::battery`        | `format`              |
-| `bench::clean`          | `frontend-format`     |
-| `bench::compare`        | `fuzz::clean`         |
-| `bench::extract`        | `fuzz::diff`          |
-| `bench::format`         | `fuzz::roles`         |
-| `bench::lint`           | `fuzz::run`           |
-| `bench::prepare`        | `gates-docs`          |
-| `bench::run`            | `install-dev`         |
-| `bench::seed-images`    | `quint::doc-check`    |
-| `bench::server`         | `quint::docs`         |
-| `bench::status`         | `quint::format`       |
-| `bench::test`           | `quint::fulltest`     |
-| `branches-prune`        | `quint::selftest`     |
+| `backend-build`         | `docs-openapi`        |
+| `backend-build-release` | `docs-serve`          |
+| `backend-format`        | `format`              |
+| `bench::battery`        | `frontend-format`     |
+| `bench::clean`          | `fuzz::clean`         |
+| `bench::compare`        | `fuzz::diff`          |
+| `bench::extract`        | `fuzz::roles`         |
+| `bench::format`         | `fuzz::run`           |
+| `bench::lint`           | `gates-docs`          |
+| `bench::prepare`        | `install-dev`         |
+| `bench::run`            | `quint::doc-check`    |
+| `bench::seed-images`    | `quint::docs`         |
+| `bench::server`         | `quint::format`       |
+| `bench::status`         | `quint::fulltest`     |
+| `bench::test`           | `quint::selftest`     |
+| `branches-prune`        | `quint::test`         |
 | `build`                 | `run`                 |
 | `build-release`         | `setup-dev`           |
 | `check-tools`           | `setup-sccache`       |
 | `clean`                 | `test-release`        |
 | `distclean`             | `utils-format`        |
 | `docs-format`           | `zizmor-check-online` |
+| `docs-mdbook`           |                       |
 
 ## Rules by group
 
