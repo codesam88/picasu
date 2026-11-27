@@ -725,16 +725,18 @@ if (!skipDrift) {
   }
 }
 
-for (const w of warnings) console.error(`gates-check: WARN: ${w}`);
-if (orphanCandidates.length) {
-  console.log("Orphan candidates (advisory):");
-  for (const name of orphanCandidates) console.log(`  ${name}`);
-} else {
-  console.log("Orphan candidates: none");
+if (!skipDrift) {
+  for (const w of warnings) console.error(`gates-check: WARN: ${w}`);
+  if (orphanCandidates.length) {
+    console.log("Orphan candidates (advisory):");
+    for (const name of orphanCandidates) console.log(`  ${name}`);
+  } else {
+    console.log("Orphan candidates: none");
+  }
+  if (failures.length) {
+    for (const f of failures) console.error(`gates-check: FAIL: ${f}`);
+    process.exit(1);
+  }
+  console.log("gates-check: OK");
 }
-if (failures.length) {
-  for (const f of failures) console.error(`gates-check: FAIL: ${f}`);
-  process.exit(1);
-}
-console.log("gates-check: OK");
 process.exit(0);
