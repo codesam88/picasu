@@ -130,7 +130,7 @@ Trivial single-fix tasks skip the plan file; say so in one line and do the work.
   **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
 - **Validate:** run `just docs-check` to check; `just docs-regen` to
-  regenerate. The precommit helper is `scripts/precommit-md.sh`.
+  regenerate. The precommit hook is `scripts/precommit.sh`.
 
 ## Code comments and documentation
 
