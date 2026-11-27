@@ -80,9 +80,10 @@ Each rule lives where its inputs live.
    table (`docs/auth-matrix.md`, the review baseline) and the machine file
    (`backend/auth-matrix.json`, per-operation records for downstream
    consumers) from the committed spec; drift in both is now caught by the CI
-   openapi-regen step (and the committed artifact test for openapi.json). The
-   reference still generates from `openapi.json` directly; the matrix stays a
-   separate review artifact unless a future step merges them.
+   openapi-regen and docs-regen steps (and the committed artifact test for
+   openapi.json). The reference still generates from `openapi.json` directly;
+   the matrix stays a separate review artifact unless a future step merges
+   them.
 2. **Schemathesis derivation (implemented).** The campaign hooks derive their
    auth knowledge from `backend/auth-matrix.json` through
    `utils/fuzz/auth_rules.py`: the share-header injection set, the probe each

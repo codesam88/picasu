@@ -131,7 +131,7 @@ The goal is an exact, auditable mapping between:
 
 4. **`just docs-openapi`** — converts the committed `openapi.json` into
    `docs/openapi-reference.md` with `widdershins` (no spec generation, no
-   network). It is invoked by `just openapi-regen`.
+   network). It is invoked by `just openapi-regen` and `just docs-regen`.
 
 5. **`just openapi-check`** — the API contract gate (see [The contract
    gate](#the-contract-gate)). It is part of `just check` and is invoked by
@@ -590,9 +590,8 @@ The markdown reference is now vendored and drift-checked: `widdershins`
 4.0.1 is a frontend devDependency (pinned in `frontend/package.json` and
 `frontend/package-lock.json`), and `docs-openapi` runs through `npx
 --no-install`, so generation needs no network. `docs-openapi` is part of
-`just openapi-regen`, and the pre-commit helper regenerates
-`docs/openapi-reference.md` whenever `backend/openapi.json` changes or the
-OpenAPI spec is regenerated, staging it with the other regenerated outputs.
+`just openapi-regen` and `just docs-regen`, and the pre-commit helper
+regenerates `docs/openapi-reference.md` with the other regenerated outputs.
 CI's `git diff --exit-code` gate therefore covers the reference doc like every
 other generated artifact.
 
